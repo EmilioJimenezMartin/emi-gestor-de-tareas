@@ -1,13 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-
-type Item = {
-  _id: string;
-  name: string;
-  payload?: unknown;
-  createdAt: string;
-};
+import { useCallback, useEffect, useMemo } from "react";
+import { createApiSocket } from "@/lib/socket";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { itemsActions, type Item } from "@/store/items-slice";
 
 function getApiUrl() {
   return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -15,27 +11,39 @@ function getApiUrl() {
 
 export function ItemsClient() {
   const apiUrl = useMemo(() => getApiUrl().replace(/\/$/, ""), []);
-  const [items, setItems] = useState<Item[]>([]);
-  const [name, setName] = useState("");
-  const [payload, setPayload] = useState('{"foo":"bar"}');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const dispatch = useAppDispatch();
+  const { items, name, payload, loading, error, socketConnected } =
+    useAppSelector((s) => s.items);
 
   const refresh = useCallback(async () => {
-    setError(null);
+    dispatch(itemsActions.setError(null));
     const res = await fetch(`${apiUrl}/items?limit=50`, { method: "GET" });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     const data = (await res.json()) as { items: Item[] };
-    setItems(data.items);
-  }, [apiUrl]);
+    dispatch(itemsActions.setItems(data.items));
+  }, [apiUrl, dispatch]);
 
   useEffect(() => {
-    refresh().catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, [refresh]);
+    refresh().catch((e) =>
+      dispatch(itemsActions.setError(e instanceof Error ? e.message : String(e)))
+    );
+  }, [dispatch, refresh]);
+
+  useEffect(() => {
+    const socket = createApiSocket(apiUrl);
+    socket.on("connect", () => dispatch(itemsActions.setSocketConnected(true)));
+    socket.on("disconnect", () =>
+      dispatch(itemsActions.setSocketConnected(false))
+    );
+    socket.on("items:created", ({ item }) => dispatch(itemsActions.addItem(item)));
+    return () => {
+      socket.disconnect();
+    };
+  }, [apiUrl, dispatch]);
 
   async function createItem() {
-    setLoading(true);
-    setError(null);
+    dispatch(itemsActions.setLoading(true));
+    dispatch(itemsActions.setError(null));
     try {
       let parsedPayload: unknown | undefined = undefined;
       if (payload.trim().length > 0) parsedPayload = JSON.parse(payload);
@@ -46,12 +54,13 @@ export function ItemsClient() {
         body: JSON.stringify({ name, payload: parsedPayload }),
       });
       if (!res.ok) throw new Error(`API error: ${res.status}`);
-      setName("");
-      await refresh();
+      const data = (await res.json()) as { item: Item };
+      dispatch(itemsActions.addItem(data.item));
+      dispatch(itemsActions.resetForm());
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      dispatch(itemsActions.setError(e instanceof Error ? e.message : String(e)));
     } finally {
-      setLoading(false);
+      dispatch(itemsActions.setLoading(false));
     }
   }
 
@@ -62,6 +71,9 @@ export function ItemsClient() {
         <p className="text-sm text-zinc-600">
           API: <span className="font-mono">{apiUrl}</span>
         </p>
+        <p className="text-xs text-zinc-500">
+          Socket: {socketConnected ? "conectado" : "desconectado"}
+        </p>
       </div>
 
       <div className="mt-4 grid gap-3">
@@ -70,7 +82,7 @@ export function ItemsClient() {
             <span className="text-zinc-700">Nombre</span>
             <input
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => dispatch(itemsActions.setName(e.target.value))}
               className="h-10 rounded-lg border border-zinc-200 px-3 outline-none focus:border-zinc-400"
               placeholder="ej: import-2026-04-22"
             />
@@ -79,7 +91,7 @@ export function ItemsClient() {
             <span className="text-zinc-700">Payload (JSON opcional)</span>
             <input
               value={payload}
-              onChange={(e) => setPayload(e.target.value)}
+              onChange={(e) => dispatch(itemsActions.setPayload(e.target.value))}
               className="h-10 rounded-lg border border-zinc-200 px-3 font-mono text-xs outline-none focus:border-zinc-400"
               placeholder='{"foo":"bar"}'
             />
@@ -128,4 +140,3 @@ export function ItemsClient() {
     </section>
   );
 }
-

@@ -43,3 +43,9 @@ Nota: en `apps/web` los scripts usan `--webpack` para evitar dependencias de Tur
 ```bash
 docker compose up --build
 ```
+
+Levantar la base de datos localmente:
+brew services start mongodb-community@7.0
+
+Parar la base de datos:
+brew services stop mongodb-community@7.0

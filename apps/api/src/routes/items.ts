@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { FastifyInstance } from "fastify";
+import type { Server as SocketIOServer } from "socket.io";
 import { ItemModel } from "../models/item.js";
 
 const createItemBodySchema = z.object({
@@ -19,7 +20,10 @@ const listQuerySchema = z.object({
   name: z.string().min(1).optional(),
 });
 
-export async function registerItemRoutes(app: FastifyInstance) {
+export async function registerItemRoutes(
+  app: FastifyInstance,
+  deps?: { io?: SocketIOServer }
+) {
   app.get("/items", async (req) => {
     const { limit, before, name } = listQuerySchema.parse(req.query);
     const filter: Record<string, unknown> = {};
@@ -37,6 +41,8 @@ export async function registerItemRoutes(app: FastifyInstance) {
     const body = createItemBodySchema.parse(req.body);
     const created = await ItemModel.create(body);
     reply.code(201);
-    return { item: created.toObject({ versionKey: false }) };
+    const item = created.toObject({ versionKey: false });
+    deps?.io?.emit("items:created", { item });
+    return { item };
   });
 }
