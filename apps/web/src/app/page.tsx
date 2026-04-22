@@ -66,69 +66,7 @@ export default function Home() {
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-8">
-        {/* AI Configuration Section */}
-        <section className="lg:col-span-12 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                <BrainCircuit size={24} />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold">Configuración de IA</h2>
-                <p className="text-sm text-neutral-500 font-medium">Define los modelos de lenguaje para tus automatizaciones.</p>
-              </div>
-            </div>
-          </div>
 
-          <Card variant="outline" className="p-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-              <div className="space-y-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-xs">G</div>
-                  <h3 className="font-bold">Google Gemini</h3>
-                </div>
-                <div className="space-y-4">
-                  <p className="text-xs text-neutral-500">Selecciona el motor de Google para tareas de razonamiento avanzado y grandes contextos.</p>
-                  <select className="w-full h-11 bg-secondary border border-white/5 rounded-xl px-4 text-sm text-white outline-none focus:border-primary transition-colors">
-                    <option>Gemini 1.5 Pro</option>
-                    <option>Gemini 1.5 Flash</option>
-                    <option>Gemini 1.0 Ultra</option>
-                  </select>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                    <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-tighter">Status: Latencia Optimizada</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold text-xs italic">H</div>
-                  <h3 className="font-bold">Hugging Face (Open Source)</h3>
-                </div>
-                <div className="space-y-4">
-                  <p className="text-xs text-neutral-500">Utiliza modelos abiertos de HuggingFace Hub para tareas específicas y mayor privacidad.</p>
-                  <select className="w-full h-11 bg-secondary border border-white/5 rounded-xl px-4 text-sm text-white outline-none focus:border-primary transition-colors">
-                    <option>Llama 3 (8B Instruct)</option>
-                    <option>Mistral v0.2</option>
-                    <option>Phi-3 Mini</option>
-                    <option>Gemma 7B</option>
-                  </select>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                    <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-tighter">Status: Conectado a Hub API</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-10 pt-8 border-t border-white/5 flex justify-end">
-              <Button variant="primary">
-                Guardar Configuración
-              </Button>
-            </div>
-          </Card>
-        </section>
 
         {/* Recent Activity / Quick Access */}
         <section className="lg:col-span-8 flex flex-col gap-6">
