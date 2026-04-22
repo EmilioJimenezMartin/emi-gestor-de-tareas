@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { StoreProvider } from "@/store/store-provider";
 import { LayoutGrid, Home as HomeIcon, CheckSquare, Settings, User, Bell } from "lucide-react";
+import { NavItem, MobileNavItem } from "@/components/layout/nav-items";
 
 export const metadata: Metadata = {
   title: "emi | Gestor de Tareas",
@@ -28,10 +29,10 @@ export default function RootLayout({
               </div>
 
               <nav className="flex-1 px-4 py-4 space-y-1">
-                <NavItem icon={<HomeIcon size={20} />} label="Hogar" active />
-                <NavItem icon={<CheckSquare size={20} />} label="Tareas" />
-                <NavItem icon={<LayoutGrid size={20} />} label="Dashboard" />
-                <NavItem icon={<Settings size={20} />} label="Ajustes" />
+                <NavItem href="/" icon={<HomeIcon size={20} />} label="Home" />
+                <NavItem href="/tareas" icon={<CheckSquare size={20} />} label="Tareas" />
+                <NavItem href="/dashboard" icon={<LayoutGrid size={20} />} label="Stats" />
+                <NavItem href="/ajustes" icon={<Settings size={20} />} label="Ajustes" />
               </nav>
 
               <div className="p-4 border-t border-white/5">
@@ -77,15 +78,15 @@ export default function RootLayout({
 
             {/* Tab Bar - Mobile */}
             <nav className="md:hidden fixed bottom-0 left-0 right-0 h-20 glass border-t border-white/10 px-6 flex items-center justify-around z-50">
-              <MobileNavItem icon={<HomeIcon size={24} />} active />
-              <MobileNavItem icon={<CheckSquare size={24} />} />
+              <MobileNavItem href="/" icon={<HomeIcon size={24} />} />
+              <MobileNavItem href="/tareas" icon={<CheckSquare size={24} />} />
               <div className="-mt-12">
                 <button className="w-14 h-14 bg-primary rounded-full shadow-lg shadow-primary/30 flex items-center justify-center text-white active:scale-95 transition-transform">
                   <span className="text-3xl font-light">+</span>
                 </button>
               </div>
-              <MobileNavItem icon={<LayoutGrid size={24} />} />
-              <MobileNavItem icon={<Settings size={24} />} />
+              <MobileNavItem href="/stats" icon={<LayoutGrid size={24} />} />
+              <MobileNavItem href="/ajustes" icon={<Settings size={24} />} />
             </nav>
           </div>
         </StoreProvider>
@@ -93,21 +94,4 @@ export default function RootLayout({
     </html>
   );
 }
-function NavItem({ icon, label, active = false }: { icon: React.ReactNode, label: string, active?: boolean }) {
-  return (
-    <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl cursor-pointer transition-all duration-200 group ${active ? 'bg-primary/10 text-primary' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`}>
-      <span className={active ? 'text-primary' : 'group-hover:text-white transition-colors'}>
-        {icon}
-      </span>
-      <span className="font-semibold text-sm">{label}</span>
-    </div>
-  );
-}
 
-function MobileNavItem({ icon, active = false }: { icon: React.ReactNode, active?: boolean }) {
-  return (
-    <div className={`p-3 rounded-2xl transition-all duration-200 ${active ? 'text-primary bg-primary/5' : 'text-neutral-500'}`}>
-      {icon}
-    </div>
-  );
-}
