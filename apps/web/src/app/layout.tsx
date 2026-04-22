@@ -49,7 +49,7 @@ export default function RootLayout({
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 flex flex-col h-screen overflow-y-auto bg-background">
+            <main className="flex-1 flex flex-col h-screen overflow-y-auto bg-background min-w-0">
               {/* Header */}
               <header className="sticky top-0 z-30 h-16 glass border-x-0 border-t-0 px-6 flex items-center justify-between">
                 <div className="md:hidden flex items-center gap-2">

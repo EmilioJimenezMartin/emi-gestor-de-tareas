@@ -1,23 +1,23 @@
 import { getTasks } from "@/lib/tasks";
 import { TaskList } from "@/components/tasks/task-list";
+import { Settings } from "lucide-react";
 
 export default function TareasPage() {
   const tasks = getTasks();
 
   return (
-    <div className="min-h-screen">
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 py-12">
-        <header className="flex flex-col gap-2">
-          <h1 className="text-4xl font-bold tracking-tight text-white">
-            Motores de <span className="text-primary font-black">Arbitraje</span>
-          </h1>
-          <p className="text-neutral-500 max-w-2xl font-medium">
-            Pipeline de ejecución cargado desde el núcleo de datos. Filtra e identifica oportunidades en tiempo real.
-          </p>
-        </header>
+    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
+      {/* Header */}
+      <header className="flex flex-col gap-2">
+        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white italic">
+          Explorador de <span className="text-primary font-black">Oportunidades</span>
+        </h1>
+        <p className="text-sm sm:text-base text-neutral-500 max-w-2xl">
+          Pipeline de ejecución cargado desde el núcleo de datos. Filtra e identifica oportunidades en tiempo real.
+        </p>
+      </header>
 
-        <TaskList initialTasks={tasks} />
-      </main>
+      <TaskList initialTasks={tasks} />
     </div>
   );
 }

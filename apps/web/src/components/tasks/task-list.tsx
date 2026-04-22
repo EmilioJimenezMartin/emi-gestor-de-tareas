@@ -65,22 +65,39 @@ export function TaskList({ initialTasks }: TaskListProps) {
     return (
         <div className="space-y-8">
             {/* Controls Bar */}
-            <div className="flex flex-col md:flex-row gap-4 items-end md:items-center justify-between bg-white/[0.02] border border-white/5 p-4 rounded-3xl animate-in slide-in-from-top duration-500">
-                <div className="relative w-full md:w-80">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" size={18} />
-                    <Input
-                        placeholder="Buscar motor o categoría..."
-                        className="pl-10 h-11"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                    />
+            <div className="flex flex-col gap-6 bg-white/[0.02] border border-white/5 p-4 sm:p-6 rounded-3xl animate-in slide-in-from-top duration-500">
+                <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" size={18} />
+                        <Input
+                            placeholder="Buscar motor o categoría..."
+                            className="pl-10 h-12 w-full"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                        />
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-secondary/50 rounded-2xl p-1 border border-white/5 self-end lg:self-auto">
+                        <button
+                            onClick={() => setViewMode("grid")}
+                            className={`p-2 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-neutral-500 hover:text-neutral-300'}`}
+                        >
+                            <LayoutGrid size={20} />
+                        </button>
+                        <button
+                            onClick={() => setViewMode("list")}
+                            className={`p-2 rounded-xl transition-all ${viewMode === 'list' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-neutral-500 hover:text-neutral-300'}`}
+                        >
+                            <List size={20} />
+                        </button>
+                    </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                    <div className="flex items-center gap-2 bg-secondary/50 rounded-2xl px-3 py-1.5 border border-white/5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div className="flex items-center gap-2 bg-secondary/30 rounded-2xl px-3 py-2 border border-white/5">
                         <Filter size={14} className="text-neutral-500" />
                         <select
-                            className="bg-transparent text-sm font-semibold outline-none text-neutral-300 pr-2"
+                            className="bg-transparent text-sm font-semibold outline-none text-neutral-300 w-full"
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value)}
                         >
@@ -90,10 +107,10 @@ export function TaskList({ initialTasks }: TaskListProps) {
                         </select>
                     </div>
 
-                    <div className="flex items-center gap-2 bg-secondary/50 rounded-2xl px-3 py-1.5 border border-white/5">
+                    <div className="flex items-center gap-2 bg-secondary/30 rounded-2xl px-3 py-2 border border-white/5">
                         <Filter size={14} className="text-neutral-500" />
                         <select
-                            className="bg-transparent text-sm font-semibold outline-none text-neutral-300 pr-2 max-w-[150px]"
+                            className="bg-transparent text-sm font-semibold outline-none text-neutral-300 w-full"
                             value={categoryFilter}
                             onChange={(e) => setCategoryFilter(e.target.value)}
                         >
@@ -104,10 +121,10 @@ export function TaskList({ initialTasks }: TaskListProps) {
                         </select>
                     </div>
 
-                    <div className="flex items-center gap-2 bg-secondary/50 rounded-2xl px-3 py-1.5 border border-white/5">
+                    <div className="flex items-center gap-2 bg-secondary/30 rounded-2xl px-3 py-2 border border-white/5 sm:col-span-2 lg:col-span-1">
                         <ArrowUpDown size={14} className="text-neutral-500" />
                         <select
-                            className="bg-transparent text-sm font-semibold outline-none text-neutral-300 pr-2"
+                            className="bg-transparent text-sm font-semibold outline-none text-neutral-300 w-full"
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
                         >
@@ -116,21 +133,6 @@ export function TaskList({ initialTasks }: TaskListProps) {
                             <option value="roi">Mejor ROI</option>
                             <option value="difficulty">Más Fácil</option>
                         </select>
-                    </div>
-
-                    <div className="flex items-center bg-secondary/50 rounded-2xl p-1 border border-white/5">
-                        <button
-                            onClick={() => setViewMode("grid")}
-                            className={`p-1.5 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-neutral-500 hover:text-neutral-300'}`}
-                        >
-                            <LayoutGrid size={18} />
-                        </button>
-                        <button
-                            onClick={() => setViewMode("list")}
-                            className={`p-1.5 rounded-xl transition-all ${viewMode === 'list' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-neutral-500 hover:text-neutral-300'}`}
-                        >
-                            <List size={18} />
-                        </button>
                     </div>
                 </div>
             </div>
@@ -142,14 +144,14 @@ export function TaskList({ initialTasks }: TaskListProps) {
             </div>
 
             {/* Tasks List/Grid */}
-            <section className={viewMode === 'grid' ? "grid gap-6 md:grid-cols-2 lg:grid-cols-2" : "flex flex-col gap-4"}>
+            <section className={viewMode === 'grid' ? "grid gap-6 md:grid-cols-2" : "flex flex-col gap-4"}>
                 {filteredAndSortedTasks.map((t) => (
                     <Link
                         key={t.id}
                         href={`/tareas/${t.slug}`}
-                        className={`group relative flex flex-col justify-between rounded-3xl border border-white/5 bg-white/[0.02] p-6 transition-all duration-300 hover:border-primary/30 hover:bg-white/[0.04] hover:shadow-2xl hover:shadow-primary/5 ${viewMode === 'list' ? 'md:flex-row md:items-center' : ''}`}
+                        className={`group relative flex flex-col justify-between rounded-3xl border border-white/5 bg-white/[0.02] p-5 sm:p-6 transition-all duration-300 hover:border-primary/30 hover:bg-white/[0.04] hover:shadow-2xl hover:shadow-primary/5 w-full min-w-0 overflow-hidden ${viewMode === 'list' ? 'lg:flex-row lg:items-center' : ''}`}
                     >
-                        <div className={viewMode === 'list' ? 'flex-1 flex flex-col md:flex-row md:items-center gap-6' : ''}>
+                        <div className={`min-w-0 ${viewMode === 'list' ? 'flex-1 lg:flex lg:flex-row lg:items-center gap-6' : 'flex-1'}`}>
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-start justify-between gap-4">
                                     <div className="min-w-0">
@@ -158,7 +160,7 @@ export function TaskList({ initialTasks }: TaskListProps) {
                                         </h2>
                                         <div className="flex flex-wrap gap-1.5 mt-2">
                                             {(t.categories || []).map(cat => (
-                                                <span key={cat} className="text-[9px] font-black uppercase tracking-widest text-neutral-500 bg-white/5 px-2 py-0.5 rounded-md border border-white/5">
+                                                <span key={cat} className="text-[9px] font-black uppercase tracking-tight text-neutral-500 bg-white/5 px-2 py-0.5 rounded-md border border-white/5">
                                                     {cat}
                                                 </span>
                                             ))}
@@ -180,24 +182,39 @@ export function TaskList({ initialTasks }: TaskListProps) {
                                 )}
                             </div>
 
-                            {/* Métricas de viabilidad */}
-                            <div className={`flex gap-6 border-white/5 ${viewMode === 'list' ? 'md:border-l md:pl-6' : 'mt-5 border-t pt-4'}`}>
-                                <div className="flex flex-col">
-                                    <span className="text-[9px] uppercase text-neutral-500 font-bold tracking-tighter">ROI</span>
-                                    <span className="text-sm font-bold text-emerald-400">{t.viability_metrics?.roi_potential}/10</span>
+                            {/* Métricas de viabilidad - Compact Horizontal Layout */}
+                            <div className={`flex flex-wrap items-center gap-x-6 gap-y-2 border-white/5 ${viewMode === 'list' ? 'lg:border-l lg:pl-6' : 'mt-5 border-t pt-4'}`}>
+                                <div className="flex items-center gap-2">
+                                    <div className="flex flex-col items-start">
+                                        <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-black tracking-tight leading-none mb-0.5">ROI</span>
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-1 h-1 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                                            <span className="text-xs sm:text-sm font-black text-white tabular-nums">{t.viability_metrics?.roi_potential}</span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="flex flex-col">
-                                    <span className="text-[9px] uppercase text-neutral-500 font-bold tracking-tighter">Éxito</span>
-                                    <span className="text-sm font-bold text-primary">{t.viability_metrics?.success_probability}/10</span>
+                                <div className="flex items-center gap-2">
+                                    <div className="flex flex-col items-start">
+                                        <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-black tracking-tight leading-none mb-0.5">Éxito</span>
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-1 h-1 rounded-full bg-primary shadow-[0_0_8px_rgba(25,113,255,0.5)]" />
+                                            <span className="text-xs sm:text-sm font-black text-white tabular-nums">{t.viability_metrics?.success_probability}</span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="flex flex-col">
-                                    <span className="text-[9px] uppercase text-neutral-500 font-bold tracking-tighter">Diff.</span>
-                                    <span className="text-sm font-bold text-neutral-300">{10 - (t.viability_metrics?.implementation_ease || 0)}/10</span>
+                                <div className="flex items-center gap-2">
+                                    <div className="flex flex-col items-start lg:items-start">
+                                        <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-black tracking-tight leading-none mb-0.5">Dificultad</span>
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-1 h-1 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
+                                            <span className="text-xs sm:text-sm font-black text-white tabular-nums">{10 - (t.viability_metrics?.implementation_ease || 0)}</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className={`${viewMode === 'list' ? 'md:ml-auto md:pl-6 md:border-l' : 'mt-8'} flex items-center justify-between border-white/5`}>
+                        <div className={`${viewMode === 'list' ? 'mt-6 lg:mt-0 lg:ml-auto lg:pl-6 lg:border-l flex-shrink-0' : 'mt-8'} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-white/5 w-full lg:w-auto`}>
                             <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono">
                                 <div className="flex items-center gap-2 rounded-xl bg-white/5 px-3 py-1.5 border border-white/5">
                                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />

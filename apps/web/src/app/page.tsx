@@ -23,23 +23,23 @@ export default function Home() {
   const activeTasks = tasks.filter(t => t.status === "active").length;
 
   return (
-    <div className="space-y-10 pb-20 animate-in fade-in duration-700">
+    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
       {/* Welcome Header */}
       <header className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-primary">
-          <Sparkles size={20} />
-          <span className="text-xs font-bold uppercase tracking-widest">Dashboard de Control</span>
+          <Sparkles size={16} className="sm:size-5" />
+          <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest">Dashboard de Control</span>
         </div>
-        <h1 className="text-4xl font-bold tracking-tight text-white mt-1">
+        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mt-1">
           Bienvenido, <span className="text-primary">Emilio</span>
         </h1>
-        <p className="text-neutral-500 max-w-xl">
-          Gestiona tus motores de arbitraje y configuraciones de inteligencia artificial desde un solo lugar.
+        <p className="text-sm sm:text-base text-neutral-500 max-w-2xl">
+          Gestiona tus motores de inversión y configuraciones de inteligencia artificial desde un solo lugar.
         </p>
       </header>
 
       {/* Quick Stats Grid */}
-      <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={<Rocket size={24} />}
           label="Motores Totales"
@@ -69,7 +69,7 @@ export default function Home() {
 
 
         {/* Recent Activity / Quick Access */}
-        <section className="lg:col-span-8 flex flex-col gap-6">
+        <section className="lg:col-span-8 flex flex-col gap-6 w-full min-w-0">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold tracking-tight">Actividad de Motores</h2>
             <Link href="/tareas" className="text-xs font-bold text-primary hover:underline flex items-center gap-1 group">

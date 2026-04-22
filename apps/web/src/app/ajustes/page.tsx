@@ -4,33 +4,33 @@ import { BrainCircuit, Settings, Shield, Bell, Database } from "lucide-react";
 
 export default function AjustesPage() {
     return (
-        <div className="space-y-10 pb-20 animate-in fade-in duration-700">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
+            {/* Header */}
             <header className="flex flex-col gap-2">
                 <div className="flex items-center gap-2 text-primary">
-                    <Settings size={20} />
-                    <span className="text-xs font-bold uppercase tracking-widest">Configuración del Sistema</span>
+                    <Settings size={16} className="sm:size-5" />
+                    <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest">Preferencias</span>
                 </div>
-                <h1 className="text-4xl font-bold tracking-tight text-white mt-1">Ajustes</h1>
-                <p className="text-neutral-500 max-w-xl">
-                    Personaliza el comportamiento de tus motores y las integraciones de inteligencia artificial.
+                <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mt-1">
+                    Ajustes de <span className="text-primary">Sistema</span>
+                </h1>
+                <p className="text-sm sm:text-base text-neutral-500 max-w-2xl">
+                    Configura tus preferencias de IA, integraciones y seguridad desde este panel centralizado.
                 </p>
             </header>
 
-            <section className="grid grid-cols-1 gap-8">
-                {/* AI Configuration Section - MIGRATED FROM DASHBOARD */}
-                <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                            <BrainCircuit size={24} />
-                        </div>
+            <div className="space-y-12">
+                {/* IA Configuration Section */}
+                <section className="space-y-6">
+                    <div className="flex items-center justify-between">
                         <div>
-                            <h2 className="text-xl font-bold">Configuración de IA</h2>
-                            <p className="text-sm text-neutral-500 font-medium">Define los modelos de lenguaje para tus automatizaciones.</p>
+                            <h2 className="text-xl font-bold text-white">Configuración de IA</h2>
+                            <p className="text-xs text-neutral-500 mt-1">Gestiona los modelos y proveedores de lenguaje.</p>
                         </div>
                     </div>
 
-                    <Card variant="outline" className="p-8">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                    <Card variant="outline" className="p-4 sm:p-8">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
                             <div className="space-y-6">
                                 <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-xs">G</div>
@@ -77,10 +77,10 @@ export default function AjustesPage() {
                             </Button>
                         </div>
                     </Card>
-                </div>
+                </section>
 
                 {/* Other Setting sections (Placeholders for premium feel) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     <Card variant="outline" className="p-6 flex flex-col gap-4 border-white/5">
                         <div className="flex items-center gap-3">
                             <Shield size={20} className="text-primary" />
@@ -111,7 +111,7 @@ export default function AjustesPage() {
                         </div>
                     </Card>
                 </div>
-            </section>
+            </div>
         </div>
     );
 }
