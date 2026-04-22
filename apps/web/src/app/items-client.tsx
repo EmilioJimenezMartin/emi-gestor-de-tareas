@@ -65,13 +65,13 @@ export function ItemsClient() {
   }
 
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-slate-800 bg-slate-900/40 backdrop-blur-sm p-6 shadow-sm">
       <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-medium">Items</h2>
-        <p className="text-sm text-zinc-600">
-          API: <span className="font-mono">{apiUrl}</span>
+        <h2 className="text-lg font-medium text-slate-100">Items</h2>
+        <p className="text-sm text-slate-400">
+          API: <span className="font-mono text-slate-300">{apiUrl}</span>
         </p>
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-slate-500">
           Socket: {socketConnected ? "conectado" : "desconectado"}
         </p>
       </div>
@@ -79,20 +79,20 @@ export function ItemsClient() {
       <div className="mt-4 grid gap-3">
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="grid gap-1 text-sm">
-            <span className="text-zinc-700">Nombre</span>
+            <span className="text-slate-300">Nombre</span>
             <input
               value={name}
               onChange={(e) => dispatch(itemsActions.setName(e.target.value))}
-              className="h-10 rounded-lg border border-zinc-200 px-3 outline-none focus:border-zinc-400"
+              className="h-10 rounded-lg border border-slate-700 bg-slate-800/60 px-3 text-slate-100 outline-none focus:border-slate-500"
               placeholder="ej: import-2026-04-22"
             />
           </label>
           <label className="grid gap-1 text-sm">
-            <span className="text-zinc-700">Payload (JSON opcional)</span>
+            <span className="text-slate-300">Payload (JSON opcional)</span>
             <input
               value={payload}
               onChange={(e) => dispatch(itemsActions.setPayload(e.target.value))}
-              className="h-10 rounded-lg border border-zinc-200 px-3 font-mono text-xs outline-none focus:border-zinc-400"
+              className="h-10 rounded-lg border border-slate-700 bg-slate-800/60 px-3 font-mono text-xs text-slate-100 outline-none focus:border-slate-500"
               placeholder='{"foo":"bar"}'
             />
           </label>
@@ -102,36 +102,36 @@ export function ItemsClient() {
           <button
             onClick={() => void createItem()}
             disabled={loading || name.trim().length === 0}
-            className="inline-flex h-10 items-center justify-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-10 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
           >
             {loading ? "Creando..." : "Crear item"}
           </button>
           <button
             onClick={() => void refresh()}
-            className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-200 px-4 text-sm font-medium text-zinc-900 hover:bg-zinc-50"
+            className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-600 px-4 text-sm font-medium text-slate-300 hover:bg-slate-800 transition-colors"
           >
             Refrescar
           </button>
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? <p className="text-sm text-red-400">{error}</p> : null}
         </div>
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-xl border border-zinc-200">
-        <div className="grid grid-cols-12 bg-zinc-50 px-4 py-2 text-xs font-medium text-zinc-600">
+      <div className="mt-6 overflow-hidden rounded-xl border border-slate-800">
+        <div className="grid grid-cols-12 bg-slate-800/50 px-4 py-2 text-xs font-medium text-slate-400">
           <div className="col-span-4">Nombre</div>
           <div className="col-span-8">Creado</div>
         </div>
-        <ul className="divide-y divide-zinc-200">
+        <ul className="divide-y divide-slate-800">
           {items.map((it) => (
-            <li key={it._id} className="grid grid-cols-12 px-4 py-3 text-sm">
+            <li key={it._id} className="grid grid-cols-12 px-4 py-3 text-sm text-slate-200">
               <div className="col-span-4 truncate font-medium">{it.name}</div>
-              <div className="col-span-8 font-mono text-xs text-zinc-600">
+              <div className="col-span-8 font-mono text-xs text-slate-500">
                 {new Date(it.createdAt).toLocaleString()}
               </div>
             </li>
           ))}
           {items.length === 0 ? (
-            <li className="px-4 py-6 text-sm text-zinc-600">
+            <li className="px-4 py-6 text-sm text-slate-500">
               No hay items todavía.
             </li>
           ) : null}
