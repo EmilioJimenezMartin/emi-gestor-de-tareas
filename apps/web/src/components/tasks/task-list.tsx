@@ -33,15 +33,16 @@ export function TaskList({ initialTasks }: TaskListProps) {
     const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
     const categories = useMemo(() => {
-        return Array.from(new Set(initialTasks.map((t) => t.category))).sort();
+        const allCats = initialTasks.flatMap((t) => t.categories || []);
+        return Array.from(new Set(allCats)).sort();
     }, [initialTasks]);
 
     const filteredAndSortedTasks = useMemo(() => {
         let result = initialTasks.filter((task) => {
             const matchesSearch = task.title.toLowerCase().includes(search.toLowerCase()) ||
-                task.category.toLowerCase().includes(search.toLowerCase());
+                (task.categories || []).some(cat => cat.toLowerCase().includes(search.toLowerCase()));
             const matchesStatus = statusFilter === "all" || task.status === statusFilter;
-            const matchesCategory = categoryFilter === "all" || task.category === categoryFilter;
+            const matchesCategory = categoryFilter === "all" || (task.categories || []).includes(categoryFilter);
             const matchesPriority = priorityFilter === "all" || task.priority === priorityFilter;
 
             return matchesSearch && matchesStatus && matchesCategory && matchesPriority;
@@ -155,9 +156,13 @@ export function TaskList({ initialTasks }: TaskListProps) {
                                         <h2 className="text-lg font-bold text-white group-hover:text-primary transition-colors truncate">
                                             {t.title}
                                         </h2>
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mt-1">
-                                            {t.category}
-                                        </p>
+                                        <div className="flex flex-wrap gap-1.5 mt-2">
+                                            {(t.categories || []).map(cat => (
+                                                <span key={cat} className="text-[9px] font-black uppercase tracking-widest text-neutral-500 bg-white/5 px-2 py-0.5 rounded-md border border-white/5">
+                                                    {cat}
+                                                </span>
+                                            ))}
+                                        </div>
                                     </div>
                                     <span
                                         className={`inline-flex shrink-0 items-center rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-tighter ${badgeVariantForPriority(

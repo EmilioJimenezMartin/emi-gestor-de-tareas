@@ -49,20 +49,26 @@ export default async function TareaDetallePage({
 
   return (
     <div className="min-h-dvh bg-[#0a0a0a] text-slate-300">
-      <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-10">
+      <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-6 py-10">
         <header className="flex flex-col gap-3">
           <Link href="/tareas" className="text-sm text-slate-500 hover:text-white transition-colors">
             ← Volver a tareas
           </Link>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-3">
             <h1 className="text-3xl font-bold text-white tracking-tight">{task.title}</h1>
-            <p className="text-sm text-slate-400 flex items-center gap-2">
-              <span className="text-blue-400 font-mono uppercase tracking-tighter">{task.category}</span>
-              <span className="text-slate-700">|</span>
-              <span className="uppercase">{task.status}</span>
-              <span className="text-slate-700">|</span>
-              <span className="bg-white/5 px-2 py-0.5 rounded text-white italic">prioridad {task.priority}</span>
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {(task.categories || []).map(cat => (
+                <span key={cat} className="text-[10px] font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full uppercase tracking-widest">
+                  {cat}
+                </span>
+              ))}
+              <span className="text-slate-700 hidden sm:inline">|</span>
+              <span className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">{task.status}</span>
+              <span className="text-slate-700 hidden sm:inline">|</span>
+              <span className="text-[10px] font-bold bg-white/5 px-2 py-0.5 rounded-md text-slate-300 uppercase tracking-widest border border-white/10">
+                prioridad {task.priority}
+              </span>
+            </div>
           </div>
         </header>
 

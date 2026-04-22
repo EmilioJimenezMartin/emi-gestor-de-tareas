@@ -19,7 +19,7 @@ export default function Home() {
   const tasks = getTasks();
 
   const highPriority = tasks.filter(t => t.priority === "high" || t.priority === "critical").length;
-  const categories = Array.from(new Set(tasks.map(t => t.category))).length;
+  const categoriesCount = Array.from(new Set(tasks.flatMap(t => t.categories || []))).length;
   const activeTasks = tasks.filter(t => t.status === "active").length;
 
   return (
@@ -55,7 +55,7 @@ export default function Home() {
         <StatCard
           icon={<Cpu size={24} />}
           label="Categorías"
-          value={categories}
+          value={categoriesCount}
         />
         <StatCard
           icon={<Zap size={24} />}
@@ -86,9 +86,12 @@ export default function Home() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="text-sm font-bold text-white truncate">{task.title}</h4>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="neutral" className="text-[9px]">{task.category}</Badge>
-                      <span className="text-[10px] text-neutral-600 font-bold uppercase tracking-tighter">ID: {task.id}</span>
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {(task.categories || []).map(cat => (
+                        <Badge key={cat} variant="neutral" className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0 h-4 min-w-0">
+                          {cat}
+                        </Badge>
+                      ))}
                     </div>
                   </div>
                   <div className="hidden md:block">

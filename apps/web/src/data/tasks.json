@@ -4,7 +4,6 @@
       "id": "bioterra-arbitrage-001",
       "title": "BioTerra-Arbitrage: Terminal de Activos de Compensación",
       "slug": "bioterra-carbon-sourcing",
-      "category": "Environmental Arbitrage",
       "status": "active",
       "priority": "high",
       "description": "Plataforma de identificación y valorización de terrenos rurales para la generación de créditos de carbono y biodiversidad (UE 2026).",
@@ -67,13 +66,16 @@
         "cron_schedule": "0 0 * * 1",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
-      }
+      },
+      "categories": [
+        "PropTech",
+        "Arbitraje"
+      ]
     },
     {
       "id": "recovery-arbitrage-002",
       "title": "Recovery-Arbitrage: Guardián de Fondos NextGen",
       "slug": "eu-funds-matching-engine",
-      "category": "GovTech / Fintech Arbitrage",
       "status": "active",
       "priority": "critical",
       "description": "Motor de emparejamiento predictivo entre fondos estructurales de la UE y PYMES españolas mediante análisis de idoneidad automatizado.",
@@ -136,13 +138,17 @@
         "cron_schedule": "0 6 * * *",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
-      }
+      },
+      "categories": [
+        "LegalTech",
+        "Fintech",
+        "Arbitraje"
+      ]
     },
     {
       "id": "cyber-heatmap-003",
       "title": "Cyber-Vulnerability Heatmap: NIS2 Guardian",
       "slug": "cyber-risk-osint-dashboard",
-      "category": "Cybersecurity / OSINT Arbitrage",
       "status": "active",
       "priority": "high",
       "description": "Visualizador de riesgos digitales en tiempo real basado en inteligencia de fuentes abiertas (OSINT) y cumplimiento de la directiva NIS2.",
@@ -206,13 +212,15 @@
         "cron_schedule": "0 */12 * * *",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
-      }
+      },
+      "categories": [
+        "Ciberseguridad"
+      ]
     },
     {
       "id": "land-ghost-004",
       "title": "Land-Ghost: Rastreador de Derechos de Reversión",
       "slug": "expropiaciones-fallidas-tracker",
-      "category": "Real Estate / Legal Arbitrage",
       "status": "active",
       "priority": "high",
       "description": "Detección automatizada de activos inmobiliarios expropiados y no ejecutados con potencial de recuperación legal mediante derecho de reversión.",
@@ -276,13 +284,17 @@
         "cron_schedule": "0 0 1 * *",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
-      }
+      },
+      "categories": [
+        "PropTech",
+        "LegalTech",
+        "Arbitraje"
+      ]
     },
     {
       "id": "datacenter-arbitrage-005",
       "title": "Data-Land Sourcing: Infraestructura de IA y Data Centers",
       "slug": "datacenter-site-sourcing-engine",
-      "category": "Real Estate / Energy Arbitrage",
       "status": "active",
       "priority": "critical",
       "description": "Motor de identificación y valorización de parcelas rústicas estratégicas para la ubicación de Data Centers mediante el cruce de nudos de transporte eléctrico y redes de fibra óptica de gran capacidad.",
@@ -346,13 +358,17 @@
         "cron_schedule": "0 0 1 * *",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
-      }
+      },
+      "categories": [
+        "PropTech",
+        "Infraestructura",
+        "Arbitraje"
+      ]
     },
     {
       "id": "grant-arbitrage-006",
       "title": "Subsidy-Lead Engine: Sniper de Subvenciones Públicas",
       "slug": "public-grants-arbitrage-bot",
-      "category": "GovTech / LeadGen Arbitrage",
       "status": "active",
       "priority": "high",
       "description": "Sistema automatizado de detección de subvenciones por orden de llegada (concurrencia no competitiva) y generación de leads cualificados mediante análisis geoespacial de naves industriales y datos mercantiles.",
@@ -416,13 +432,16 @@
         "cron_schedule": "0 8 * * 1-5",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
-      }
+      },
+      "categories": [
+        "LegalTech",
+        "Arbitraje"
+      ]
     },
     {
       "id": "liquidation-arbitrage-007",
       "title": "The Liquidation Snatcher: Arbitraje de Activos Públicos",
       "slug": "liquidation-snatcher-pricing-errors",
-      "category": "E-commerce / Legal Arbitrage",
       "status": "active",
       "priority": "high",
       "description": "Sistema de detección de errores de tasación en subastas públicas (BOE/Seguridad Social) mediante visión artificial para identificar activos de alto valor mal catalogados como 'lotes genéricos'.",
@@ -487,13 +506,16 @@
         "cron_schedule": "0 */4 * * *",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
-      }
+      },
+      "categories": [
+        "Arbitraje",
+        "LegalTech"
+      ]
     },
     {
       "id": "index-arb-engine-008",
       "title": "The Index-Arb Engine: Arbitraje de Activos Desiertos",
       "slug": "index-arb-crowd-financial-engine",
-      "category": "Fintech / Legal Arbitrage",
       "status": "active",
       "priority": "critical",
       "description": "Motor de detección de activos en fase de venta directa o subasta desierta que cruza datos de edictos judiciales (PDF/OCR) con valoraciones de mercado en tiempo real para activar rondas de financiación participativa automáticas.",
@@ -559,13 +581,17 @@
         "cron_schedule": "0 */2 * * *",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
-      }
+      },
+      "categories": [
+        "Fintech",
+        "LegalTech",
+        "Arbitraje"
+      ]
     },
     {
       "id": "cash-recovery-arbitrage-009",
       "title": "Justice-Cash Miner: Arbitraje de Depósitos Abandonados",
       "slug": "justice-deposits-recovery-engine",
-      "category": "LegalTech / Financial Arbitrage",
       "status": "active",
       "priority": "critical",
       "description": "Sistema de minería de datos sobre cuentas de consignación judicial y edictos de concursos concluidos para la adquisición de derechos de cobro olvidados mediante contratos de cesión de crédito.",
@@ -629,13 +655,17 @@
         "cron_schedule": "0 9 * * 1-5",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
-      }
+      },
+      "categories": [
+        "LegalTech",
+        "Fintech",
+        "Arbitraje"
+      ]
     },
     {
       "id": "ghost-deposit-hunter-010",
       "title": "The Ghost Deposit Hunter: Rescate de Fianzas y Sobrantes",
       "slug": "ghost-deposit-sourcing-engine",
-      "category": "LegalTech / Financial Arbitrage",
       "status": "active",
       "priority": "critical",
       "description": "Motor de detección de capitales huérfanos en la Caja General de Depósitos y juzgados, centrado en fianzas de licitación no devueltas, subvenciones bloqueadas y sobrantes de adjudicación tras subasta.",
@@ -699,13 +729,17 @@
         "cron_schedule": "0 10 * * 1",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
-      }
+      },
+      "categories": [
+        "LegalTech",
+        "Fintech",
+        "Arbitraje"
+      ]
     },
     {
       "id": "yield-vacuum-011",
       "title": "The Yield Vacuum: Arbitraje Flash Loan & MEV",
       "slug": "yield-vacuum-flash-loan-engine",
-      "category": "DeFi / Quantitative Arbitrage",
       "status": "active",
       "priority": "critical",
       "description": "Bot de arbitraje de alta frecuencia que utiliza Flash Loans para capturar diferenciales de tasas de interés y desequilibrios de liquidez en protocolos DeFi sin exposición de capital propio.",
@@ -770,13 +804,16 @@
         "cron_schedule": "24/7 Real-time Monitoring",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
-      }
+      },
+      "categories": [
+        "Fintech",
+        "Arbitraje"
+      ]
     },
     {
       "id": "ghost-tenant-012",
       "title": "The Ghost Tenant: Subdomain Takeover & SEO Arbitrage",
       "slug": "ghost-tenant-subdomain-takeover",
-      "category": "Cybersecurity / SEO Arbitrage",
       "status": "active",
       "priority": "high",
       "description": "Sistema de detección de registros DNS huérfanos que apuntan a servicios externos (GitHub, S3, Azure) no reclamados, permitiendo la 'okupación' legal del subdominio para capturar tráfico residual y autoridad SEO.",
@@ -840,13 +877,16 @@
         "cron_schedule": "0 */6 * * *",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
-      }
+      },
+      "categories": [
+        "Ciberseguridad",
+        "Infraestructura"
+      ]
     },
     {
       "id": "silent-router-013",
       "title": "The Silent Router: Arbitraje de Webhooks Huérfanos",
       "slug": "silent-router-webhook-recovery",
-      "category": "DevOps / Revenue Recovery",
       "status": "active",
       "priority": "high",
       "description": "Sistema de interceptación y re-enrutamiento de señales de pago (Webhooks) perdidas debido a errores 404 o DNS mal configurados en sistemas legacy, monetizando la recuperación de suscripciones automáticas.",
@@ -910,83 +950,16 @@
         "cron_schedule": "Real-time Monitoring (Websockets)",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
-      }
-    },
-    {
-      "id": "silent-router-013",
-      "title": "The Silent Router: Arbitraje de Webhooks Huérfanos",
-      "slug": "silent-router-webhook-recovery",
-      "category": "DevOps / Revenue Recovery",
-      "status": "active",
-      "priority": "high",
-      "description": "Sistema de interceptación y re-enrutamiento de señales de pago (Webhooks) perdidas debido a errores 404 o DNS mal configurados en sistemas legacy, monetizando la recuperación de suscripciones automáticas.",
-      "viability_metrics": {
-        "implementation_ease": 3,
-        "success_probability": 6,
-        "resource_intensity": 4,
-        "time_to_mvp": 5,
-        "roi_potential": 9
       },
-      "technical_stack": {
-        "framework": "Go (para concurrencia masiva) / Node.js",
-        "database": "Redis (Cola de mensajes)",
-        "infrastructure": "Serverless Functions (AWS Lambda / Edge Runtime)",
-        "apis_required": [
-          "Stripe/Paddle Webhook Signatures (Validación)",
-          "ChurnZero API",
-          "Postmark/SendGrid (Notificaciones de recuperación)",
-          "Cloudflare Workers (Interceptación en el Edge)"
-        ]
-      },
-      "business_logic": {
-        "problem": "Las empresas pierden entre un 3% y 5% de su facturación recurrente porque sus servidores no reciben correctamente la confirmación de pago de las pasarelas, provocando cancelaciones erróneas.",
-        "solution": "Actuar como un nodo de redundancia que captura estas señales perdidas mediante la reclamación de subdominios DNS abandonados o rutas de API huérfanas.",
-        "monetization": [
-          "Bounty por suscripción salvada (vía plataformas de Revenue Recovery)",
-          "SaaS de 'Integridad de Pagos' para empresas Enterprise",
-          "Fee por transacción recuperada (Revenue Share)"
-        ]
-      },
-      "execution_pipeline": [
-        {
-          "step": 1,
-          "task": "Endpoint Latency & Error Scoping",
-          "details": "Escaneo de subdominios de pago conocidos buscando respuestas 404 o errores de resolución DNS en rutas de callback estándar."
-        },
-        {
-          "step": 2,
-          "task": "Dangling Hook Capture",
-          "details": "Reclamación del subdominio en el proveedor original o configuración de un proxy inverso para recibir los paquetes HTTP huérfanos."
-        },
-        {
-          "step": 3,
-          "task": "Signature & Payload Validation",
-          "details": "Verificación criptográfica (HMAC) de que el Webhook es legítimo y proviene de la pasarela de pago (Stripe, PayPal, etc.) para evitar inyecciones falsas."
-        },
-        {
-          "step": 4,
-          "task": "Revenue Recovery Trigger",
-          "details": "Reenvío de la señal de éxito al sistema de la empresa mediante una ruta alternativa o reporte a la plataforma de recuperación de ingresos para procesar la comisión."
-        }
-      ],
-      "data_schema_preview": {
-        "webhook_source": "String",
-        "transaction_id": "String",
-        "recovery_status": "Enum ['captured', 'validated', 'rerouted', 'collected']",
-        "estimated_revenue_saved": "Number",
-        "commission_earned": "Number"
-      },
-      "automation_config": {
-        "cron_schedule": "Real-time Monitoring (Websockets)",
-        "auto_notify_telegram": true,
-        "auto_publish_to_marketplace": false
-      }
+      "categories": [
+        "Infraestructura",
+        "Fintech"
+      ]
     },
     {
       "id": "universal-endpoint-014",
       "title": "The Universal Endpoint: Arbitraje de Micro-Lógica",
       "slug": "universal-endpoint-logic-bridge",
-      "category": "Serverless / Automation Marketplaces",
       "status": "active",
       "priority": "normal",
       "description": "Despliegue de scripts de alta especificidad (Puppeteer/Playwright) en marketplaces de automatización para capturar royalties por ejecución mediante la resolución de cuellos de botella técnicos sin API oficial.",
@@ -1050,13 +1023,16 @@
         "cron_schedule": "Event-driven (Webhook based)",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
-      }
+      },
+      "categories": [
+        "Infraestructura",
+        "Creatividad"
+      ]
     },
     {
       "id": "ghost-asset-synthesizer-015",
       "title": "The Ghost Asset Synthesizer: Arbitraje de Telemetría de CDNs",
       "slug": "ghost-asset-cdn-sink",
-      "category": "Cybersecurity / Data Intelligence",
       "status": "active",
       "priority": "high",
       "description": "Sistema de captura de tráfico residual de máquinas (M2M) mediante la ocupación de subdominios de descarga huérfanos en CDNs, monetizando los metadatos de telemetría a través de plataformas de Threat Intelligence.",
@@ -1121,13 +1097,16 @@
         "cron_schedule": "0 */12 * * * (Discovery scans)",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
-      }
+      },
+      "categories": [
+        "Ciberseguridad",
+        "Infraestructura"
+      ]
     },
     {
       "id": "kdp-asset-factory-016",
       "title": "KDP Factory: Generador Automático de Libros Low-Content",
       "slug": "kdp-low-content-automation-engine",
-      "category": "Digital Publishing / AI Automation",
       "status": "active",
       "priority": "normal",
       "description": "Sistema de procesamiento por lotes de activos generados por IA (imágenes, relatos, mandalas) para la creación automática de archivos PDF listos para imprenta (Amazon KDP) con maquetación profesional y gestión de metadatos.",
@@ -1192,13 +1171,16 @@
         "cron_schedule": "Weekly (Niche Analysis)",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
-      }
+      },
+      "categories": [
+        "Creatividad",
+        "Arbitraje"
+      ]
     },
     {
       "id": "cloud-credit-arbiter-017",
       "title": "Cloud Credit Arbiter: Arbitraje de Capacidad Computacional",
       "slug": "cloud-credit-resale-engine",
-      "category": "Cloud Infrastructure / API Arbitrage",
       "status": "active",
       "priority": "normal",
       "description": "Sistema de agregación de créditos cloud infrautilizados y cuotas de API sobrantes para la reventa de capacidad de cómputo/IA a precios inferiores a los de mercado oficial.",
@@ -1261,7 +1243,11 @@
         "cron_schedule": "Real-time balancing",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
-      }
+      },
+      "categories": [
+        "Infraestructura",
+        "Arbitraje"
+      ]
     }
   ]
 }
