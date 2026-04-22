@@ -277,6 +277,851 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       }
+    },
+    {
+      "id": "datacenter-arbitrage-005",
+      "title": "Data-Land Sourcing: Infraestructura de IA y Data Centers",
+      "slug": "datacenter-site-sourcing-engine",
+      "category": "Real Estate / Energy Arbitrage",
+      "status": "active",
+      "priority": "critical",
+      "description": "Motor de identificación y valorización de parcelas rústicas estratégicas para la ubicación de Data Centers mediante el cruce de nudos de transporte eléctrico y redes de fibra óptica de gran capacidad.",
+      "viability_metrics": {
+        "implementation_ease": 4,
+        "success_probability": 8,
+        "resource_intensity": 5,
+        "time_to_mvp": 6,
+        "roi_potential": 10
+      },
+      "technical_stack": {
+        "framework": "Next.js",
+        "database": "MongoDB",
+        "visualization": "Mapbox GL JS / Deck.gl (Capas GeoJSON)",
+        "apis_required": [
+          "REE ESIOS API (Capacidad de nudos)",
+          "CNMC (Mapas de Fibra Oscura)",
+          "Catastro API / SIGPAC",
+          "Sentinel-2 (Análisis de orografía)"
+        ]
+      },
+      "business_logic": {
+        "problem": "La escasez de suelo con acceso inmediato a >20MW de potencia y conectividad de fibra frena la expansión de la IA en Europa.",
+        "solution": "Identificación proactiva de parcelas infravaloradas (patatales) que cumplen requisitos técnicos críticos antes de que el mercado las detecte.",
+        "monetization": [
+          "Sub-arrendamiento de derechos de superficie (Renta por MW)",
+          "Venta de Dossiers de Viabilidad Técnica a Hyperscalers",
+          "Success Fee por cierre de contrato con operador de Data Center"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Energy Grid Scraping",
+          "details": "Extracción y mapeo de nudos de transporte de Red Eléctrica (REE) con capacidad de evacuación y acceso disponible mensualmente."
+        },
+        {
+          "step": 2,
+          "task": "Fiber Proximity Analysis",
+          "details": "Cruce geoespacial con trazados de fibra óptica de gran capacidad (ADIF/Red Eléctrica/Gaseoductos)."
+        },
+        {
+          "step": 3,
+          "task": "Land Owner Identification",
+          "details": "Filtrado catastral de parcelas rústicas de >5.000m2 en el radio de 1km de los puntos críticos de energía y fibra."
+        },
+        {
+          "step": 4,
+          "task": "Dossier Auto-Generation",
+          "details": "Generación automática de informes técnicos con estimación de costes de conexión y probabilidad de éxito urbanístico."
+        }
+      ],
+      "data_schema_preview": {
+        "node_id": "String",
+        "available_mw": "Number",
+        "fiber_distance_meters": "Number",
+        "land_valuation_current": "Number",
+        "data_center_suitability_score": "Number (0-100)"
+      },
+      "automation_config": {
+        "cron_schedule": "0 0 1 * *",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": true
+      }
+    },
+    {
+      "id": "grant-arbitrage-006",
+      "title": "Subsidy-Lead Engine: Sniper de Subvenciones Públicas",
+      "slug": "public-grants-arbitrage-bot",
+      "category": "GovTech / LeadGen Arbitrage",
+      "status": "active",
+      "priority": "high",
+      "description": "Sistema automatizado de detección de subvenciones por orden de llegada (concurrencia no competitiva) y generación de leads cualificados mediante análisis geoespacial de naves industriales y datos mercantiles.",
+      "viability_metrics": {
+        "implementation_ease": 8,
+        "success_probability": 9,
+        "resource_intensity": 3,
+        "time_to_mvp": 8,
+        "roi_potential": 8
+      },
+      "technical_stack": {
+        "framework": "Next.js / Python (Scrapers)",
+        "database": "MongoDB",
+        "apis_required": [
+          "BOE/BOCM/DOGC API (OpenData)",
+          "Google Maps Static API (Análisis de tejados)",
+          "Apollo.io / Hunter.io API (Emails directivos)",
+          "Registro Mercantil API"
+        ]
+      },
+      "business_logic": {
+        "problem": "Las PYMES pierden millones en ayudas por desconocimiento o falta de rapidez en solicitudes que se agotan en horas.",
+        "solution": "Detección instantánea de convocatorias y filtrado de beneficiarios por capacidad física (m2 de nave) y financiera antes de que la competencia reaccione.",
+        "monetization": [
+          "Venta de leads cualificados a consultoras (100€-300€/contacto)",
+          "Revenue Share por éxito (15-20% de la comisión de la gestoría)",
+          "SaaS de Alerta Competitiva para empresas del mismo sector"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Gazette Monitoring (NLP)",
+          "details": "Escaneo diario de boletines oficiales buscando palabras clave de convocatorias activas y presupuestos asignados."
+        },
+        {
+          "step": 2,
+          "task": "Visual Property Filtering",
+          "details": "Uso de visión artificial sobre Google Maps para identificar empresas con naves de >500m2 aptas para eficiencia energética."
+        },
+        {
+          "step": 3,
+          "task": "Corporate OSINT",
+          "details": "Extracción automática de cargos C-Level y correos electrónicos mediante scraping de Registro Mercantil y LinkedIn."
+        },
+        {
+          "step": 4,
+          "task": "Automated Lead Dispatch",
+          "details": "Envío inmediato del perfil de empresa + ayuda detectada a la consultora aliada para contacto telefónico instantáneo."
+        }
+      ],
+      "data_schema_preview": {
+        "subsidy_id": "String",
+        "company_cif": "String",
+        "estimated_benefit": "Number",
+        "roof_surface_m2": "Number",
+        "decision_maker_email": "String",
+        "lead_status": "Enum ['fresh', 'dispatched', 'converted']"
+      },
+      "automation_config": {
+        "cron_schedule": "0 8 * * 1-5",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": true
+      }
+    },
+    {
+      "id": "liquidation-arbitrage-007",
+      "title": "The Liquidation Snatcher: Arbitraje de Activos Públicos",
+      "slug": "liquidation-snatcher-pricing-errors",
+      "category": "E-commerce / Legal Arbitrage",
+      "status": "active",
+      "priority": "high",
+      "description": "Sistema de detección de errores de tasación en subastas públicas (BOE/Seguridad Social) mediante visión artificial para identificar activos de alto valor mal catalogados como 'lotes genéricos'.",
+      "viability_metrics": {
+        "implementation_ease": 4,
+        "success_probability": 7,
+        "resource_intensity": 6,
+        "time_to_mvp": 5,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Next.js / Python (Computer Vision)",
+        "database": "MongoDB",
+        "visualization": "YOLOv8 / OpenCV (Reconocimiento de objetos)",
+        "apis_required": [
+          "BOE API (Portal de Subastas)",
+          "Google Vision API (OCR y Etiquetado)",
+          "eBay API / Keepa API (Market Price Check)",
+          "Amazon FBA / 3PL API (Gestión Logística)"
+        ]
+      },
+      "business_logic": {
+        "problem": "La administración pública cataloga lotes tecnológicos o industriales de forma pésima, ocultando activos de alta demanda bajo descripciones genéricas.",
+        "solution": "Uso de IA visual para auditar las fotos de las subastas, identificar modelos específicos y calcular el beneficio neto automático tras costes logísticos.",
+        "monetization": [
+          "Arbitraje de inventario (Buy low, sell high)",
+          "Dropshipping de liquidaciones (Venta pre-adjudicación)",
+          "Sourcing B2B para retailers de segunda mano"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Auction Ingestion",
+          "details": "Scraping recurrente de la sección de Bienes Muebles en el portal de subastas del BOE y Seguridad Social."
+        },
+        {
+          "step": 2,
+          "task": "Visual Asset Audit",
+          "details": "Procesamiento de imágenes de baja calidad mediante modelos YOLO para identificar marcas y modelos de hardware (médico, industrial o TI)."
+        },
+        {
+          "step": 3,
+          "task": "Real-time Valuation",
+          "details": "Cruce automático con precios de 'Sold Items' en eBay y BackMarket para determinar el valor real de mercado del lote."
+        },
+        {
+          "step": 4,
+          "task": "Automated Logistics",
+          "details": "Envío de órdenes de recogida y envío directo a almacenes 3PL/FBA para automatizar la catalogación y venta final."
+        }
+      ],
+      "data_schema_preview": {
+        "auction_id": "String",
+        "detected_assets": "Array",
+        "market_price_est": "Number",
+        "max_bid_threshold": "Number",
+        "roi_net_percentage": "Number",
+        "logistic_route": "Enum ['FBA', '3PL', 'Local']"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */4 * * *",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": true
+      }
+    },
+    {
+      "id": "index-arb-engine-008",
+      "title": "The Index-Arb Engine: Arbitraje de Activos Desiertos",
+      "slug": "index-arb-crowd-financial-engine",
+      "category": "Fintech / Legal Arbitrage",
+      "status": "active",
+      "priority": "critical",
+      "description": "Motor de detección de activos en fase de venta directa o subasta desierta que cruza datos de edictos judiciales (PDF/OCR) con valoraciones de mercado en tiempo real para activar rondas de financiación participativa automáticas.",
+      "viability_metrics": {
+        "implementation_ease": 3,
+        "success_probability": 8,
+        "resource_intensity": 8,
+        "time_to_mvp": 4,
+        "roi_potential": 10
+      },
+      "technical_stack": {
+        "framework": "Next.js / Python (OCR Pipeline)",
+        "database": "MongoDB",
+        "visualization": "D3.js (Gráficas de ROI proyectado)",
+        "apis_required": [
+          "BOE Portal de Subastas (Edictos)",
+          "Tesseract OCR / Google Vision API",
+          "Idealista/Fotocasa API (Market Price)",
+          "VIN Decoder / Eurotax API (Valoración motor)",
+          "Lemonway / Mangopay API (Crowdlending Ops)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Las subastas desiertas esconden descuentos del 50% sobre mercado, pero requieren liquidez inmediata que los cazadores de gangas no siempre tienen.",
+        "solution": "Un orquestador de datos que detecta la anomalía de precio y levanta el capital necesario mediante crowdlending, usando el propio activo adjudicado como colateral.",
+        "monetization": [
+          "Management Fee por gestión de la adjudicación (3-5% del capital)",
+          "Success Fee sobre el beneficio de reventa (20-30%)",
+          "SaaS de alertas para inversores institucionales"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Deep Document Scraping",
+          "details": "Descarga de edictos de subastas desiertas y extracción de VINs (vehículos) o Referencias Catastrales (inmuebles) mediante OCR."
+        },
+        {
+          "step": 2,
+          "task": "Anomaly Detection",
+          "details": "Cruce masivo de datos para identificar activos donde el valor de adjudicación directa es <60% del valor de mercado real."
+        },
+        {
+          "step": 3,
+          "task": "Automated Fundraising",
+          "details": "Publicación automática de la oportunidad en plataformas de financiación participativa con el dossier técnico pre-generado."
+        },
+        {
+          "step": 4,
+          "task": "Liquidación de Activo",
+          "details": "Venta automática a través de partners profesionales (compraventa de vehículos o iBuyers inmobiliarios) para cerrar el ciclo de retorno."
+        }
+      ],
+      "data_schema_preview": {
+        "asset_vin_catastro": "String",
+        "liquidation_value": "Number",
+        "real_market_value": "Number",
+        "investor_payout_proyected": "Number",
+        "arb_engine_commission": "Number",
+        "funding_status": "Enum ['detecting', 'funding', 'adjudicated', 'liquidated']"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */2 * * *",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": false
+      }
+    },
+    {
+      "id": "cash-recovery-arbitrage-009",
+      "title": "Justice-Cash Miner: Arbitraje de Depósitos Abandonados",
+      "slug": "justice-deposits-recovery-engine",
+      "category": "LegalTech / Financial Arbitrage",
+      "status": "active",
+      "priority": "critical",
+      "description": "Sistema de minería de datos sobre cuentas de consignación judicial y edictos de concursos concluidos para la adquisición de derechos de cobro olvidados mediante contratos de cesión de crédito.",
+      "viability_metrics": {
+        "implementation_ease": 3,
+        "success_probability": 9,
+        "resource_intensity": 4,
+        "time_to_mvp": 6,
+        "roi_potential": 10
+      },
+      "technical_stack": {
+        "framework": "Next.js / Node.js",
+        "database": "MongoDB",
+        "apis_required": [
+          "BOE / TEU Scraper (Edictos Judiciales)",
+          "Portal de la Administración de Justicia (Cuentas de Consignación)",
+          "LinkedIn API / Registro Mercantil (Localización de administradores)",
+          "Signaturit / DocuSign API (Cesión de crédito digital)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Millones de euros quedan bloqueados en cuentas judiciales porque las empresas beneficiarias cerraron o cambiaron de domicilio, prescribiendo a favor del Estado por falta de reclamación.",
+        "solution": "Identificación de saldos positivos en expedientes archivados y compra del derecho de cobro al antiguo titular por un valor simbólico, asumiendo la reclamación legal como nuevo acreedor.",
+        "monetization": [
+          "Arbitraje de valor de activos financieros (Compra por 2% y cobro del 100%)",
+          "Compra de carteras de deuda judicializada",
+          "Servicio de recuperación bajo comisión (25-40% del éxito)"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Archive Mining",
+          "details": "Escaneo de edictos de conclusión de concursos de acreedores y archivo de actuaciones de los últimos 10 años para extraer nombres de titulares y números de expediente."
+        },
+        {
+          "step": 2,
+          "task": "Deposit Verification",
+          "details": "Cruce con las listas de saldos en cuentas de consignación del Ministerio de Justicia para confirmar la existencia de fondos líquidos."
+        },
+        {
+          "step": 3,
+          "task": "Social OSINT Lookup",
+          "details": "Localización automatizada de los administradores de las sociedades extintas para proponer la compra del derecho mediante contrato de cesión."
+        },
+        {
+          "step": 4,
+          "task": "Legal Claim Execution",
+          "details": "Presentación telemática del contrato de cesión ante el juzgado correspondiente para solicitar el mandamiento de devolución a la cuenta del motor de arbitraje."
+        }
+      ],
+      "data_schema_preview": {
+        "expediente_judicial_id": "String",
+        "titular_original": "String",
+        "saldo_disponible": "Number",
+        "coste_adquisicion_derecho": "Number",
+        "probabilidad_prescripcion": "Date",
+        "roi_neto_estimado": "Number (Percentage)"
+      },
+      "automation_config": {
+        "cron_schedule": "0 9 * * 1-5",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": false
+      }
+    },
+    {
+      "id": "ghost-deposit-hunter-010",
+      "title": "The Ghost Deposit Hunter: Rescate de Fianzas y Sobrantes",
+      "slug": "ghost-deposit-sourcing-engine",
+      "category": "LegalTech / Financial Arbitrage",
+      "status": "active",
+      "priority": "critical",
+      "description": "Motor de detección de capitales huérfanos en la Caja General de Depósitos y juzgados, centrado en fianzas de licitación no devueltas, subvenciones bloqueadas y sobrantes de adjudicación tras subasta.",
+      "viability_metrics": {
+        "implementation_ease": 4,
+        "success_probability": 9,
+        "resource_intensity": 5,
+        "time_to_mvp": 5,
+        "roi_potential": 10
+      },
+      "technical_stack": {
+        "framework": "Next.js / Python (Advanced Scrapers)",
+        "database": "MongoDB",
+        "apis_required": [
+          "Plataforma de Contratación del Sector Público API",
+          "BOE / Registro Mercantil API",
+          "Sede Electrónica CGD (Caja General de Depósitos)",
+          "OSINT Tools (Localización de liquidadores/deudores)"
+        ]
+      },
+      "business_logic": {
+        "problem": "El Estado retiene miles de millones en garantías y sobrantes de subastas que nunca se reclaman por insolvencia, desconocimiento o cese de actividad de los titulares originales.",
+        "solution": "Identificación de contratos liquidados con garantías pendientes y localización de deudores con sobrantes de subasta para ejecutar la reclamación vía cesión de crédito o gestión por éxito.",
+        "monetization": [
+          "Compra de derechos de cobro (Cesión de crédito al 10-20% del valor)",
+          "Success Fee por gestión de cobro de subvenciones (50% de comisión)",
+          "Bounty por localización y rescate de sobrantes de adjudicación"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Contract Lifecycle Mining",
+          "details": "Escaneo de la Plataforma de Contratación para listar contratos terminados/liquidados cuyos avales del 5% no han sido liberados por inactividad del CIF."
+        },
+        {
+          "step": 2,
+          "task": "Auction Surplus Audit",
+          "details": "Identificación de subastas con puja final superior a la deuda reclamada (sobrante) y verificación de depósito en cuenta de consignación."
+        },
+        {
+          "step": 3,
+          "task": "Heir/Liquidator OSINT",
+          "details": "Rastreo de antiguos administradores de empresas disueltas o deudores desahuciados para ofrecer el rescate del capital."
+        },
+        {
+          "step": 4,
+          "task": "Administrative Recovery",
+          "details": "Tramitación de la solicitud de devolución ante la Caja General de Depósitos o el Juzgado mediante firma digital y poder de representación."
+        }
+      ],
+      "data_schema_preview": {
+        "deposit_type": "Enum ['Fianza', 'Subvencion', 'Sobrante']",
+        "entity_cif_dni": "String",
+        "locked_amount": "Number",
+        "acquisition_cost_est": "Number",
+        "legal_complexity_score": "Number (0-100)",
+        "expected_recovery_days": "Number"
+      },
+      "automation_config": {
+        "cron_schedule": "0 10 * * 1",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": false
+      }
+    },
+    {
+      "id": "yield-vacuum-011",
+      "title": "The Yield Vacuum: Arbitraje Flash Loan & MEV",
+      "slug": "yield-vacuum-flash-loan-engine",
+      "category": "DeFi / Quantitative Arbitrage",
+      "status": "active",
+      "priority": "critical",
+      "description": "Bot de arbitraje de alta frecuencia que utiliza Flash Loans para capturar diferenciales de tasas de interés y desequilibrios de liquidez en protocolos DeFi sin exposición de capital propio.",
+      "viability_metrics": {
+        "implementation_ease": 2,
+        "success_probability": 6,
+        "resource_intensity": 9,
+        "time_to_mvp": 3,
+        "roi_potential": 10
+      },
+      "technical_stack": {
+        "framework": "Next.js (Dashboard) / Rust (Bot Engine)",
+        "database": "Redis (Low Latency)",
+        "smart_contracts": "Solidity (Vyper opcional)",
+        "apis_required": [
+          "Flash Loan Providers (Aave/Uniswap)",
+          "Chainlink Oracles (Price Feeds)",
+          "High-Speed RPC Nodes (Alchemy/Infura/Custom Node)",
+          "DEX Aggregators (1inch/ParaSwap API)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Existen ineficiencias temporales en los tipos de interés y precios de activos entre protocolos DeFi (Aave, Compound, Curve) debido a la latencia de sincronización.",
+        "solution": "Ejecución de transacciones atómicas mediante contratos inteligentes que piden prestado, arbitran y devuelven el capital en un solo bloque de la blockchain.",
+        "monetization": [
+          "Captura de Spread de tipos de interés (Arbitraje de Yield)",
+          "Arbitraje de precios entre DEXs (CEX-DEX Arbitrage)",
+          "Liquidaciones automáticas de préstamos infra-colateralizados"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Mempool Monitoring",
+          "details": "Escaneo de transacciones pendientes en la red para detectar movimientos de liquidez que generen desequilibrios de precios antes de que se confirmen."
+        },
+        {
+          "step": 2,
+          "task": "Mathematical Validation",
+          "details": "Cálculo en milisegundos del beneficio neto restando: (Gas Fees + Flash Loan Fee + Slippage) vs (Arbitrage Profit)."
+        },
+        {
+          "step": 3,
+          "task": "Smart Contract Trigger",
+          "details": "Llamada al contrato personalizado que solicita el Flash Loan (ej. 10M USDT) y ejecuta la ruta de intercambio optimizada."
+        },
+        {
+          "step": 4,
+          "task": "Atomic Settlement",
+          "details": "Devolución automática del préstamo al pool de origen y transferencia del beneficio neto (Spread) a la Cold Wallet del propietario."
+        }
+      ],
+      "data_schema_preview": {
+        "transaction_hash": "String",
+        "borrowed_amount": "Number",
+        "gas_price_gwei": "Number",
+        "net_profit_eth": "Number",
+        "execution_time_ms": "Number",
+        "status": "Enum ['success', 'reverted', 'failed_gas']"
+      },
+      "automation_config": {
+        "cron_schedule": "24/7 Real-time Monitoring",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": false
+      }
+    },
+    {
+      "id": "ghost-tenant-012",
+      "title": "The Ghost Tenant: Subdomain Takeover & SEO Arbitrage",
+      "slug": "ghost-tenant-subdomain-takeover",
+      "category": "Cybersecurity / SEO Arbitrage",
+      "status": "active",
+      "priority": "high",
+      "description": "Sistema de detección de registros DNS huérfanos que apuntan a servicios externos (GitHub, S3, Azure) no reclamados, permitiendo la 'okupación' legal del subdominio para capturar tráfico residual y autoridad SEO.",
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 5,
+        "resource_intensity": 2,
+        "time_to_mvp": 9,
+        "roi_potential": 8
+      },
+      "technical_stack": {
+        "framework": "Go / Python (Scanners)",
+        "database": "Redis",
+        "infrastructure": "GitHub Pages / Netlify / Vercel (Hosting gratuito)",
+        "apis_required": [
+          "SecurityTrails API (Histórico de subdominios)",
+          "Chaos (ProjectDiscovery) API",
+          "FullHunt.io (Surface monitoring)",
+          "Amazon S3 / Azure SDK (Para chequeo de buckets)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Las corporaciones dejan registros CNAME apuntando a servicios de terceros que ya han dado de baja, creando un agujero de seguridad y una oportunidad de tráfico.",
+        "solution": "Reclamar el identificador en el servicio externo (ej. nombre de bucket o repo) para que el tráfico del subdominio corporativo resuelva en un servidor controlado por ti.",
+        "monetization": [
+          "SEO Ghosting (Backlinks de altísima autoridad hacia tus otros proyectos)",
+          "Marketing de Afiliación (Landing pages 'oficiales' con links de referido)",
+          "Publicidad Programática (Tráfico accidental de alta calidad)"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Passive Reconnaissance",
+          "details": "Enumeración masiva de subdominios de empresas Fortune 500 usando bases de datos de DNS pasivo."
+        },
+        {
+          "step": 2,
+          "task": "Dangling DNS Detection",
+          "details": "Escaneo de respuestas HTTP/DNS buscando firmas de error específicas (ej: '404 - NoSuchBucket' en S3 o 'There isn't a GitHub Pages site here')."
+        },
+        {
+          "step": 3,
+          "task": "Service Claiming",
+          "details": "Automatización del despliegue en el proveedor (GitHub/Vercel) para 'conectar' el subdominio al instante antes de que sea detectado."
+        },
+        {
+          "step": 4,
+          "task": "Content Ghosting",
+          "details": "Inyección de contenido estático optimizado para SEO o redirecciones de afiliados para monetizar el tráfico residual."
+        }
+      ],
+      "data_schema_preview": {
+        "target_subdomain": "String",
+        "parent_domain_authority": "Number (0-100)",
+        "vulnerability_type": "Enum ['CNAME', 'S3', 'Azure', 'GitHub']",
+        "detected_at": "Timestamp",
+        "monetization_active": "Boolean"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */6 * * *",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": false
+      }
+    },
+    {
+      "id": "silent-router-013",
+      "title": "The Silent Router: Arbitraje de Webhooks Huérfanos",
+      "slug": "silent-router-webhook-recovery",
+      "category": "DevOps / Revenue Recovery",
+      "status": "active",
+      "priority": "high",
+      "description": "Sistema de interceptación y re-enrutamiento de señales de pago (Webhooks) perdidas debido a errores 404 o DNS mal configurados en sistemas legacy, monetizando la recuperación de suscripciones automáticas.",
+      "viability_metrics": {
+        "implementation_ease": 3,
+        "success_probability": 6,
+        "resource_intensity": 4,
+        "time_to_mvp": 5,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Go (para concurrencia masiva) / Node.js",
+        "database": "Redis (Cola de mensajes)",
+        "infrastructure": "Serverless Functions (AWS Lambda / Edge Runtime)",
+        "apis_required": [
+          "Stripe/Paddle Webhook Signatures (Validación)",
+          "ChurnZero API",
+          "Postmark/SendGrid (Notificaciones de recuperación)",
+          "Cloudflare Workers (Interceptación en el Edge)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Las empresas pierden entre un 3% y 5% de su facturación recurrente porque sus servidores no reciben correctamente la confirmación de pago de las pasarelas, provocando cancelaciones erróneas.",
+        "solution": "Actuar como un nodo de redundancia que captura estas señales perdidas mediante la reclamación de subdominios DNS abandonados o rutas de API huérfanas.",
+        "monetization": [
+          "Bounty por suscripción salvada (vía plataformas de Revenue Recovery)",
+          "SaaS de 'Integridad de Pagos' para empresas Enterprise",
+          "Fee por transacción recuperada (Revenue Share)"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Endpoint Latency & Error Scoping",
+          "details": "Escaneo de subdominios de pago conocidos buscando respuestas 404 o errores de resolución DNS en rutas de callback estándar."
+        },
+        {
+          "step": 2,
+          "task": "Dangling Hook Capture",
+          "details": "Reclamación del subdominio en el proveedor original o configuración de un proxy inverso para recibir los paquetes HTTP huérfanos."
+        },
+        {
+          "step": 3,
+          "task": "Signature & Payload Validation",
+          "details": "Verificación criptográfica (HMAC) de que el Webhook es legítimo y proviene de la pasarela de pago (Stripe, PayPal, etc.) para evitar inyecciones falsas."
+        },
+        {
+          "step": 4,
+          "task": "Revenue Recovery Trigger",
+          "details": "Reenvío de la señal de éxito al sistema de la empresa mediante una ruta alternativa o reporte a la plataforma de recuperación de ingresos para procesar la comisión."
+        }
+      ],
+      "data_schema_preview": {
+        "webhook_source": "String",
+        "transaction_id": "String",
+        "recovery_status": "Enum ['captured', 'validated', 'rerouted', 'collected']",
+        "estimated_revenue_saved": "Number",
+        "commission_earned": "Number"
+      },
+      "automation_config": {
+        "cron_schedule": "Real-time Monitoring (Websockets)",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": false
+      }
+    },
+    {
+      "id": "silent-router-013",
+      "title": "The Silent Router: Arbitraje de Webhooks Huérfanos",
+      "slug": "silent-router-webhook-recovery",
+      "category": "DevOps / Revenue Recovery",
+      "status": "active",
+      "priority": "high",
+      "description": "Sistema de interceptación y re-enrutamiento de señales de pago (Webhooks) perdidas debido a errores 404 o DNS mal configurados en sistemas legacy, monetizando la recuperación de suscripciones automáticas.",
+      "viability_metrics": {
+        "implementation_ease": 3,
+        "success_probability": 6,
+        "resource_intensity": 4,
+        "time_to_mvp": 5,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Go (para concurrencia masiva) / Node.js",
+        "database": "Redis (Cola de mensajes)",
+        "infrastructure": "Serverless Functions (AWS Lambda / Edge Runtime)",
+        "apis_required": [
+          "Stripe/Paddle Webhook Signatures (Validación)",
+          "ChurnZero API",
+          "Postmark/SendGrid (Notificaciones de recuperación)",
+          "Cloudflare Workers (Interceptación en el Edge)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Las empresas pierden entre un 3% y 5% de su facturación recurrente porque sus servidores no reciben correctamente la confirmación de pago de las pasarelas, provocando cancelaciones erróneas.",
+        "solution": "Actuar como un nodo de redundancia que captura estas señales perdidas mediante la reclamación de subdominios DNS abandonados o rutas de API huérfanas.",
+        "monetization": [
+          "Bounty por suscripción salvada (vía plataformas de Revenue Recovery)",
+          "SaaS de 'Integridad de Pagos' para empresas Enterprise",
+          "Fee por transacción recuperada (Revenue Share)"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Endpoint Latency & Error Scoping",
+          "details": "Escaneo de subdominios de pago conocidos buscando respuestas 404 o errores de resolución DNS en rutas de callback estándar."
+        },
+        {
+          "step": 2,
+          "task": "Dangling Hook Capture",
+          "details": "Reclamación del subdominio en el proveedor original o configuración de un proxy inverso para recibir los paquetes HTTP huérfanos."
+        },
+        {
+          "step": 3,
+          "task": "Signature & Payload Validation",
+          "details": "Verificación criptográfica (HMAC) de que el Webhook es legítimo y proviene de la pasarela de pago (Stripe, PayPal, etc.) para evitar inyecciones falsas."
+        },
+        {
+          "step": 4,
+          "task": "Revenue Recovery Trigger",
+          "details": "Reenvío de la señal de éxito al sistema de la empresa mediante una ruta alternativa o reporte a la plataforma de recuperación de ingresos para procesar la comisión."
+        }
+      ],
+      "data_schema_preview": {
+        "webhook_source": "String",
+        "transaction_id": "String",
+        "recovery_status": "Enum ['captured', 'validated', 'rerouted', 'collected']",
+        "estimated_revenue_saved": "Number",
+        "commission_earned": "Number"
+      },
+      "automation_config": {
+        "cron_schedule": "Real-time Monitoring (Websockets)",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": false
+      }
+    },
+    {
+      "id": "universal-endpoint-014",
+      "title": "The Universal Endpoint: Arbitraje de Micro-Lógica",
+      "slug": "universal-endpoint-logic-bridge",
+      "category": "Serverless / Automation Marketplaces",
+      "status": "active",
+      "priority": "normal",
+      "description": "Despliegue de scripts de alta especificidad (Puppeteer/Playwright) en marketplaces de automatización para capturar royalties por ejecución mediante la resolución de cuellos de botella técnicos sin API oficial.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 8,
+        "resource_intensity": 2,
+        "time_to_mvp": 9,
+        "roi_potential": 7
+      },
+      "technical_stack": {
+        "framework": "Node.js (Playwright) / TypeScript",
+        "database": "NoSQL (Logging de ejecuciones)",
+        "infrastructure": "AWS Lambda / Google Cloud Functions (Free Tier)",
+        "apis_required": [
+          "Pipedream Component API",
+          "n8n Node Dev Kit",
+          "Zapier CLI",
+          "Chainlink / Witnet SDK (para la variante de Oráculos)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Las plataformas de automatización no-code fallan cuando no existe una API oficial o cuando se requiere interactuar con el DOM de una web compleja.",
+        "solution": "Creación de 'piezas de motor' (nodos) que ejecutan lógica de scraping o interacción web en la nube y devuelven datos limpios a través de marketplaces de terceros.",
+        "monetization": [
+          "Royalties por ejecución en marketplaces (Pipedream/Make)",
+          "Suscripción 'Pay-per-Node' para integraciones Enterprise",
+          "Recompensas por verificación de datos en redes de Oráculos (Oracle Fees)"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Bottleneck Identification",
+          "details": "Investigación en foros de Zapier/n8n para detectar tareas recurrentes que los usuarios no pueden resolver (ej: extraer datos de portales gubernamentales sin API)."
+        },
+        {
+          "step": 2,
+          "task": "Headless Script Development",
+          "details": "Programación de un script ultra-robusto con Playwright que gestione proxies, rotación de User-Agents y resolución de captchas de forma invisible."
+        },
+        {
+          "step": 3,
+          "task": "Marketplace Wrapping",
+          "details": "Empaquetado del script como un componente oficial de Pipedream o un nodo de n8n, cumpliendo con los estándares de entrada/salida de la plataforma."
+        },
+        {
+          "step": 4,
+          "task": "Passive Execution Scaling",
+          "details": "Publicación en el marketplace y monitoreo de la tasa de éxito; el crecimiento es orgánico basado en la búsqueda interna de la plataforma."
+        }
+      ],
+      "data_schema_preview": {
+        "execution_id": "String",
+        "payload_processed": "Object",
+        "gas_cost_lambda": "Number",
+        "royalty_per_call": "Number",
+        "total_monthly_executions": "Number"
+      },
+      "automation_config": {
+        "cron_schedule": "Event-driven (Webhook based)",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": true
+      }
+    },
+    {
+      "id": "ghost-asset-synthesizer-015",
+      "title": "The Ghost Asset Synthesizer: Arbitraje de Telemetría de CDNs",
+      "slug": "ghost-asset-cdn-sink",
+      "category": "Cybersecurity / Data Intelligence",
+      "status": "active",
+      "priority": "high",
+      "description": "Sistema de captura de tráfico residual de máquinas (M2M) mediante la ocupación de subdominios de descarga huérfanos en CDNs, monetizando los metadatos de telemetría a través de plataformas de Threat Intelligence.",
+      "viability_metrics": {
+        "implementation_ease": 4,
+        "success_probability": 7,
+        "resource_intensity": 3,
+        "time_to_mvp": 6,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "FastAPI (para alta concurrencia) / Python",
+        "database": "ClickHouse (Optimizado para Logs)",
+        "infrastructure": "Cloudflare Workers / Edge Functions (Tier Gratuito)",
+        "apis_required": [
+          "Project Sonar / BinaryEdge API (Passive DNS)",
+          "CT Logs Scraper (Transparency Reports)",
+          "GreyNoise / Censys Partner API (Monetización de Datos)",
+          "MaxMind GeoIP API"
+        ]
+      },
+      "business_logic": {
+        "problem": "Millones de sistemas legacy intentan descargar recursos de URLs que ya no existen, generando un ruido de red que las empresas ignoran pero que contiene datos críticos sobre infraestructura global.",
+        "solution": "Actuar como un 'Sumidero de Datos' (Data Sink) reclamando subdominios de CDNs abandonados para recolectar y anonimizar los logs de conexión de estos dispositivos.",
+        "monetization": [
+          "Venta de feeds de telemetría a empresas de Ciberseguridad",
+          "Identificación de vulnerabilidades en sistemas industriales para programas de Bounties",
+          "Reportes de cuotas de mercado de hardware/software real-time"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Orphaned Subdomain Discovery",
+          "details": "Cruce de registros CNAME de CDNs (Akamai, Cloudfront) con certificados SSL expirados o fallos de resolución 404 en subdominios de tipo 'assets', 'dl' o 'update'."
+        },
+        {
+          "step": 2,
+          "task": "Edge Claiming & Sinkhole",
+          "details": "Despliegue de una función en el Edge (Cloudflare/Vercel) que responda con el código de estado esperado (200 OK) y un payload mínimo para mantener la conexión activa."
+        },
+        {
+          "step": 3,
+          "task": "Metadata Extraction",
+          "details": "Parseo masivo de User-Agents, cabeceras personalizadas y patrones de request para identificar versiones de firmware, modelos de dispositivos y geolocalización."
+        },
+        {
+          "step": 4,
+          "task": "Telemetry Arbitrage",
+          "details": "Agregación de datos y envío automatizado a APIs de socios de inteligencia de amenazas para recibir pagos por volumen de eventos únicos detectados."
+        }
+      ],
+      "data_schema_preview": {
+        "source_ip": "String (Hashed)",
+        "user_agent_raw": "String",
+        "identified_device_type": "String",
+        "request_path": "String",
+        "events_per_minute": "Number",
+        "estimated_data_value": "Number (USD)"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */12 * * * (Discovery scans)",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": false
+      }
     }
   ]
 }
