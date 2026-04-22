@@ -18,9 +18,9 @@ export default function RootLayout({
     <html lang="es" className="dark">
       <body className="antialiased selection:bg-primary/30">
         <StoreProvider>
-          <div className="flex min-h-screen bg-background text-foreground overflow-hidden">
+          <div className="flex min-h-screen bg-black text-foreground overflow-hidden">
             {/* Sidebar - Desktop */}
-            <aside className="hidden md:flex flex-col w-64 border-r border-white/5 bg-background/50 backdrop-blur-xl">
+            <aside className="hidden md:flex flex-col w-64 glass border-r-0 z-40">
               <div className="p-6">
                 <div className="flex items-center gap-3 px-2">
                   <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center font-bold text-lg">e</div>
@@ -49,9 +49,9 @@ export default function RootLayout({
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 flex flex-col h-screen overflow-y-auto">
+            <main className="flex-1 flex flex-col h-screen overflow-y-auto bg-background">
               {/* Header */}
-              <header className="sticky top-0 z-30 h-16 border-b border-white/5 bg-background/80 backdrop-blur-xl px-6 flex items-center justify-between">
+              <header className="sticky top-0 z-30 h-16 glass border-x-0 border-t-0 px-6 flex items-center justify-between">
                 <div className="md:hidden flex items-center gap-2">
                   <div className="w-6 h-6 rounded bg-primary flex items-center justify-center font-bold text-sm">e</div>
                   <span className="font-bold text-lg">emi</span>
@@ -77,11 +77,11 @@ export default function RootLayout({
             </main>
 
             {/* Tab Bar - Mobile */}
-            <nav className="md:hidden fixed bottom-0 left-0 right-0 h-20 glass border-t border-white/10 px-6 flex items-center justify-around z-50">
+            <nav className="md:hidden fixed bottom-6 left-6 right-6 h-16 glass rounded-2xl px-6 flex items-center justify-around z-50">
               <MobileNavItem href="/" icon={<HomeIcon size={24} />} />
               <MobileNavItem href="/tareas" icon={<CheckSquare size={24} />} />
-              <div className="-mt-12">
-                <button className="w-14 h-14 bg-primary rounded-full shadow-lg shadow-primary/30 flex items-center justify-center text-white active:scale-95 transition-transform">
+              <div className="-mt-16">
+                <button className="w-14 h-14 bg-primary rounded-2xl shadow-xl shadow-primary/40 flex items-center justify-center text-white active:scale-95 transition-transform border border-white/10">
                   <span className="text-3xl font-light">+</span>
                 </button>
               </div>

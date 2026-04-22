@@ -27,18 +27,24 @@ function badgeVariantForPriority(priority?: string) {
 export function TaskList({ initialTasks }: TaskListProps) {
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
+    const [categoryFilter, setCategoryFilter] = useState("all");
     const [priorityFilter, setPriorityFilter] = useState("all");
     const [sortBy, setSortBy] = useState("default");
     const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+
+    const categories = useMemo(() => {
+        return Array.from(new Set(initialTasks.map((t) => t.category))).sort();
+    }, [initialTasks]);
 
     const filteredAndSortedTasks = useMemo(() => {
         let result = initialTasks.filter((task) => {
             const matchesSearch = task.title.toLowerCase().includes(search.toLowerCase()) ||
                 task.category.toLowerCase().includes(search.toLowerCase());
             const matchesStatus = statusFilter === "all" || task.status === statusFilter;
+            const matchesCategory = categoryFilter === "all" || task.category === categoryFilter;
             const matchesPriority = priorityFilter === "all" || task.priority === priorityFilter;
 
-            return matchesSearch && matchesStatus && matchesPriority;
+            return matchesSearch && matchesStatus && matchesCategory && matchesPriority;
         });
 
         if (sortBy === "priority") {
@@ -80,6 +86,20 @@ export function TaskList({ initialTasks }: TaskListProps) {
                             <option value="all">Todos los Status</option>
                             <option value="active">Active</option>
                             <option value="paused">Paused</option>
+                        </select>
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-secondary/50 rounded-2xl px-3 py-1.5 border border-white/5">
+                        <Filter size={14} className="text-neutral-500" />
+                        <select
+                            className="bg-transparent text-sm font-semibold outline-none text-neutral-300 pr-2 max-w-[150px]"
+                            value={categoryFilter}
+                            onChange={(e) => setCategoryFilter(e.target.value)}
+                        >
+                            <option value="all">Todas Categorías</option>
+                            {categories.map((cat) => (
+                                <option key={cat} value={cat}>{cat}</option>
+                            ))}
                         </select>
                     </div>
 
@@ -199,7 +219,7 @@ export function TaskList({ initialTasks }: TaskListProps) {
                             <h3 className="text-lg font-bold text-white">No se encontraron motores</h3>
                             <p className="text-sm text-neutral-500">Prueba ajustando los filtros o la búsqueda.</p>
                         </div>
-                        <Button variant="secondary" onClick={() => { setSearch(""); setStatusFilter("all"); setPriorityFilter("all"); setSortBy("default"); }}>
+                        <Button variant="secondary" onClick={() => { setSearch(""); setStatusFilter("all"); setCategoryFilter("all"); setPriorityFilter("all"); setSortBy("default"); }}>
                             Limpiar filtros
                         </Button>
                     </div>

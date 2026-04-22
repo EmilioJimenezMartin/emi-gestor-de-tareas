@@ -7,17 +7,32 @@ export function generateStaticParams() {
 }
 
 // Componente pequeño para las barras de progreso de métricas
-function MetricBar({ label, value, colorClass }: { label: string, value: number, colorClass: string }) {
+function MetricBar({ label, value, colorClass, gradientFrom, gradientTo }: {
+  label: string,
+  value: number,
+  colorClass: string,
+  gradientFrom: string,
+  gradientTo: string
+}) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex justify-between text-xs font-semibold uppercase tracking-wider">
-        <span className="text-slate-400">{label}</span>
-        <span className="text-white">{value}/10</span>
+    <div className="flex flex-col gap-2.5">
+      <div className="flex justify-between items-end">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500">{label}</span>
+        <span className="text-sm font-black text-white tabular-nums">{value}/10</span>
       </div>
-      <div className="h-1.5 w-full rounded-full bg-white/5">
+      <div className="relative h-2 w-full rounded-full bg-white/[0.03] border border-white/[0.05] overflow-hidden">
+        {/* Glow effect background */}
         <div
-          className={`h-full rounded-full ${colorClass} transition-all`}
+          className={`absolute inset-0 opacity-20 blur-sm ${colorClass}`}
           style={{ width: `${value * 10}%` }}
+        />
+        {/* Main bar */}
+        <div
+          className={`relative h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(255,255,255,0.1)]`}
+          style={{
+            width: `${value * 10}%`,
+            background: `linear-gradient(to right, ${gradientFrom}, ${gradientTo})`
+          }}
         />
       </div>
     </div>
@@ -58,12 +73,42 @@ export default async function TareaDetallePage({
               <span className="h-2 w-2 rounded-full bg-blue-500" />
               Métricas de Viabilidad
             </h2>
-            <div className="grid gap-x-12 gap-y-6 md:grid-cols-2">
-              <MetricBar label="Facilidad de Implementación" value={task.viability_metrics.implementation_ease} colorClass="bg-blue-500" />
-              <MetricBar label="Probabilidad de Éxito" value={task.viability_metrics.success_probability} colorClass="bg-green-500" />
-              <MetricBar label="Intensidad de Recursos" value={task.viability_metrics.resource_intensity} colorClass="bg-amber-500" />
-              <MetricBar label="Tiempo para MVP" value={task.viability_metrics.time_to_mvp} colorClass="bg-purple-500" />
-              <MetricBar label="Potencial de ROI" value={task.viability_metrics.roi_potential} colorClass="bg-emerald-500" />
+            <div className="grid gap-x-16 gap-y-8 md:grid-cols-2">
+              <MetricBar
+                label="Facilidad de Implementación"
+                value={task.viability_metrics.implementation_ease}
+                colorClass="bg-blue-500"
+                gradientFrom="#3b82f6"
+                gradientTo="#60a5fa"
+              />
+              <MetricBar
+                label="Probabilidad de Éxito"
+                value={task.viability_metrics.success_probability}
+                colorClass="bg-emerald-500"
+                gradientFrom="#10b981"
+                gradientTo="#34d399"
+              />
+              <MetricBar
+                label="Intensidad de Recursos"
+                value={task.viability_metrics.resource_intensity}
+                colorClass="bg-amber-500"
+                gradientFrom="#f59e0b"
+                gradientTo="#fbbf24"
+              />
+              <MetricBar
+                label="Tiempo para MVP"
+                value={task.viability_metrics.time_to_mvp}
+                colorClass="bg-purple-500"
+                gradientFrom="#8b5cf6"
+                gradientTo="#a78bfa"
+              />
+              <MetricBar
+                label="Potencial de ROI"
+                value={task.viability_metrics.roi_potential}
+                colorClass="bg-cyan-500"
+                gradientFrom="#06b6d4"
+                gradientTo="#22d3ee"
+              />
             </div>
           </div>
         </section>
