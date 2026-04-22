@@ -1,0 +1,282 @@
+{
+  "tasks": [
+    {
+      "id": "bioterra-arbitrage-001",
+      "title": "BioTerra-Arbitrage: Terminal de Activos de Compensación",
+      "slug": "bioterra-carbon-sourcing",
+      "category": "Environmental Arbitrage",
+      "status": "active",
+      "priority": "high",
+      "description": "Plataforma de identificación y valorización de terrenos rurales para la generación de créditos de carbono y biodiversidad (UE 2026).",
+      "viability_metrics": {
+        "implementation_ease": 5,
+        "success_probability": 8,
+        "resource_intensity": 7,
+        "time_to_mvp": 5,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Next.js",
+        "database": "MongoDB",
+        "apis_required": [
+          "Copernicus Sentinel-2 (NDVI)",
+          "Catastro/SIGPAC API",
+          "IGN LIDAR (PNOA)",
+          "Registro de la Propiedad (Sourcing)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Las corporaciones obligadas por el CBAM/UE no encuentran suelo certificado para compensación biogénica.",
+        "solution": "Algoritmo de 'Match' que cruza datos catastrales con biomasa satelital para detectar parcelas infravaloradas con alto potencial de captura.",
+        "monetization": [
+          "SaaS Subscription (Tier Premium para Fondos)",
+          "Success Fee (Comisión por transacción de suelo)",
+          "API Data Licensing (Venta de datos crudos a consultoras)"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Scraping Catastral",
+          "details": "Identificación de parcelas rústicas abandonadas mediante filtrado de valor catastral mínimo."
+        },
+        {
+          "step": 2,
+          "task": "Análisis de Biomasa (Sentinel-2)",
+          "details": "Cálculo automático de índices NDVI para descartar tierras áridas y confirmar potencial de reforestación."
+        },
+        {
+          "step": 3,
+          "task": "Cálculo LIDAR",
+          "details": "Procesamiento de nubes de puntos del IGN para estimar biomasa aérea actual y capacidad de absorción incremental."
+        },
+        {
+          "step": 4,
+          "task": "Scoring de Rentabilidad",
+          "details": "Cálculo de ROI: (Coste Suelo + Gestión) vs (Valor Créditos Carbono UE 2026)."
+        }
+      ],
+      "data_schema_preview": {
+        "parcel_id": "String",
+        "owner_contact_available": "Boolean",
+        "carbon_potential_tons_year": "Number",
+        "market_value_est": "Number",
+        "arbitrage_opportunity_score": "Number (0-100)"
+      },
+      "automation_config": {
+        "cron_schedule": "0 0 * * 1",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": true
+      }
+    },
+    {
+      "id": "recovery-arbitrage-002",
+      "title": "Recovery-Arbitrage: Guardián de Fondos NextGen",
+      "slug": "eu-funds-matching-engine",
+      "category": "GovTech / Fintech Arbitrage",
+      "status": "active",
+      "priority": "critical",
+      "description": "Motor de emparejamiento predictivo entre fondos estructurales de la UE y PYMES españolas mediante análisis de idoneidad automatizado.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 9,
+        "resource_intensity": 4,
+        "time_to_mvp": 7,
+        "roi_potential": 10
+      },
+      "technical_stack": {
+        "framework": "Next.js",
+        "database": "MongoDB",
+        "apis_required": [
+          "API de la Base de Datos Nacional de Subvenciones",
+          "BOE/DOUE Scraper",
+          "Registro Mercantil (CNAE/Balances)",
+          "Buscador de Ayudas (Cámara de Comercio)"
+        ]
+      },
+      "business_logic": {
+        "problem": "El 60% de los fondos de la UE no se ejecutan por la complejidad burocrática y falta de comunicación con las PYMES.",
+        "solution": "Identificación proactiva de beneficiarios mediante el cruce de requisitos técnicos de ayudas con datos financieros reales de empresas.",
+        "monetization": [
+          "Success Fee (3-5% de la subvención concedida)",
+          "B2B API Licensing (Venta de leads cualificados a banca comercial)",
+          "Gestión automatizada de expedientes (SaaS de tramitación)"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Ingesta de Boletines (NLP)",
+          "details": "Extracción de requisitos de elegibilidad (CNAE, tamaño, facturación) de nuevas ayudas publicadas en BOE/DOUE."
+        },
+        {
+          "step": 2,
+          "task": "Profiling de PYMES",
+          "details": "Carga masiva de datos mercantiles de empresas activas en España filtradas por solvencia."
+        },
+        {
+          "step": 3,
+          "task": "Predictive Matching",
+          "details": "Algoritmo de scoring que asigna un porcentaje de probabilidad de éxito por cada empresa/ayuda."
+        },
+        {
+          "step": 4,
+          "task": "Generación de Lead/Expediente",
+          "details": "Pre-cumplimentación de formularios de solicitud con los datos ya almacenados en el sistema."
+        }
+      ],
+      "data_schema_preview": {
+        "cif_empresa": "String",
+        "grant_id": "String",
+        "eligibility_score": "Number (0-100)",
+        "estimated_grant_value": "Number",
+        "status_prospeccion": "Enum ['detectada', 'contactada', 'firmada']"
+      },
+      "automation_config": {
+        "cron_schedule": "0 6 * * *",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": false
+      }
+    },
+    {
+      "id": "cyber-heatmap-003",
+      "title": "Cyber-Vulnerability Heatmap: NIS2 Guardian",
+      "slug": "cyber-risk-osint-dashboard",
+      "category": "Cybersecurity / OSINT Arbitrage",
+      "status": "active",
+      "priority": "high",
+      "description": "Visualizador de riesgos digitales en tiempo real basado en inteligencia de fuentes abiertas (OSINT) y cumplimiento de la directiva NIS2.",
+      "viability_metrics": {
+        "implementation_ease": 8,
+        "success_probability": 7,
+        "resource_intensity": 5,
+        "time_to_mvp": 9,
+        "roi_potential": 7
+      },
+      "technical_stack": {
+        "framework": "Next.js",
+        "database": "MongoDB",
+        "visualization": "D3.js / React-Simple-Maps",
+        "apis_required": [
+          "Shodan API (Puertos y servicios)",
+          "HaveIBeenPwned API (Credenciales filtradas)",
+          "WhoisXML API (Typosquatting/Dominios)",
+          "GreyNoise (Ruido de internet y ataques)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Los directivos son responsables legales de la ciberseguridad (NIS2) pero no entienden los informes técnicos complejos.",
+        "solution": "Un panel visual de 'puntos de calor' que traduce datos técnicos de vulnerabilidad en riesgo de negocio y probabilidad de multa.",
+        "monetization": [
+          "SaaS Enterprise (Suscripción por monitoreo de dominio)",
+          "Consultoría Express (Informes de impacto visual para consejos de administración)",
+          "White-label para Aseguradoras (Evaluación de riesgo para pólizas)"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Domain Surface Mapping",
+          "details": "Identificación de subdominios, IPs corporativas y certificados SSL activos mediante APIs de DNS pasivo."
+        },
+        {
+          "step": 2,
+          "task": "Vulnerability Correlation",
+          "details": "Cruce de IPs con Shodan para detectar servicios críticos abiertos (RDP, bases de datos, SMB)."
+        },
+        {
+          "step": 3,
+          "task": "Breach Intelligence",
+          "details": "Escaneo de dominios de correo corporativo en bases de datos de filtraciones masivas."
+        },
+        {
+          "step": 4,
+          "task": "Legal Risk Translation",
+          "details": "Asignación de score de riesgo basado en los pilares de la directiva NIS2 (Gobernanza, Gestión de riesgos, Respuesta)."
+        }
+      ],
+      "data_schema_preview": {
+        "target_domain": "String",
+        "exposed_credentials_count": "Number",
+        "open_ports_critical": "Array",
+        "nis2_compliance_score": "Number (0-100)",
+        "threat_level": "Enum ['low', 'medium', 'high', 'critical']"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */12 * * *",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": true
+      }
+    },
+    {
+      "id": "land-ghost-004",
+      "title": "Land-Ghost: Rastreador de Derechos de Reversión",
+      "slug": "expropiaciones-fallidas-tracker",
+      "category": "Real Estate / Legal Arbitrage",
+      "status": "active",
+      "priority": "high",
+      "description": "Detección automatizada de activos inmobiliarios expropiados y no ejecutados con potencial de recuperación legal mediante derecho de reversión.",
+      "viability_metrics": {
+        "implementation_ease": 3,
+        "success_probability": 6,
+        "resource_intensity": 6,
+        "time_to_mvp": 4,
+        "roi_potential": 10
+      },
+      "technical_stack": {
+        "framework": "Next.js",
+        "database": "MongoDB",
+        "visualization": "TensorFlow.js / OpenCV",
+        "apis_required": [
+          "BOE Histórico (1995-2015)",
+          "Sede Electrónica del Catastro API",
+          "Copernicus Sentinel-2",
+          "OSINT Registro Civil"
+        ]
+      },
+      "business_logic": {
+        "problem": "El State expropia terrenos que nunca utiliza; los dueños originales desconocen su derecho legal de recuperarlos a coste histórico.",
+        "solution": "Cruce de anuncios de expropiación antiguos con el estado constructivo actual mediante satélite para identificar anomalías de ejecución.",
+        "monetization": [
+          "Sourcing para Fondos 'Special Situations'",
+          "Bounty de Reclamación (Comisión sobre plusvalía)",
+          "Venta de leads a despachos de abogados especializados"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Historical Scraping",
+          "details": "Minería de datos en boletines históricos para extraer listados de fincas expropiadas y su causa de utilidad pública."
+        },
+        {
+          "step": 2,
+          "task": "Catastral Cross-Check",
+          "details": "Verificación de referencias catastrales expropiadas para comprobar si el uso actual coincide con el fin legal."
+        },
+        {
+          "step": 3,
+          "task": "Visual Proofing",
+          "details": "Análisis IA de imágenes satelitales para confirmar ausencia de infraestructuras en la parcela."
+        },
+        {
+          "step": 4,
+          "task": "Genealogy Search",
+          "details": "Localización de herederos de propietarios originales mediante inteligencia de fuentes abiertas."
+        }
+      ],
+      "data_schema_preview": {
+        "ref_catastral": "String",
+        "año_expropiacion": "Number",
+        "justiprecio_historico": "Number",
+        "potential_upside": "Number",
+        "reversion_deadline": "Date"
+      },
+      "automation_config": {
+        "cron_schedule": "0 0 1 * *",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": false
+      }
+    }
+  ]
+}

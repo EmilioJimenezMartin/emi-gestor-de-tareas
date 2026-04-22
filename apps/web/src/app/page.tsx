@@ -1,4 +1,5 @@
 import { ItemsClient } from "./items-client";
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -9,6 +10,14 @@ export default function Home() {
           <p className="text-sm text-slate-400">
             Frontend en Next.js consumiendo un API Node/Fastify + MongoDB.
           </p>
+          <div className="mt-2 flex items-center gap-3">
+            <Link
+              href="/tareas"
+              className="inline-flex h-9 items-center justify-center rounded-full bg-white px-4 text-sm font-semibold text-black hover:bg-neutral-100"
+            >
+              Ver tareas
+            </Link>
+          </div>
         </header>
         <ItemsClient />
       </main>

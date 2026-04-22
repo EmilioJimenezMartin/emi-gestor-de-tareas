@@ -1,18 +1,7 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { StoreProvider } from "@/store/store-provider";
 import { LayoutGrid, Home as HomeIcon, CheckSquare, Settings, User, Bell } from "lucide-react";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "emi | Gestor de Tareas",
@@ -26,7 +15,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" className="dark">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased selection:bg-primary/30`}>
+      <body className="antialiased selection:bg-primary/30">
         <StoreProvider>
           <div className="flex min-h-screen bg-background text-foreground overflow-hidden">
             {/* Sidebar - Desktop */}
