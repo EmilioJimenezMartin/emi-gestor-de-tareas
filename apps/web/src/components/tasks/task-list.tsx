@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Task } from "@/lib/tasks";
-import { Search, Filter, ArrowUpDown, LayoutGrid, List } from "lucide-react";
+import { Search, Filter, ArrowUpDown, LayoutGrid, List, Rocket, TrendingUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,17 +11,6 @@ import { Button } from "@/components/ui/button";
 
 interface TaskListProps {
     initialTasks: Task[];
-}
-
-function badgeVariantForPriority(priority?: string) {
-    switch (priority?.toLowerCase()) {
-        case "critical":
-            return "bg-red-500/10 text-red-400 border border-red-500/20";
-        case "high":
-            return "bg-amber-500/10 text-amber-400 border border-amber-500/20";
-        default:
-            return "bg-slate-500/10 text-slate-400 border border-slate-500/20";
-    }
 }
 
 export function TaskList({ initialTasks }: TaskListProps) {
@@ -54,13 +43,11 @@ export function TaskList({ initialTasks }: TaskListProps) {
         } else if (sortBy === "roi") {
             result.sort((a, b) => (b.viability_metrics?.roi_potential || 0) - (a.viability_metrics?.roi_potential || 0));
         } else if (sortBy === "difficulty") {
-            // Implementation ease 10 is easiest, so Difficulty is 10 - ease. 
-            // Higher ease = lower difficulty. 
             result.sort((a, b) => (a.viability_metrics?.implementation_ease || 10) - (b.viability_metrics?.implementation_ease || 10));
         }
 
         return result;
-    }, [initialTasks, search, statusFilter, priorityFilter, sortBy]);
+    }, [initialTasks, search, statusFilter, priorityFilter, sortBy, categoryFilter]);
 
     return (
         <div className="space-y-8">
@@ -71,7 +58,7 @@ export function TaskList({ initialTasks }: TaskListProps) {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" size={18} />
                         <Input
                             placeholder="Buscar motor o categoría..."
-                            className="pl-10 h-12 w-full"
+                            className="pl-10 h-11 w-full bg-black/20 border-white/5"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
@@ -82,158 +69,120 @@ export function TaskList({ initialTasks }: TaskListProps) {
                             onClick={() => setViewMode("grid")}
                             className={`p-2 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-neutral-500 hover:text-neutral-300'}`}
                         >
-                            <LayoutGrid size={20} />
+                            <LayoutGrid size={18} />
                         </button>
                         <button
                             onClick={() => setViewMode("list")}
                             className={`p-2 rounded-xl transition-all ${viewMode === 'list' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-neutral-500 hover:text-neutral-300'}`}
                         >
-                            <List size={20} />
+                            <List size={18} />
                         </button>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    <div className="flex items-center gap-2 bg-secondary/30 rounded-2xl px-3 py-2 border border-white/5">
-                        <Filter size={14} className="text-neutral-500" />
-                        <select
-                            className="bg-transparent text-sm font-semibold outline-none text-neutral-300 w-full"
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                        >
-                            <option value="all">Todos los Status</option>
-                            <option value="active">Active</option>
-                            <option value="paused">Paused</option>
-                        </select>
-                    </div>
+                    <select
+                        className="bg-black/20 text-xs font-bold uppercase tracking-widest outline-none text-neutral-400 h-10 px-4 rounded-xl border border-white/5 focus:border-primary/50 transition-colors"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                    >
+                        <option value="all">TODOS LOS STATUS</option>
+                        <option value="active">ACTIVE</option>
+                        <option value="paused">PAUSED</option>
+                    </select>
 
-                    <div className="flex items-center gap-2 bg-secondary/30 rounded-2xl px-3 py-2 border border-white/5">
-                        <Filter size={14} className="text-neutral-500" />
-                        <select
-                            className="bg-transparent text-sm font-semibold outline-none text-neutral-300 w-full"
-                            value={categoryFilter}
-                            onChange={(e) => setCategoryFilter(e.target.value)}
-                        >
-                            <option value="all">Todas Categorías</option>
-                            {categories.map((cat) => (
-                                <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                        </select>
-                    </div>
+                    <select
+                        className="bg-black/20 text-xs font-bold uppercase tracking-widest outline-none text-neutral-400 h-10 px-4 rounded-xl border border-white/5 focus:border-primary/50 transition-colors"
+                        value={categoryFilter}
+                        onChange={(e) => setCategoryFilter(e.target.value)}
+                    >
+                        <option value="all">TODAS CATEGORÍAS</option>
+                        {categories.map((cat) => (
+                            <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                    </select>
 
-                    <div className="flex items-center gap-2 bg-secondary/30 rounded-2xl px-3 py-2 border border-white/5 sm:col-span-2 lg:col-span-1">
-                        <ArrowUpDown size={14} className="text-neutral-500" />
-                        <select
-                            className="bg-transparent text-sm font-semibold outline-none text-neutral-300 w-full"
-                            value={sortBy}
-                            onChange={(e) => setSortBy(e.target.value)}
-                        >
-                            <option value="default">Ordenar por</option>
-                            <option value="priority">Prioridad</option>
-                            <option value="roi">Mejor ROI</option>
-                            <option value="difficulty">Más Fácil</option>
-                        </select>
-                    </div>
+                    <select
+                        className="bg-black/20 text-xs font-bold uppercase tracking-widest outline-none text-neutral-400 h-10 px-4 rounded-xl border border-white/5 focus:border-primary/50 transition-colors sm:col-span-2 lg:col-span-1"
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                    >
+                        <option value="default">ORDENAR POR</option>
+                        <option value="priority">PRIORIDAD</option>
+                        <option value="roi">MEJOR ROI</option>
+                        <option value="difficulty">MÁS FÁCIL</option>
+                    </select>
                 </div>
             </div>
 
-            {/* Stats Summary */}
-            <div className="flex items-center gap-2 px-2 text-xs font-bold uppercase tracking-widest text-neutral-500">
-                <span>Resultados: {filteredAndSortedTasks.length}</span>
-                {search && <Badge variant="neutral" className="text-[9px] lowercase">"{search}"</Badge>}
-            </div>
-
-            {/* Tasks List/Grid */}
+            {/* Tasks Feed */}
             <section className={viewMode === 'grid' ? "grid gap-6 md:grid-cols-2" : "flex flex-col gap-4"}>
                 {filteredAndSortedTasks.map((t) => (
-                    <Link
-                        key={t.id}
-                        href={`/tareas/${t.slug}`}
-                        className={`group relative flex flex-col justify-between rounded-3xl border border-white/5 bg-white/[0.02] p-5 sm:p-6 transition-all duration-300 hover:border-primary/30 hover:bg-white/[0.04] hover:shadow-2xl hover:shadow-primary/5 w-full min-w-0 overflow-hidden ${viewMode === 'list' ? 'lg:flex-row lg:items-center' : ''}`}
-                    >
-                        <div className={`min-w-0 ${viewMode === 'list' ? 'flex-1 lg:flex lg:flex-row lg:items-center gap-6' : 'flex-1'}`}>
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-start justify-between gap-4">
-                                    <div className="min-w-0">
-                                        <h2 className="text-lg font-bold text-white group-hover:text-primary transition-colors truncate">
-                                            {t.title}
-                                        </h2>
-                                        <div className="flex flex-wrap gap-1.5 mt-2">
-                                            {(t.categories || []).map(cat => (
-                                                <span key={cat} className="text-[9px] font-black uppercase tracking-tight text-neutral-500 bg-white/5 px-2 py-0.5 rounded-md border border-white/5">
-                                                    {cat}
-                                                </span>
-                                            ))}
+                    <Link key={t.id} href={`/tareas/${t.slug}`} className="block group">
+                        <Card variant="outline" className="relative overflow-hidden p-6 hover:border-white/20 transition-all duration-500 bg-white/[0.02] border-white/5 shadow-2xl shadow-black/40">
+                            {/* Card Glow Effect */}
+                            <div className="absolute -right-20 -top-20 w-64 h-64 bg-primary/5 opacity-0 group-hover:opacity-100 blur-[80px] transition-opacity duration-700 pointer-events-none" />
+
+                            <div className={`relative flex flex-col gap-6 ${viewMode === 'list' ? 'lg:flex-row lg:items-center lg:justify-between' : ''}`}>
+                                {/* Main Info */}
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div className="space-y-1">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <Badge variant={t.priority === 'critical' ? 'error' : (t.priority === 'high' ? 'warning' : 'neutral')} className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded-sm">
+                                                    {t.priority}
+                                                </Badge>
+                                                <span className="text-[7px] sm:text-[8px] font-black uppercase text-neutral-500 tracking-[0.2em]">{t.status}</span>
+                                            </div>
+                                            <h3 className="text-lg sm:text-xl font-bold text-white group-hover:text-primary transition-colors line-clamp-2 leading-tight">
+                                                {t.title}
+                                            </h3>
+                                        </div>
+                                        <div className="w-10 h-10 rounded-2xl bg-secondary/50 border border-white/5 flex items-center justify-center text-primary group-hover:scale-110 transition-transform duration-500 shrink-0">
+                                            <Rocket size={20} />
                                         </div>
                                     </div>
-                                    <span
-                                        className={`inline-flex shrink-0 items-center rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-tighter ${badgeVariantForPriority(
-                                            t.priority
-                                        )}`}
-                                    >
-                                        {t.priority || "Normal"}
-                                    </span>
+
+                                    <div className="flex flex-wrap gap-1.5 mt-4">
+                                        {(t.categories || []).map(cat => (
+                                            <Badge key={cat} variant="neutral" className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 bg-white/5 border-white/5 transition-colors group-hover:border-white/10 group-hover:bg-white/10">
+                                                {cat}
+                                            </Badge>
+                                        ))}
+                                    </div>
                                 </div>
 
-                                {!(viewMode === 'list') && (
-                                    <p className="mt-4 text-sm leading-relaxed text-neutral-400 line-clamp-2">
-                                        {t.description}
-                                    </p>
-                                )}
-                            </div>
-
-                            {/* Métricas de viabilidad - Compact Horizontal Layout */}
-                            <div className={`flex flex-wrap items-center gap-x-6 gap-y-2 border-white/5 ${viewMode === 'list' ? 'lg:border-l lg:pl-6' : 'mt-5 border-t pt-4'}`}>
-                                <div className="flex items-center gap-2">
-                                    <div className="flex flex-col items-start">
-                                        <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-black tracking-tight leading-none mb-0.5">ROI</span>
-                                        <div className="flex items-center gap-1.5">
-                                            <div className="w-1 h-1 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                                            <span className="text-xs sm:text-sm font-black text-white tabular-nums">{t.viability_metrics?.roi_potential}</span>
+                                {/* Metrics - Improved Mobile Responsiveness */}
+                                <div className={`flex flex-wrap items-center gap-x-8 gap-y-4 border-white/5 ${viewMode === 'list' ? 'lg:border-l lg:pl-8' : 'mt-6 border-t pt-6'}`}>
+                                    <div className="flex flex-col items-start min-w-[70px]">
+                                        <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">ROI</span>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]" />
+                                            <span className="text-sm sm:text-lg font-black text-white tabular-nums italic tracking-tighter">{t.viability_metrics?.roi_potential}</span>
                                         </div>
                                     </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="flex flex-col items-start">
-                                        <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-black tracking-tight leading-none mb-0.5">Éxito</span>
-                                        <div className="flex items-center gap-1.5">
-                                            <div className="w-1 h-1 rounded-full bg-primary shadow-[0_0_8px_rgba(25,113,255,0.5)]" />
-                                            <span className="text-xs sm:text-sm font-black text-white tabular-nums">{t.viability_metrics?.success_probability}</span>
+                                    <div className="flex flex-col items-start min-w-[70px]">
+                                        <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">Éxito</span>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_10px_rgba(25,113,255,0.4)]" />
+                                            <span className="text-sm sm:text-lg font-black text-white tabular-nums italic tracking-tighter">{t.viability_metrics?.success_probability}</span>
                                         </div>
                                     </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="flex flex-col items-start lg:items-start">
-                                        <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-black tracking-tight leading-none mb-0.5">Dificultad</span>
-                                        <div className="flex items-center gap-1.5">
-                                            <div className="w-1 h-1 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
-                                            <span className="text-xs sm:text-sm font-black text-white tabular-nums">{10 - (t.viability_metrics?.implementation_ease || 0)}</span>
+                                    <div className="flex flex-col items-start min-w-[70px]">
+                                        <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">Dificultad</span>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.4)]" />
+                                            <span className="text-sm sm:text-lg font-black text-white tabular-nums italic tracking-tighter">{10 - (t.viability_metrics?.implementation_ease || 0)}</span>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-
-                        <div className={`${viewMode === 'list' ? 'mt-6 lg:mt-0 lg:ml-auto lg:pl-6 lg:border-l flex-shrink-0' : 'mt-8'} flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-white/5 w-full lg:w-auto`}>
-                            <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono">
-                                <div className="flex items-center gap-2 rounded-xl bg-white/5 px-3 py-1.5 border border-white/5">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                    <span className="text-neutral-500">LIVE</span>
-                                </div>
-
-                                <div className="hidden sm:flex items-center gap-1.5 rounded-xl bg-white/5 px-3 py-1.5 border border-white/5">
-                                    <span className="text-neutral-500">STACK:</span>
-                                    <span className="text-primary font-bold">
-                                        {t.technical_stack?.framework || 'N/A'}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
+                        </Card>
                     </Link>
                 ))}
 
                 {filteredAndSortedTasks.length === 0 && (
-                    <div className="col-span-full py-20 flex flex-col items-center justify-center text-center gap-4 bg-white/[0.01] rounded-3xl border border-dashed border-white/10">
+                    <div className="col-span-full py-20 flex flex-col items-center justify-center text-center gap-4 bg-white/[0.01] rounded-3xl border border-dashed border-white/10 animate-in fade-in duration-500">
                         <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center text-neutral-500">
                             <Search size={32} />
                         </div>

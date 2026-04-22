@@ -30,6 +30,11 @@ export default function Home() {
       tasks.filter(t => (t.categories || []).includes(cat)).length || 0
   })).sort((a, b) => b.count - a.count);
 
+  const techEcosystem = Array.from(new Set(tasks.map(t => t.technical_stack.framework))).map(tech => ({
+    name: tech,
+    count: tasks.filter(t => t.technical_stack.framework === tech).length
+  })).sort((a, b) => b.count - a.count);
+
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
       {/* Welcome Header */}
@@ -80,12 +85,12 @@ export default function Home() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <section className="lg:col-span-12 flex flex-col gap-6">
           <h2 className="text-xl font-bold tracking-tight">Análisis de Rendimiento</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <Card variant="glass" className="p-6 h-[400px] flex flex-col gap-6 border-white/5 bg-white/[0.01]">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-sm">Distribución por Categoría</h3>
-                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Motores cargados en el núcleo</p>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Motores cargados</p>
                 </div>
                 <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
                   <LayoutGrid size={16} />
@@ -98,13 +103,26 @@ export default function Home() {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-sm">Análisis de Alpha (ROI)</h3>
-                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Probabilidad de retorno por sector</p>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Probabilidad de retorno</p>
                 </div>
                 <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
                   <TrendingUp size={16} />
                 </div>
               </div>
               <AreaChart data={tasksByCategory} />
+            </Card>
+
+            <Card variant="glass" className="p-6 h-[400px] flex flex-col gap-6 border-white/5 bg-white/[0.01]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-sm">Ecosistema Tecnológico</h3>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Frameworks predominantes</p>
+                </div>
+                <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
+                  <Cpu size={16} />
+                </div>
+              </div>
+              <TechChart data={techEcosystem} />
             </Card>
           </div>
         </section>
@@ -115,25 +133,56 @@ export default function Home() {
 
 function BarChart({ data }: { data: any[] }) {
   const max = Math.max(...data.map(d => d.count), 1);
+  const gradients = [
+    "from-blue-600 to-cyan-400",
+    "from-emerald-600 to-teal-400",
+    "from-purple-600 to-pink-400",
+    "from-amber-500 to-orange-400",
+    "from-rose-600 to-red-400",
+    "from-indigo-600 to-violet-400",
+    "from-cyan-600 to-blue-400"
+  ];
 
   return (
     <div className="flex-1 flex items-end justify-between gap-2 px-2 pb-6 min-h-0">
-      {data.slice(0, 7).map((d, i) => (
+      {data.slice(0, 6).map((d, i) => (
         <div key={d.name} className="flex-1 flex flex-col items-center gap-3 group h-full">
           <div className="flex-1 w-full flex items-end">
             <div
-              className="w-full bg-gradient-to-t from-blue-600 to-cyan-400 rounded-t-lg transition-all duration-1000 ease-out group-hover:from-blue-500 group-hover:to-cyan-300 relative"
+              className={`w-full bg-gradient-to-t ${gradients[i % gradients.length]} rounded-t-lg transition-all duration-1000 ease-out relative`}
               style={{ height: `${(d.count / max) * 100}%`, animation: `chart-grow 1s ease-out ${i * 0.1}s forwards` }}
             >
-              {/* Tooltip on hover */}
-              <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-white text-black text-[9px] font-black px-2 py-0.5 rounded pointer-events-none whitespace-nowrap">
+              <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-white text-black text-[9px] font-black px-2 py-0.5 rounded pointer-events-none whitespace-nowrap z-10">
                 {d.count} MOTORES
               </div>
             </div>
           </div>
-          <span className="text-[8px] font-bold text-neutral-500 uppercase tracking-tighter truncate w-full text-center">
-            {d.name.substring(0, 6)}..
+          <span className="text-[8px] font-black text-neutral-500 uppercase tracking-tighter truncate w-full text-center">
+            {d.name.substring(0, 6)}
           </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TechChart({ data }: { data: any[] }) {
+  const max = Math.max(...data.map(d => d.count), 1);
+
+  return (
+    <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
+      {data.map((d, i) => (
+        <div key={d.name} className="space-y-2 group">
+          <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+            <span className="text-neutral-400 group-hover:text-white transition-colors">{d.name}</span>
+            <span className="text-primary italic">{d.count}</span>
+          </div>
+          <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-purple-600 to-blue-500 rounded-full transition-all duration-1000"
+              style={{ width: `${(d.count / max) * 100}%`, animation: `fade-in 1s ease-out ${i * 0.1}s forwards` }}
+            />
+          </div>
         </div>
       ))}
     </div>
