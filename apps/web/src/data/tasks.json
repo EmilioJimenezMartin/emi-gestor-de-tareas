@@ -1122,6 +1122,146 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       }
+    },
+    {
+      "id": "kdp-asset-factory-016",
+      "title": "KDP Factory: Generador Automático de Libros Low-Content",
+      "slug": "kdp-low-content-automation-engine",
+      "category": "Digital Publishing / AI Automation",
+      "status": "active",
+      "priority": "normal",
+      "description": "Sistema de procesamiento por lotes de activos generados por IA (imágenes, relatos, mandalas) para la creación automática de archivos PDF listos para imprenta (Amazon KDP) con maquetación profesional y gestión de metadatos.",
+      "viability_metrics": {
+        "implementation_ease": 8,
+        "success_probability": 7,
+        "resource_intensity": 3,
+        "time_to_mvp": 8,
+        "roi_potential": 7
+      },
+      "technical_stack": {
+        "framework": "Python (Pillow / ReportLab para PDFs)",
+        "database": "SQLite (Catálogo de libros y ventas)",
+        "frontend": "Next.js (Dashboard de gestión)",
+        "apis_required": [
+          "OpenAI API (DALL-E 3 / GPT-4o)",
+          "Midjourney API (vía wrappers)",
+          "Keepa API (para búsqueda de nichos rentables)",
+          "Playwright (para automatización de subida opcional)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Crear libros de colorear o de relatos cortos manualmente es lento. La clave de Amazon KDP es el volumen y la detección de nichos (micro-nichos) antes que la competencia.",
+        "solution": "Un 'pipeline' que toma imágenes en bruto, las escala, les añade márgenes de seguridad (bleed), genera páginas de título/créditos y exporta un PDF perfecto según los estándares de Amazon.",
+        "monetization": [
+          "Royalties por venta directa en Amazon KDP (Ingresos pasivos)",
+          "Venta de archivos digitales (Etsy/Gumroad)",
+          "Publicación multiplataforma (IngramSpark / Lulu)"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Niche & Keyword Research",
+          "details": "Escaneo automático de Amazon para detectar términos de búsqueda con alta demanda y baja competencia (ej: 'Mandalas de gatos steampunk para adultos')."
+        },
+        {
+          "step": 2,
+          "task": "AI Asset Generation",
+          "details": "Generación masiva de imágenes (mandalas/dibujos) o texto (micro-relatos) usando prompts optimizados para blanco y negro y alta resolución."
+        },
+        {
+          "step": 3,
+          "task": "Automated Typesetting",
+          "details": "Procesamiento de imágenes: centrado, escalado a 300 DPI, inserción de páginas en blanco (para evitar traspaso de tinta) y generación de PDF con el tamaño de trim exacto."
+        },
+        {
+          "step": 4,
+          "task": "Listing & Metadata Prep",
+          "details": "Generación automática de títulos, descripciones optimizadas para SEO (A+ Content) y categorías sugeridas para maximizar la visibilidad."
+        }
+      ],
+      "data_schema_preview": {
+        "book_id": "String",
+        "format": "Enum ['6x9', '8.5x11']",
+        "page_count": "Number",
+        "keywords": "Array",
+        "amazon_asin": "String (nullable)",
+        "sales_count": "Number"
+      },
+      "automation_config": {
+        "cron_schedule": "Weekly (Niche Analysis)",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": false
+      }
+    },
+    {
+      "id": "cloud-credit-arbiter-017",
+      "title": "Cloud Credit Arbiter: Arbitraje de Capacidad Computacional",
+      "slug": "cloud-credit-resale-engine",
+      "category": "Cloud Infrastructure / API Arbitrage",
+      "status": "active",
+      "priority": "normal",
+      "description": "Sistema de agregación de créditos cloud infrautilizados y cuotas de API sobrantes para la reventa de capacidad de cómputo/IA a precios inferiores a los de mercado oficial.",
+      "viability_metrics": {
+        "implementation_ease": 5,
+        "success_probability": 7,
+        "resource_intensity": 4,
+        "time_to_mvp": 7,
+        "roi_potential": 8
+      },
+      "technical_stack": {
+        "framework": "Go (Proxy de alta velocidad)",
+        "database": "Redis (Gestión de cuotas en tiempo real)",
+        "infrastructure": "Docker / Kubernetes",
+        "apis_required": [
+          "OpenAI / Anthropic API (Endpoints)",
+          "AWS / GCP Billing API",
+          "Stripe (para el cobro del uso del proxy)"
+        ]
+      },
+      "business_logic": {
+        "problem": "El 30% de los créditos cloud gratuitos caducan sin ser usados, mientras que desarrolladores independientes buscan acceso barato a modelos de IA potentes.",
+        "solution": "Un túnel (Proxy) que distribuye las peticiones entre múltiples cuentas con saldos promocionales, ofreciendo un precio unificado y ultra-competitivo.",
+        "monetization": [
+          "Arbitraje de precio por token (Buy credit at 10%, sell at 50%)",
+          "Suscripción a API 'Low-Cost' para desarrolladores",
+          "Venta de potencia de minería/renderizado distribuida"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Credit Sourcing",
+          "details": "Identificación de cuentas con créditos promocionales activos mediante scripts de auditoría de facturación automática."
+        },
+        {
+          "step": 2,
+          "task": "Proxy Tunneling",
+          "details": "Configuración de un balanceador de carga que rota las API Keys para no exceder los límites de rate-limit de las cuentas origen."
+        },
+        {
+          "step": 3,
+          "task": "Endpoint Unification",
+          "details": "Exposición de una única URL de API que simula el formato oficial (ej. compatible con la librería de OpenAI) pero redirige al pool de créditos baratos."
+        },
+        {
+          "step": 4,
+          "task": "Usage Billing",
+          "details": "Sistema de medición (metering) para cobrar al usuario final solo por lo que consume, manteniendo un margen de beneficio constante."
+        }
+      ],
+      "data_schema_preview": {
+        "pool_total_credits": "Number",
+        "avg_cost_reduction": "Percentage",
+        "active_proxies": "Number",
+        "margin_per_request": "Number",
+        "expiry_watchdog": "Timestamp"
+      },
+      "automation_config": {
+        "cron_schedule": "Real-time balancing",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": true
+      }
     }
   ]
 }
