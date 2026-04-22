@@ -1,18 +1,17 @@
 import { getTasks } from "@/lib/tasks";
-import { ItemsClient } from "./items-client";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Rocket,
-  BrainCircuit,
-  Cpu,
   BarChart3,
-  ArrowRight,
-  Sparkles,
+  Cpu,
   Zap,
-  LayoutGrid
+  LayoutGrid,
+  TrendingUp,
+  Sparkles,
+  ArrowRight
 } from "lucide-react";
 
 export default function Home() {
@@ -21,6 +20,15 @@ export default function Home() {
   const highPriority = tasks.filter(t => t.priority === "high" || t.priority === "critical").length;
   const categoriesCount = Array.from(new Set(tasks.flatMap(t => t.categories || []))).length;
   const activeTasks = tasks.filter(t => t.status === "active").length;
+  const avgROI = tasks.reduce((acc, t) => acc + (t.viability_metrics?.roi_potential || 0), 0) / tasks.length;
+
+  // Aggregate Data for Charts
+  const tasksByCategory = Array.from(new Set(tasks.flatMap(t => t.categories || []))).map(cat => ({
+    name: cat,
+    count: tasks.filter(t => (t.categories || []).includes(cat)).length,
+    avgROI: tasks.filter(t => (t.categories || []).includes(cat)).reduce((acc, t) => acc + (t.viability_metrics?.roi_potential || 0), 0) /
+      tasks.filter(t => (t.categories || []).includes(cat)).length || 0
+  })).sort((a, b) => b.count - a.count);
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
@@ -34,121 +42,212 @@ export default function Home() {
           Bienvenido, <span className="text-primary">Emilio</span>
         </h1>
         <p className="text-sm sm:text-base text-neutral-500 max-w-2xl">
-          Gestiona tus motores de inversión y configuraciones de inteligencia artificial desde un solo lugar.
+          Gestiona tus motores de inversión y las métricas de rendimiento en tiempo real.
         </p>
       </header>
 
       {/* Quick Stats Grid */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          icon={<Rocket size={24} />}
+          icon={<Rocket size={20} />}
           label="Motores Totales"
           value={tasks.length}
-          trend="+2 este mes"
+          trend="+2"
+          gradient="from-blue-600 to-cyan-500"
         />
         <StatCard
-          icon={<BarChart3 size={24} />}
-          label="Prioridad Alta"
-          value={highPriority}
-          color="text-amber-500"
+          icon={<BarChart3 size={20} />}
+          label="Retorno Medio"
+          value={avgROI.toFixed(1)}
+          trend="high alpha"
+          gradient="from-emerald-600 to-teal-500"
         />
         <StatCard
-          icon={<Cpu size={24} />}
+          icon={<Cpu size={20} />}
           label="Categorías"
           value={categoriesCount}
+          gradient="from-purple-600 to-pink-500"
         />
         <StatCard
-          icon={<Zap size={24} />}
-          label="Activos"
+          icon={<Zap size={20} />}
+          label="En Ejecución"
           value={activeTasks}
-          color="text-emerald-500"
+          gradient="from-amber-500 to-orange-500"
         />
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-8">
-
-
-        {/* Recent Activity / Quick Access */}
-        <section className="lg:col-span-8 flex flex-col gap-6 w-full min-w-0">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold tracking-tight">Actividad de Motores</h2>
-            <Link href="/tareas" className="text-xs font-bold text-primary hover:underline flex items-center gap-1 group">
-              Ver todas <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
-            </Link>
-          </div>
-
-          <div className="space-y-3">
-            {tasks.slice(0, 3).map((task) => (
-              <Card key={task.id} variant="outline" className="p-5 hover:bg-white/[0.02] transition-colors border-white/5 cursor-pointer group">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-secondary flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-                    <LayoutGrid size={24} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-bold text-white truncate">{task.title}</h4>
-                    <div className="flex flex-wrap gap-1.5 mt-1.5">
-                      {(task.categories || []).map(cat => (
-                        <Badge key={cat} variant="neutral" className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0 h-4 min-w-0">
-                          {cat}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="hidden md:block">
-                    <Badge variant={task.priority === 'critical' ? 'error' : (task.priority === 'high' ? 'warning' : 'neutral')}>
-                      {task.priority}
-                    </Badge>
-                  </div>
+      {/* New Visualizations Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <section className="lg:col-span-12 flex flex-col gap-6">
+          <h2 className="text-xl font-bold tracking-tight">Análisis de Rendimiento</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card variant="glass" className="p-6 h-[400px] flex flex-col gap-6 border-white/5 bg-white/[0.01]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-sm">Distribución por Categoría</h3>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Motores cargados en el núcleo</p>
                 </div>
-              </Card>
-            ))}
-          </div>
-        </section>
+                <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
+                  <LayoutGrid size={16} />
+                </div>
+              </div>
+              <BarChart data={tasksByCategory} />
+            </Card>
 
-        <section className="lg:col-span-4 flex flex-col gap-6">
-          <h2 className="text-xl font-bold tracking-tight">Gestor de Datos</h2>
-          <Card variant="glass" className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-4">
-            <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center text-primary border border-primary/20">
-              <BarChart3 size={32} />
-            </div>
-            <div>
-              <h4 className="font-bold mb-1">Items API</h4>
-              <p className="text-xs text-neutral-500 px-4">Accede al gestor de items en tiempo real vía Fastify + MongoDB.</p>
-            </div>
-            <Link href="/items-manager" className="w-full">
-              <Button variant="secondary" className="w-full shadow-lg shadow-primary/20">
-                Abrir Items
-              </Button>
-            </Link>
-          </Card>
+            <Card variant="glass" className="p-6 h-[400px] flex flex-col gap-6 border-white/5 bg-white/[0.01]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-sm">Análisis de Alpha (ROI)</h3>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Probabilidad de retorno por sector</p>
+                </div>
+                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+                  <TrendingUp size={16} />
+                </div>
+              </div>
+              <AreaChart data={tasksByCategory} />
+            </Card>
+          </div>
         </section>
       </div>
-
-      <ItemsClient />
     </div>
   );
 }
 
-function StatCard({ icon, label, value, trend, color = "text-white" }: {
+function BarChart({ data }: { data: any[] }) {
+  const max = Math.max(...data.map(d => d.count), 1);
+
+  return (
+    <div className="flex-1 flex items-end justify-between gap-2 px-2 pb-6 min-h-0">
+      {data.slice(0, 7).map((d, i) => (
+        <div key={d.name} className="flex-1 flex flex-col items-center gap-3 group h-full">
+          <div className="flex-1 w-full flex items-end">
+            <div
+              className="w-full bg-gradient-to-t from-blue-600 to-cyan-400 rounded-t-lg transition-all duration-1000 ease-out group-hover:from-blue-500 group-hover:to-cyan-300 relative"
+              style={{ height: `${(d.count / max) * 100}%`, animation: `chart-grow 1s ease-out ${i * 0.1}s forwards` }}
+            >
+              {/* Tooltip on hover */}
+              <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-white text-black text-[9px] font-black px-2 py-0.5 rounded pointer-events-none whitespace-nowrap">
+                {d.count} MOTORES
+              </div>
+            </div>
+          </div>
+          <span className="text-[8px] font-bold text-neutral-500 uppercase tracking-tighter truncate w-full text-center">
+            {d.name.substring(0, 6)}..
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AreaChart({ data }: { data: any[] }) {
+  // Simple SVG Area Chart
+  const filteredData = data.filter(d => d.avgROI > 0).slice(0, 8);
+  const maxROI = 10;
+  const width = 400;
+  const height = 200;
+
+  const points = filteredData.map((d, i) => {
+    const x = (i / (filteredData.length - 1)) * width;
+    const y = height - (d.avgROI / maxROI) * height;
+    return `${x},${y}`;
+  }).join(' ');
+
+  const areaPoints = `0,${height} ${points} ${width},${height}`;
+
+  return (
+    <div className="flex-1 flex flex-col gap-4">
+      <div className="flex-1 relative min-h-0">
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full preserve-3d overflow-visible" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#10b981" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+            </linearGradient>
+            <linearGradient id="lineGradient" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#10b981" />
+              <stop offset="100%" stopColor="#34d399" />
+            </linearGradient>
+          </defs>
+
+          {/* Area Fill */}
+          <polyline
+            points={areaPoints}
+            fill="url(#areaGradient)"
+            className="animate-in fade-in duration-1000"
+          />
+
+          {/* Line */}
+          <polyline
+            points={points}
+            fill="none"
+            stroke="url(#lineGradient)"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="animate-in slide-in-from-bottom duration-1000 stroke-dasharray-[1000] stroke-dashoffset-[1000] animate-[draw_2s_ease-out_forwards]"
+          />
+
+          {/* Dots */}
+          {filteredData.map((d, i) => {
+            const x = (i / (filteredData.length - 1)) * width;
+            const y = height - (d.avgROI / maxROI) * height;
+            return (
+              <circle
+                key={i}
+                cx={x}
+                cy={y}
+                r="4"
+                fill="#10b981"
+                className="hover:r-6 transition-all cursor-pointer opacity-0 animate-[fade-in_0.5s_ease-out_forwards]"
+                style={{ animationDelay: `${i * 0.15}s` }}
+              />
+            );
+          })}
+        </svg>
+      </div>
+
+      <div className="flex justify-between items-center gap-2">
+        {filteredData.map((d, i) => (
+          <span key={i} className="text-[7px] font-bold text-neutral-600 uppercase tracking-tighter truncate">
+            {d.name.substring(0, 3)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ icon, label, value, trend, gradient }: {
   icon: React.ReactNode,
   label: string,
   value: number | string,
   trend?: string,
-  color?: string
+  gradient: string
 }) {
   return (
-    <Card variant="outline" className="p-6 space-y-4 hover:border-primary/20 transition-colors border-white/5">
-      <div className="p-2 rounded-xl bg-secondary w-fit text-neutral-400 group-hover:text-primary transition-colors">
-        {icon}
-      </div>
-      <div>
-        <p className="text-sm font-bold text-neutral-500 uppercase tracking-widest">{label}</p>
-        <div className="flex items-end gap-2 mt-1">
-          <p className={`text-4xl font-bold tracking-tight ${color}`}>{value}</p>
-          {trend && <span className="text-[10px] font-bold text-emerald-500 mb-1">{trend}</span>}
+    <Card variant="outline" className="relative group overflow-hidden p-6 hover:border-white/20 transition-all duration-500 bg-white/[0.02] border-white/5">
+      {/* Background Glow */}
+      <div className={`absolute -right-10 -top-10 w-32 h-32 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-10 blur-3xl transition-opacity duration-500`} />
+
+      <div className="relative space-y-4">
+        <div className={`p-2 rounded-xl bg-gradient-to-br ${gradient} w-fit text-white shadow-lg shadow-black/20`}>
+          {icon}
+        </div>
+        <div>
+          <p className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.2em]">{label}</p>
+          <div className="flex items-baseline gap-2 mt-1">
+            <p className={`text-4xl font-black tracking-tighter bg-gradient-to-br ${gradient} bg-clip-text text-transparent italic tabular-nums`}>
+              {value}
+            </p>
+            {trend && (
+              <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-neutral-400 uppercase tracking-tighter`}>
+                {trend}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </Card>
   );
 }
-
