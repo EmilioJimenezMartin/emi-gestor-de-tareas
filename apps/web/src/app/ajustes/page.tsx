@@ -1,115 +1,219 @@
+"use client";
+
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BrainCircuit, Settings, Shield, Bell, Database } from "lucide-react";
+import {
+    BrainCircuit,
+    Settings,
+    Shield,
+    Bell,
+    Database,
+    Sparkles,
+    Zap,
+    Cpu,
+    Lock,
+    Globe,
+    BellRing
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 export default function AjustesPage() {
     return (
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
             {/* Header */}
-            <header className="flex flex-col gap-2">
-                <div className="flex items-center gap-2 text-primary">
-                    <Settings size={16} className="sm:size-5" />
-                    <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest">Preferencias</span>
+            <header className="flex flex-col gap-6 relative">
+                <div className="absolute -left-10 -top-10 w-48 h-48 bg-primary/10 blur-[80px] pointer-events-none" />
+                <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-primary">
+                        <Settings size={18} className="sm:size-5" />
+                        <span className="text-[10px] sm:text-xs font-black uppercase tracking-[0.2em]">Configuración de Sistema</span>
+                    </div>
+                    <h1 className="text-4xl sm:text-5xl font-black tracking-tighter text-white italic">
+                        Ajustes de <span className="text-primary italic">Control</span>
+                    </h1>
+                    <p className="text-sm sm:text-base text-neutral-500 max-w-2xl font-medium">
+                        Optimiza tus motores de IA, gestiona integraciones de datos y configura protocolos de seguridad avanzada.
+                    </p>
                 </div>
-                <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mt-1">
-                    Ajustes de <span className="text-primary">Sistema</span>
-                </h1>
-                <p className="text-sm sm:text-base text-neutral-500 max-w-2xl">
-                    Configura tus preferencias de IA, integraciones y seguridad desde este panel centralizado.
-                </p>
             </header>
 
             <div className="space-y-12">
                 {/* IA Configuration Section */}
                 <section className="space-y-6">
                     <div className="flex items-center justify-between">
-                        <div>
-                            <h2 className="text-xl font-bold text-white">Configuración de IA</h2>
-                            <p className="text-xs text-neutral-500 mt-1">Gestiona los modelos y proveedores de lenguaje.</p>
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-2xl font-bold text-white tracking-tight italic">Núcleo de Inteligencia</h2>
+                            <Badge variant="neutral" className="text-[8px] font-black uppercase bg-primary/10 text-primary border-primary/20">ALPHA-v2</Badge>
                         </div>
                     </div>
 
-                    <Card variant="outline" className="p-4 sm:p-8">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
-                            <div className="space-y-6">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-xs">G</div>
-                                    <h3 className="font-bold">Google Gemini</h3>
-                                </div>
-                                <div className="space-y-4">
-                                    <p className="text-xs text-neutral-500">Selecciona el motor de Google para tareas de razonamiento avanzado y grandes contextos.</p>
-                                    <select className="w-full h-11 bg-secondary border border-white/5 rounded-xl px-4 text-sm text-white outline-none focus:border-primary transition-colors">
-                                        <option>Gemini 1.5 Pro</option>
-                                        <option>Gemini 1.5 Flash</option>
-                                        <option>Gemini 1.0 Ultra</option>
-                                    </select>
+                    <Card variant="outline" className="relative overflow-hidden p-1 sm:p-1 border-white/5 bg-white/[0.01]">
+                        <div className="grid grid-cols-1 lg:grid-cols-2">
+                            {/* Gemini Provider */}
+                            <div className="p-8 sm:p-10 border-b lg:border-b-0 lg:border-r border-white/5 space-y-8 group relative transition-all duration-500 hover:bg-white/[0.01]">
+                                <div className="absolute -left-10 -top-10 w-32 h-32 bg-blue-600/5 blur-[50px] opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+                                            <span className="font-black text-xl italic">G</span>
+                                        </div>
+                                        <div>
+                                            <h3 className="font-black text-lg text-white">Google Gemini</h3>
+                                            <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Motor Primario</p>
+                                        </div>
+                                    </div>
                                     <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                                        <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-tighter">Status: Latencia Optimizada</span>
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
+                                        <span className="text-[8px] font-black text-emerald-500 uppercase">ACTIVE</span>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <p className="text-sm text-neutral-400 leading-relaxed font-medium">Motor de razonamiento avanzado para análisis de mercado y procesamiento de grandes volúmenes de datos comerciales.</p>
+                                    <div className="space-y-2">
+                                        <label className="text-[9px] font-black text-neutral-600 uppercase tracking-widest ml-1">Modelo Seleccionado</label>
+                                        <select className="w-full h-12 bg-black/40 border border-white/5 rounded-2xl px-4 text-sm font-bold text-white outline-none focus:border-primary transition-all appearance-none cursor-pointer hover:border-white/10">
+                                            <option>Gemini 1.5 Pro (Ultra context)</option>
+                                            <option>Gemini 1.5 Flash (Speed optimized)</option>
+                                            <option>Gemini 1.0 Ultra (Legacy stable)</option>
+                                        </select>
+                                    </div>
+                                    <div className="pt-2 flex items-center justify-between">
+                                        <span className="text-[10px] font-black text-neutral-500 uppercase tracking-tighter">Latencia Media: <span className="text-primary italic">140ms</span></span>
+                                        <Badge variant="neutral" className="text-[7px] font-black uppercase">v1.5_STABLE</Badge>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="space-y-6">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-white font-bold text-xs italic">H</div>
-                                    <h3 className="font-bold">Hugging Face (Open Source)</h3>
-                                </div>
-                                <div className="space-y-4">
-                                    <p className="text-xs text-neutral-500">Utiliza modelos abiertos de HuggingFace Hub para tareas específicas y mayor privacidad.</p>
-                                    <select className="w-full h-11 bg-secondary border border-white/5 rounded-xl px-4 text-sm text-white outline-none focus:border-primary transition-colors">
-                                        <option>Llama 3 (8B Instruct)</option>
-                                        <option>Mistral v0.2</option>
-                                        <option>Phi-3 Mini</option>
-                                        <option>Gemma 7B</option>
-                                    </select>
+                            {/* Hugging Face Provider */}
+                            <div className="p-8 sm:p-10 space-y-8 group relative transition-all duration-500 hover:bg-white/[0.01]">
+                                <div className="absolute -right-10 -top-10 w-32 h-32 bg-amber-600/5 blur-[50px] opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
+                                            <span className="font-black text-xl italic">H</span>
+                                        </div>
+                                        <div>
+                                            <h3 className="font-black text-lg text-white">Hugging Face</h3>
+                                            <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Open Source Core</p>
+                                        </div>
+                                    </div>
                                     <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                                        <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-tighter">Status: Conectado a Hub API</span>
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
+                                        <span className="text-[8px] font-black text-emerald-500 uppercase">CONNECTED</span>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <p className="text-sm text-neutral-400 leading-relaxed font-medium">Modelos especializados de código abierto para tareas de NLP específicas y mayor soberanía de datos en local.</p>
+                                    <div className="space-y-2">
+                                        <label className="text-[9px] font-black text-neutral-600 uppercase tracking-widest ml-1">Modelo de Inferencia</label>
+                                        <select className="w-full h-12 bg-black/40 border border-white/5 rounded-2xl px-4 text-sm font-bold text-white outline-none focus:border-primary transition-all appearance-none cursor-pointer hover:border-white/10">
+                                            <option>Llama 3.1 (70B Instruct)</option>
+                                            <option>Mistral NeMo (12B)</option>
+                                            <option>Phi-3.5 Mini (3.8B)</option>
+                                            <option>Gemma 2 (27B)</option>
+                                        </select>
+                                    </div>
+                                    <div className="pt-2 flex items-center justify-between">
+                                        <span className="text-[10px] font-black text-neutral-500 uppercase tracking-tighter">Inferencia: <span className="text-amber-500 italic text-xs uppercase">API Hub</span></span>
+                                        <Badge variant="neutral" className="text-[7px] font-black uppercase">v3.1_LATEST</Badge>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="mt-10 pt-8 border-t border-white/5 flex justify-end">
-                            <Button variant="primary">
+                        <div className="bg-white/[0.02] border-t border-white/5 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                            <div className="flex items-center gap-2 text-neutral-500">
+                                <Zap size={14} className="text-amber-500" />
+                                <p className="text-[10px] font-black uppercase tracking-widest">Auto-escalado dinámico activado según demanda de GPU</p>
+                            </div>
+                            <Button variant="primary" className="w-full sm:w-fit font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
                                 Guardar Configuración
                             </Button>
                         </div>
                     </Card>
                 </section>
 
-                {/* Other Setting sections (Placeholders for premium feel) */}
+                {/* System Infrastructure Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <Card variant="outline" className="p-6 flex flex-col gap-4 border-white/5">
-                        <div className="flex items-center gap-3">
-                            <Shield size={20} className="text-primary" />
-                            <h3 className="font-bold">Seguridad</h3>
+                    <Card variant="outline" className="relative group overflow-hidden p-6 border-white/5 bg-white/[0.02] hover:border-white/20 transition-all duration-500">
+                        <div className="absolute -right-6 -top-6 w-20 h-20 bg-primary/5 opacity-0 group-hover:opacity-100 blur-2xl transition-opacity duration-500" />
+                        <div className="flex flex-col gap-6">
+                            <div className="flex items-center justify-between">
+                                <div className="p-3 rounded-2xl bg-primary/10 text-primary border border-primary/20">
+                                    <Lock size={20} />
+                                </div>
+                                <Badge variant="neutral" className="text-[7px] font-black uppercase">SEG-v4</Badge>
+                            </div>
+                            <div>
+                                <h3 className="font-black text-white italic">Protocolos de Seguridad</h3>
+                                <p className="text-xs text-neutral-500 mt-2 leading-relaxed">Administra tus API Keys, tokens de acceso y esquemas de cifrado de extremo a extremo.</p>
+                            </div>
+                            <Button variant="secondary" className="w-full text-[10px] font-black uppercase tracking-widest h-10 bg-white/5 border-white/5 hover:bg-white/10 transition-colors">
+                                Administrar Keys
+                            </Button>
                         </div>
-                        <p className="text-sm text-neutral-500">Gestiona tus API Keys y permisos de acceso al sistema.</p>
-                        <Button variant="secondary" className="w-fit">Administrar Keys</Button>
                     </Card>
 
-                    <Card variant="outline" className="p-6 flex flex-col gap-4 border-white/5">
-                        <div className="flex items-center gap-3">
-                            <Bell size={20} className="text-primary" />
-                            <h3 className="font-bold">Notificaciones</h3>
+                    <Card variant="outline" className="relative group overflow-hidden p-6 border-white/5 bg-white/[0.02] hover:border-white/20 transition-all duration-500">
+                        <div className="absolute -right-6 -top-6 w-20 h-20 bg-emerald-500/5 opacity-0 group-hover:opacity-100 blur-2xl transition-opacity duration-500" />
+                        <div className="flex flex-col gap-6">
+                            <div className="flex items-center justify-between">
+                                <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                                    <BellRing size={20} />
+                                </div>
+                                <Badge variant="neutral" className="text-[7px] font-black uppercase">RT-v2</Badge>
+                            </div>
+                            <div>
+                                <h3 className="font-black text-white italic">Motor de Notificaciones</h3>
+                                <p className="text-xs text-neutral-500 mt-2 leading-relaxed">Configura alertas de Telegram y webhooks de sistema para eventos críticos de tus motores.</p>
+                            </div>
+                            <Button variant="secondary" className="w-full text-[10px] font-black uppercase tracking-widest h-10 bg-white/5 border-white/5 hover:bg-white/10 transition-colors">
+                                Configurar Alertas
+                            </Button>
                         </div>
-                        <p className="text-sm text-neutral-500">Configura las alertas de Telegram y avisos de sistema.</p>
-                        <Button variant="secondary" className="w-fit">Configurar Alertas</Button>
                     </Card>
 
-                    <Card variant="outline" className="p-6 flex flex-col gap-4 border-white/5">
-                        <div className="flex items-center gap-3">
-                            <Database size={20} className="text-primary" />
-                            <h3 className="font-bold">Base de Datos</h3>
-                        </div>
-                        <p className="text-sm text-neutral-500">Estado de la conexión con MongoDB y copias de seguridad.</p>
-                        <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                            <span className="text-xs text-neutral-400 font-bold">CONNECTED</span>
+                    <Card variant="outline" className="relative group overflow-hidden p-6 border-white/5 bg-white/[0.02] hover:border-white/20 transition-all duration-500">
+                        <div className="absolute -right-6 -top-6 w-20 h-20 bg-amber-500/5 opacity-0 group-hover:opacity-100 blur-2xl transition-opacity duration-500" />
+                        <div className="flex flex-col gap-6">
+                            <div className="flex items-center justify-between">
+                                <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                    <Database size={20} />
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                                    <span className="text-[8px] font-black text-emerald-500 uppercase">ONLINE</span>
+                                </div>
+                            </div>
+                            <div>
+                                <h3 className="font-black text-white italic">Persistencia de Datos</h3>
+                                <p className="text-xs text-neutral-500 mt-2 leading-relaxed">Estado de conexión con el núcleo de MongoDB y gestión de copias de seguridad automáticas.</p>
+                            </div>
+                            <div className="flex items-center justify-between pt-2">
+                                <span className="text-[9px] font-black text-neutral-500 uppercase tracking-tighter italic">MongoDB Cluster v6.0</span>
+                                <Badge variant="neutral" className="text-[7px] font-black uppercase tracking-widest">Uptime 99.9%</Badge>
+                            </div>
                         </div>
                     </Card>
+                </div>
+
+                {/* Footer Status Bar */}
+                <div className="flex flex-col sm:flex-row items-center justify-between pt-10 gap-4 border-t border-white/5 overflow-hidden">
+                    <div className="flex items-center gap-6">
+                        <div className="flex flex-col gap-1">
+                            <span className="text-[8px] font-black text-neutral-600 uppercase tracking-widest">Version del Sistema</span>
+                            <span className="text-[10px] font-mono text-neutral-400 font-bold tracking-widest">v2.4.0-STABLE</span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <span className="text-[8px] font-black text-neutral-600 uppercase tracking-widest">Entorno</span>
+                            <Badge variant="neutral" className="text-[8px] font-black px-2 py-0">PRODUCCIÓN</Badge>
+                        </div>
+                    </div>
+                    <div className="text-[9px] font-black text-neutral-600 uppercase tracking-tighter italic">
+                        Gestor de Tareas © 2026 • High Alpha Dashboard Experience
+                    </div>
                 </div>
             </div>
         </div>
