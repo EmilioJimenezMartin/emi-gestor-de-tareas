@@ -4,6 +4,11 @@ import { useCallback, useEffect, useMemo } from "react";
 import { createApiSocket } from "@/lib/socket";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { itemsActions, type Item } from "@/store/items-slice";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Plus, RefreshCw, Layers, Calendar, Activity, Loader2, Send } from "lucide-react";
 
 function getApiUrl() {
   return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -17,10 +22,14 @@ export function ItemsClient() {
 
   const refresh = useCallback(async () => {
     dispatch(itemsActions.setError(null));
-    const res = await fetch(`${apiUrl}/items?limit=50`, { method: "GET" });
-    if (!res.ok) throw new Error(`API error: ${res.status}`);
-    const data = (await res.json()) as { items: Item[] };
-    dispatch(itemsActions.setItems(data.items));
+    try {
+      const res = await fetch(`${apiUrl}/items?limit=50`, { method: "GET" });
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      const data = (await res.json()) as { items: Item[] };
+      dispatch(itemsActions.setItems(data.items));
+    } catch (e) {
+      dispatch(itemsActions.setError(e instanceof Error ? e.message : String(e)));
+    }
   }, [apiUrl, dispatch]);
 
   useEffect(() => {
@@ -35,7 +44,7 @@ export function ItemsClient() {
     socket.on("disconnect", () =>
       dispatch(itemsActions.setSocketConnected(false))
     );
-    socket.on("items:created", ({ item }) => dispatch(itemsActions.addItem(item)));
+    socket.on("items:created", ({ item }: { item: Item }) => dispatch(itemsActions.addItem(item)));
     return () => {
       socket.disconnect();
     };
@@ -65,78 +74,128 @@ export function ItemsClient() {
   }
 
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-medium">Items</h2>
-        <p className="text-sm text-zinc-600">
-          API: <span className="font-mono">{apiUrl}</span>
-        </p>
-        <p className="text-xs text-zinc-500">
-          Socket: {socketConnected ? "conectado" : "desconectado"}
-        </p>
+    <div className="space-y-8 animate-in fade-in duration-500">
+      {/* Bento Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card variant="outline" className="flex flex-col gap-2 group hover:border-primary/20 transition-colors">
+          <div className="flex items-center justify-between">
+            <div className="p-2 rounded-xl bg-primary/10 text-primary">
+              <Layers size={20} />
+            </div>
+            <Badge variant="info">Total</Badge>
+          </div>
+          <div className="mt-2">
+            <p className="text-3xl font-bold tracking-tight">{items.length}</p>
+            <p className="text-sm text-neutral-500 font-medium">Tareas activas</p>
+          </div>
+        </Card>
+
+        <Card variant="outline" className="flex flex-col gap-2 group hover:border-emerald-500/20 transition-colors">
+          <div className="flex items-center justify-between">
+            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-500">
+              <Activity size={20} />
+            </div>
+            <Badge variant="success">Socket</Badge>
+          </div>
+          <div className="mt-2">
+            <p className="text-lg font-semibold truncate">{socketConnected ? "Conectado" : "Esperando..."}</p>
+            <p className="text-sm text-neutral-500 font-medium">Estado del tiempo real</p>
+          </div>
+        </Card>
+
+        <Card variant="outline" className="flex flex-col gap-2 group hover:border-amber-500/20 transition-colors">
+          <div className="flex items-center justify-between">
+            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500">
+              <Calendar size={20} />
+            </div>
+            <Badge variant="warning">Hoy</Badge>
+          </div>
+          <div className="mt-2">
+            <p className="text-lg font-semibold">{new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</p>
+            <p className="text-sm text-neutral-500 font-medium">Sesión iniciada</p>
+          </div>
+        </Card>
       </div>
 
-      <div className="mt-4 grid gap-3">
-        <div className="grid gap-2 sm:grid-cols-2">
-          <label className="grid gap-1 text-sm">
-            <span className="text-zinc-700">Nombre</span>
-            <input
+      {/* Action Zone */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+        <div className="md:col-span-4 space-y-6">
+          <div className="space-y-1">
+            <h3 className="text-xl font-bold tracking-tight">Nueva Tarea</h3>
+            <p className="text-sm text-neutral-500">Añade rápidamente una tarea a tu lista para hoy.</p>
+          </div>
+          <div className="space-y-4">
+            <Input
+              label="Nombre de la tarea"
+              placeholder="Ej. Revisar reportes trimestrales"
               value={name}
               onChange={(e) => dispatch(itemsActions.setName(e.target.value))}
-              className="h-10 rounded-lg border border-zinc-200 px-3 outline-none focus:border-zinc-400"
-              placeholder="ej: import-2026-04-22"
             />
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="text-zinc-700">Payload (JSON opcional)</span>
-            <input
+            <Input
+              label="Metadatos (JSON)"
+              placeholder='{"prioridad": "alta"}'
               value={payload}
               onChange={(e) => dispatch(itemsActions.setPayload(e.target.value))}
-              className="h-10 rounded-lg border border-zinc-200 px-3 font-mono text-xs outline-none focus:border-zinc-400"
-              placeholder='{"foo":"bar"}'
+              className="font-mono text-xs"
             />
-          </label>
+            <div className="pt-2">
+              <Button
+                className="w-full"
+                variant="secondary"
+                onClick={() => void createItem()}
+                disabled={loading || name.trim().length === 0}
+                isLoading={loading}
+              >
+                {loading ? "Creando..." : (
+                  <>
+                    <Plus size={18} className="mr-2" />
+                    Crear Tarea
+                  </>
+                )}
+              </Button>
+            </div>
+            {error && <p className="text-xs text-destructive bg-destructive/10 p-3 rounded-xl border border-destructive/20">{error}</p>}
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => void createItem()}
-            disabled={loading || name.trim().length === 0}
-            className="inline-flex h-10 items-center justify-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? "Creando..." : "Crear item"}
-          </button>
-          <button
-            onClick={() => void refresh()}
-            className="inline-flex h-10 items-center justify-center rounded-lg border border-zinc-200 px-4 text-sm font-medium text-zinc-900 hover:bg-zinc-50"
-          >
-            Refrescar
-          </button>
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        </div>
-      </div>
+        {/* Task List */}
+        <div className="md:col-span-8 space-y-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xl font-bold tracking-tight">Mis Tareas</h3>
+            <Button variant="ghost" size="sm" onClick={() => void refresh()} className="h-9 px-3">
+              <RefreshCw size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Actualizar
+            </Button>
+          </div>
 
-      <div className="mt-6 overflow-hidden rounded-xl border border-zinc-200">
-        <div className="grid grid-cols-12 bg-zinc-50 px-4 py-2 text-xs font-medium text-zinc-600">
-          <div className="col-span-4">Nombre</div>
-          <div className="col-span-8">Creado</div>
-        </div>
-        <ul className="divide-y divide-zinc-200">
-          {items.map((it) => (
-            <li key={it._id} className="grid grid-cols-12 px-4 py-3 text-sm">
-              <div className="col-span-4 truncate font-medium">{it.name}</div>
-              <div className="col-span-8 font-mono text-xs text-zinc-600">
-                {new Date(it.createdAt).toLocaleString()}
+          <div className="space-y-2">
+            {items.length > 0 ? (
+              items.map((it) => (
+                <Card key={it._id} variant="outline" className="p-4 hover:bg-white/[0.02] active:scale-[0.99] transition-all cursor-pointer group">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-secondary border border-white/5 flex items-center justify-center text-primary group-hover:bg-primary/10 transition-colors">
+                      <Send size={20} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-semibold text-white truncate">{it.name}</h4>
+                      <p className="text-xs text-neutral-500 font-medium">Creado el {new Date(it.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <Badge variant={it.name.toLowerCase().includes('urgente') ? 'error' : 'neutral'}>Completado</Badge>
+                    </div>
+                  </div>
+                </Card>
+              ))
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 bg-secondary/20 rounded-3xl border border-dashed border-white/5">
+                <Layers size={48} className="text-neutral-700 mb-4" />
+                <p className="text-neutral-500 font-medium">No hay tareas pendientes</p>
               </div>
-            </li>
-          ))}
-          {items.length === 0 ? (
-            <li className="px-4 py-6 text-sm text-zinc-600">
-              No hay items todavía.
-            </li>
-          ) : null}
-        </ul>
+            )}
+          </div>
+        </div>
       </div>
-    </section>
+    </div>
   );
 }
+
