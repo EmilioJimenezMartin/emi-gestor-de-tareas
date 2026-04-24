@@ -207,8 +207,8 @@ export default async function TareaDetallePage({
       {/* Content Grid */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left Column: Business & Logic */}
-        <div className="lg:col-span-8 space-y-8">
-          <Card variant="outline" className="p-5 sm:p-8 space-y-6 border-white/5 bg-white/[0.02]">
+        <div className="lg:col-span-8 space-y-8 min-w-0">
+          <Card variant="outline" className="p-5 sm:p-8 space-y-6 border-white/5 bg-white/[0.02] max-w-full overflow-hidden">
             <div className="space-y-2">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <Rocket className="text-primary" size={20} />
@@ -238,9 +238,9 @@ export default async function TareaDetallePage({
                 {task.execution_pipeline.sort((a, b) => a.step - b.step).map((step) => (
                   <div key={step.step} className="relative pl-6">
                     <div className="absolute left-[-4px] top-2 w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(25,113,255,0.4)]" />
-                    <div className="flex items-center gap-3 mb-1">
-                      <span className="text-[8px] font-black text-primary uppercase">Paso {step.step}</span>
-                      <h5 className="text-sm font-bold text-white">{step.task}</h5>
+                    <div className="flex items-baseline gap-3 mb-1">
+                      <span className="text-[8px] font-black text-primary uppercase shrink-0">Paso {step.step}</span>
+                      <h5 className="text-sm font-bold text-white leading-snug">{step.task}</h5>
                     </div>
                     <p className="text-xs text-neutral-500 leading-relaxed">{step.details}</p>
                   </div>
@@ -249,24 +249,28 @@ export default async function TareaDetallePage({
             </div>
           </Card>
 
-          <section className="grid md:grid-cols-2 gap-6">
-            <Card variant="outline" className="p-5 sm:p-6 border-white/5 bg-white/[0.01]">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-4">Monetización</h3>
-              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
-                {task.business_logic.monetization.map(m => (
-                  <div key={m} className="flex items-start gap-2 bg-white/5 px-3 py-2 rounded-xl border border-white/5 text-[10px] font-bold text-neutral-300 transition-colors hover:border-primary/30 w-full sm:w-fit break-words">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1" />
-                    <span className="leading-relaxed whitespace-normal">{m}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-            <Card variant="outline" className="p-5 sm:p-6 border-white/5 bg-white/[0.01]">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-4">Esquema de Datos</h3>
-              <div className="rounded-xl bg-black/40 p-4 border border-white/5 max-h-[150px] overflow-auto font-mono text-[9px] text-blue-400/70 scrollbar-thin scrollbar-thumb-white/10">
-                <pre>{JSON.stringify(task.data_schema_preview, null, 2)}</pre>
-              </div>
-            </Card>
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="min-w-0">
+              <Card variant="outline" className="p-5 sm:p-6 border-white/5 bg-white/[0.01] h-full max-w-full overflow-hidden">
+                <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-4">Monetización</h3>
+                <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 w-full">
+                  {task.business_logic.monetization.map(m => (
+                    <div key={m} className="flex items-start gap-2 bg-white/5 px-3 py-2 rounded-xl border border-white/5 text-[10px] font-bold text-neutral-300 transition-colors hover:border-primary/30 w-full sm:w-auto break-words">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1" />
+                      <span className="leading-relaxed whitespace-normal break-words min-w-0">{m}</span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </div>
+            <div className="min-w-0">
+              <Card variant="outline" className="p-5 sm:p-6 border-white/5 bg-white/[0.01] h-full max-w-full overflow-hidden">
+                <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-4">Esquema de Datos</h3>
+                <div className="rounded-xl bg-black/40 p-4 border border-white/5 max-h-[150px] overflow-auto font-mono text-[9px] text-blue-400/70 scrollbar-thin scrollbar-thumb-white/10 w-full">
+                  <pre className="whitespace-pre-wrap break-all min-w-0">{JSON.stringify(task.data_schema_preview, null, 2)}</pre>
+                </div>
+              </Card>
+            </div>
           </section>
         </div>
 
@@ -279,26 +283,26 @@ export default async function TareaDetallePage({
             </h3>
 
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/5">
-                <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between gap-4 p-3 rounded-2xl bg-white/5 border border-white/5">
+                <div className="flex items-center gap-3 shrink-0">
                   <Layers size={14} className="text-neutral-500" />
                   <span className="text-[10px] font-black uppercase tracking-tight text-neutral-400">Core</span>
                 </div>
-                <span className="text-xs font-black text-white">{task.technical_stack.framework}</span>
+                <span className="text-xs font-black text-white text-right truncate">{task.technical_stack.framework}</span>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/5">
-                <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between gap-4 p-3 rounded-2xl bg-white/5 border border-white/5">
+                <div className="flex items-center gap-3 shrink-0">
                   <Clock size={14} className="text-neutral-500" />
                   <span className="text-[10px] font-black uppercase tracking-tight text-neutral-400">Schedule</span>
                 </div>
-                <span className="text-xs font-mono font-bold text-primary">{task.automation_config.cron_schedule}</span>
+                <span className="text-xs font-mono font-bold text-primary text-right truncate">{task.automation_config.cron_schedule}</span>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/5">
-                <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between gap-4 p-3 rounded-2xl bg-white/5 border border-white/5">
+                <div className="flex items-center gap-3 shrink-0">
                   <Globe size={14} className="text-neutral-500" />
                   <span className="text-[10px] font-black uppercase tracking-tight text-neutral-400">Database</span>
                 </div>
-                <span className="text-xs font-black text-neutral-300">{task.technical_stack.database}</span>
+                <span className="text-xs font-black text-neutral-300 text-right truncate">{task.technical_stack.database}</span>
               </div>
             </div>
 
