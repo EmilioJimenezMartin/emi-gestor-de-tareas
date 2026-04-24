@@ -68,7 +68,7 @@ export default async function TareaDetallePage({
   ];
 
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
+    <div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
       {/* Header */}
       <header className="flex flex-col gap-6">
         <Link href="/tareas" className="group flex items-center gap-2 text-xs font-black uppercase tracking-widest text-neutral-500 hover:text-white transition-colors w-fit">
@@ -208,7 +208,7 @@ export default async function TareaDetallePage({
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left Column: Business & Logic */}
         <div className="lg:col-span-8 space-y-8">
-          <Card variant="outline" className="p-8 space-y-6 border-white/5 bg-white/[0.02]">
+          <Card variant="outline" className="p-5 sm:p-8 space-y-6 border-white/5 bg-white/[0.02]">
             <div className="space-y-2">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <Rocket className="text-primary" size={20} />
@@ -250,20 +250,20 @@ export default async function TareaDetallePage({
           </Card>
 
           <section className="grid md:grid-cols-2 gap-6">
-            <Card variant="outline" className="p-6 border-white/5 bg-white/[0.01]">
+            <Card variant="outline" className="p-5 sm:p-6 border-white/5 bg-white/[0.01]">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-4">Monetización</h3>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
                 {task.business_logic.monetization.map(m => (
-                  <div key={m} className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-xl border border-white/5 text-[10px] font-bold text-neutral-300 transition-colors hover:border-primary/30">
-                    <div className="w-1 h-1 rounded-full bg-emerald-500" />
-                    {m}
+                  <div key={m} className="flex items-start gap-2 bg-white/5 px-3 py-2 rounded-xl border border-white/5 text-[10px] font-bold text-neutral-300 transition-colors hover:border-primary/30 w-full sm:w-fit break-words">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1" />
+                    <span className="leading-relaxed whitespace-normal">{m}</span>
                   </div>
                 ))}
               </div>
             </Card>
-            <Card variant="outline" className="p-6 border-white/5 bg-white/[0.01]">
+            <Card variant="outline" className="p-5 sm:p-6 border-white/5 bg-white/[0.01]">
               <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-4">Esquema de Datos</h3>
-              <div className="rounded-xl bg-black/40 p-4 border border-white/5 max-h-[150px] overflow-y-auto font-mono text-[9px] text-blue-400/70">
+              <div className="rounded-xl bg-black/40 p-4 border border-white/5 max-h-[150px] overflow-auto font-mono text-[9px] text-blue-400/70 scrollbar-thin scrollbar-thumb-white/10">
                 <pre>{JSON.stringify(task.data_schema_preview, null, 2)}</pre>
               </div>
             </Card>
