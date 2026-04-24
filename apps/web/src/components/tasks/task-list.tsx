@@ -3,7 +3,20 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Task } from "@/lib/tasks";
-import { Search, Filter, ArrowUpDown, LayoutGrid, List, Rocket, TrendingUp } from "lucide-react";
+import {
+    Search,
+    Filter,
+    ArrowUpDown,
+    LayoutGrid,
+    List,
+    Rocket,
+    TrendingUp,
+    FlaskConical,
+    Clock,
+    Construction,
+    CheckCircle2,
+    XOctagon
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -132,7 +145,19 @@ export function TaskList({ initialTasks }: TaskListProps) {
                                                 <Badge variant={t.priority === 'critical' ? 'error' : (t.priority === 'high' ? 'warning' : 'neutral')} className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded-sm">
                                                     {t.priority}
                                                 </Badge>
-                                                <span className="text-[7px] sm:text-[8px] font-black uppercase text-neutral-500 tracking-[0.2em]">{t.status}</span>
+                                                <div className={`flex items-center gap-1 text-[7px] sm:text-[8px] font-black uppercase tracking-[0.2em] ${t.status === 'Prototipo' ? 'text-purple-400' :
+                                                    t.status === 'En estudio' ? 'text-blue-400' :
+                                                        t.status === 'En desarrollo' ? 'text-amber-400' :
+                                                            t.status === 'Activa' ? 'text-emerald-400' :
+                                                                'text-neutral-500'
+                                                    }`}>
+                                                    {t.status === 'Prototipo' && <FlaskConical size={10} />}
+                                                    {t.status === 'En estudio' && <Clock size={10} />}
+                                                    {t.status === 'En desarrollo' && <Construction size={10} />}
+                                                    {t.status === 'Activa' && <CheckCircle2 size={10} />}
+                                                    {t.status === 'Descartada' && <XOctagon size={10} />}
+                                                    {t.status}
+                                                </div>
                                             </div>
                                             <h3 className="text-lg sm:text-xl font-bold text-white group-hover:text-primary transition-colors line-clamp-2 leading-tight">
                                                 {t.title}

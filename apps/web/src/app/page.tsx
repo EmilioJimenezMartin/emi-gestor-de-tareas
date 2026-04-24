@@ -11,7 +11,13 @@ import {
   LayoutGrid,
   TrendingUp,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  FlaskConical,
+  Clock,
+  Construction,
+  CheckCircle2,
+  XOctagon,
+  Activity
 } from "lucide-react";
 
 export default function Home() {
@@ -19,7 +25,7 @@ export default function Home() {
 
   const highPriority = tasks.filter(t => t.priority === "high" || t.priority === "critical").length;
   const categoriesCount = Array.from(new Set(tasks.flatMap(t => t.categories || []))).length;
-  const activeTasks = tasks.filter(t => t.status === "active").length;
+  const activeTasks = tasks.filter(t => t.status === "Activa").length;
   const avgROI = tasks.reduce((acc, t) => acc + (t.viability_metrics?.roi_potential || 0), 0) / tasks.length;
 
   // Aggregate Data for Charts
@@ -34,6 +40,14 @@ export default function Home() {
     name: tech,
     count: tasks.filter(t => t.technical_stack.framework === tech).length
   })).sort((a, b) => b.count - a.count);
+
+  const statusDistribution = [
+    { name: "Prototipo", count: tasks.filter(t => t.status === "Prototipo").length, color: "text-purple-400", icon: <FlaskConical size={14} /> },
+    { name: "En estudio", count: tasks.filter(t => t.status === "En estudio").length, color: "text-blue-400", icon: <Clock size={14} /> },
+    { name: "En desarrollo", count: tasks.filter(t => t.status === "En desarrollo").length, color: "text-amber-400", icon: <Construction size={14} /> },
+    { name: "Activa", count: tasks.filter(t => t.status === "Activa").length, color: "text-emerald-400", icon: <CheckCircle2 size={14} /> },
+    { name: "Descartada", count: tasks.filter(t => t.status === "Descartada").length, color: "text-rose-400", icon: <XOctagon size={14} /> },
+  ];
 
   return (
     <div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
@@ -89,6 +103,50 @@ export default function Home() {
             <Card variant="glass" className="p-6 h-[400px] flex flex-col gap-6 border-white/5 bg-white/[0.01]">
               <div className="flex items-center justify-between">
                 <div>
+                  <h3 className="font-bold text-sm">Estado del Pipeline</h3>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Ciclo de vida de inversión</p>
+                </div>
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <Activity size={16} />
+                </div>
+              </div>
+
+              <div className="flex-1 flex flex-col justify-center gap-4">
+                {statusDistribution.map((status) => {
+                  const total = tasks.length || 1;
+                  const percentage = (status.count / total) * 100;
+                  return (
+                    <div key={status.name} className="space-y-2">
+                      <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
+                        <div className="flex items-center gap-2">
+                          <span className={status.color}>{status.icon}</span>
+                          <span className="text-neutral-400">{status.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white">{status.count}</span>
+                          <span className="text-neutral-600">{percentage.toFixed(0)}%</span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full bg-gradient-to-r transition-all duration-1000 ${status.name === "Prototipo" ? "from-purple-600 to-purple-400" :
+                            status.name === "En estudio" ? "from-blue-600 to-blue-400" :
+                              status.name === "En desarrollo" ? "from-amber-600 to-amber-400" :
+                                status.name === "Activa" ? "from-emerald-600 to-emerald-400" :
+                                  "from-rose-600 to-rose-400"
+                            }`}
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            <Card variant="glass" className="p-6 h-[400px] flex flex-col gap-6 border-white/5 bg-white/[0.01]">
+              <div className="flex items-center justify-between">
+                <div>
                   <h3 className="font-bold text-sm">Distribución por Categoría</h3>
                   <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Motores cargados</p>
                 </div>
@@ -102,21 +160,8 @@ export default function Home() {
             <Card variant="glass" className="p-6 h-[400px] flex flex-col gap-6 border-white/5 bg-white/[0.01]">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-bold text-sm">Análisis de Alpha (ROI)</h3>
-                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Probabilidad de retorno</p>
-                </div>
-                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
-                  <TrendingUp size={16} />
-                </div>
-              </div>
-              <AreaChart data={tasksByCategory} />
-            </Card>
-
-            <Card variant="glass" className="p-6 h-[400px] flex flex-col gap-6 border-white/5 bg-white/[0.01]">
-              <div className="flex items-center justify-between">
-                <div>
                   <h3 className="font-bold text-sm">Ecosistema Tecnológico</h3>
-                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Frameworks predominantes</p>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Frameworks empleados</p>
                 </div>
                 <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
                   <Cpu size={16} />

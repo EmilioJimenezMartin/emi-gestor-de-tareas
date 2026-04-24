@@ -17,6 +17,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusSelector } from "@/components/tasks/status-selector";
 
 export function generateStaticParams() {
   return getTasks().map((t) => ({ slug: t.slug }));
@@ -86,10 +87,7 @@ export default async function TareaDetallePage({
                 {task.priority || "NORMAL"}
               </Badge>
               <div className="h-4 w-px bg-white/10" />
-              <div className="flex items-center gap-1.5 text-primary">
-                <Sparkles size={14} />
-                <span className="text-[9px] font-black uppercase tracking-widest">{task.status}</span>
-              </div>
+              <StatusSelector taskId={task.id} currentStatus={task.status} />
             </div>
             <h1 className="text-4xl sm:text-5xl font-black text-white tracking-tighter italic">
               {task.title}

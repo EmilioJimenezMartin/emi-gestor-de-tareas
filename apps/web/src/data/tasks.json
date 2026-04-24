@@ -4,7 +4,7 @@
       "id": "bioterra-arbitrage-001",
       "title": "BioTerra-Arbitrage: Terminal de Activos de Compensación",
       "slug": "bioterra-carbon-sourcing",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "high",
       "description": "Plataforma de identificación y valorización de terrenos rurales para la generación de créditos de carbono y biodiversidad (UE 2026).",
       "viability_metrics": {
@@ -77,7 +77,7 @@
       "id": "recovery-arbitrage-002",
       "title": "Recovery-Arbitrage: Guardián de Fondos NextGen",
       "slug": "eu-funds-matching-engine",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "critical",
       "description": "Motor de emparejamiento predictivo entre fondos estructurales de la UE y PYMES españolas mediante análisis de idoneidad automatizado.",
       "viability_metrics": {
@@ -151,7 +151,7 @@
       "id": "cyber-heatmap-003",
       "title": "Cyber-Vulnerability Heatmap: NIS2 Guardian",
       "slug": "cyber-risk-osint-dashboard",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "high",
       "description": "Visualizador de riesgos digitales en tiempo real basado en inteligencia de fuentes abiertas (OSINT) y cumplimiento de la directiva NIS2.",
       "viability_metrics": {
@@ -224,7 +224,7 @@
       "id": "land-ghost-004",
       "title": "Land-Ghost: Rastreador de Derechos de Reversión",
       "slug": "expropiaciones-fallidas-tracker",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "high",
       "description": "Detección automatizada de activos inmobiliarios expropiados y no ejecutados con potencial de recuperación legal mediante derecho de reversión.",
       "viability_metrics": {
@@ -299,7 +299,7 @@
       "id": "datacenter-arbitrage-005",
       "title": "Data-Land Sourcing: Infraestructura de IA y Data Centers",
       "slug": "datacenter-site-sourcing-engine",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "critical",
       "description": "Motor de identificación y valorización de parcelas rústicas estratégicas para la ubicación de Data Centers mediante el cruce de nudos de transporte eléctrico y redes de fibra óptica.",
       "viability_metrics": {
@@ -374,7 +374,7 @@
       "id": "grant-arbitrage-006",
       "title": "Subsidy-Lead Engine: Sniper de Subvenciones Públicas",
       "slug": "public-grants-arbitrage-bot",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "high",
       "description": "Sistema automatizado de detección de subvenciones por orden de llegada y generación de leads cualificados mediante análisis geoespacial de activos físicos.",
       "viability_metrics": {
@@ -448,7 +448,7 @@
       "id": "liquidation-arbitrage-007",
       "title": "The Liquidation Snatcher: Arbitraje de Activos Públicos",
       "slug": "liquidation-snatcher-pricing-errors",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "high",
       "description": "Sistema de detección de errores de tasación en subastas públicas mediante visión artificial para identificar activos de alto valor mal catalogados.",
       "viability_metrics": {
@@ -523,7 +523,7 @@
       "id": "index-arb-engine-008",
       "title": "The Index-Arb Engine: Arbitraje de Activos Desiertos",
       "slug": "index-arb-crowd-financial-engine",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "critical",
       "description": "Motor de detección de activos en fase de venta directa que cruza datos de edictos judiciales con valoraciones de mercado para activar financiación automática.",
       "viability_metrics": {
@@ -599,7 +599,7 @@
       "id": "cash-recovery-arbitrage-009",
       "title": "Justice-Cash Miner: Arbitraje de Depósitos Abandonados",
       "slug": "justice-deposits-recovery-engine",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "critical",
       "description": "Sistema de minería de datos sobre cuentas de consignación judicial para la adquisición de derechos de cobro olvidados.",
       "viability_metrics": {
@@ -674,7 +674,7 @@
       "id": "ghost-deposit-hunter-010",
       "title": "The Ghost Deposit Hunter: Rescate de Fianzas y Sobrantes",
       "slug": "ghost-deposit-sourcing-engine",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "critical",
       "description": "Motor de detección de capitales huérfanos en la Caja General de Depósitos, centrado en fianzas de licitación no devueltas.",
       "viability_metrics": {
@@ -749,7 +749,7 @@
       "id": "yield-vacuum-011",
       "title": "The Yield Vacuum: Arbitraje Flash Loan & MEV",
       "slug": "yield-vacuum-flash-loan-engine",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "critical",
       "description": "Bot de arbitraje de alta frecuencia que utiliza Flash Loans para capturar diferenciales de tasas de interés en protocolos DeFi.",
       "viability_metrics": {
@@ -823,7 +823,7 @@
       "id": "silent-router-012",
       "title": "The Silent Router: Arbitraje de Webhooks Huérfanos",
       "slug": "silent-router-webhook-recovery",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "high",
       "description": "Escuchador de tráfico huérfano que captura señales de pago perdidas (Webhooks) de empresas que han cambiado de servidor o DNS.",
       "viability_metrics": {
@@ -897,7 +897,7 @@
       "id": "universal-endpoint-013",
       "title": "The Universal Endpoint: Orquestador de Micro-Lógica",
       "slug": "universal-api-proxy-engine",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "normal",
       "description": "Capa de abstracción que unifica múltiples APIs de IA y servicios cloud en un solo endpoint inteligente con gestión de cuotas y costes.",
       "viability_metrics": {
@@ -970,7 +970,7 @@
       "id": "ghost-asset-synthesizer-014",
       "title": "Ghost Asset Synthesizer: Telemetría de CDNs",
       "slug": "cdn-traffic-arbitrage",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "normal",
       "description": "Sistema de detección de activos estáticos (imágenes/JS) en CDNs públicas que generan tráfico huérfano para su monetización o redirección.",
       "viability_metrics": {
@@ -1043,7 +1043,7 @@
       "id": "kdp-factory-015",
       "title": "KDP Factory: Generador de Activos IA para Amazon",
       "slug": "amazon-kdp-ai-automation",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "high",
       "description": "Pipeline de creación automática de libros (mandalas, relatos, diarios) maquetados profesionalmente para su venta directa en Amazon KDP.",
       "viability_metrics": {
@@ -1116,7 +1116,7 @@
       "id": "cloud-credit-arbiter-016",
       "title": "Cloud Credit Arbiter: Arbitraje de Cómputo",
       "slug": "cloud-credit-resale-engine",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "normal",
       "description": "Sistema de gestión y reventa de créditos cloud infrautilizados mediante un proxy de API para desarrolladores.",
       "viability_metrics": {
@@ -1189,7 +1189,7 @@
       "id": "orphan-oracle-017",
       "title": "The Orphan Oracle: Arbitraje de Activos Digitales Olvidados",
       "slug": "digital-asset-orphan-oracle",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "high",
       "description": "Detector de activos digitales con valor intrínseco (dominios con tráfico, nombres de usuario, apps abandonadas) para su recuperación y reventa.",
       "viability_metrics": {
