@@ -64,7 +64,7 @@ export function TaskList({ initialTasks }: TaskListProps) {
                         />
                     </div>
 
-                    <div className="flex items-center gap-2 bg-secondary/50 rounded-2xl p-1 border border-white/5 self-end lg:self-auto">
+                    <div className="hidden sm:flex items-center gap-2 bg-secondary/50 rounded-2xl p-1 border border-white/5 self-end lg:self-auto">
                         <button
                             onClick={() => setViewMode("grid")}
                             className={`p-2 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-neutral-500 hover:text-neutral-300'}`}

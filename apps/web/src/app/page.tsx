@@ -52,7 +52,7 @@ export default function Home() {
       </header>
 
       {/* Quick Stats Grid */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={<Rocket size={20} />}
           label="Motores Totales"
@@ -275,7 +275,7 @@ function StatCard({ icon, label, value, trend, gradient }: {
   gradient: string
 }) {
   return (
-    <Card variant="outline" className="relative group overflow-hidden p-6 hover:border-white/20 transition-all duration-500 bg-white/[0.02] border-white/5">
+    <Card variant="outline" className="relative group overflow-hidden p-4 sm:p-6 hover:border-white/20 transition-all duration-500 bg-white/[0.02] border-white/5">
       {/* Background Glow */}
       <div className={`absolute -right-10 -top-10 w-32 h-32 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-10 blur-3xl transition-opacity duration-500`} />
 
@@ -286,11 +286,11 @@ function StatCard({ icon, label, value, trend, gradient }: {
         <div>
           <p className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.2em]">{label}</p>
           <div className="flex items-baseline gap-2 mt-1">
-            <p className={`text-4xl font-black tracking-tighter bg-gradient-to-br ${gradient} bg-clip-text text-transparent italic tabular-nums`}>
+            <p className={`text-2xl sm:text-4xl font-black tracking-tighter bg-gradient-to-br ${gradient} bg-clip-text text-transparent italic tabular-nums`}>
               {value}
             </p>
             {trend && (
-              <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-neutral-400 uppercase tracking-tighter`}>
+              <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-neutral-400 uppercase tracking-tighter hidden sm:inline-block`}>
                 {trend}
               </span>
             )}
