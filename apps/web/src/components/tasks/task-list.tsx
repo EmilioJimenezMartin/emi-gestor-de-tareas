@@ -119,11 +119,11 @@ export function TaskList({ initialTasks }: TaskListProps) {
             <section className={viewMode === 'grid' ? "grid gap-6 md:grid-cols-2" : "flex flex-col gap-4"}>
                 {filteredAndSortedTasks.map((t) => (
                     <Link key={t.id} href={`/tareas/${t.slug}`} className="block group">
-                        <Card variant="outline" className="relative overflow-hidden p-6 hover:border-white/20 transition-all duration-500 bg-white/[0.02] border-white/5 shadow-2xl shadow-black/40">
+                        <Card variant="outline" className="relative overflow-hidden p-4 sm:p-6 hover:border-white/20 transition-all duration-500 bg-white/[0.03] border-white/12 shadow-2xl shadow-black/40">
                             {/* Card Glow Effect */}
                             <div className="absolute -right-20 -top-20 w-64 h-64 bg-primary/5 opacity-0 group-hover:opacity-100 blur-[80px] transition-opacity duration-700 pointer-events-none" />
 
-                            <div className={`relative flex flex-col gap-6 ${viewMode === 'list' ? 'lg:flex-row lg:items-center lg:justify-between' : ''}`}>
+                            <div className={`relative flex flex-col gap-2 md:gap-6 ${viewMode === 'list' ? 'lg:flex-row lg:items-center lg:justify-between' : ''}`}>
                                 {/* Main Info */}
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-start justify-between gap-4">
@@ -152,26 +152,26 @@ export function TaskList({ initialTasks }: TaskListProps) {
                                     </div>
                                 </div>
 
-                                {/* Metrics - Improved Mobile Responsiveness */}
-                                <div className={`flex flex-wrap items-center gap-x-8 gap-y-4 border-white/5 ${viewMode === 'list' ? 'lg:border-l lg:pl-8' : 'mt-6 border-t pt-6'}`}>
-                                    <div className="flex flex-col items-start min-w-[70px]">
+                                {/* Metrics - Forced Single Line on Mobile */}
+                                <div className={`grid grid-cols-3 gap-2 sm:flex sm:items-center sm:gap-x-8 border-white/5 ${viewMode === 'list' ? 'lg:border-l lg:pl-8' : 'mt-4 sm:mt-6 border-t pt-4 sm:pt-6'}`}>
+                                    <div className="flex flex-col items-start px-2 sm:px-0">
                                         <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">ROI</span>
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]" />
+                                        <div className="flex items-center gap-1.5 sm:gap-2">
+                                            <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]" />
                                             <span className="text-sm sm:text-lg font-black text-white tabular-nums italic tracking-tighter">{t.viability_metrics?.roi_potential}</span>
                                         </div>
                                     </div>
-                                    <div className="flex flex-col items-start min-w-[70px]">
+                                    <div className="flex flex-col items-start px-2 sm:px-0 border-x border-white/5 sm:border-none">
                                         <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">Éxito</span>
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_10px_rgba(25,113,255,0.4)]" />
+                                        <div className="flex items-center gap-1.5 sm:gap-2">
+                                            <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-primary shadow-[0_0_10px_rgba(25,113,255,0.4)]" />
                                             <span className="text-sm sm:text-lg font-black text-white tabular-nums italic tracking-tighter">{t.viability_metrics?.success_probability}</span>
                                         </div>
                                     </div>
-                                    <div className="flex flex-col items-start min-w-[70px]">
+                                    <div className="flex flex-col items-start px-2 sm:px-0">
                                         <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">Dificultad</span>
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.4)]" />
+                                        <div className="flex items-center gap-1.5 sm:gap-2">
+                                            <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.4)]" />
                                             <span className="text-sm sm:text-lg font-black text-white tabular-nums italic tracking-tighter">{10 - (t.viability_metrics?.implementation_ease || 0)}</span>
                                         </div>
                                     </div>

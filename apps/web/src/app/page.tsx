@@ -36,7 +36,7 @@ export default function Home() {
   })).sort((a, b) => b.count - a.count);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
+    <div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
       {/* Welcome Header */}
       <header className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-primary">
