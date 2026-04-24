@@ -25,34 +25,35 @@
         ]
       },
       "business_logic": {
-        "problem": "Las corporaciones obligadas por el CBAM/UE no encuentran suelo certificado para compensación biogénica.",
-        "solution": "Algoritmo de 'Match' que cruza datos catastrales con biomasa satelital para detectar parcelas infravaloradas con alto potencial de captura.",
+        "problem": "Con la entrada en vigor definitiva del Mecanismo de Ajuste en Frontera por Carbono (CBAM) en 2026, las empresas europeas de sectores pesados (acero, cemento, fertilizantes) tienen una obligación legal de compensar emisiones. Sin embargo, el mercado de créditos de carbono es opaco y está fragmentado. Existen miles de hectáreas rústicas en España y Portugal que están 'atrapadas' en una valoración de suelo agrícola bajo, cuando su valor real como sumideros de CO2 certificados es 10 veces superior. Los propietarios no saben que su 'monte' es una mina de oro digital y las corporaciones no tienen una herramienta para localizar este inventario de forma masiva.",
+        "solution": "Un orquestador de datos que actúa como un 'scanner' de activos biogénicos de alta resolución. El sistema cruza la titularidad catastral con índices de vigor vegetativo satelital (NDVI) de los últimos 24 meses y nubes de puntos LIDAR del IGN. Esto permite pre-certificar parcelas de forma automática, identificando exactamente cuántas toneladas de CO2 absorbe cada referencia catastral. El motor detecta dónde el arbitraje es máximo: comprar o arrendar derechos de uso de suelo a precio de 'terreno abandonado' y vender el derecho de absorción certificado a corporaciones obligadas por la normativa UE.",
         "monetization": [
-          "SaaS Subscription (Tier Premium para Fondos)",
-          "Success Fee (Comisión por transacción de suelo)",
-          "API Data Licensing (Venta de datos crudos a consultoras)"
+          "SaaS Subscription: Acceso premium para fondos de inversión ESG a un mapa de calor de oportunidades de compra directa de suelo con alto potencial de absorción.",
+          "Success Fee: Comisión del 10-15% sobre la adjudicación de créditos de carbono generados en parcelas localizadas y gestionadas por el bot.",
+          "Arbitraje de Derechos: Compra de opciones de arrendamiento sobre terrenos identificados para reventa del derecho de compensación a empresas del IBEX35.",
+          "Data Licensing: Venta de capas de datos procesados (biomasa real vs. teórica catastral) para consultoras ambientales y de ingeniería."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Scraping Catastral",
-          "details": "Identificación de parcelas rústicas abandonadas mediante filtrado de valor catastral mínimo."
+          "task": "Scraping Catastral y Registral",
+          "details": "Minería de datos en la Sede Electrónica del Catastro para filtrar parcelas rústicas de más de 5 hectáreas con un valor catastral inferior a la media regional, lo que indica infrautilización o abandono productivo."
         },
         {
           "step": 2,
-          "task": "Análisis de Biomasa (Sentinel-2)",
-          "details": "Cálculo automático de índices NDVI para descartar tierras áridas y confirmar potencial de reforestación."
+          "task": "Análisis de Biomasa Dinámico",
+          "details": "Procesamiento de imágenes multiespectrales de Sentinel-2 para calcular la salud foliar, el estrés hídrico y la capacidad fotosintética real de la parcela, descartando zonas quemadas o áridas."
         },
         {
           "step": 3,
-          "task": "Cálculo LIDAR",
-          "details": "Procesamiento de nubes de puntos del IGN para estimar biomasa aérea actual y capacidad de absorción incremental."
+          "task": "Volumetría LIDAR de Precisión",
+          "details": "Uso de datos de nubes de puntos (PNOA) para medir la estructura tridimensional del bosque, calculando la altura del dosel y la densidad de biomasa aérea para estimar toneladas de carbono fijado."
         },
         {
           "step": 4,
-          "task": "Scoring de Rentabilidad",
-          "details": "Cálculo de ROI: (Coste Suelo + Gestión) vs (Valor Créditos Carbono UE 2026)."
+          "task": "Generación de Scoring de Arbitraje",
+          "details": "Cálculo automático del ROI basado en: (Coste de adquisición/arrendamiento del suelo + costes de certificación) vs (Precio de mercado de los créditos de carbono proyectado para 2026-2030)."
         }
       ],
       "data_schema_preview": {
@@ -97,34 +98,35 @@
         ]
       },
       "business_logic": {
-        "problem": "El 60% de los fondos de la UE no se ejecutan por la complejidad burocrática y falta de comunicación con las PYMES.",
-        "solution": "Identificación proactiva de beneficiarios mediante el cruce de requisitos técnicos de ayudas con datos financieros reales de empresas.",
+        "problem": "La ejecución de los fondos europeos en España sufre de una paradoja: hay un exceso de capital disponible (más de 160.000M€) pero un déficit de acceso. Las PYMES no tienen departamentos legales para leer los boletines oficiales diarios y las convocatorias públicas utilizan un lenguaje administrativo críptico. El resultado es que el 60% de las ayudas no llegan a su destino o se agotan por 'orden de llegada' antes de que las empresas elegibles se enteren. Las consultoras tradicionales son lentas y caras para el volumen masivo de micro-ayudas digitales e industriales.",
+        "solution": "Un motor de 'Matching' proactivo basado en NLP. El sistema extrae en tiempo real los requisitos técnicos de las nuevas convocatorias publicadas en el BOE y DOUE. Cruza estos datos con el perfil financiero y de actividad real (CNAE, facturación, número de empleados) de millones de empresas españolas extraídas del Registro Mercantil. El algoritmo no solo detecta la ayuda, sino que predice la probabilidad de éxito y prepara el 'draft' de la solicitud antes incluso de que la empresa sepa que la ayuda existe.",
         "monetization": [
-          "Success Fee (3-5% de la subvención concedida)",
-          "B2B API Licensing (Venta de leads cualificados a banca comercial)",
-          "Gestión automatizada de expedientes (SaaS de tramitación)"
+          "Success Fee: Cobro de una comisión del 3% al 5% sobre la subvención neta concedida, alineando los intereses del bot con los del cliente.",
+          "Lead Generation B2B: Venta de leads cualificados (empresas con 100% de elegibilidad) a bancos que ofrecen préstamos puente para financiar el IVA de las subvenciones.",
+          "SaaS de Alerta Temprana: Suscripción mensual para gestorías y despachos que quieren recibir alertas de ayudas para su cartera de clientes de forma automatizada.",
+          "Tramitación Express: Fee por el uso de la herramienta de pre-cumplimentación de expedientes mediante firma digital."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Ingesta de Boletines (NLP)",
-          "details": "Extracción de requisitos de elegibilidad (CNAE, tamaño, facturación) de nuevas ayudas publicadas en BOE/DOUE."
+          "task": "NLP Ingestion de Boletines",
+          "details": "Análisis diario de textos legales para clasificar subvenciones por: CNAE permitidos, geografía, cuantía y tipo de gasto elegible (Capex/Opex)."
         },
         {
           "step": 2,
-          "task": "Profiling de PYMES",
-          "details": "Carga masiva de datos mercantiles de empresas activas en España filtradas por solvencia."
+          "task": "Profiling de Mercado Masivo",
+          "details": "Carga y filtrado de datos de sociedades mercantiles para identificar empresas con balances saneados y actividad compatible con las líneas estratégicas de la UE."
         },
         {
           "step": 3,
-          "task": "Predictive Matching",
-          "details": "Algoritmo de scoring que asigna un porcentaje de probabilidad de éxito por cada empresa/ayuda."
+          "task": "Matching de Idoneidad",
+          "details": "Algoritmo de scoring que compara los requisitos de la base reguladora con la situación real de la PYME, generando un ranking de beneficiarios potenciales."
         },
         {
           "step": 4,
-          "task": "Generación de Lead/Expediente",
-          "details": "Pre-cumplimentación de formularios de solicitud con los datos ya almacenados en el sistema."
+          "task": "Generación de Lead Cualificado",
+          "details": "Disparo de notificaciones personalizadas vía API/Telegram a los responsables de la empresa con el informe de viabilidad pre-aprobado."
         }
       ],
       "data_schema_preview": {
@@ -171,34 +173,35 @@
         ]
       },
       "business_logic": {
-        "problem": "Los directivos son responsables legales de la ciberseguridad (NIS2) pero no entienden los informes técnicos complejos.",
-        "solution": "Un panel visual de 'puntos de calor' que traduce datos técnicos de vulnerabilidad en riesgo de negocio y probabilidad de multa.",
+        "problem": "La nueva directiva europea NIS2 eleva la ciberseguridad a nivel de responsabilidad penal para los consejos de administración. Sin embargo, los directivos de PYMES y grandes empresas no entienden los logs técnicos de seguridad. Existe una 'ceguera de riesgo': las empresas tienen activos expuestos (servidores antiguos, bases de datos sin password, correos filtrados) que los hackers ven en 5 minutos pero que los directivos ignoran hasta que sufren un ransomware. La brecha de comunicación entre el departamento técnico y el de negocio es crítica.",
+        "solution": "Un panel visual de 'puntos de calor' que traduce datos técnicos complejos obtenidos mediante OSINT (inteligencia de fuentes abiertas) a un lenguaje de impacto de negocio. El bot escanea la superficie de ataque externa de cualquier dominio corporativo sin tocar su infraestructura (modo pasivo). Cruza puertos abiertos, certificados caducados y filtraciones de empleados en la Dark Web para generar un 'Nivel de Riesgo NIS2' que los directivos pueden entender y actuar en consecuencia.",
         "monetization": [
-          "SaaS Enterprise (Suscripción por monitoreo de dominio)",
-          "Consultoría Express (Informes de impacto visual para consejos de administración)",
-          "White-label para Aseguradoras (Evaluación de riesgo para pólizas)"
+          "SaaS Enterprise: Suscripción por el monitoreo continuo de la superficie de ataque y alertas instantáneas ante nuevas fugas de datos.",
+          "Consultoría de Cumplimiento: Informes detallados para C-Levels que necesitan justificar presupuestos de seguridad ante el consejo bajo presión de la directiva NIS2.",
+          "Canal de Seguros: Evaluación de riesgo 'pre-póliza' para compañías de seguros que quieren saber el riesgo real de un cliente antes de emitir un ciber-seguro.",
+          "White-Label: Proveer la tecnología a empresas de servicios de IT para que ofrezcan auditorías rápidas a sus propios clientes."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Domain Surface Mapping",
-          "details": "Identificación de subdominios, IPs corporativas y certificados SSL activos mediante APIs de DNS pasivo."
+          "task": "External Surface Discovery",
+          "details": "Uso de APIs de DNS pasivo y Shodan para listar todos los subdominios e IPs corporativas que 'asoman' a internet, detectando activos olvidados."
         },
         {
           "step": 2,
-          "task": "Vulnerability Correlation",
-          "details": "Cruce de IPs con Shodan para detectar servicios críticos abiertos (RDP, bases de datos, SMB)."
+          "task": "Audit de Servicios Críticos",
+          "details": "Identificación de protocolos peligrosos (RDP, SMB, bases de datos expuestas) y cruce con bases de datos de CVE (vulnerabilidades conocidas)."
         },
         {
           "step": 3,
-          "task": "Breach Intelligence",
-          "details": "Escaneo de dominios de correo corporativo en bases de datos de filtraciones masivas."
+          "task": "Deep-Web Credential Scan",
+          "details": "Búsqueda de correos corporativos en dumps de filtraciones masivas para detectar identidades de directivos comprometidas que faciliten el phishing."
         },
         {
           "step": 4,
-          "task": "Legal Risk Translation",
-          "details": "Asignación de score de riesgo basado en los pilares de la directiva NIS2 (Gobernanza, Gestión de riesgos, Respuesta)."
+          "task": "Traducción a Riesgo Normativo",
+          "details": "Algoritmo que asigna un peso económico al fallo basado en las multas previstas en la directiva NIS2 por falta de diligencia debida."
         }
       ],
       "data_schema_preview": {
@@ -243,34 +246,35 @@
         ]
       },
       "business_logic": {
-        "problem": "El State expropia terrenos que nunca utiliza; los dueños originales desconocen su derecho legal de recuperarlos a coste histórico.",
-        "solution": "Cruce de anuncios de expropiación antiguos con el estado constructivo actual mediante satélite para identificar anomalías de ejecución.",
+        "problem": "España tiene una 'historia oculta' de expropiaciones fallidas. Durante las décadas de burbuja de infraestructuras, el Estado expropió millones de metros cuadrados para hospitales, polígonos o aeropuertos que jamás se construyeron. Según la ley, si tras un plazo (generalmente 10-20 años) la utilidad pública no se ha cumplido, los antiguos propietarios o sus herederos tienen el derecho legal de recuperar la finca devolviendo el precio original. El problema es que el Estado no avisa y los herederos han olvidado esas tierras. Es un activo 'fantasma' de miles de millones de euros.",
+        "solution": "Un sistema de inteligencia inmobiliaria que cruza el pasado con el presente. El bot utiliza OCR masivo para leer los anuncios de expropiación en boletines antiguos. Posteriormente, verifica mediante visión artificial sobre imágenes satelitales actuales si la obra prevista existe o no. Si detecta una parcela expropiada que sigue siendo campo baldío 15 años después, el sistema activa una búsqueda OSINT para localizar a los descendientes de los dueños originales y proponerles la recuperación legal de la propiedad.",
         "monetization": [
-          "Sourcing para Fondos 'Special Situations'",
-          "Bounty de Reclamación (Comisión sobre plusvalía)",
-          "Venta de leads a despachos de abogados especializados"
+          "Litigation Funding: Financiar los gastos de la reclamación legal a cambio de un porcentaje (25-40%) del valor final del terreno recuperado.",
+          "Lead Selling: Venta de expedientes de reversión contrastados a bufetes de abogados especialistas en derecho administrativo.",
+          "Sourcing Inmobiliario: Identificación de parcelas para fondos inmobiliarios que pueden comprar los derechos de reversión a los herederos por una fracción de su valor de mercado.",
+          "Consultoría Institucional: Informes para ayuntamientos que quieren regularizar su inventario de suelo heredado."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Historical Scraping",
-          "details": "Minería de datos en boletines históricos para extraer listados de fincas expropiadas y su causa de utilidad pública."
+          "task": "Minería de Edictos Históricos",
+          "details": "Extracción de coordenadas, planos antiguos y nombres de expropiados de archivos del BOE y Boletines Provinciales mediante modelos de extracción de entidades (NER)."
         },
         {
           "step": 2,
-          "task": "Catastral Cross-Check",
-          "details": "Verificación de referencias catastrales expropiadas para comprobar si el uso actual coincide con el fin legal."
+          "task": "Verificación de 'Causa de Utilidad'",
+          "details": "Clasificación automática de imágenes satelitales Sentinel-2 para confirmar la ausencia de infraestructuras sobre el polígono expropiado."
         },
         {
           "step": 3,
-          "task": "Visual Proofing",
-          "details": "Análisis IA de imágenes satelitales para confirmar ausencia de infraestructuras en la parcela."
+          "task": "Auditoría de Titularidad Actual",
+          "details": "Consulta al Catastro para confirmar que la parcela sigue en manos públicas y que no ha expirado el plazo legal para ejercer la reversión."
         },
         {
           "step": 4,
-          "task": "Genealogy Search",
-          "details": "Localización de herederos de propietarios originales mediante inteligencia de fuentes abiertas."
+          "task": "Genealogía de Propietarios",
+          "details": "Uso de registros civiles y obituarios digitales para rastrear el linaje de los dueños originales y validar la legitimidad de la reclamación."
         }
       ],
       "data_schema_preview": {
@@ -297,7 +301,7 @@
       "slug": "datacenter-site-sourcing-engine",
       "status": "active",
       "priority": "critical",
-      "description": "Motor de identificación y valorización de parcelas rústicas estratégicas para la ubicación de Data Centers mediante el cruce de nudos de transporte eléctrico y redes de fibra óptica de gran capacidad.",
+      "description": "Motor de identificación y valorización de parcelas rústicas estratégicas para la ubicación de Data Centers mediante el cruce de nudos de transporte eléctrico y redes de fibra óptica.",
       "viability_metrics": {
         "implementation_ease": 4,
         "success_probability": 8,
@@ -308,7 +312,7 @@
       "technical_stack": {
         "framework": "Next.js",
         "database": "MongoDB",
-        "visualization": "Mapbox GL JS / Deck.gl (Capas GeoJSON)",
+        "visualization": "Mapbox GL JS / Deck.gl",
         "apis_required": [
           "REE ESIOS API (Capacidad de nudos)",
           "CNMC (Mapas de Fibra Oscura)",
@@ -317,34 +321,35 @@
         ]
       },
       "business_logic": {
-        "problem": "La escasez de suelo con acceso inmediato a >20MW de potencia y conectividad de fibra frena la expansión de la IA en Europa.",
-        "solution": "Identificación proactiva de parcelas infravaloradas (patatales) que cumplen requisitos técnicos críticos antes de que el mercado las detecte.",
+        "problem": "La explosión de la Inteligencia Artificial requiere una capacidad física inaudita en Europa: suelo masivo con acceso inmediato a potencia eléctrica de alta tensión (>20MW) y fibra óptica de gran capacidad. Los desarrolladores de Data Centers pierden meses buscando ubicaciones que cumplan ambos requisitos técnicos simultáneamente. Una parcela rústica (un patatal) que esté a menos de 500m de una subestación con capacidad de evacuación vale 100 veces más de lo que marca el mercado agrícola, pero esa información es un secreto técnico.",
+        "solution": "Un motor de inteligencia geoespacial que actúa como un 'headhunter' de parcelas críticas. El bot mapea todos los nudos de transporte de Red Eléctrica (REE) y los cruza con los trazados de fibra óptica troncal. Identifica parcelas rústicas llanas, no protegidas ambientalmente, situadas estratégicamente en estos 'puntos calientes' de infraestructura. El sistema genera un dossier de viabilidad técnica que permite comprar o señalizar el suelo antes de que los grandes fondos detecten la ubicación.",
         "monetization": [
-          "Sub-arrendamiento de derechos de superficie (Renta por MW)",
-          "Venta de Dossiers de Viabilidad Técnica a Hyperscalers",
-          "Success Fee por cierre de contrato con operador de Data Center"
+          "Dossiers de Sourcing: Venta de informes de viabilidad llave en mano a Hyperscalers (Google, Amazon, Microsoft) o colocation providers.",
+          "Arbitraje de Suelo: Arrendamiento a largo plazo de las parcelas detectadas para sub-arrendar a operadores de centros de datos por un precio basado en el MW disponible.",
+          "Consultoría de Ingeniería: Ofrecer la pre-tramitación administrativa del acceso a red (punto de conexión) basado en los datos extraídos por el bot.",
+          "Success Fee: Porcentaje sobre el cierre de la operación de compraventa de activos inmobiliarios de infraestructura."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Energy Grid Scraping",
-          "details": "Extracción y mapeo de nudos de transporte de Red Eléctrica (REE) con capacidad de evacuación y acceso disponible mensualmente."
+          "task": "Power Grid Mapping",
+          "details": "Extracción de la capacidad de subestaciones eléctricas y trazado de líneas de 220kV/400kV a través de los datos abiertos de REE."
         },
         {
           "step": 2,
-          "task": "Fiber Proximity Analysis",
-          "details": "Cruce geoespacial con trazados de fibra óptica de gran capacidad (ADIF/Red Eléctrica/Gaseoductos)."
+          "task": "Fiber Optic Overlay",
+          "details": "Cruce de datos de infraestructura de fibra oscura y rutas de telecomunicaciones de gran capacidad (ADIF/Gaseoductos)."
         },
         {
           "step": 3,
-          "task": "Land Owner Identification",
-          "details": "Filtrado catastral de parcelas rústicas de >5.000m2 en el radio de 1km de los puntos críticos de energía y fibra."
+          "task": "Land Eligibility Scan",
+          "details": "Filtrado automático de parcelas rústicas según orografía (pendiente <5%), clasificación urbanística y ausencia de zonas de especial protección (ZEPA)."
         },
         {
           "step": 4,
-          "task": "Dossier Auto-Generation",
-          "details": "Generación automática de informes técnicos con estimación de costes de conexión y probabilidad de éxito urbanístico."
+          "task": "Technical Due Diligence Auto",
+          "details": "Generación del informe PDF con estimación de costes de acometida y latencia proyectada a los principales IXP (Internet Exchange Points)."
         }
       ],
       "data_schema_preview": {
@@ -371,7 +376,7 @@
       "slug": "public-grants-arbitrage-bot",
       "status": "active",
       "priority": "high",
-      "description": "Sistema automatizado de detección de subvenciones por orden de llegada (concurrencia no competitiva) y generación de leads cualificados mediante análisis geoespacial de naves industriales y datos mercantiles.",
+      "description": "Sistema automatizado de detección de subvenciones por orden de llegada y generación de leads cualificados mediante análisis geoespacial de activos físicos.",
       "viability_metrics": {
         "implementation_ease": 8,
         "success_probability": 9,
@@ -385,39 +390,40 @@
         "apis_required": [
           "BOE/BOCM/DOGC API (OpenData)",
           "Google Maps Static API (Análisis de tejados)",
-          "Apollo.io / Hunter.io API (Emails directivos)",
+          "Apollo.io / Hunter.io API",
           "Registro Mercantil API"
         ]
       },
       "business_logic": {
-        "problem": "Las PYMES pierden millones en ayudas por desconocimiento o falta de rapidez en solicitudes que se agotan en horas.",
-        "solution": "Detección instantánea de convocatorias y filtrado de beneficiarios por capacidad física (m2 de nave) y financiera antes de que la competencia reaccione.",
+        "problem": "Muchos fondos públicos (como el autoconsumo solar o la eficiencia energética) se rigen por 'concurrencia no competitiva': los fondos se asignan por estricto orden de entrada de la solicitud hasta agotar el presupuesto. Esto genera una guerra de velocidad. Las empresas de instalación solar o eficiencia no tienen tiempo de buscar clientes manualmente cuando sale una ayuda. Necesitan saber hoy mismo qué naves industriales de su zona tienen el tejado perfecto para poner placas y qué dueños tienen la solvencia para pagarlo.",
+        "solution": "Un 'Sniper' de leads industriales. El bot monitoriza los boletines oficiales minuto a minuto. En cuanto se publica una línea de ayudas (ej. 20M€ para tejados industriales), el sistema activa un escáner visual sobre naves industriales en zonas elegibles. Usa visión artificial para medir los m2 de cubierta y cruza la dirección con el Registro Mercantil para extraer el contacto del CEO. En menos de 1 hora tras la publicación de la ayuda, el instalador recibe un listado de 500 clientes potenciales con el presupuesto de la ayuda ya calculado.",
         "monetization": [
-          "Venta de leads cualificados a consultoras (100€-300€/contacto)",
-          "Revenue Share por éxito (15-20% de la comisión de la gestoría)",
-          "SaaS de Alerta Competitiva para empresas del mismo sector"
+          "Bounty por Lead: Venta de cada contacto cualificado (empresa con nave de >500m2 + solvencia + contacto CEO) por un precio fijo (50-200€).",
+          "Revenue Share: Porcentaje de la subvención captada si se gestiona el expediente a través de partners asociados.",
+          "SaaS de Vigilancia: Cuota mensual para empresas que quieren bloquear a la competencia sabiendo antes que nadie dónde están los nichos de subvención.",
+          "White Label: Integración en CRMs de grandes comercializadoras de energía."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Gazette Monitoring (NLP)",
-          "details": "Escaneo diario de boletines oficiales buscando palabras clave de convocatorias activas y presupuestos asignados."
+          "task": "Gazette Monitoring",
+          "details": "Escaneo de palabras clave en el extracto de subvenciones para detectar convocatorias de 'pago por orden de llegada'."
         },
         {
           "step": 2,
-          "task": "Visual Property Filtering",
-          "details": "Uso de visión artificial sobre Google Maps para identificar empresas con naves de >500m2 aptas para eficiencia energética."
+          "task": "Visual Property Analysis",
+          "details": "Uso de modelos de segmentación de imágenes sobre Google Maps para identificar naves industriales con cubiertas despejadas y orientación sur."
         },
         {
           "step": 3,
-          "task": "Corporate OSINT",
-          "details": "Extracción automática de cargos C-Level y correos electrónicos mediante scraping de Registro Mercantil y LinkedIn."
+          "task": "Corporate OSINT enrichment",
+          "details": "Extracción automática de cargos directivos, correos electrónicos y teléfonos de contacto vinculados a la titularidad de la nave."
         },
         {
           "step": 4,
-          "task": "Automated Lead Dispatch",
-          "details": "Envío inmediato del perfil de empresa + ayuda detectada a la consultora aliada para contacto telefónico instantáneo."
+          "task": "Automated Outreach",
+          "details": "Disparo automático de una campaña de email/WhatsApp informando al dueño de la nave que tiene una subvención pre-aprobada por su superficie."
         }
       ],
       "data_schema_preview": {
@@ -444,7 +450,7 @@
       "slug": "liquidation-snatcher-pricing-errors",
       "status": "active",
       "priority": "high",
-      "description": "Sistema de detección de errores de tasación en subastas públicas (BOE/Seguridad Social) mediante visión artificial para identificar activos de alto valor mal catalogados como 'lotes genéricos'.",
+      "description": "Sistema de detección de errores de tasación en subastas públicas mediante visión artificial para identificar activos de alto valor mal catalogados.",
       "viability_metrics": {
         "implementation_ease": 4,
         "success_probability": 7,
@@ -464,34 +470,35 @@
         ]
       },
       "business_logic": {
-        "problem": "La administración pública cataloga lotes tecnológicos o industriales de forma pésima, ocultando activos de alta demanda bajo descripciones genéricas.",
-        "solution": "Uso de IA visual para auditar las fotos de las subastas, identificar modelos específicos y calcular el beneficio neto automático tras costes logísticos.",
+        "problem": "Las Administraciones Públicas (Seguridad Social, Juzgados, Aduanas) son pésimas vendedoras. Cuando liquidan activos de empresas en quiebra, a menudo catalogan lotes de forma genérica: 'Lote de material informático' o 'Maquinaria industrial'. Dentro de esos lotes pueden haber activos de altísimo valor (servidores de última generación, endoscopios médicos, estaciones de soldadura de precisión) que el funcionario no ha identificado. El mercado de subastas está lleno de ruido, y los compradores humanos no pueden auditar visualmente 10.000 fotos de baja calidad al día.",
+        "solution": "Un auditor visual automático. El bot realiza un scraping masivo del Portal de Subastas del BOE. Procesa cada fotografía adjunta mediante modelos YOLOv8 entrenados para identificar marcas y modelos específicos de hardware profesional. Cuando detecta un activo cuyo valor de mercado (comprobado en tiempo real vía eBay/Keepa) supera en un 300% el precio de salida del lote, el sistema emite una alerta de compra inmediata, calculando incluso el coste de envío mediante logística de terceros (3PL).",
         "monetization": [
-          "Arbitraje de inventario (Buy low, sell high)",
-          "Dropshipping de liquidaciones (Venta pre-adjudicación)",
-          "Sourcing B2B para retailers de segunda mano"
+          "Arbitraje Directo: Compra del lote a precio de liquidación y reventa en mercados especializados (BackMarket, eBay, brokers industriales).",
+          "Sourcing B2B: Cobro de una cuota mensual a retailers de segunda mano por enviarles leads de lotes 'mal tasados' antes de que la subasta sea viral.",
+          "Dropshipping de Liquidación: Venta del activo en una plataforma secundaria antes de haber ganado la subasta, asegurando el margen.",
+          "Consultoría de Tasación: Venta de datos a la propia administración para mejorar sus procesos de liquidación (modelo B2G)."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Auction Ingestion",
-          "details": "Scraping recurrente de la sección de Bienes Muebles en el portal de subastas del BOE y Seguridad Social."
+          "task": "Auction Ingestion & Filtering",
+          "details": "Conexión recurrente al portal del BOE filtrando por subastas de 'Bienes Muebles' con pujas abiertas en las últimas 24 horas."
         },
         {
           "step": 2,
-          "task": "Visual Asset Audit",
-          "details": "Procesamiento de imágenes de baja calidad mediante modelos YOLO para identificar marcas y modelos de hardware (médico, industrial o TI)."
+          "task": "Visual Asset Recognition",
+          "details": "Uso de visión artificial para extraer etiquetas de modelos, números de serie o logotipos de fabricantes de las fotos de los peritos."
         },
         {
           "step": 3,
-          "task": "Real-time Valuation",
-          "details": "Cruce automático con precios de 'Sold Items' en eBay y BackMarket para determinar el valor real de mercado del lote."
+          "task": "Dynamic Price Scraping",
+          "details": "Cruce del modelo detectado con APIs de marketplaces para obtener el 'precio medio de venta' en estado usado/refurbished."
         },
         {
           "step": 4,
-          "task": "Automated Logistics",
-          "details": "Envío de órdenes de recogida y envío directo a almacenes 3PL/FBA para automatizar la catalogación y venta final."
+          "task": "Profitability Analysis",
+          "details": "Cálculo de la puja máxima recomendada restando impuestos (ITP), comisión del portal y costes de recogida y almacenamiento."
         }
       ],
       "data_schema_preview": {
@@ -518,7 +525,7 @@
       "slug": "index-arb-crowd-financial-engine",
       "status": "active",
       "priority": "critical",
-      "description": "Motor de detección de activos en fase de venta directa o subasta desierta que cruza datos de edictos judiciales (PDF/OCR) con valoraciones de mercado en tiempo real para activar rondas de financiación participativa automáticas.",
+      "description": "Motor de detección de activos en fase de venta directa que cruza datos de edictos judiciales con valoraciones de mercado para activar financiación automática.",
       "viability_metrics": {
         "implementation_ease": 3,
         "success_probability": 8,
@@ -529,44 +536,44 @@
       "technical_stack": {
         "framework": "Next.js / Python (OCR Pipeline)",
         "database": "MongoDB",
-        "visualization": "D3.js (Gráficas de ROI proyectado)",
         "apis_required": [
           "BOE Portal de Subastas (Edictos)",
           "Tesseract OCR / Google Vision API",
           "Idealista/Fotocasa API (Market Price)",
-          "VIN Decoder / Eurotax API (Valoración motor)",
-          "Lemonway / Mangopay API (Crowdlending Ops)"
+          "VIN Decoder / Eurotax API",
+          "Lemonway / Mangopay API (Financiación)"
         ]
       },
       "business_logic": {
-        "problem": "Las subastas desiertas esconden descuentos del 50% sobre mercado, pero requieren liquidez inmediata que los cazadores de gangas no siempre tienen.",
-        "solution": "Un orquestador de datos que detecta la anomalía de precio y levanta el capital necesario mediante crowdlending, usando el propio activo adjudicado como colateral.",
+        "problem": "Existe un 'limbo' legal: las subastas que quedan desiertas (nadie puja). En esta fase, el activo pasa a 'Venta Directa' o se puede negociar con el acreedor por una fracción de la deuda. Son las mejores gangas de internet, pero son invisibles porque los edictos están en PDFs escaneados de mala calidad. Además, requieren una liquidez inmediata (cash) que la mayoría de los pequeños inversores no tienen disponible en 48 horas.",
+        "solution": "Un orquestador de 'Financiación Flash'. El bot lee los edictos judiciales, extrae los datos del activo (referencia catastral de un piso o el bastidor de un coche de lujo) y calcula el valor de mercado real. Si la oportunidad es masiva, el sistema genera automáticamente una 'oportunidad de inversión' en un dashboard para un club de inversores (crowdlending), recaudando el capital necesario en horas para adjudicarse el activo antes de que salga al mercado abierto.",
         "monetization": [
-          "Management Fee por gestión de la adjudicación (3-5% del capital)",
-          "Success Fee sobre el beneficio de reventa (20-30%)",
-          "SaaS de alertas para inversores institucionales"
+          "Management Fee: Comisión fija por la gestión técnica y legal de la adjudicación del activo (3-5%).",
+          "Carry Interest: Porcentaje de los beneficios finales tras la reventa del activo (20-30% de la plusvalía).",
+          "SaaS para Inversores: Cuota mensual para acceder al feed de activos desiertos con valoración de mercado pre-calculada.",
+          "Fee de Originación: Cobro a las plataformas de crowdlending por llevarles operaciones con colateral real verificado."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
           "task": "Deep Document Scraping",
-          "details": "Descarga de edictos de subastas desiertas y extracción de VINs (vehículos) o Referencias Catastrales (inmuebles) mediante OCR."
+          "details": "Descarga masiva de los anexos y edictos de subastas terminadas sin postores para buscar el contacto del administrador concursal o procurador."
         },
         {
           "step": 2,
-          "task": "Anomaly Detection",
-          "details": "Cruce masivo de datos para identificar activos donde el valor de adjudicación directa es <60% del valor de mercado real."
+          "task": "Automated Value Appraisal",
+          "details": "Cruce de la ubicación exacta (inmuebles) o matrícula/VIN (vehículos) con bases de datos de precios reales de cierre, no solo de oferta."
         },
         {
           "step": 3,
-          "task": "Automated Fundraising",
-          "details": "Publicación automática de la oportunidad en plataformas de financiación participativa con el dossier técnico pre-generado."
+          "task": "Investor Alert Generation",
+          "details": "Publicación de la ficha técnica en el portal privado indicando el 'Escenario de Salida' (ej. venta en 6 meses con 25% de ROI)."
         },
         {
           "step": 4,
-          "task": "Liquidación de Activo",
-          "details": "Venta automática a través de partners profesionales (compraventa de vehículos o iBuyers inmobiliarios) para cerrar el ciclo de retorno."
+          "task": "Liquidation Orchestration",
+          "details": "Sincronización con partners de venta rápida (iBuyers o compraventas) para asegurar que el activo se venda nada más recibir las llaves."
         }
       ],
       "data_schema_preview": {
@@ -594,7 +601,7 @@
       "slug": "justice-deposits-recovery-engine",
       "status": "active",
       "priority": "critical",
-      "description": "Sistema de minería de datos sobre cuentas de consignación judicial y edictos de concursos concluidos para la adquisición de derechos de cobro olvidados mediante contratos de cesión de crédito.",
+      "description": "Sistema de minería de datos sobre cuentas de consignación judicial para la adquisición de derechos de cobro olvidados.",
       "viability_metrics": {
         "implementation_ease": 3,
         "success_probability": 9,
@@ -607,40 +614,41 @@
         "database": "MongoDB",
         "apis_required": [
           "BOE / TEU Scraper (Edictos Judiciales)",
-          "Portal de la Administración de Justicia (Cuentas de Consignación)",
-          "LinkedIn API / Registro Mercantil (Localización de administradores)",
-          "Signaturit / DocuSign API (Cesión de crédito digital)"
+          "Portal de la Administración de Justicia",
+          "LinkedIn API / Registro Mercantil",
+          "Signaturit API (Firma Digital)"
         ]
       },
       "business_logic": {
-        "problem": "Millones de euros quedan bloqueados en cuentas judiciales porque las empresas beneficiarias cerraron o cambiaron de domicilio, prescribiendo a favor del Estado por falta de reclamación.",
-        "solution": "Identificación de saldos positivos en expedientes archivados y compra del derecho de cobro al antiguo titular por un valor simbólico, asumiendo la reclamación legal como nuevo acreedor.",
+        "problem": "En España hay más de 4.000 millones de euros 'olvidados' en las Cuentas de Depósitos y Consignaciones Judiciales. Esto ocurre cuando una empresa gana un juicio o un concurso de acreedores pero, para cuando el dinero llega a la cuenta del juzgado, la empresa ya ha cerrado, el dueño ha fallecido o el administrador se ha jubilado. El dinero se queda ahí 10 o 20 años hasta que prescribe y se lo queda el Estado. Los juzgados no tienen personal para perseguir a los beneficiarios.",
+        "solution": "Un 'rastreador de herencias corporativas'. El bot analiza los edictos de conclusión de concursos de acreedores con saldo positivo. Identifica quiénes eran los acreedores que nunca cobraron su parte. Luego, mediante OSINT, localiza a los antiguos dueños o herederos. La oferta es sencilla: 'Sé que tienes un dinero bloqueado que dabas por perdido; fírmame esta cesión de crédito, te pago el 20% hoy en efectivo, y yo me encargo de pelearme con el juzgado para sacar el 100%'.",
         "monetization": [
-          "Arbitraje de valor de activos financieros (Compra por 2% y cobro del 100%)",
-          "Compra de carteras de deuda judicializada",
-          "Servicio de recuperación bajo comisión (25-40% del éxito)"
+          "Compra de Deuda: Adquisición de derechos de cobro judicial por una fracción de su valor nominal (Arbitraje financiero puro).",
+          "Gestión por Éxito: Cobro de una comisión del 30-50% del capital recuperado para el cliente legítimo.",
+          "Venta de Carteras: Empaquetar miles de estos derechos de cobro y venderlos a fondos de 'distressed debt'.",
+          "SaaS para Procuradores: Herramienta para que los profesionales localicen fondos pendientes de sus clientes antiguos."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Archive Mining",
-          "details": "Escaneo de edictos de conclusión de concursos de acreedores y archivo de actuaciones de los últimos 10 años para extraer nombres de titulares y números de expediente."
+          "task": "Archive Data Mining",
+          "details": "Procesamiento de boletines de los últimos 10 años para extraer listados de beneficiarios de mandamientos de devolución no ejecutados."
         },
         {
           "step": 2,
-          "task": "Deposit Verification",
-          "details": "Cruce con las listas de saldos en cuentas de consignación del Ministerio de Justicia para confirmar la existencia de fondos líquidos."
+          "task": "Existence Verification",
+          "details": "Cruce con las listas de 'Saldos de Cuentas Judiciales' (cuando son publicadas) o verificación de inactividad del CIF en el Registro Mercantil."
         },
         {
           "step": 3,
           "task": "Social OSINT Lookup",
-          "details": "Localización automatizada de los administradores de las sociedades extintas para proponer la compra del derecho mediante contrato de cesión."
+          "details": "Localización de los antiguos liquidadores o familiares mediante scraping de redes profesionales y registros civiles."
         },
         {
           "step": 4,
-          "task": "Legal Claim Execution",
-          "details": "Presentación telemática del contrato de cesión ante el juzgado correspondiente para solicitar el mandamiento de devolución a la cuenta del motor de arbitraje."
+          "task": "Digital Contract Dispatch",
+          "details": "Envío automatizado de un contrato de cesión de crédito para firma telemática, simplificando el proceso legal al máximo."
         }
       ],
       "data_schema_preview": {
@@ -668,7 +676,7 @@
       "slug": "ghost-deposit-sourcing-engine",
       "status": "active",
       "priority": "critical",
-      "description": "Motor de detección de capitales huérfanos en la Caja General de Depósitos y juzgados, centrado en fianzas de licitación no devueltas, subvenciones bloqueadas y sobrantes de adjudicación tras subasta.",
+      "description": "Motor de detección de capitales huérfanos en la Caja General de Depósitos, centrado en fianzas de licitación no devueltas.",
       "viability_metrics": {
         "implementation_ease": 4,
         "success_probability": 9,
@@ -677,48 +685,49 @@
         "roi_potential": 10
       },
       "technical_stack": {
-        "framework": "Next.js / Python (Advanced Scrapers)",
+        "framework": "Next.js / Python",
         "database": "MongoDB",
         "apis_required": [
           "Plataforma de Contratación del Sector Público API",
-          "BOE / Registro Mercantil API",
-          "Sede Electrónica CGD (Caja General de Depósitos)",
-          "OSINT Tools (Localización de liquidadores/deudores)"
+          "Sede Electrónica CGD",
+          "Registro Mercantil API",
+          "Digital Identity Validation API"
         ]
       },
       "business_logic": {
-        "problem": "El Estado retiene miles de millones en garantías y sobrantes de subastas que nunca se reclaman por insolvencia, desconocimiento o cese de actividad de los titulares originales.",
-        "solution": "Identificación de contratos liquidados con garantías pendientes y localización de deudores con sobrantes de subasta para ejecutar la reclamación vía cesión de crédito o gestión por éxito.",
+        "problem": "Para participar en obras públicas, las constructoras deben depositar una fianza (aval) del 5% del contrato en la Caja General de Depósitos. Muchas de estas empresas quiebran o se fusionan durante la obra (que puede durar años). Al terminar, nadie solicita la devolución del aval. Lo mismo ocurre con los 'sobrantes de subasta': si una casa se subasta por más de lo que se debía, el sobrante pertenece al antiguo dueño desahuciado, pero este suele estar 'desaparecido' o hundido en deudas y no sabe que ese dinero le espera.",
+        "solution": "Un 'interlocutor administrativo' automatizado. El sistema cruza los contratos finalizados en la Plataforma de Contratación con el estado del CIF de la empresa adjudicataria. Si la empresa está extinguida y el aval sigue depositado, el bot localiza al liquidador concursal para recuperar el dinero. En el caso de desahucios, localiza al antiguo dueño para rescatar el sobrante de la subasta, actuando como un servicio de justicia social y arbitraje financiero.",
         "monetization": [
-          "Compra de derechos de cobro (Cesión de crédito al 10-20% del valor)",
-          "Success Fee por gestión de cobro de subvenciones (50% de comisión)",
-          "Bounty por localización y rescate de sobrantes de adjudicación"
+          "Comisión de Rescate: Cobro del 40% del capital recuperado de fianzas olvidadas de empresas en concurso.",
+          "Compra de Derechos de Sobrante: Pago de una cantidad fija al desahuciado a cambio del derecho a reclamar el sobrante judicial.",
+          "SaaS para Administradores Concursales: Herramienta de auditoría de activos olvidados en cajas públicas.",
+          "Bounty de Localización: Pago por parte de despachos de abogados por encontrar a los beneficiarios de depósitos 'fantasma'."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
           "task": "Contract Lifecycle Mining",
-          "details": "Escaneo de la Plataforma de Contratación para listar contratos terminados/liquidados cuyos avales del 5% no han sido liberados por inactividad del CIF."
+          "details": "Identificación de contratos públicos marcados como 'Liquidados' o 'Finalizados' cuya fianza provisional o definitiva no ha sido cancelada."
         },
         {
           "step": 2,
-          "task": "Auction Surplus Audit",
-          "details": "Identificación de subastas con puja final superior a la deuda reclamada (sobrante) y verificación de depósito en cuenta de consignación."
+          "task": "CIF Status Audit",
+          "details": "Verificación en tiempo real de si la empresa titular del depósito ha cambiado de nombre, se ha disuelto o está en fase de liquidación."
         },
         {
           "step": 3,
-          "task": "Heir/Liquidator OSINT",
-          "details": "Rastreo de antiguos administradores de empresas disueltas o deudores desahuciados para ofrecer el rescate del capital."
+          "task": "Surplus Identification",
+          "details": "Análisis de actas de adjudicación de subastas inmobiliarias para calcular la diferencia positiva entre la puja ganadora y la deuda total reclamada."
         },
         {
           "step": 4,
-          "task": "Administrative Recovery",
-          "details": "Tramitación de la solicitud de devolución ante la Caja General de Depósitos o el Juzgado mediante firma digital y poder de representación."
+          "task": "Claim Automation",
+          "details": "Generación del modelo de solicitud de devolución ante la Tesorería General o el juzgado competente."
         }
       ],
       "data_schema_preview": {
-        "deposit_type": "Enum ['Fianza', 'Subvencion', 'Sobrante']",
+        "deposit_type": "Enum ['Fianza', 'Sobrante']",
         "entity_cif_dni": "String",
         "locked_amount": "Number",
         "acquisition_cost_est": "Number",
@@ -742,7 +751,7 @@
       "slug": "yield-vacuum-flash-loan-engine",
       "status": "active",
       "priority": "critical",
-      "description": "Bot de arbitraje de alta frecuencia que utiliza Flash Loans para capturar diferenciales de tasas de interés y desequilibrios de liquidez en protocolos DeFi sin exposición de capital propio.",
+      "description": "Bot de arbitraje de alta frecuencia que utiliza Flash Loans para capturar diferenciales de tasas de interés en protocolos DeFi.",
       "viability_metrics": {
         "implementation_ease": 2,
         "success_probability": 6,
@@ -752,144 +761,71 @@
       },
       "technical_stack": {
         "framework": "Next.js (Dashboard) / Rust (Bot Engine)",
-        "database": "Redis (Low Latency)",
-        "smart_contracts": "Solidity (Vyper opcional)",
+        "smart_contracts": "Solidity (EVM)",
         "apis_required": [
           "Flash Loan Providers (Aave/Uniswap)",
           "Chainlink Oracles (Price Feeds)",
-          "High-Speed RPC Nodes (Alchemy/Infura/Custom Node)",
-          "DEX Aggregators (1inch/ParaSwap API)"
+          "High-Speed RPC Nodes (Alchemy)",
+          "DEX Aggregators (1inch API)"
         ]
       },
       "business_logic": {
-        "problem": "Existen ineficiencias temporales en los tipos de interés y precios de activos entre protocolos DeFi (Aave, Compound, Curve) debido a la latencia de sincronización.",
-        "solution": "Ejecución de transacciones atómicas mediante contratos inteligentes que piden prestado, arbitran y devuelven el capital en un solo bloque de la blockchain.",
+        "problem": "El mercado de criptoactivos está fragmentado en cientos de protocolos (Aave, Compound, Uniswap). Las tasas de interés y los precios de los tokens varían entre ellos por milisegundos. Un humano no puede detectar que puede pedir prestado en el Protocolo A al 2% y prestarlo en el Protocolo B al 3% de forma instantánea. Además, para mover millones y sacar provecho de esas migajas, se necesita un capital enorme que la mayoría no tiene.",
+        "solution": "Uso de Flash Loans (préstamos instantáneos sin colateral que deben devolverse en la misma transacción). El bot escanea todas las 'pools' de liquidez. Cuando detecta un diferencial de precio o tasa, solicita un préstamo de, por ejemplo, 10 millones de dólares, ejecuta el arbitraje entre protocolos y devuelve el préstamo con interés, todo en 12 segundos. El beneficio neto (menos el gas) es para el dueño del bot, con riesgo cero de pérdida de capital propio.",
         "monetization": [
-          "Captura de Spread de tipos de interés (Arbitraje de Yield)",
-          "Arbitraje de precios entre DEXs (CEX-DEX Arbitrage)",
-          "Liquidaciones automáticas de préstamos infra-colateralizados"
+          "Arbitraje Directo: Captura del diferencial neto (Spread) en cada transacción exitosa.",
+          "Liquidación de Préstamos: Recibir recompensas por liquidar posiciones de usuarios que han caído por debajo de su ratio de colateral.",
+          "Arbitraje de Tasas: Mover liquidez entre protocolos de 'lending' para optimizar el rendimiento pasivo.",
+          "Front-running (Ético): Capturar ineficiencias de deslizamiento (slippage) en grandes operaciones de intercambio."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
           "task": "Mempool Monitoring",
-          "details": "Escaneo de transacciones pendientes en la red para detectar movimientos de liquidez que generen desequilibrios de precios antes de que se confirmen."
+          "details": "Vigilancia de las transacciones pendientes en la red Ethereum/L2 para detectar movimientos que causarán desequilibrios de precio."
         },
         {
           "step": 2,
-          "task": "Mathematical Validation",
-          "details": "Cálculo en milisegundos del beneficio neto restando: (Gas Fees + Flash Loan Fee + Slippage) vs (Arbitrage Profit)."
+          "task": "Flash Loan Trigger",
+          "details": "Llamada automática al contrato inteligente de Aave para obtener liquidez instantánea sin colateral."
         },
         {
           "step": 3,
-          "task": "Smart Contract Trigger",
-          "details": "Llamada al contrato personalizado que solicita el Flash Loan (ej. 10M USDT) y ejecuta la ruta de intercambio optimizada."
+          "task": "Cross-Protocol Swap",
+          "details": "Ejecución de la ruta de intercambio más rentable (ej. ETH -> USDC en Uniswap, USDC -> ETH en SushiSwap)."
         },
         {
           "step": 4,
-          "task": "Atomic Settlement",
-          "details": "Devolución automática del préstamo al pool de origen y transferencia del beneficio neto (Spread) a la Cold Wallet del propietario."
+          "task": "Repayment & Profit Capture",
+          "details": "Devolución del préstamo principal y transferencia del beneficio neto a la wallet de tesorería del sistema."
         }
       ],
       "data_schema_preview": {
-        "transaction_hash": "String",
-        "borrowed_amount": "Number",
-        "gas_price_gwei": "Number",
-        "net_profit_eth": "Number",
-        "execution_time_ms": "Number",
-        "status": "Enum ['success', 'reverted', 'failed_gas']"
+        "tx_hash": "String",
+        "loan_amount": "Number",
+        "gas_cost_eth": "Number",
+        "net_profit_usd": "Number",
+        "protocol_route": "Array"
       },
       "automation_config": {
-        "cron_schedule": "24/7 Real-time Monitoring",
+        "cron_schedule": "Real-time Event Listener",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
       "categories": [
+        "DeFi",
         "Fintech",
         "Arbitraje"
       ]
     },
     {
-      "id": "ghost-tenant-012",
-      "title": "The Ghost Tenant: Subdomain Takeover & SEO Arbitrage",
-      "slug": "ghost-tenant-subdomain-takeover",
-      "status": "active",
-      "priority": "high",
-      "description": "Sistema de detección de registros DNS huérfanos que apuntan a servicios externos (GitHub, S3, Azure) no reclamados, permitiendo la 'okupación' legal del subdominio para capturar tráfico residual y autoridad SEO.",
-      "viability_metrics": {
-        "implementation_ease": 7,
-        "success_probability": 5,
-        "resource_intensity": 2,
-        "time_to_mvp": 9,
-        "roi_potential": 8
-      },
-      "technical_stack": {
-        "framework": "Go / Python (Scanners)",
-        "database": "Redis",
-        "infrastructure": "GitHub Pages / Netlify / Vercel (Hosting gratuito)",
-        "apis_required": [
-          "SecurityTrails API (Histórico de subdominios)",
-          "Chaos (ProjectDiscovery) API",
-          "FullHunt.io (Surface monitoring)",
-          "Amazon S3 / Azure SDK (Para chequeo de buckets)"
-        ]
-      },
-      "business_logic": {
-        "problem": "Las corporaciones dejan registros CNAME apuntando a servicios de terceros que ya han dado de baja, creando un agujero de seguridad y una oportunidad de tráfico.",
-        "solution": "Reclamar el identificador en el servicio externo (ej. nombre de bucket o repo) para que el tráfico del subdominio corporativo resuelva en un servidor controlado por ti.",
-        "monetization": [
-          "SEO Ghosting (Backlinks de altísima autoridad hacia tus otros proyectos)",
-          "Marketing de Afiliación (Landing pages 'oficiales' con links de referido)",
-          "Publicidad Programática (Tráfico accidental de alta calidad)"
-        ]
-      },
-      "execution_pipeline": [
-        {
-          "step": 1,
-          "task": "Passive Reconnaissance",
-          "details": "Enumeración masiva de subdominios de empresas Fortune 500 usando bases de datos de DNS pasivo."
-        },
-        {
-          "step": 2,
-          "task": "Dangling DNS Detection",
-          "details": "Escaneo de respuestas HTTP/DNS buscando firmas de error específicas (ej: '404 - NoSuchBucket' en S3 o 'There isn't a GitHub Pages site here')."
-        },
-        {
-          "step": 3,
-          "task": "Service Claiming",
-          "details": "Automatización del despliegue en el proveedor (GitHub/Vercel) para 'conectar' el subdominio al instante antes de que sea detectado."
-        },
-        {
-          "step": 4,
-          "task": "Content Ghosting",
-          "details": "Inyección de contenido estático optimizado para SEO o redirecciones de afiliados para monetizar el tráfico residual."
-        }
-      ],
-      "data_schema_preview": {
-        "target_subdomain": "String",
-        "parent_domain_authority": "Number (0-100)",
-        "vulnerability_type": "Enum ['CNAME', 'S3', 'Azure', 'GitHub']",
-        "detected_at": "Timestamp",
-        "monetization_active": "Boolean"
-      },
-      "automation_config": {
-        "cron_schedule": "0 */6 * * *",
-        "auto_notify_telegram": true,
-        "auto_publish_to_marketplace": false
-      },
-      "categories": [
-        "Ciberseguridad",
-        "Infraestructura"
-      ]
-    },
-    {
-      "id": "silent-router-013",
+      "id": "silent-router-012",
       "title": "The Silent Router: Arbitraje de Webhooks Huérfanos",
       "slug": "silent-router-webhook-recovery",
       "status": "active",
       "priority": "high",
-      "description": "Sistema de interceptación y re-enrutamiento de señales de pago (Webhooks) perdidas debido a errores 404 o DNS mal configurados en sistemas legacy, monetizando la recuperación de suscripciones automáticas.",
+      "description": "Escuchador de tráfico huérfano que captura señales de pago perdidas (Webhooks) de empresas que han cambiado de servidor o DNS.",
       "viability_metrics": {
         "implementation_ease": 3,
         "success_probability": 6,
@@ -898,292 +834,291 @@
         "roi_potential": 9
       },
       "technical_stack": {
-        "framework": "Go (para concurrencia masiva) / Node.js",
-        "database": "Redis (Cola de mensajes)",
-        "infrastructure": "Serverless Functions (AWS Lambda / Edge Runtime)",
+        "framework": "Go / Node.js",
+        "infrastructure": "Serverless Edge Functions (Cloudflare)",
         "apis_required": [
-          "Stripe/Paddle Webhook Signatures (Validación)",
-          "ChurnZero API",
-          "Postmark/SendGrid (Notificaciones de recuperación)",
-          "Cloudflare Workers (Interceptación en el Edge)"
+          "Stripe/PayPal Webhook Signatures",
+          "ChurnZero / Paddle API",
+          "Passive DNS Databases",
+          "SendGrid API"
         ]
       },
       "business_logic": {
-        "problem": "Las empresas pierden entre un 3% y 5% de su facturación recurrente porque sus servidores no reciben correctamente la confirmación de pago de las pasarelas, provocando cancelaciones erróneas.",
-        "solution": "Actuar como un nodo de redundancia que captura estas señales perdidas mediante la reclamación de subdominios DNS abandonados o rutas de API huérfanas.",
+        "problem": "Internet está lleno de 'cables rotos'. Miles de empresas de suscripción (SaaS, revistas, servicios legacy) cambian de web o servidor y olvidan actualizar la URL de recepción de pagos (Webhook) en su pasarela (Stripe, PayPal). El cliente paga, la pasarela envía la señal de éxito, pero esta choca contra un error 404. El sistema de la empresa no se entera del pago y cancela la suscripción del cliente. La empresa pierde un 3-5% de su facturación sin saber por qué.",
+        "solution": "Un 'repetidor' de red. El bot escanea logs de DNS y subdominios abandonados que antes apuntaban a sistemas de pago. Tú reclamas esos subdominios en servicios de hosting gratuitos o configuras un 'catch-all'. Cuando recibes el Webhook huérfano, validas criptográficamente que el pago es real y utilizas una plataforma de 'Revenue Recovery' para avisar a la empresa: 'He salvado este pago de 500€ que estabas perdiendo'.",
         "monetization": [
-          "Bounty por suscripción salvada (vía plataformas de Revenue Recovery)",
-          "SaaS de 'Integridad de Pagos' para empresas Enterprise",
-          "Fee por transacción recuperada (Revenue Share)"
+          "Bounty por Recuperación: Cobro de un fijo (2€-5€) por cada transacción 'salvada' y re-enviada correctamente.",
+          "Revenue Share: Porcentaje (10%) del ingreso recuperado de suscripciones que iban a ser canceladas por error técnico.",
+          "SaaS de Integridad: Venta de un panel de monitoreo a empresas Enterprise para asegurar que sus hooks nunca mueran.",
+          "Partnership con Pasarelas: Recompensa por parte de Stripe/Paddle por mejorar la tasa de éxito de sus clientes."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Endpoint Latency & Error Scoping",
-          "details": "Escaneo de subdominios de pago conocidos buscando respuestas 404 o errores de resolución DNS en rutas de callback estándar."
+          "task": "Dangling DNS Detection",
+          "details": "Búsqueda de subdominios del tipo 'hooks.empresa.com' que apuntan a servicios externos no reclamados o que devuelven errores 404."
         },
         {
           "step": 2,
-          "task": "Dangling Hook Capture",
-          "details": "Reclamación del subdominio en el proveedor original o configuración de un proxy inverso para recibir los paquetes HTTP huérfanos."
+          "task": "Webhook Catching",
+          "details": "Despliegue de una función en el Edge que actúe como receptor universal, capturando los payloads JSON de las pasarelas de pago."
         },
         {
           "step": 3,
-          "task": "Signature & Payload Validation",
-          "details": "Verificación criptográfica (HMAC) de que el Webhook es legítimo y proviene de la pasarela de pago (Stripe, PayPal, etc.) para evitar inyecciones falsas."
+          "task": "Validation & Parsing",
+          "details": "Verificación de la firma HMAC para asegurar que el mensaje es legítimo y extracción del ID de transacción y cliente."
         },
         {
           "step": 4,
-          "task": "Revenue Recovery Trigger",
-          "details": "Reenvío de la señal de éxito al sistema de la empresa mediante una ruta alternativa o reporte a la plataforma de recuperación de ingresos para procesar la comisión."
+          "task": "Recovery Notification",
+          "details": "Envío de la señal de éxito al sistema de la empresa a través de una ruta alternativa o contacto con su equipo técnico para la re-conexión."
         }
       ],
       "data_schema_preview": {
         "webhook_source": "String",
         "transaction_id": "String",
-        "recovery_status": "Enum ['captured', 'validated', 'rerouted', 'collected']",
+        "recovery_status": "Enum ['captured', 'rerouted', 'collected']",
         "estimated_revenue_saved": "Number",
         "commission_earned": "Number"
       },
       "automation_config": {
-        "cron_schedule": "Real-time Monitoring (Websockets)",
+        "cron_schedule": "Real-time Monitoring",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
       "categories": [
-        "Infraestructura",
+        "DevOps",
+        "Arbitraje",
         "Fintech"
       ]
     },
     {
-      "id": "universal-endpoint-014",
-      "title": "The Universal Endpoint: Arbitraje de Micro-Lógica",
-      "slug": "universal-endpoint-logic-bridge",
+      "id": "universal-endpoint-013",
+      "title": "The Universal Endpoint: Orquestador de Micro-Lógica",
+      "slug": "universal-api-proxy-engine",
       "status": "active",
       "priority": "normal",
-      "description": "Despliegue de scripts de alta especificidad (Puppeteer/Playwright) en marketplaces de automatización para capturar royalties por ejecución mediante la resolución de cuellos de botella técnicos sin API oficial.",
+      "description": "Capa de abstracción que unifica múltiples APIs de IA y servicios cloud en un solo endpoint inteligente con gestión de cuotas y costes.",
       "viability_metrics": {
-        "implementation_ease": 6,
+        "implementation_ease": 7,
         "success_probability": 8,
-        "resource_intensity": 2,
+        "resource_intensity": 3,
         "time_to_mvp": 9,
         "roi_potential": 7
       },
       "technical_stack": {
-        "framework": "Node.js (Playwright) / TypeScript",
-        "database": "NoSQL (Logging de ejecuciones)",
-        "infrastructure": "AWS Lambda / Google Cloud Functions (Free Tier)",
+        "framework": "Next.js / Go",
+        "database": "Redis",
         "apis_required": [
-          "Pipedream Component API",
-          "n8n Node Dev Kit",
-          "Zapier CLI",
-          "Chainlink / Witnet SDK (para la variante de Oráculos)"
+          "OpenAI / Anthropic / Mistral / Google Gemini",
+          "Stripe API (Billing)",
+          "Cloudflare Workers"
         ]
       },
       "business_logic": {
-        "problem": "Las plataformas de automatización no-code fallan cuando no existe una API oficial o cuando se requiere interactuar con el DOM de una web compleja.",
-        "solution": "Creación de 'piezas de motor' (nodos) que ejecutan lógica de scraping o interacción web en la nube y devuelven datos limpios a través de marketplaces de terceros.",
+        "problem": "Los desarrolladores y empresas pierden semanas integrando cada nueva API de IA que sale al mercado. Además, gestionar las keys, los límites de tasa (rate-limits) y el gasto disparado entre diferentes proveedores es una pesadilla logística. No hay una forma sencilla de cambiar de modelo (ej. de GPT-4o a Claude 3.5) sin tocar el código de producción, ni de revender acceso controlado a clientes finales.",
+        "solution": "Un proxy inteligente que ofrece una única API compatible con el formato estándar de OpenAI. Por detrás, el motor decide en milisegundos qué proveedor usar basándose en disponibilidad, latencia y coste actual. Permite crear 'sub-keys' para clientes, aplicar márgenes de beneficio sobre el uso de tokens y actuar como un interruptor centralizado (kill-switch) para todo el ecosistema de IA de una empresa.",
         "monetization": [
-          "Royalties por ejecución en marketplaces (Pipedream/Make)",
-          "Suscripción 'Pay-per-Node' para integraciones Enterprise",
-          "Recompensas por verificación de datos en redes de Oráculos (Oracle Fees)"
+          "Arbitraje de Tokens: Compra de capacidad por volumen y venta al por menor con un margen del 20-30%.",
+          "SaaS de Gobernanza: Cuota por el panel de control y analítica de uso para empresas con múltiples departamentos.",
+          "Resiliencia como Servicio: Garantizar que la app del cliente nunca caiga redirigiendo el tráfico a modelos alternativos automáticamente.",
+          "Venta de Micro-servicios: Encapsular prompts complejos (ej. 'Analizador Legal') y venderlos como endpoints específicos."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Bottleneck Identification",
-          "details": "Investigación en foros de Zapier/n8n para detectar tareas recurrentes que los usuarios no pueden resolver (ej: extraer datos de portales gubernamentales sin API)."
+          "task": "Endpoint Mapping",
+          "details": "Desarrollo de una interfaz unificada que traduzca las peticiones entrantes al formato específico de cada proveedor de IA."
         },
         {
           "step": 2,
-          "task": "Headless Script Development",
-          "details": "Programación de un script ultra-robusto con Playwright que gestione proxies, rotación de User-Agents y resolución de captchas de forma invisible."
+          "task": "Dynamic Routing Logic",
+          "details": "Implementación de reglas de balanceo: 'Si latencia > 500ms en OpenAI, redirigir a Anthropic'."
         },
         {
           "step": 3,
-          "task": "Marketplace Wrapping",
-          "details": "Empaquetado del script como un componente oficial de Pipedream o un nodo de n8n, cumpliendo con los estándares de entrada/salida de la plataforma."
+          "task": "Metering & Billing System",
+          "details": "Contabilización exacta de tokens por usuario en Redis y generación de facturas automáticas vía Stripe."
         },
         {
           "step": 4,
-          "task": "Passive Execution Scaling",
-          "details": "Publicación en el marketplace y monitoreo de la tasa de éxito; el crecimiento es orgánico basado en la búsqueda interna de la plataforma."
+          "task": "Cache Layer Deployment",
+          "details": "Almacenamiento de respuestas comunes para ahorrar costes y ofrecer respuestas instantáneas a peticiones idénticas."
         }
       ],
       "data_schema_preview": {
-        "execution_id": "String",
-        "payload_processed": "Object",
-        "gas_cost_lambda": "Number",
-        "royalty_per_call": "Number",
-        "total_monthly_executions": "Number"
+        "unified_key_id": "String",
+        "active_provider": "Enum ['OpenAI', 'Anthropic', 'Gemini']",
+        "token_usage_total": "Number",
+        "profit_margin_generated": "Number",
+        "latency_ms": "Number"
       },
       "automation_config": {
-        "cron_schedule": "Event-driven (Webhook based)",
+        "cron_schedule": "Real-time routing",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
       "categories": [
-        "Infraestructura",
-        "Creatividad"
+        "DevOps",
+        "Fintech",
+        "AI Infrastructure"
       ]
     },
     {
-      "id": "ghost-asset-synthesizer-015",
-      "title": "The Ghost Asset Synthesizer: Arbitraje de Telemetría de CDNs",
-      "slug": "ghost-asset-cdn-sink",
+      "id": "ghost-asset-synthesizer-014",
+      "title": "Ghost Asset Synthesizer: Telemetría de CDNs",
+      "slug": "cdn-traffic-arbitrage",
       "status": "active",
-      "priority": "high",
-      "description": "Sistema de captura de tráfico residual de máquinas (M2M) mediante la ocupación de subdominios de descarga huérfanos en CDNs, monetizando los metadatos de telemetría a través de plataformas de Threat Intelligence.",
+      "priority": "normal",
+      "description": "Sistema de detección de activos estáticos (imágenes/JS) en CDNs públicas que generan tráfico huérfano para su monetización o redirección.",
       "viability_metrics": {
-        "implementation_ease": 4,
-        "success_probability": 7,
-        "resource_intensity": 3,
+        "implementation_ease": 5,
+        "success_probability": 6,
+        "resource_intensity": 5,
         "time_to_mvp": 6,
-        "roi_potential": 9
+        "roi_potential": 8
       },
       "technical_stack": {
-        "framework": "FastAPI (para alta concurrencia) / Python",
-        "database": "ClickHouse (Optimizado para Logs)",
-        "infrastructure": "Cloudflare Workers / Edge Functions (Tier Gratuito)",
+        "framework": "Node.js",
+        "database": "ClickHouse (Big Data)",
         "apis_required": [
-          "Project Sonar / BinaryEdge API (Passive DNS)",
-          "CT Logs Scraper (Transparency Reports)",
-          "GreyNoise / Censys Partner API (Monetización de Datos)",
-          "MaxMind GeoIP API"
+          "Cloudflare Analytics API",
+          "Common Crawl Data",
+          "Domain Expiry APIs"
         ]
       },
       "business_logic": {
-        "problem": "Millones de sistemas legacy intentan descargar recursos de URLs que ya no existen, generando un ruido de red que las empresas ignoran pero que contiene datos críticos sobre infraestructura global.",
-        "solution": "Actuar como un 'Sumidero de Datos' (Data Sink) reclamando subdominios de CDNs abandonados para recolectar y anonimizar los logs de conexión de estos dispositivos.",
+        "problem": "Miles de sitios web cargan librerías o imágenes desde dominios que ya han caducado o CDNs mal configuradas. Esto genera millones de peticiones diarias que 'mueren' en errores 404. Ese tráfico es oro puro: son usuarios reales ejecutando peticiones desde sitios activos. Es una audiencia cautiva que nadie está reclamando porque el 'cable' técnico está suelto.",
+        "solution": "Un 'recolector de tráfico fantasma'. El bot identifica dominios antiguos que antes servían activos populares (ej. un plugin de WordPress descatalogado) y los reclama. Al levantar de nuevo el servidor, el bot empieza a recibir todo ese tráfico de golpe. En lugar de dar error, sirve el activo solicitado pero incluye telemetría o redirecciones éticas para monetizar ese volumen masivo de peticiones mediante publicidad programática o CPA.",
         "monetization": [
-          "Venta de feeds de telemetría a empresas de Ciberseguridad",
-          "Identificación de vulnerabilidades en sistemas industriales para programas de Bounties",
-          "Reportes de cuotas de mercado de hardware/software real-time"
+          "Inyección de CPA: Redirigir el tráfico de error hacia ofertas de afiliados relacionadas con la temática del activo.",
+          "Arbitraje de Datos: Venta de informes de telemetría sobre qué sitios web siguen usando tecnologías obsoletas.",
+          "Venta de Dominios de Tráfico: Revender los dominios capturados a agencias de SEO por su alta autoridad y volumen de visitas.",
+          "Publicidad en Activos: Servir scripts optimizados que incluyan micro-anuncios no intrusivos."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Orphaned Subdomain Discovery",
-          "details": "Cruce de registros CNAME de CDNs (Akamai, Cloudfront) con certificados SSL expirados o fallos de resolución 404 en subdominios de tipo 'assets', 'dl' o 'update'."
+          "task": "Orphan Resource Detection",
+          "details": "Escaneo de Common Crawl para encontrar URLs de scripts o imágenes recurrentes que devuelven errores de DNS."
         },
         {
           "step": 2,
-          "task": "Edge Claiming & Sinkhole",
-          "details": "Despliegue de una función en el Edge (Cloudflare/Vercel) que responda con el código de estado esperado (200 OK) y un payload mínimo para mantener la conexión activa."
+          "task": "Domain Sniping",
+          "details": "Automatización de la compra del dominio en cuanto queda libre (backorder) si el volumen de peticiones detectado es >100k/mes."
         },
         {
           "step": 3,
-          "task": "Metadata Extraction",
-          "details": "Parseo masivo de User-Agents, cabeceras personalizadas y patrones de request para identificar versiones de firmware, modelos de dispositivos y geolocalización."
+          "task": "Asset Restoration",
+          "details": "Re-servir el archivo original para no romper los sitios web clientes, pero insertando el pixel de seguimiento o lógica de arbitraje."
         },
         {
           "step": 4,
-          "task": "Telemetry Arbitrage",
-          "details": "Agregación de datos y envío automatizado a APIs de socios de inteligencia de amenazas para recibir pagos por volumen de eventos únicos detectados."
+          "task": "Traffic Monetization",
+          "details": "Distribución del tráfico hacia ofertas de conversión según el contexto del sitio de origen (Referrer)."
         }
       ],
       "data_schema_preview": {
-        "source_ip": "String (Hashed)",
-        "user_agent_raw": "String",
-        "identified_device_type": "String",
-        "request_path": "String",
-        "events_per_minute": "Number",
-        "estimated_data_value": "Number (USD)"
+        "source_domain": "String",
+        "requests_per_day": "Number",
+        "asset_type": "Enum ['JS', 'Image', 'CSS']",
+        "monetization_yield": "Number",
+        "status": "Enum ['monitoring', 'captured', 'active']"
       },
       "automation_config": {
-        "cron_schedule": "0 */12 * * * (Discovery scans)",
+        "cron_schedule": "0 */6 * * *",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
       "categories": [
-        "Ciberseguridad",
-        "Infraestructura"
+        "Arbitraje",
+        "AdTech",
+        "DevOps"
       ]
     },
     {
-      "id": "kdp-asset-factory-016",
-      "title": "KDP Factory: Generador Automático de Libros Low-Content",
-      "slug": "kdp-low-content-automation-engine",
+      "id": "kdp-factory-015",
+      "title": "KDP Factory: Generador de Activos IA para Amazon",
+      "slug": "amazon-kdp-ai-automation",
       "status": "active",
-      "priority": "normal",
-      "description": "Sistema de procesamiento por lotes de activos generados por IA (imágenes, relatos, mandalas) para la creación automática de archivos PDF listos para imprenta (Amazon KDP) con maquetación profesional y gestión de metadatos.",
+      "priority": "high",
+      "description": "Pipeline de creación automática de libros (mandalas, relatos, diarios) maquetados profesionalmente para su venta directa en Amazon KDP.",
       "viability_metrics": {
         "implementation_ease": 8,
         "success_probability": 7,
         "resource_intensity": 3,
         "time_to_mvp": 8,
-        "roi_potential": 7
+        "roi_potential": 8
       },
       "technical_stack": {
-        "framework": "Python (Pillow / ReportLab para PDFs)",
-        "database": "SQLite (Catálogo de libros y ventas)",
-        "frontend": "Next.js (Dashboard de gestión)",
+        "framework": "Python (Pillow / ReportLab)",
+        "database": "SQLite",
         "apis_required": [
-          "OpenAI API (DALL-E 3 / GPT-4o)",
-          "Midjourney API (vía wrappers)",
-          "Keepa API (para búsqueda de nichos rentables)",
-          "Playwright (para automatización de subida opcional)"
+          "OpenAI (DALL-E 3 / GPT-4o)",
+          "Midjourney API",
+          "Keepa API (Market Research)"
         ]
       },
       "business_logic": {
-        "problem": "Crear libros de colorear o de relatos cortos manualmente es lento. La clave de Amazon KDP es el volumen y la detección de nichos (micro-nichos) antes que la competencia.",
-        "solution": "Un 'pipeline' que toma imágenes en bruto, las escala, les añade márgenes de seguridad (bleed), genera páginas de título/créditos y exporta un PDF perfecto según los estándares de Amazon.",
+        "problem": "Publicar en Amazon KDP es un juego de volumen y nichos. Crear un libro de colorear de mandalas o un libro de micro-relatos lleva días de trabajo manual: generar imágenes, ajustar márgenes (bleed), crear portadas que encajen con el lomo (spine) y subir los metadatos. La mayoría de los autores fallan porque no pueden publicar 50 libros al mes para testear qué nicho funciona.",
+        "solution": "Una fábrica de libros digital. Tú le das un título y un nicho (ej. 'Gatos Astronautas para niños'). El bot genera 100 imágenes consistentes, las escala a 300 DPI, calcula los márgenes de seguridad de Amazon, añade páginas de créditos y genera un PDF de interior y una portada milimétrica. El sistema monitoriza qué nichos están 'hot' en Amazon mediante Keepa y sugiere la creación de nuevos títulos automáticamente.",
         "monetization": [
-          "Royalties por venta directa en Amazon KDP (Ingresos pasivos)",
-          "Venta de archivos digitales (Etsy/Gumroad)",
-          "Publicación multiplataforma (IngramSpark / Lulu)"
+          "Royalties Directos: Ingresos pasivos por cada venta de libro físico impreso por Amazon.",
+          "Venta de PDF (Etsy): Reutilizar los mismos archivos para vender la versión imprimible en mercados digitales.",
+          "Publicación Multi-idioma: Traducir automáticamente los relatos para atacar mercados en DE, FR, JP y USA.",
+          "SaaS B2B: Permitir que otros usuarios usen tu 'fábrica' a cambio de una suscripción o reparto de beneficios."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Niche & Keyword Research",
-          "details": "Escaneo automático de Amazon para detectar términos de búsqueda con alta demanda y baja competencia (ej: 'Mandalas de gatos steampunk para adultos')."
+          "task": "Niche Trend Analysis",
+          "details": "Escaneo de categorías de Amazon para detectar libros con bajo BSR (Best Seller Rank) y poca competencia en reseñas."
         },
         {
           "step": 2,
           "task": "AI Asset Generation",
-          "details": "Generación masiva de imágenes (mandalas/dibujos) o texto (micro-relatos) usando prompts optimizados para blanco y negro y alta resolución."
+          "details": "Generación por lotes de imágenes (mandalas/ilustraciones) con prompts optimizados para impresión en blanco y negro."
         },
         {
           "step": 3,
           "task": "Automated Typesetting",
-          "details": "Procesamiento de imágenes: centrado, escalado a 300 DPI, inserción de páginas en blanco (para evitar traspaso de tinta) y generación de PDF con el tamaño de trim exacto."
+          "details": "Ensamblado de PDF usando ReportLab, aplicando márgenes de 0.125' y generando el lomo según el número de páginas."
         },
         {
           "step": 4,
-          "task": "Listing & Metadata Prep",
-          "details": "Generación automática de títulos, descripciones optimizadas para SEO (A+ Content) y categorías sugeridas para maximizar la visibilidad."
+          "task": "Metadata & Listing Prep",
+          "details": "Generación de descripción SEO, palabras clave y categorías sugeridas para el proceso de subida manual o semi-automática."
         }
       ],
       "data_schema_preview": {
-        "book_id": "String",
-        "format": "Enum ['6x9', '8.5x11']",
+        "book_title": "String",
         "page_count": "Number",
-        "keywords": "Array",
-        "amazon_asin": "String (nullable)",
-        "sales_count": "Number"
+        "trim_size": "String (e.g., 8.5x11)",
+        "amazon_status": "Enum ['draft', 'published', 'sales_detected']",
+        "roi_per_unit": "Number"
       },
       "automation_config": {
-        "cron_schedule": "Weekly (Niche Analysis)",
+        "cron_schedule": "Weekly (New Niche Discovery)",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
       "categories": [
-        "Creatividad",
-        "Arbitraje"
+        "Content Automation",
+        "E-commerce",
+        "AI Generative"
       ]
     },
     {
-      "id": "cloud-credit-arbiter-017",
-      "title": "Cloud Credit Arbiter: Arbitraje de Capacidad Computacional",
+      "id": "cloud-credit-arbiter-016",
+      "title": "Cloud Credit Arbiter: Arbitraje de Cómputo",
       "slug": "cloud-credit-resale-engine",
       "status": "active",
       "priority": "normal",
-      "description": "Sistema de agregación de créditos cloud infrautilizados y cuotas de API sobrantes para la reventa de capacidad de cómputo/IA a precios inferiores a los de mercado oficial.",
+      "description": "Sistema de gestión y reventa de créditos cloud infrautilizados mediante un proxy de API para desarrolladores.",
       "viability_metrics": {
         "implementation_ease": 5,
         "success_probability": 7,
@@ -1192,51 +1127,51 @@
         "roi_potential": 8
       },
       "technical_stack": {
-        "framework": "Go (Proxy de alta velocidad)",
-        "database": "Redis (Gestión de cuotas en tiempo real)",
-        "infrastructure": "Docker / Kubernetes",
+        "framework": "Go (Proxy)",
+        "database": "Redis",
         "apis_required": [
-          "OpenAI / Anthropic API (Endpoints)",
-          "AWS / GCP Billing API",
-          "Stripe (para el cobro del uso del proxy)"
+          "AWS / GCP / Azure Billing APIs",
+          "OpenAI Management API",
+          "Stripe"
         ]
       },
       "business_logic": {
-        "problem": "El 30% de los créditos cloud gratuitos caducan sin ser usados, mientras que desarrolladores independientes buscan acceso barato a modelos de IA potentes.",
-        "solution": "Un túnel (Proxy) que distribuye las peticiones entre múltiples cuentas con saldos promocionales, ofreciendo un precio unificado y ultra-competitivo.",
+        "problem": "Las grandes nubes regalan miles de dólares en créditos a startups que a menudo no se consumen y caducan a los 12 meses. Al mismo tiempo, desarrolladores independientes o proyectos pequeños necesitan potencia de cálculo o tokens de IA pero no pueden pagar los precios oficiales. Existe un mercado secundario de 'créditos huérfanos' que nadie está conectando de forma técnica y segura.",
+        "solution": "Un 'pool' de capacidad de cómputo. El bot permite a poseedores de créditos cloud 'alquilar' su acceso a través de tu proxy. Tú vendes el acceso a la API un 40% más barato que el precio oficial de mercado. El comprador ahorra, el dueño del crédito monetiza algo que iba a perder, y tú te quedas con el diferencial del arbitraje sin tener infraestructura propia.",
         "monetization": [
-          "Arbitraje de precio por token (Buy credit at 10%, sell at 50%)",
-          "Suscripción a API 'Low-Cost' para desarrolladores",
-          "Venta de potencia de minería/renderizado distribuida"
+          "Margen de Arbitraje: Comprar crédito al 20% de su valor y venderlo al 60%.",
+          "Fee de Gestión: Cobro por la seguridad y el balanceo de carga entre múltiples cuentas origen.",
+          "Venta de Instancias 'Spot': Reventa de capacidad de procesamiento para minería o renderizado a bajo coste.",
+          "SaaS de Optimización: Herramienta para empresas que quieren donar/vender su exceso de crédito de forma legal."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Credit Sourcing",
-          "details": "Identificación de cuentas con créditos promocionales activos mediante scripts de auditoría de facturación automática."
+          "task": "Credit Source Auditing",
+          "details": "Verificación automática del saldo y fecha de caducidad de las cuentas cloud conectadas al sistema."
         },
         {
           "step": 2,
           "task": "Proxy Tunneling",
-          "details": "Configuración de un balanceador de carga que rota las API Keys para no exceder los límites de rate-limit de las cuentas origen."
+          "details": "Configuración de un túnel seguro que oculte las API Keys originales y gestione los rate-limits de forma agregada."
         },
         {
           "step": 3,
-          "task": "Endpoint Unification",
-          "details": "Exposición de una única URL de API que simula el formato oficial (ej. compatible con la librería de OpenAI) pero redirige al pool de créditos baratos."
+          "task": "Marketplace Exposure",
+          "details": "Publicación del endpoint 'Low-Cost' en foros de desarrolladores y comunidades de IA."
         },
         {
           "step": 4,
-          "task": "Usage Billing",
-          "details": "Sistema de medición (metering) para cobrar al usuario final solo por lo que consume, manteniendo un margen de beneficio constante."
+          "task": "Settlement Automation",
+          "details": "Reparto automático de beneficios entre el proveedor del crédito y la plataforma tras confirmar el consumo real."
         }
       ],
       "data_schema_preview": {
-        "pool_total_credits": "Number",
-        "avg_cost_reduction": "Percentage",
+        "pool_capacity_usd": "Number",
         "active_proxies": "Number",
-        "margin_per_request": "Number",
+        "avg_discount_offered": "Percentage",
+        "margin_net_usd": "Number",
         "expiry_watchdog": "Timestamp"
       },
       "automation_config": {
@@ -1245,8 +1180,83 @@
         "auto_publish_to_marketplace": true
       },
       "categories": [
-        "Infraestructura",
-        "Arbitraje"
+        "Cloud Infrastructure",
+        "Arbitraje",
+        "Fintech"
+      ]
+    },
+    {
+      "id": "orphan-oracle-017",
+      "title": "The Orphan Oracle: Arbitraje de Activos Digitales Olvidados",
+      "slug": "digital-asset-orphan-oracle",
+      "status": "active",
+      "priority": "high",
+      "description": "Detector de activos digitales con valor intrínseco (dominios con tráfico, nombres de usuario, apps abandonadas) para su recuperación y reventa.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 7,
+        "resource_intensity": 3,
+        "time_to_mvp": 9,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Next.js / Node.js",
+        "database": "PostgreSQL",
+        "apis_required": [
+          "Whois API",
+          "App Store / Play Store Scraper",
+          "Social Media Handle Checkers",
+          "SEMrush / Ahrefs API"
+        ]
+      },
+      "business_logic": {
+        "problem": "Cada día caducan activos digitales que tienen un valor de mercado latente: dominios con miles de backlinks, nombres de usuario de redes sociales ('handles') de 3 letras que valen miles de dólares, o aplicaciones móviles con 50.000 usuarios activos que el desarrollador ha dejado de actualizar. Es un cementerio de valor digital que se puede 'resucitar' con una mínima intervención técnica.",
+        "solution": "Un oráculo que vigila la muerte de activos. El bot monitoriza listas de dominios a punto de expirar con métricas SEO altas, escanea apps que llevan >2 años sin actualizar pero mantienen buen ranking, y rastrea cuentas de redes sociales de marcas extintas. Cuando el activo queda libre o el dueño es localizable tras años de inactividad, el sistema dispara una oferta de compra o ejecuta el registro instantáneo.",
+        "monetization": [
+          "Reventa de Activos (Flipping): Compra por 10$ (registro de dominio) y venta por 2.000$ en marketplaces especializados.",
+          "App Acquisition: Comprar apps abandonadas, insertar un nuevo SDK de anuncios y monetizar la base de usuarios existente.",
+          "Lead Generation: Usar dominios con tráfico temático para capturar leads y venderlos a empresas del sector.",
+          "Renta de Identidad Digital: Alquiler de nombres de usuario premium para marcas o influencers."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Asset Expiry Monitoring",
+          "details": "Vigilancia de listas de dominios 'Pending Delete' y apps en estado 'Zombie' (sin updates pero con tráfico)."
+        },
+        {
+          "step": 2,
+          "task": "Value Appraisal",
+          "details": "Cálculo automático del valor basado en: Tráfico orgánico, Autoridad de dominio (DR) y escasez del nombre."
+        },
+        {
+          "step": 3,
+          "task": "Automated Sniping",
+          "details": "Ejecución de scripts de registro ultrarrápido en el milisegundo en que el activo queda disponible."
+        },
+        {
+          "step": 4,
+          "task": "Outreach & Exit",
+          "details": "Contacto automático con compradores potenciales (competidores o inversores) para cerrar la venta del activo capturado."
+        }
+      ],
+      "data_schema_preview": {
+        "asset_id": "String",
+        "traffic_est_monthly": "Number",
+        "acquisition_cost": "Number",
+        "est_resale_value": "Number",
+        "status": "Enum ['tracking', 'sniped', 'sold']"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */1 * * *",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": true
+      },
+      "categories": [
+        "Arbitraje",
+        "Digital Assets",
+        "SEO"
       ]
     }
   ]
