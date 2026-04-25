@@ -2,6 +2,9 @@ import { io, type Socket } from "socket.io-client";
 import type { Item } from "@/store/items-slice";
 
 type ServerToClientEvents = {
+  "db:status": (payload: {
+    status: "unknown" | "connected" | "disconnected" | "connecting" | "disconnecting";
+  }) => void;
   "items:created": (payload: { item: Item }) => void;
   "tasks:enqueued": (payload: { name: string }) => void;
   "agenda:start": (payload: { name: string; id?: unknown }) => void;
@@ -19,4 +22,3 @@ export function createApiSocket(apiUrl: string): ApiSocket {
     transports: ["websocket"],
   });
 }
-
