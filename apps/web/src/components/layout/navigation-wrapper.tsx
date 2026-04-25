@@ -20,7 +20,7 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
     return (
         <div className="flex min-h-screen bg-black text-foreground overflow-hidden">
             {/* Sidebar - Desktop */}
-            <aside className="hidden md:flex flex-col w-64 glass border-r-0 z-40 relative">
+            <aside className="hidden md:flex flex-col w-56 glass border-r-0 z-40 relative">
                 <div className="p-6">
                     <div className="flex items-center gap-3 px-2">
                         <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center font-bold text-lg">e</div>
@@ -34,31 +34,20 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
                     <NavItem href="/dashboard" icon={<LayoutGrid size={20} />} label="Stats" />
                     <NavItem href="/ajustes" icon={<Settings size={20} />} label="Ajustes" />
 
-                    <div className="pt-8 flex justify-start pl-2">
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => setIsModalOpen(true)}
-                            className="rounded-xl flex items-center justify-start gap-2 font-bold uppercase tracking-wide group"
-                        >
-                            <div className="bg-white/20 rounded-[6px] p-0.5 group-hover:rotate-90 transition-transform">
-                                <Plus size={14} />
-                            </div>
-                            Nueva Tarea
-                        </Button>
-                    </div>
                 </nav>
 
-                <div className="p-4 border-t border-white/5">
-                    <div className="flex items-center gap-3 px-3 py-3 rounded-2xl hover:bg-white/5 transition-colors cursor-pointer">
-                        <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center border border-white/10">
-                            <User size={20} className="text-neutral-400" />
+                <div className="p-4 border-t border-white/5 pb-6 flex justify-center">
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setIsModalOpen(true)}
+                        className="rounded-xl flex items-center justify-center gap-2 font-bold uppercase tracking-wide group w-full"
+                    >
+                        <div className="bg-white/20 rounded-[6px] p-0.5 group-hover:rotate-90 transition-transform">
+                            <Plus size={14} />
                         </div>
-                        <div className="flex flex-col">
-                            <span className="text-sm font-semibold">Emilio</span>
-                            <span className="text-[11px] text-neutral-500">Plan Premium</span>
-                        </div>
-                    </div>
+                        Nueva Tarea
+                    </Button>
                 </div>
             </aside>
 
