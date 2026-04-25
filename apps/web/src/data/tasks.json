@@ -1258,6 +1258,148 @@
         "Digital Assets",
         "SEO"
       ]
+    },
+    {
+      "id": "link-rot-broker-018",
+      "title": "The Link Rot Broker: Rescate de Tráfico Perdido",
+      "slug": "link-rot-brokerage",
+      "status": "Prototipo",
+      "priority": "high",
+      "description": "Detección de enlaces muertos (404) en las descripciones de videos virales antiguos de YouTube que aún reciben tráfico recurrente.",
+      "viability_metrics": {
+        "implementation_ease": 9,
+        "success_probability": 8,
+        "resource_intensity": 1,
+        "time_to_mvp": 10,
+        "roi_potential": 8
+      },
+      "technical_stack": {
+        "framework": "Python (YT-DLP + Requests)",
+        "database": "SQLite",
+        "apis_required": [
+          "YouTube Data API v3",
+          "Hunter.io API (para localizar correos)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Miles de videos 'evergreen' con millones de visitas redirigen a tiendas cerradas o dominios expirados, perdiendo miles de euros en comisiones de afiliados cada mes.",
+        "solution": "Un sniper que audita automáticamente descripciones de videos populares buscando códigos de estado 404 o dominios en venta para sustituirlos por enlaces activos mediante acuerdos con los creadores.",
+        "monetization": [
+          "Revenue Share: Reparto 50/50 de las comisiones recuperadas con el YouTuber.",
+          "Arbitraje de Dominios: Registro de dominios expirados que aún reciben tráfico desde YouTube para redirigirlos a ofertas CPA.",
+          "SaaS de Mantenimiento: Cuota mensual a grandes canales por 'limpiar' y optimizar sus enlaces de forma recurrente."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Niche Video Audit",
+          "details": "Escaneo de canales de nicho (Tecnología, Cocina, Reviews) filtrando videos de hace +2 años con crecimiento de visitas estable."
+        },
+        {
+          "step": 2,
+          "task": "Link Status Check",
+          "details": "Verificación masiva de cabeceras HTTP de todos los links en descripciones para detectar fallos 404 o redirecciones a parkings de dominios."
+        },
+        {
+          "step": 3,
+          "task": "Outreach Automation",
+          "details": "Envío de propuesta automática al creador detallando el dinero exacto que está perdiendo y la solución lista para copiar/pegar."
+        },
+        {
+          "step": 4,
+          "task": "Link Performance Tracking",
+          "details": "Monitorización de clics y conversiones en los nuevos links para asegurar el cobro de la comisión pactada."
+        }
+      ],
+      "data_schema_preview": {
+        "video_id": "String",
+        "broken_url": "String",
+        "replacement_url": "String",
+        "est_monthly_clicks": "Number",
+        "contact_status": "Enum ['pending', 'contacted', 'resolved']"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */12 * * *",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": false
+      },
+      "categories": [
+        "Arbitraje",
+        "YouTube Marketing",
+        "SEO"
+      ]
+    },
+    {
+      "id": "dataset-miner-019",
+      "title": "The Dataset Alchemist: Suministro de Inteligencia a Modelos",
+      "slug": "automated-ai-dataset-miner",
+      "status": "Prototipo",
+      "priority": "high",
+      "description": "Extractor automático de conversaciones y datos estructurados de foros técnicos nicho para la creación de datasets de entrenamiento para IA.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 8,
+        "resource_intensity": 2,
+        "time_to_mvp": 7,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Python (Scrapy + LangChain)",
+        "database": "MongoDB (Unstructured Data)",
+        "apis_required": [
+          "Hugging Face API",
+          "Ollama (para limpieza local de datos)"
+        ]
+      },
+      "business_logic": {
+        "problem": "La escasez de datos de alta calidad para entrenar modelos especializados. Los foros técnicos contienen conocimiento experto pero están llenos de ruido y formatos inconsistentes.",
+        "solution": "Un minero que extrae hilos de 'Pregunta-Respuesta' de comunidades expertas, los limpia de metadatos basura y los etiqueta mediante una IA local para crear datasets 'Ready-to-Train'.",
+        "monetization": [
+          "Venta de Datasets: Comercialización directa en Hugging Face o Kaggle.",
+          "Data Bounties: Ejecución de encargos específicos para laboratorios de IA (OpenAI, Mistral, etc.).",
+          "Suscripción de Datos: Acceso API a un flujo constante de nuevos datos frescos de nichos específicos (ej. LegalTech)."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Target Sourcing",
+          "details": "Identificación de foros con alto ratio de respuestas correctas (marcadas por la comunidad) en sectores técnicos."
+        },
+        {
+          "step": 2,
+          "task": "Raw Scraping & Cleaning",
+          "details": "Extracción de texto plano eliminando firmas, anuncios y ruido HTML mediante selectores CSS dinámicos."
+        },
+        {
+          "step": 3,
+          "task": "AI Refinement",
+          "details": "Uso de Llama-3 local para reformatear las conversaciones en pares de 'Instrucción/Respuesta' coherentes."
+        },
+        {
+          "step": 4,
+          "task": "Automated Sync",
+          "details": "Carga automática del dataset resultante en repositorios de Hugging Face con control de versiones."
+        }
+      ],
+      "data_schema_preview": {
+        "source_forum": "String",
+        "instruction_pair_count": "Number",
+        "avg_quality_score": "Float",
+        "token_size_kb": "Number",
+        "license_type": "String"
+      },
+      "automation_config": {
+        "cron_schedule": "0 0 * * *",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": true
+      },
+      "categories": [
+        "Big Data",
+        "AI Infrastructure",
+        "Machine Learning"
+      ]
     }
   ]
 }
