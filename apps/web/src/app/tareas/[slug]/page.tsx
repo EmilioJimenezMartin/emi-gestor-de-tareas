@@ -287,28 +287,28 @@ export default async function TareaDetallePage({
                   <Layers size={14} className="text-neutral-500" />
                   <span className="text-[10px] font-black uppercase tracking-tight text-neutral-400">Core</span>
                 </div>
-                <span className="text-xs font-black text-white text-right truncate">{task.technical_stack.framework}</span>
+                <span className="text-xs font-black text-white text-right truncate">{task.technical_stack?.framework || "N/A"}</span>
               </div>
               <div className="flex items-center justify-between gap-4 p-3 rounded-2xl bg-white/5 border border-white/5">
                 <div className="flex items-center gap-3 shrink-0">
                   <Clock size={14} className="text-neutral-500" />
                   <span className="text-[10px] font-black uppercase tracking-tight text-neutral-400">Schedule</span>
                 </div>
-                <span className="text-xs font-mono font-bold text-primary text-right truncate">{task.automation_config.cron_schedule}</span>
+                <span className="text-xs font-mono font-bold text-primary text-right truncate">{task.automation_config?.cron_schedule || "A Demanda"}</span>
               </div>
               <div className="flex items-center justify-between gap-4 p-3 rounded-2xl bg-white/5 border border-white/5">
                 <div className="flex items-center gap-3 shrink-0">
                   <Globe size={14} className="text-neutral-500" />
                   <span className="text-[10px] font-black uppercase tracking-tight text-neutral-400">Database</span>
                 </div>
-                <span className="text-xs font-black text-neutral-300 text-right truncate">{task.technical_stack.database}</span>
+                <span className="text-xs font-black text-neutral-300 text-right truncate">{task.technical_stack?.database || "N/A"}</span>
               </div>
             </div>
 
             <div>
               <h4 className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-3 ml-1">Protocolos de Red (APIs)</h4>
               <div className="flex flex-col gap-2">
-                {task.technical_stack.apis_required.map(api => (
+                {(task.technical_stack?.apis_required || []).map(api => (
                   <div key={api} className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-white/5 group hover:border-primary/20 transition-colors">
                     <span className="text-[10px] font-bold text-neutral-400">{api}</span>
                     <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)] group-hover:animate-pulse" />
@@ -326,14 +326,14 @@ export default async function TareaDetallePage({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-[9px] font-bold text-neutral-500 uppercase">Notificaciones</span>
-                <Badge variant={task.automation_config.auto_notify_telegram ? "success" : "neutral"} className="text-[8px] font-black">
-                  {task.automation_config.auto_notify_telegram ? "ESTABLECIDO" : "NO ACTIVO"}
+                <Badge variant={task.automation_config?.auto_notify_telegram ? "success" : "neutral"} className="text-[8px] font-black">
+                  {task.automation_config?.auto_notify_telegram ? "ESTABLECIDO" : "NO ACTIVO"}
                 </Badge>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-[9px] font-bold text-neutral-500 uppercase">Distribución Marketplace</span>
-                <Badge variant={task.automation_config.auto_publish_to_marketplace ? "success" : "neutral"} className="text-[8px] font-black">
-                  {task.automation_config.auto_publish_to_marketplace ? "ACTIVO" : "PENDIENTE"}
+                <Badge variant={task.automation_config?.auto_publish_to_marketplace ? "success" : "neutral"} className="text-[8px] font-black">
+                  {task.automation_config?.auto_publish_to_marketplace ? "ACTIVO" : "PENDIENTE"}
                 </Badge>
               </div>
               <div className="h-px bg-white/5 my-2" />

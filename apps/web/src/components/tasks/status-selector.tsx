@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { updateTaskStatus } from "@/app/actions/tasks";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 import {
     CheckCircle2,
     CircleDashed,
@@ -33,8 +34,9 @@ export function StatusSelector({ taskId, currentStatus }: { taskId: string, curr
             const result = await updateTaskStatus(taskId, newStatus);
             if (result.success) {
                 setIsOpen(false);
+                toast.success(`Estado guardado: ${newStatus}`);
             } else {
-                alert("Error al actualizar el estado");
+                toast.error("Error al actualizar el estado");
             }
         });
     };
@@ -64,7 +66,7 @@ export function StatusSelector({ taskId, currentStatus }: { taskId: string, curr
                                 <button
                                     key={status}
                                     onClick={() => handleStatusChange(status)}
-                                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-colors ${status === currentStatus
+                                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest whitespace-nowrap transition-colors ${status === currentStatus
                                         ? 'bg-primary/20 text-primary border border-primary/20'
                                         : 'text-neutral-400 hover:bg-white/5 hover:text-white'
                                         }`}

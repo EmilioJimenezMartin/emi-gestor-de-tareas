@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import { revalidatePath } from "next/cache";
 
-const DATA_PATH = path.join(process.cwd(), "apps/web/src/data/tasks.json");
+const DATA_PATH = path.join(process.cwd().includes("apps/web") ? process.cwd() : path.join(process.cwd(), "apps/web"), "src/data/tasks.json");
 
 export async function updateTaskStatus(taskId: string, newStatus: string) {
     try {
@@ -35,7 +35,7 @@ export async function updateTaskStatus(taskId: string, newStatus: string) {
         }
 
         revalidatePath("/");
-        revalidatePath(`/tareas/${taskId}`); // Note: this requires slug normally, but revalidatePath(`/tareas`) is also good.
+        revalidatePath("/tareas", "layout");
 
         return { success: true };
     } catch (error) {

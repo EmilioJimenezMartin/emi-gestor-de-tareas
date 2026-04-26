@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { StoreProvider } from "@/store/store-provider";
 import { NavigationWrapper } from "@/components/layout/navigation-wrapper";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
   title: "emi | Gestor de Tareas",
@@ -21,6 +22,7 @@ export default function RootLayout({
             {children}
           </NavigationWrapper>
         </StoreProvider>
+        <Toaster theme="dark" richColors position="top-center" />
       </body>
     </html>
   );

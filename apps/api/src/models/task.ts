@@ -42,20 +42,20 @@ const TaskSchema: Schema = new Schema({
     categories: [{ type: String }],
     description: { type: String, required: true },
     viability_metrics: {
-        implementation_ease: { type: Number, required: true },
-        success_probability: { type: Number, required: true },
-        resource_intensity: { type: Number, required: true },
-        time_to_mvp: { type: Number, required: true },
-        roi_potential: { type: Number, required: true }
+        implementation_ease: { type: Number },
+        success_probability: { type: Number },
+        resource_intensity: { type: Number },
+        time_to_mvp: { type: Number },
+        roi_potential: { type: Number }
     },
     technical_stack: {
-        framework: { type: String, required: true },
-        database: { type: String, required: true },
+        framework: { type: String },
+        database: { type: String },
         apis_required: [{ type: String }]
     },
     business_logic: {
-        problem: { type: String, required: true },
-        solution: { type: String, required: true },
+        problem: { type: String },
+        solution: { type: String },
         monetization: [{ type: String }]
     },
     execution_pipeline: [{
