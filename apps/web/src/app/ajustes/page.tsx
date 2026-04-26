@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
     BrainCircuit,
     Settings,
@@ -26,10 +25,8 @@ export default function AjustesPage() {
     const [dbStatus, setDbStatus] = useState<"unknown" | "connected" | "disconnected" | "connecting" | "disconnecting">("connecting");
     const [isSaving, setIsSaving] = useState(false);
 
-    const [googleKey, setGoogleKey] = useState("");
-    const [hfKey, setHfKey] = useState("");
     const [defaultProvider, setDefaultProvider] = useState("google");
-    const [defaultModel, setDefaultModel] = useState("gemini-1.5-pro");
+    const [defaultModel, setDefaultModel] = useState("gemini-2.5-flash");
 
     const apiUrl = useMemo(() => (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, ""), []);
 
@@ -46,8 +43,6 @@ export default function AjustesPage() {
                 const map = new Map();
                 json.settings?.forEach((s: any) => map.set(s.key, s.value));
 
-                if (map.has("GOOGLE_API_KEY")) setGoogleKey(map.get("GOOGLE_API_KEY"));
-                if (map.has("HUGGINGFACE_API_KEY")) setHfKey(map.get("HUGGINGFACE_API_KEY"));
                 if (map.has("DEFAULT_LLM_PROVIDER")) setDefaultProvider(map.get("DEFAULT_LLM_PROVIDER"));
                 if (map.has("DEFAULT_LLM_MODEL")) setDefaultModel(map.get("DEFAULT_LLM_MODEL"));
             } catch (err) {
@@ -74,8 +69,6 @@ export default function AjustesPage() {
         setIsSaving(true);
         try {
             const updates = [
-                { key: "GOOGLE_API_KEY", value: googleKey },
-                { key: "HUGGINGFACE_API_KEY", value: hfKey },
                 { key: "DEFAULT_LLM_PROVIDER", value: defaultProvider },
                 { key: "DEFAULT_LLM_MODEL", value: defaultModel }
             ];
@@ -119,8 +112,8 @@ export default function AjustesPage() {
                 </div>
             </header>
 
-            <div className="space-y-12">
-                <section className="space-y-6">
+            <div className="space-y-2">
+                <section className="space-y-2">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <h2 className="text-2xl font-bold text-white tracking-tight italic">Núcleo de Inteligencia</h2>
@@ -159,17 +152,21 @@ export default function AjustesPage() {
                                 </div>
 
                                 <div className="space-y-4 relative z-10">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Google API Key</label>
-                                        <div className="relative">
-                                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600" size={14} />
-                                            <Input
-                                                type="password"
-                                                className="h-10 pl-9 bg-black/40 border-white/10 rounded-xl text-xs text-white placeholder:text-neutral-700"
-                                                value={googleKey}
-                                                onChange={(e) => setGoogleKey(e.target.value)}
-                                                placeholder="AIzaSy..."
-                                            />
+                                    <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                                        <div className="flex items-start gap-3">
+                                            <div className="mt-0.5 rounded-xl border border-white/10 bg-white/5 p-2 text-neutral-400">
+                                                <Lock size={14} />
+                                            </div>
+                                            <div className="flex flex-col gap-1">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
+                                                    Credenciales (no editable)
+                                                </span>
+                                                <p className="text-xs text-neutral-400 leading-relaxed">
+                                                    Los tokens/API keys no se gestionan desde la UI. Se configuran en el
+                                                    servidor (por ejemplo vía <span className="font-mono">apps/api/.env</span>{" "}
+                                                    o variables de entorno del despliegue).
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -177,13 +174,19 @@ export default function AjustesPage() {
                                         <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Google Target Model</label>
                                         <select
                                             className="w-full h-10 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-bold text-white outline-none focus:border-primary transition-all appearance-none cursor-pointer"
-                                            value={defaultProvider === 'google' ? defaultModel : 'gemini-1.5-pro'}
+                                            value={defaultProvider === 'google' ? defaultModel : 'gemini-2.5-flash'}
                                             onChange={(e) => { handleProviderChange('google', e.target.value) }}
                                         >
-                                            <option value="gemini-1.5-pro">Gemini 1.5 Pro (Reasoning & Context)</option>
-                                            <option value="gemini-1.5-flash">Gemini 1.5 Flash (Lightweight Edge)</option>
+                                            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                                            <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                                            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
                                         </select>
                                     </div>
+                                    <p className="text-[11px] text-neutral-500 leading-relaxed">
+                                        Nota: los modelos cloud suelen requerir credenciales y pueden tener cuotas (no
+                                        es “ilimitado”).
+                                    </p>
                                 </div>
                             </div>
 
@@ -216,17 +219,20 @@ export default function AjustesPage() {
                                 </div>
 
                                 <div className="space-y-4 relative z-10">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">HF Access Token</label>
-                                        <div className="relative">
-                                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600" size={14} />
-                                            <Input
-                                                type="password"
-                                                className="h-10 pl-9 bg-black/40 border-white/10 rounded-xl text-xs text-white placeholder:text-neutral-700"
-                                                value={hfKey}
-                                                onChange={(e) => setHfKey(e.target.value)}
-                                                placeholder="hf_..."
-                                            />
+                                    <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                                        <div className="flex items-start gap-3">
+                                            <div className="mt-0.5 rounded-xl border border-white/10 bg-white/5 p-2 text-neutral-400">
+                                                <Lock size={14} />
+                                            </div>
+                                            <div className="flex flex-col gap-1">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
+                                                    Token HF (no editable)
+                                                </span>
+                                                <p className="text-xs text-neutral-400 leading-relaxed">
+                                                    Si en el futuro se usa un endpoint de Hugging Face, el token se
+                                                    configurará en el backend. Aquí solo seleccionas proveedor y modelo.
+                                                </p>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -237,10 +243,16 @@ export default function AjustesPage() {
                                             value={defaultProvider === 'huggingface' ? defaultModel : 'meta-llama/Meta-Llama-3-70B'}
                                             onChange={(e) => { handleProviderChange('huggingface', e.target.value) }}
                                         >
-                                            <option value="meta-llama/Meta-Llama-3-70B">Llama 3.1 (70B Instruct)</option>
+                                            <option value="deepseek-r1">DeepSeek (R1)</option>
+                                            <option value="qwen-2.5-instruct">Qwen 2.5 (Instruct)</option>
+                                            <option value="meta-llama/Meta-Llama-3-70B">Llama (70B Instruct)</option>
                                             <option value="mistralai/Mistral-Nemo-Instruct">Mistral NeMo (12B)</option>
                                         </select>
                                     </div>
+                                    <p className="text-[11px] text-neutral-500 leading-relaxed">
+                                        Estos nombres son “identificadores internos” de tu app (los mapearemos al
+                                        proveedor real cuando implementemos la inferencia).
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -248,7 +260,7 @@ export default function AjustesPage() {
                         <div className="bg-white/[0.02] border-t border-white/5 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
                             <div className="flex items-center gap-3 text-neutral-500 max-w-md">
                                 <Zap size={16} className="text-primary shrink-0" />
-                                <p className="text-[9px] font-black uppercase tracking-widest text-primary/80 leading-relaxed">Las credenciales se guardan primero en MongoDB de forma segura. Si vacías este campo, el motor usará el fallback oculto del archivo local .env</p>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-primary/80 leading-relaxed">Se guarda el proveedor/modelo por defecto. Las credenciales se gestionan solo en backend.</p>
                             </div>
                             <Button onClick={handleSave} disabled={isSaving} variant="primary" className="w-full sm:w-fit font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
                                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar en MongoDB"}
