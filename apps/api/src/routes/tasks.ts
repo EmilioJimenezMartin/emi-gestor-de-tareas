@@ -4,13 +4,22 @@ import type { Server as SocketIOServer } from "socket.io";
 import { Task } from "../models/task.js";
 import fs from "fs";
 import path from "path";
+import mongoose from "mongoose";
 
 export async function registerTaskRoutes(
     app: FastifyInstance,
-    deps: { agenda: Agenda; io?: SocketIOServer }
+    deps: { agenda?: Agenda; io?: SocketIOServer }
 ) {
+    const ensureMongo = (reply: any) => {
+        if (mongoose.connection.readyState !== 1) {
+            reply.status(503).send({ error: "MongoDB not connected" });
+            return false;
+        }
+        return true;
+    };
 
     app.get("/tasks", async (request, reply) => {
+        if (!ensureMongo(reply)) return;
         try {
             let tasks = await Task.find({});
 
@@ -33,6 +42,7 @@ export async function registerTaskRoutes(
     });
 
     app.patch("/tasks/:id", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
         try {
             const { id } = request.params;
             const updateProps = request.body as Record<string, any>;
@@ -52,6 +62,7 @@ export async function registerTaskRoutes(
 
     // Add Task Endpoint
     app.post("/tasks", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
         try {
             const taskData = request.body as Record<string, any>;
             if (!taskData.id) {
@@ -73,6 +84,9 @@ export async function registerTaskRoutes(
 
     // Endpoint de prueba que el Dashboard puede llamar
     app.post("/tasks/trigger", async (request, reply) => {
+        if (!deps.agenda) {
+            return reply.status(503).send({ success: false, error: "Agenda not ready" });
+        }
         // agenda.now() añade la tarea a MongoDB para ejecución inmediata
         await deps.agenda.now("dummy-task", { name: "Usuario de Prueba del Dashboard" });
         deps.io?.emit("tasks:enqueued", { name: "dummy-task" });

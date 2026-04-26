@@ -5,7 +5,7 @@ import { ExtractedData } from "../models/extracted-data.js";
 
 export async function registerExtractorRoutes(
     app: FastifyInstance,
-    deps: { agenda: Agenda; io?: SocketIOServer }
+    deps: { agenda?: Agenda; io?: SocketIOServer }
 ) {
     app.get("/extractor/data", async (request, reply) => {
         try {

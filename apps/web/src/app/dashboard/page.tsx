@@ -102,9 +102,9 @@ export default function ExtractorDashboard() {
             </header>
 
             {/* Main UI */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-[calc(100vh-250px)] min-h-[600px] mb-32 md:mb-0">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:h-[calc(100vh-250px)] lg:min-h-[600px] mb-32 md:mb-0">
                 {/* Left Col: Terminals & Controls */}
-                <div className="lg:col-span-4 flex flex-col gap-6 h-full">
+                <div className="lg:col-span-4 flex flex-col gap-6 h-auto lg:h-full">
                     {/* Controls */}
                     <Card className="p-6 bg-black/40 border-white/5 backdrop-blur-xl shrink-0">
                         <h3 className="text-sm font-bold mb-4 flex items-center gap-2 text-white">
@@ -152,7 +152,7 @@ export default function ExtractorDashboard() {
                     </Card>
 
                     {/* Terminal */}
-                    <Card className="flex-1 bg-[#050505] border-white/5 overflow-hidden flex flex-col relative before:absolute before:inset-0 before:bg-gradient-to-t before:from-[#050505]/80 before:to-transparent before:pointer-events-none before:h-8 before:z-10 shadow-[inset_0_4px_20px_rgba(0,0,0,0.5)]">
+                    <Card className="h-64 lg:h-auto lg:flex-1 bg-[#050505] border-white/5 overflow-hidden flex flex-col relative before:absolute before:inset-0 before:bg-gradient-to-t before:from-[#050505]/80 before:to-transparent before:pointer-events-none before:h-8 before:z-10 shadow-[inset_0_4px_20px_rgba(0,0,0,0.5)]">
                         <div className="h-10 bg-white/[0.02] border-b border-white/5 flex items-center px-4 justify-between shrink-0">
                             <div className="flex items-center gap-2">
                                 <Terminal size={14} className="text-neutral-500" />
@@ -185,13 +185,13 @@ export default function ExtractorDashboard() {
                 </div>
 
                 {/* Right Col: Data Grid */}
-                <Card className="lg:col-span-8 bg-black/40 border-white/5 backdrop-blur-xl flex flex-col overflow-hidden">
-                    <div className="p-6 border-b border-white/5 flex items-center justify-between shrink-0">
+                <Card className="lg:col-span-8 min-h-[400px] lg:min-h-0 bg-black/40 border-white/5 backdrop-blur-xl flex flex-col overflow-hidden">
+                    <div className="p-4 sm:p-6 border-b border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-0 shrink-0">
                         <div>
-                            <h3 className="font-bold text-sm text-white flex items-center gap-2">Base de Inteligencia <span className="bg-white/10 text-neutral-300 px-2 py-0.5 rounded text-[9px] uppercase tracking-widest border border-white/10">MongoDB</span></h3>
-                            <p className="text-[10px] uppercase font-black tracking-widest text-neutral-500 mt-1">IExtractedData Collections</p>
+                            <h3 className="font-bold text-sm text-white flex flex-wrap items-center gap-2">Base de Inteligencia <span className="bg-white/10 text-neutral-300 px-2 py-0.5 rounded text-[9px] uppercase tracking-widest border border-white/10 mt-1 sm:mt-0">MongoDB</span></h3>
+                            <p className="text-[10px] uppercase font-black tracking-widest text-neutral-500 mt-1 sm:mt-1.5">IExtractedData Collections</p>
                         </div>
-                        <div className="px-3 py-1 bg-primary/10 rounded-lg border border-primary/20 text-xs font-black tracking-widest text-primary">
+                        <div className="px-3 py-1 bg-primary/10 w-fit rounded-lg border border-primary/20 text-[10px] sm:text-xs font-black tracking-widest text-primary">
                             {extractedData.length} REGISTROS
                         </div>
                     </div>
@@ -205,23 +205,23 @@ export default function ExtractorDashboard() {
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {extractedData.map((data, i) => (
-                                    <div key={data.id || i} className="group p-5 rounded-2xl bg-black/50 border border-white/5 hover:border-primary/30 transition-all cursor-pointer shadow-lg shadow-black/20 relative overflow-hidden">
+                                    <div key={data.id || i} className="group p-4 sm:p-5 rounded-2xl bg-black/50 border border-white/5 hover:border-primary/30 transition-all cursor-pointer shadow-lg shadow-black/20 relative overflow-hidden flex flex-col">
                                         <div className="absolute top-0 left-0 w-1 h-full bg-primary/50 group-hover:bg-primary transition-colors" />
-                                        <div className="flex items-center justify-between mb-3">
-                                            <span className="text-[8px] font-black uppercase tracking-widest text-primary px-2 py-0.5 rounded-md bg-primary/10 border border-primary/20">
+                                        <div className="flex items-center justify-between mb-3 sm:mb-4">
+                                            <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.2em] text-primary px-2 py-0.5 rounded-md bg-primary/10 border border-primary/20 shrink-0">
                                                 {data.source?.source_type || 'SCRAPED'}
                                             </span>
-                                            <span className="text-[8px] text-neutral-600 font-mono font-bold">
+                                            <span className="text-[8px] text-neutral-600 font-mono font-bold whitespace-nowrap ml-2">
                                                 {data.temporal?.created_at ? new Date(data.temporal.created_at).toLocaleDateString() : 'Reciente'}
                                             </span>
                                         </div>
-                                        <h4 className="font-bold text-sm text-white mb-2 line-clamp-2 leading-tight">{data.title}</h4>
-                                        <p className="text-[10px] text-neutral-500 line-clamp-3 leading-relaxed mb-4">
+                                        <h4 className="font-bold text-xs sm:text-sm text-white mb-2 sm:mb-3 line-clamp-2 leading-relaxed sm:leading-tight pr-2">{data.title}</h4>
+                                        <p className="text-[10px] text-neutral-500 line-clamp-3 leading-relaxed mb-5 sm:mb-6 flex-1">
                                             {data.description || data.content?.raw?.substring(0, 100) || 'Data abstract...'}
                                         </p>
-                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                        <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-auto">
                                             {(data.metadata?.tags || []).slice(0, 4).map((t: string) => (
-                                                <span key={t} className="text-[7.5px] font-black uppercase tracking-widest text-neutral-400 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+                                                <span key={t} className="text-[7px] sm:text-[7.5px] font-black uppercase tracking-widest text-neutral-400 bg-white/5 border border-white/10 px-2 py-1 rounded-md">
                                                     {t}
                                                 </span>
                                             ))}
