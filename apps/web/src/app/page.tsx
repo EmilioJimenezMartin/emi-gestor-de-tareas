@@ -20,8 +20,8 @@ import {
   Activity
 } from "lucide-react";
 
-export default function Home() {
-  const tasks = getTasks();
+export default async function Home() {
+  const tasks = await getTasks();
 
   const highPriority = tasks.filter(t => t.priority === "high" || t.priority === "critical").length;
   const categoriesCount = Array.from(new Set(tasks.flatMap(t => t.categories || []))).length;

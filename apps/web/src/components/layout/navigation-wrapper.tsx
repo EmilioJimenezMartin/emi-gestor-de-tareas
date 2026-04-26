@@ -1,21 +1,58 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     LayoutGrid,
     Home as HomeIcon,
     CheckSquare,
     Settings,
-    User,
     Plus,
     Bell
 } from "lucide-react";
 import { NavItem, MobileNavItem } from "@/components/layout/nav-items";
 import { AddTaskModal } from "@/components/tasks/add-task-modal";
 import { Button } from "@/components/ui/button";
+import { createApiSocket } from "@/lib/socket";
 
 export function NavigationWrapper({ children }: { children: React.ReactNode }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [dbStatus, setDbStatus] = useState<"unknown" | "connected" | "disconnected" | "connecting" | "disconnecting">("connecting");
+    const apiUrl = useMemo(
+        () =>
+            (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(
+                /\/$/,
+                ""
+            ),
+        []
+    );
+
+    useEffect(() => {
+        const socket = createApiSocket(apiUrl);
+        socket.on("db:status", (data: { status: string }) => {
+            const status = data.status;
+            if (
+                status === "unknown" ||
+                status === "connected" ||
+                status === "disconnected" ||
+                status === "connecting" ||
+                status === "disconnecting"
+            ) {
+                setDbStatus(status);
+            } else {
+                setDbStatus("unknown");
+            }
+        });
+        socket.on("disconnect", () => {
+            setDbStatus("unknown");
+        });
+        socket.on("connect_error", () => {
+            setDbStatus("unknown");
+        });
+
+        return () => {
+            socket.disconnect();
+        };
+    }, [apiUrl]);
 
     return (
         <div className="flex min-h-screen bg-black text-foreground overflow-hidden">
@@ -59,17 +96,34 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
                         <div className="w-6 h-6 rounded bg-primary flex items-center justify-center font-bold text-sm">e</div>
                         <span className="font-bold text-lg">emi</span>
                     </div>
-                    <div className="hidden md:block">
+                    <div className="hidden md:flex items-center gap-4">
                         <h2 className="text-sm font-medium text-neutral-400 uppercase tracking-widest px-2">Gestor de Tareas</h2>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <button className="p-2.5 rounded-full hover:bg-white/5 transition-colors relative">
-                            <Bell size={20} className="text-neutral-400" />
-                            <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-primary rounded-full border-2 border-background"></span>
-                        </button>
-                        <div className="md:hidden w-8 h-8 rounded-full bg-secondary flex items-center justify-center border border-white/10">
-                            <User size={16} className="text-neutral-400" />
+                    <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/5 shadow-inner">
+                            {dbStatus === "connected" ? (
+                                <>
+                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                                    <span className="text-[10px] font-black tracking-widest text-emerald-500 uppercase">ONLINE</span>
+                                </>
+                            ) : dbStatus === "connecting" ? (
+                                <>
+                                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)] animate-pulse" />
+                                    <span className="text-[10px] font-black tracking-widest text-amber-500 uppercase">CONNECTING</span>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]" />
+                                    <span className="text-[10px] font-black tracking-widest text-rose-500 uppercase">DEV MODE</span>
+                                </>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button className="p-2.5 rounded-full hover:bg-white/5 transition-colors relative">
+                                <Bell size={20} className="text-neutral-400" />
+                                <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-primary rounded-full border-2 border-background"></span>
+                            </button>
                         </div>
                     </div>
                 </header>

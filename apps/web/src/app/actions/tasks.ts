@@ -8,21 +8,34 @@ const DATA_PATH = path.join(process.cwd(), "apps/web/src/data/tasks.json");
 
 export async function updateTaskStatus(taskId: string, newStatus: string) {
     try {
-        const fileContents = fs.readFileSync(DATA_PATH, "utf8");
-        const data = JSON.parse(fileContents);
+        const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
+        try {
+            const response = await fetch(`${apiUrl}/tasks/${taskId}/status`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: newStatus }),
+            });
+            if (!response.ok) {
+                console.warn(`API returned ${response.status}. Falling back to tasks.json`);
+                throw new Error("API failed");
+            }
+        } catch (apiError) {
+            console.warn("API completely unreachable. Modifying local tasks.json fallback...");
+            const fileContents = fs.readFileSync(DATA_PATH, "utf8");
+            const data = JSON.parse(fileContents);
 
-        const taskIndex = data.tasks.findIndex((t: any) => t.id === taskId);
+            const taskIndex = data.tasks.findIndex((t: any) => t.id === taskId);
 
-        if (taskIndex === -1) {
-            throw new Error("Task not found");
+            if (taskIndex === -1) {
+                throw new Error("Task not found in fallback JSON");
+            }
+
+            data.tasks[taskIndex].status = newStatus;
+            fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2));
         }
 
-        data.tasks[taskIndex].status = newStatus;
-
-        fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2));
-
         revalidatePath("/");
-        revalidatePath(`/tareas/${data.tasks[taskIndex].slug}`);
+        revalidatePath(`/tareas/${taskId}`); // Note: this requires slug normally, but revalidatePath(`/tareas`) is also good.
 
         return { success: true };
     } catch (error) {

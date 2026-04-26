@@ -2,8 +2,8 @@ import { getTasks } from "@/lib/tasks";
 import { TaskList } from "@/components/tasks/task-list";
 import { Settings } from "lucide-react";
 
-export default function TareasPage() {
-  const tasks = getTasks();
+export default async function TareasPage() {
+  const tasks = await getTasks();
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
