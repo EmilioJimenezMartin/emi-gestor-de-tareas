@@ -50,6 +50,27 @@ export async function registerTaskRoutes(
         }
     });
 
+    // Add Task Endpoint
+    app.post("/tasks", async (request: any, reply) => {
+        try {
+            const taskData = request.body as Record<string, any>;
+            if (!taskData.id) {
+                taskData.id = taskData.slug || `task-${Date.now()}`;
+            }
+            if (!taskData.slug) {
+                taskData.slug = taskData.id;
+            }
+
+            const task = new Task(taskData);
+            await task.save();
+
+            return reply.status(201).send({ success: true, task });
+        } catch (error: any) {
+            app.log.error(error);
+            return reply.status(500).send({ error: "Failed to create task", details: error.message });
+        }
+    });
+
     // Endpoint de prueba que el Dashboard puede llamar
     app.post("/tasks/trigger", async (request, reply) => {
         // agenda.now() añade la tarea a MongoDB para ejecución inmediata

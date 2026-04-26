@@ -1400,6 +1400,88 @@
         "AI Infrastructure",
         "Machine Learning"
       ]
+    },
+    {
+      "id": "tender-bot-020",
+      "title": "Tender Bot-as-a-Bidder: Licitador Fantasma Automatizado",
+      "slug": "autonomous-tender-bidding-engine",
+      "status": "Prototipo",
+      "priority": "critical",
+      "description": "Sistema autónomo de detección, presentación y ejecución de licitaciones públicas y privadas de bajo ticket, optimizado para capturar contratos con baja competencia sin intervención humana.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 8,
+        "resource_intensity": 4,
+        "time_to_mvp": 7,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Next.js / Python (Automation + Scraping)",
+        "database": "PostgreSQL",
+        "apis_required": [
+          "Plataforma de Contratación del Sector Público API",
+          "BOE API",
+          "AutoFirma / Firma Digital API",
+          "DocuSign / Signaturit API",
+          "Freelance APIs (Upwork / Fiverr)",
+          "Email / SMTP API"
+        ]
+      },
+      "business_logic": {
+        "problem": "Miles de contratos públicos y privados de bajo importe quedan desiertos o reciben una única oferta debido a la baja rentabilidad percibida y la fricción burocrática. Las empresas tradicionales ignoran estos contratos, generando una ineficiencia estructural en la asignación de recursos.",
+        "solution": "Un licitador autónomo que detecta oportunidades de baja competencia, genera automáticamente la documentación requerida, presenta ofertas competitivas y ejecuta los contratos mediante automatización o subcontratación programática.",
+        "monetization": [
+          "Captura Directa de Contratos: Ingresos provenientes de adjudicaciones ganadas con costes de ejecución mínimos.",
+          "Optimización de Margen: Selección de contratos con alta automatización y bajo coste operativo.",
+          "Estrategia de Volumen: Participación masiva en licitaciones de bajo ticket para maximizar tasa de adjudicación.",
+          "Dataset Propietario: Mejora continua basada en patrones de éxito en adjudicaciones previas."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Tender Intelligence Scraping",
+          "details": "Extracción automatizada de licitaciones filtradas por importe, complejidad técnica y nivel de competencia histórica."
+        },
+        {
+          "step": 2,
+          "task": "Opportunity Scoring Engine",
+          "details": "Evaluación de probabilidad de adjudicación basada en número de licitadores previos, requisitos mínimos y margen estimado."
+        },
+        {
+          "step": 3,
+          "task": "Automated Bid Generation",
+          "details": "Generación automática de documentación administrativa, técnica y económica mediante plantillas parametrizadas."
+        },
+        {
+          "step": 4,
+          "task": "Digital Submission & Tracking",
+          "details": "Envío automático de propuestas a través de plataformas oficiales y monitorización del estado de la licitación."
+        },
+        {
+          "step": 5,
+          "task": "Autonomous Execution Layer",
+          "details": "Ejecución del contrato mediante bots o delegación automática en freelancers/APIs según el tipo de servicio adjudicado."
+        }
+      ],
+      "data_schema_preview": {
+        "tender_id": "String",
+        "estimated_value": "Number",
+        "competition_score": "Number",
+        "submission_status": "Enum ['draft', 'submitted', 'awarded', 'rejected']",
+        "execution_mode": "Enum ['automated', 'outsourced']",
+        "net_profit_estimate": "Number"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */2 * * *",
+        "auto_notify_telegram": true,
+        "auto_submit_bids": true
+      },
+      "categories": [
+        "LegalTech",
+        "Automation",
+        "Arbitraje"
+      ]
     }
   ]
 }
