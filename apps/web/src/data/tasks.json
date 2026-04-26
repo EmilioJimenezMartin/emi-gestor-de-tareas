@@ -1565,6 +1565,94 @@
         "Open Data",
         "AI Infrastructure"
       ]
+    },
+    {
+      "id": "autonomous-competition-miner-022",
+      "title": "Autonomous Competition Miner: Motor de Captura de Premios Públicos y Bounties",
+      "slug": "ai-competition-reward-miner",
+      "status": "Prototipo",
+      "priority": "critical",
+      "description": "Sistema autónomo que detecta concursos, bounties y desafíos con recompensas económicas activas en plataformas públicas, genera soluciones automatizadas y prepara envíos estructurados para maximizar la probabilidad de premio sin intervención humana directa.",
+      "viability_metrics": {
+        "implementation_ease": 5,
+        "success_probability": 6,
+        "resource_intensity": 4,
+        "time_to_mvp": 6,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Python (LangChain + Scrapy + FastAPI)",
+        "automation_layer": "CrewAI / AutoGen agents",
+        "database": "PostgreSQL",
+        "ai_models": [
+          "OpenAI / Claude / Llama 3 (multi-agent reasoning)",
+          "Hugging Face transformers (task-specific models)"
+        ],
+        "apis_required": [
+          "Kaggle API",
+          "HackerOne / Bugcrowd Public APIs (or scraping layers)",
+          "Devpost API / hackathon aggregators",
+          "EU Funding & Grants Open Data APIs"
+        ]
+      },
+      "business_logic": {
+        "problem": "Existen miles de competiciones, bounties y retos públicos con premios económicos, pero los humanos no pueden monitorizarlos ni optimizar soluciones a escala. El valor está fragmentado en oportunidades temporales con baja competencia algorítmica.",
+        "solution": "Un sistema autónomo que actúa como 'participante digital' en competiciones abiertas. Detecta oportunidades nuevas, evalúa si son resolubles por IA, genera soluciones técnicas completas (código, modelos, informes), y automatiza el proceso de envío según los formatos requeridos.",
+        "monetization": [
+          "Prize Capture: ingresos directos por premios ganados en competiciones",
+          "Bounty Execution: recompensas por bugs, datasets o soluciones técnicas",
+          "Model Reuse: reutilización de soluciones para múltiples concursos similares",
+          "Signal Arbitrage: detección temprana de competiciones con baja participación y alta recompensa"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Opportunity Mining",
+          "details": "Escaneo continuo de plataformas de concursos, bounties y grants abiertos con filtrado por recompensa, dificultad y automatizabilidad."
+        },
+        {
+          "step": 2,
+          "task": "Feasibility Scoring",
+          "details": "Modelo de scoring que determina si una competición puede resolverse de forma autónoma por agentes IA (clasificación, generación, optimización o código)."
+        },
+        {
+          "step": 3,
+          "task": "Solution Generation",
+          "details": "Pipeline multi-agente que genera soluciones completas: código, papers técnicos, modelos entrenados o reportes estructurados."
+        },
+        {
+          "step": 4,
+          "task": "Auto-Submission Engine",
+          "details": "Adaptación automática del output al formato requerido por la competición (zip, notebook, API response, PDF técnico)."
+        },
+        {
+          "step": 5,
+          "task": "Feedback Loop Optimization",
+          "details": "Análisis de resultados, rankings o validaciones para mejorar futuras soluciones mediante fine-tuning continuo."
+        }
+      ],
+      "data_schema_preview": {
+        "competition_id": "String",
+        "platform": "String",
+        "reward_value": "Number",
+        "difficulty_score": "Number",
+        "submission_status": "Enum ['detected', 'analyzing', 'submitted', 'ranked', 'won']",
+        "ai_solution_type": "Enum ['code', 'model', 'report', 'dataset']",
+        "expected_success_probability": "Float"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */3 * * *",
+        "real_time_event_listeners": true,
+        "auto_submission_enabled": true,
+        "auto_notify_telegram": true
+      },
+      "categories": [
+        "AI Automation",
+        "Competitive Intelligence",
+        "Arbitrage Systems",
+        "Machine Learning Ops"
+      ]
     }
   ]
 }

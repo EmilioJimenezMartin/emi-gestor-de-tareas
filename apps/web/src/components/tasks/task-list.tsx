@@ -100,8 +100,11 @@ export function TaskList({ initialTasks }: TaskListProps) {
                         onChange={(e) => setStatusFilter(e.target.value)}
                     >
                         <option value="all">TODOS LOS STATUS</option>
-                        <option value="active">ACTIVE</option>
-                        <option value="paused">PAUSED</option>
+                        <option value="Prototipo">PROTOTIPO</option>
+                        <option value="En estudio">EN ESTUDIO</option>
+                        <option value="En desarrollo">EN DESARROLLO</option>
+                        <option value="Activa">ACTIVA</option>
+                        <option value="Descartada">DESCARTADA</option>
                     </select>
 
                     <select
@@ -175,7 +178,8 @@ export function TaskList({ initialTasks }: TaskListProps) {
 
                                     <div className="flex flex-wrap gap-1.5 mt-3 sm:mt-2">
                                         {(t.categories || []).map(cat => (
-                                            <Badge key={cat} variant="neutral" className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 bg-white/5 border-white/5 transition-colors group-hover:border-white/10 group-hover:bg-white/10">
+                                            <Badge key={cat} variant="neutral" className="text-[8px] font-black uppercase tracking-[0.15em] px-2.5 py-1 bg-gradient-to-r from-white/10 to-transparent border border-white/10 text-neutral-300 shadow-sm backdrop-blur-md rounded-full flex items-center gap-1.5 group-hover:border-primary/30 group-hover:from-primary/10 transition-all duration-500">
+                                                <div className="w-1 h-1 rounded-full bg-primary/70 shadow-[0_0_8px_rgba(var(--primary),0.8)]" />
                                                 {cat}
                                             </Badge>
                                         ))}

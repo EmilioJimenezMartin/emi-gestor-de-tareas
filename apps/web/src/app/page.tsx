@@ -17,7 +17,8 @@ import {
   Construction,
   CheckCircle2,
   XOctagon,
-  Activity
+  Activity,
+  Target
 } from "lucide-react";
 
 export default async function Home() {
@@ -36,10 +37,12 @@ export default async function Home() {
       tasks.filter(t => (t.categories || []).includes(cat)).length || 0
   })).sort((a, b) => b.count - a.count);
 
-  const techEcosystem = Array.from(new Set(tasks.map(t => t.technical_stack.framework))).map(tech => ({
-    name: tech,
-    count: tasks.filter(t => t.technical_stack.framework === tech).length
-  })).sort((a, b) => b.count - a.count);
+  const priorityDistribution = [
+    { name: "Crítica", count: tasks.filter(t => t.priority === "critical").length, color: "from-rose-600 to-rose-400" },
+    { name: "Alta", count: tasks.filter(t => t.priority === "high").length, color: "from-amber-600 to-amber-400" },
+    { name: "Media", count: tasks.filter(t => t.priority === "medium").length, color: "from-blue-600 to-blue-400" },
+    { name: "Baja", count: tasks.filter(t => t.priority === "low").length, color: "from-emerald-600 to-emerald-400" }
+  ];
 
   const statusDistribution = [
     { name: "Prototipo", count: tasks.filter(t => t.status === "Prototipo").length, color: "text-purple-400", icon: <FlaskConical size={14} /> },
@@ -160,14 +163,14 @@ export default async function Home() {
             <Card variant="glass" className="p-6 h-[400px] flex flex-col gap-6 border-white/5 bg-white/[0.01]">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-bold text-sm">Ecosistema Tecnológico</h3>
-                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Frameworks empleados</p>
+                  <h3 className="font-bold text-sm">Distribución por Prioridad</h3>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Criticidad operativa</p>
                 </div>
-                <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
-                  <Cpu size={16} />
+                <div className="p-2 rounded-lg bg-orange-500/10 text-orange-400">
+                  <Target size={16} />
                 </div>
               </div>
-              <TechChart data={techEcosystem} />
+              <PriorityChart data={priorityDistribution} totalTasks={tasks.length || 1} />
             </Card>
           </div>
         </section>
@@ -211,25 +214,29 @@ function BarChart({ data }: { data: any[] }) {
   );
 }
 
-function TechChart({ data }: { data: any[] }) {
-  const max = Math.max(...data.map(d => d.count), 1);
-
+function PriorityChart({ data, totalTasks }: { data: any[], totalTasks: number }) {
   return (
-    <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
-      {data.map((d, i) => (
-        <div key={d.name} className="space-y-2 group">
-          <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
-            <span className="text-neutral-400 group-hover:text-white transition-colors">{d.name}</span>
-            <span className="text-primary italic">{d.count}</span>
+    <div className="flex-1 flex flex-col justify-center gap-6">
+      {data.map((d, i) => {
+        const percentage = (d.count / totalTasks) * 100;
+        return (
+          <div key={d.name} className="space-y-2 group">
+            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+              <span className="text-neutral-400 group-hover:text-white transition-colors">{d.name}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-white">{d.count}</span>
+                <span className="text-neutral-600">{percentage.toFixed(0)}%</span>
+              </div>
+            </div>
+            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+              <div
+                className={`h-full bg-gradient-to-r ${d.color} rounded-full transition-all duration-1000`}
+                style={{ width: `${percentage}%`, animation: `fade-in 1s ease-out ${i * 0.1}s forwards` }}
+              />
+            </div>
           </div>
-          <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-purple-600 to-blue-500 rounded-full transition-all duration-1000"
-              style={{ width: `${(d.count / max) * 100}%`, animation: `fade-in 1s ease-out ${i * 0.1}s forwards` }}
-            />
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
