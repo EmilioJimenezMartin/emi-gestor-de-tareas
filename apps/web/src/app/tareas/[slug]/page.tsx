@@ -19,8 +19,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusSelector } from "@/components/tasks/status-selector";
 
-export function generateStaticParams() {
-  return getTasks().map((t) => ({ slug: t.slug }));
+export async function generateStaticParams() {
+  const tasks = await getTasks();
+  return tasks.map((t) => ({ slug: t.slug }));
 }
 
 function MiniStatCard({ icon, label, value, gradient, prefix = "" }: {
@@ -56,7 +57,7 @@ export default async function TareaDetallePage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
-  const task = getTaskBySlug((await params).slug);
+  const task = await getTaskBySlug((await params).slug);
   if (!task) notFound();
 
   // Simple Radar Chart Points for Viability
