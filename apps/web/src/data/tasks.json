@@ -1482,6 +1482,89 @@
         "Automation",
         "Arbitraje"
       ]
+    },
+    {
+      "id": "bounty-harvester-021",
+      "title": "Bounty Harvester Engine: Colector Autónomo de Recompensas",
+      "slug": "automated-bounty-collection-engine",
+      "status": "Prototipo",
+      "priority": "critical",
+      "description": "Sistema autónomo que detecta, ejecuta y monetiza tareas con recompensa automática (bounties) ofrecidas por entidades públicas y privadas, sin necesidad de interacción comercial ni adquisición de clientes.",
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 7,
+        "resource_intensity": 2,
+        "time_to_mvp": 8,
+        "roi_potential": 8
+      },
+      "technical_stack": {
+        "framework": "Python (Scraping + Automation) / Node.js",
+        "database": "PostgreSQL",
+        "apis_required": [
+          "Open Data Portals APIs",
+          "Bug Bounty Platforms APIs",
+          "Government Transparency APIs",
+          "Email / SMTP API",
+          "Webhook Receivers",
+          "Automation Tools (Playwright / Puppeteer)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Existen múltiples sistemas donde entidades públicas y privadas pagan por la ejecución de tareas específicas (detección de errores, envío de datos, validación de información), pero estas oportunidades están fragmentadas, son de bajo valor individual y no están automatizadas, lo que impide su explotación a escala.",
+        "solution": "Un motor que centraliza fuentes de recompensas, normaliza sus reglas, genera automáticamente las entradas requeridas mediante bots y ejecuta envíos masivos para capturar ingresos recurrentes sin intervención humana.",
+        "monetization": [
+          "Captura Directa de Bounties: Ingresos por ejecución automática de tareas con recompensa definida.",
+          "Arbitraje de Fragmentación: Agregación de múltiples micro-ingresos en un flujo continuo.",
+          "Optimización Algorítmica: Priorización de tareas con mayor ratio recompensa/esfuerzo.",
+          "Descubrimiento Automatizado: Identificación continua de nuevas fuentes de ingresos basadas en reglas públicas."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Bounty Source Discovery",
+          "details": "Identificación automática de plataformas, organismos y sistemas que ofrecen recompensas por tareas objetivas."
+        },
+        {
+          "step": 2,
+          "task": "Rule Normalization Engine",
+          "details": "Estandarización de condiciones de participación, validación y pago en un formato ejecutable por el sistema."
+        },
+        {
+          "step": 3,
+          "task": "Automated Input Generation",
+          "details": "Creación de datos, reportes o validaciones mediante scrapers, modelos de IA o lógica determinística."
+        },
+        {
+          "step": 4,
+          "task": "Submission & Validation",
+          "details": "Envío automático de resultados a los sistemas correspondientes y verificación de aceptación."
+        },
+        {
+          "step": 5,
+          "task": "Reward Collection & Optimization",
+          "details": "Recepción de pagos, análisis de rendimiento y ajuste dinámico de estrategias de ejecución."
+        }
+      ],
+      "data_schema_preview": {
+        "bounty_id": "String",
+        "source_platform": "String",
+        "task_type": "Enum ['bug', 'data', 'validation', 'report']",
+        "reward_value": "Number",
+        "execution_status": "Enum ['pending', 'submitted', 'accepted', 'rejected']",
+        "roi_score": "Float"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */1 * * *",
+        "auto_execute_tasks": true,
+        "auto_collect_rewards": true
+      },
+      "categories": [
+        "Automation",
+        "Arbitraje",
+        "Open Data",
+        "AI Infrastructure"
+      ]
     }
   ]
 }
