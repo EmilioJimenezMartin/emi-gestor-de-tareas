@@ -8,6 +8,7 @@ import { initAgenda, startAgenda } from "./lib/agenda.js";
 import { registerSocket } from "./lib/socket.js";
 import { registerItemRoutes } from "./routes/items.js";
 import { registerTaskRoutes } from "./routes/tasks.js";
+import { registerExtractorRoutes } from "./routes/extractor.js";
 
 const env = loadEnv(process.env);
 
@@ -46,6 +47,7 @@ agenda.on("complete", (job) => {
 
 await registerItemRoutes(app, { io });
 await registerTaskRoutes(app, { agenda, io });
+await registerExtractorRoutes(app, { agenda, io });
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {

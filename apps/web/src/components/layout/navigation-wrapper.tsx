@@ -7,7 +7,8 @@ import {
     CheckSquare,
     Settings,
     Plus,
-    Bell
+    Bell,
+    Database
 } from "lucide-react";
 import { NavItem, MobileNavItem } from "@/components/layout/nav-items";
 import { AddTaskModal } from "@/components/tasks/add-task-modal";
@@ -68,7 +69,7 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
                 <nav className="flex-1 px-4 py-4 space-y-1">
                     <NavItem href="/" icon={<HomeIcon size={20} />} label="Home" />
                     <NavItem href="/tareas" icon={<CheckSquare size={20} />} label="Tareas" />
-                    <NavItem href="/dashboard" icon={<LayoutGrid size={20} />} label="Stats" />
+                    <NavItem href="/dashboard" icon={<Database size={20} />} label="Extractor" />
                     <NavItem href="/ajustes" icon={<Settings size={20} />} label="Ajustes" />
 
                 </nav>
@@ -145,7 +146,7 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
                         <Plus size={28} strokeWidth={1.5} />
                     </button>
                 </div>
-                <MobileNavItem href="/dashboard" icon={<LayoutGrid size={24} />} />
+                <MobileNavItem href="/dashboard" icon={<Database size={24} />} />
                 <MobileNavItem href="/ajustes" icon={<Settings size={24} />} />
             </nav>
 
