@@ -18,6 +18,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusSelector } from "@/components/tasks/status-selector";
+import { PrioritySelector } from "@/components/tasks/priority-selector";
 
 export async function generateStaticParams() {
   const tasks = await getTasks();
@@ -84,9 +85,7 @@ export default async function TareaDetallePage({
 
           <div className="relative space-y-4 max-w-3xl">
             <div className="flex items-center gap-3">
-              <Badge variant={task.priority === 'critical' ? 'error' : (task.priority === 'high' ? 'warning' : 'neutral')} className="text-[8px] font-black uppercase tracking-[0.2em]">
-                {task.priority || "NORMAL"}
-              </Badge>
+              <PrioritySelector taskId={task.id} currentPriority={task.priority} />
               <div className="h-4 w-px bg-white/10" />
               <StatusSelector taskId={task.id} currentStatus={task.status} />
             </div>

@@ -32,12 +32,12 @@ export async function registerTaskRoutes(
         }
     });
 
-    app.patch("/tasks/:id/status", async (request: any, reply) => {
+    app.patch("/tasks/:id", async (request: any, reply) => {
         try {
             const { id } = request.params;
-            const { status } = request.body as { status: string };
+            const updateProps = request.body as Record<string, any>;
 
-            const task = await Task.findOneAndUpdate({ id }, { status }, { new: true });
+            const task = await Task.findOneAndUpdate({ id }, { $set: updateProps }, { new: true });
 
             if (!task) {
                 return reply.status(404).send({ error: "Task not found" });

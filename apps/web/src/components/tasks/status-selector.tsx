@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { updateTaskStatus } from "@/app/actions/tasks";
+import { updateTaskProperty } from "@/app/actions/tasks";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
@@ -31,7 +31,7 @@ export function StatusSelector({ taskId, currentStatus }: { taskId: string, curr
         if (newStatus === currentStatus) return;
 
         startTransition(async () => {
-            const result = await updateTaskStatus(taskId, newStatus);
+            const result = await updateTaskProperty(taskId, { status: newStatus });
             if (result.success) {
                 setIsOpen(false);
                 toast.success(`Estado guardado: ${newStatus}`);

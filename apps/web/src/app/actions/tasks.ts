@@ -6,14 +6,14 @@ import { revalidatePath } from "next/cache";
 
 const DATA_PATH = path.join(process.cwd().includes("apps/web") ? process.cwd() : path.join(process.cwd(), "apps/web"), "src/data/tasks.json");
 
-export async function updateTaskStatus(taskId: string, newStatus: string) {
+export async function updateTaskProperty(taskId: string, updates: Record<string, any>) {
     try {
         const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
         try {
-            const response = await fetch(`${apiUrl}/tasks/${taskId}/status`, {
+            const response = await fetch(`${apiUrl}/tasks/${taskId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ status: newStatus }),
+                body: JSON.stringify(updates),
             });
             if (!response.ok) {
                 console.warn(`API returned ${response.status}. Falling back to tasks.json`);
@@ -30,7 +30,7 @@ export async function updateTaskStatus(taskId: string, newStatus: string) {
                 throw new Error("Task not found in fallback JSON");
             }
 
-            data.tasks[taskIndex].status = newStatus;
+            data.tasks[taskIndex] = { ...data.tasks[taskIndex], ...updates };
             fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2));
         }
 
@@ -39,7 +39,7 @@ export async function updateTaskStatus(taskId: string, newStatus: string) {
 
         return { success: true };
     } catch (error) {
-        console.error("Error updating task status:", error);
-        return { success: false, error: "Failed to update status" };
+        console.error("Error updating task property:", error);
+        return { success: false, error: "Failed to update property" };
     }
 }
