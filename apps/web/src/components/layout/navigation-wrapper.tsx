@@ -142,7 +142,7 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
                         onClick={() => setIsModalOpen(true)}
                         className="w-14 h-14 bg-primary rounded-2xl shadow-xl shadow-primary/40 flex items-center justify-center text-white active:scale-95 transition-transform border border-white/10"
                     >
-                        <Plus size={28} font-weight="light" />
+                        <Plus size={28} strokeWidth={1.5} />
                     </button>
                 </div>
                 <MobileNavItem href="/dashboard" icon={<LayoutGrid size={24} />} />
