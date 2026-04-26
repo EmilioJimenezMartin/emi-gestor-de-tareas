@@ -162,13 +162,18 @@ export function TaskList({ initialTasks }: TaskListProps) {
                                             <h3 className="text-lg sm:text-xl font-bold text-white group-hover:text-primary transition-colors line-clamp-2 leading-tight">
                                                 {t.title}
                                             </h3>
+                                            {t.business_logic?.solution && (
+                                                <p className="mt-1 sm:mt-1.5 text-[10px] sm:text-xs text-neutral-400 font-medium line-clamp-4 sm:line-clamp-3 leading-relaxed">
+                                                    {t.business_logic.solution}
+                                                </p>
+                                            )}
                                         </div>
                                         <div className="w-10 h-10 rounded-2xl bg-secondary/50 border border-white/5 flex items-center justify-center text-primary group-hover:scale-110 transition-transform duration-500 shrink-0">
                                             <Rocket size={20} />
                                         </div>
                                     </div>
 
-                                    <div className="flex flex-wrap gap-1.5 mt-4">
+                                    <div className="flex flex-wrap gap-1.5 mt-3 sm:mt-2">
                                         {(t.categories || []).map(cat => (
                                             <Badge key={cat} variant="neutral" className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 bg-white/5 border-white/5 transition-colors group-hover:border-white/10 group-hover:bg-white/10">
                                                 {cat}
@@ -178,7 +183,7 @@ export function TaskList({ initialTasks }: TaskListProps) {
                                 </div>
 
                                 {/* Metrics - Forced Single Line on Mobile */}
-                                <div className={`grid grid-cols-3 gap-2 sm:flex sm:items-center sm:gap-x-8 border-white/5 ${viewMode === 'list' ? 'lg:border-l lg:pl-8' : 'mt-4 sm:mt-6 border-t pt-4 sm:pt-6'}`}>
+                                <div className={`grid grid-cols-3 gap-2 sm:flex sm:items-center sm:gap-x-8 border-white/5 ${viewMode === 'list' ? 'lg:border-l lg:pl-8' : 'border-t pt-4'}`}>
                                     <div className="flex flex-col items-start px-2 sm:px-0">
                                         <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">ROI</span>
                                         <div className="flex items-center gap-1.5 sm:gap-2">
