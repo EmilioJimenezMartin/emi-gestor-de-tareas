@@ -124,7 +124,7 @@ export default function AjustesPage() {
                     <Card variant="outline" className="relative overflow-hidden p-1 sm:p-1 border-white/5 bg-white/[0.01]">
                         <div className="grid grid-cols-1 lg:grid-cols-2">
                             {/* Gemini Provider */}
-                            <div className={`p-8 sm:p-10 border-b lg:border-b-0 lg:border-r border-white/5 space-y-8 relative transition-all duration-500 ${defaultProvider === 'google' ? 'bg-blue-600/[0.03]' : 'hover:bg-white/[0.01] opacity-70 hover:opacity-100'}`}>
+                            <div className={`p-5 sm:p-8 lg:p-10 border-b lg:border-b-0 lg:border-r border-white/5 space-y-5 sm:space-y-8 relative transition-all duration-500 ${defaultProvider === 'google' ? 'bg-blue-600/[0.03]' : 'hover:bg-white/[0.01] opacity-70 hover:opacity-100'}`}>
                                 <div className="absolute -left-10 -top-10 w-32 h-32 bg-blue-600/5 blur-[50px] pointer-events-none" />
                                 <div className="flex items-center justify-between relative z-10">
                                     <div className="flex items-center gap-4">
@@ -191,7 +191,7 @@ export default function AjustesPage() {
                             </div>
 
                             {/* Hugging Face Provider */}
-                            <div className={`p-8 sm:p-10 space-y-8 relative transition-all duration-500 ${defaultProvider === 'huggingface' ? 'bg-amber-600/[0.03]' : 'hover:bg-white/[0.01] opacity-70 hover:opacity-100'}`}>
+                            <div className={`p-5 sm:p-8 lg:p-10 space-y-5 sm:space-y-8 relative transition-all duration-500 ${defaultProvider === 'huggingface' ? 'bg-amber-600/[0.03]' : 'hover:bg-white/[0.01] opacity-70 hover:opacity-100'}`}>
                                 <div className="absolute -right-10 -top-10 w-32 h-32 bg-amber-600/5 blur-[50px] pointer-events-none" />
                                 <div className="flex items-center justify-between relative z-10">
                                     <div className="flex items-center gap-4">
