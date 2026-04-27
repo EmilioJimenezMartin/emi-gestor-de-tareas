@@ -135,7 +135,7 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
             </main>
 
             {/* Tab Bar - Mobile */}
-            <nav className="md:hidden fixed bottom-6 left-6 right-6 h-16 glass rounded-2xl px-6 flex items-center justify-around z-50 shadow-2xl shadow-black/50">
+            <nav className="md:hidden fixed bottom-6 left-6 right-6 h-16 glass rounded-2xl px-2 flex items-center justify-around z-50 shadow-2xl shadow-black/50">
                 <MobileNavItem href="/" icon={<HomeIcon size={24} />} />
                 <MobileNavItem href="/tareas" icon={<CheckSquare size={24} />} />
                 <div className="-mt-16">

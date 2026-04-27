@@ -20,7 +20,7 @@ const app = Fastify({ logger: true });
 
 await app.register(cors, {
   origin: env.CORS_ORIGIN,
-  methods: ["GET", "POST", "PATCH", "OPTIONS"],
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
 });
 
 const io = registerSocket(app, env);

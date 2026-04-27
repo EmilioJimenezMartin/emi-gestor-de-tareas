@@ -13,6 +13,7 @@ type ServerToClientEvents = {
   "agenda:complete": (payload: { name: string; id?: unknown }) => void;
   "extractor:log": (payload: { jobId?: string; timestamp?: string | Date; level?: string; message: string }) => void;
   "extractor:done": (payload: { jobId?: string }) => void;
+  "extractor:result": (payload: { jobId?: string; item: Record<string, any> }) => void;
 };
 
 type ClientToServerEvents = Record<string, never>;
