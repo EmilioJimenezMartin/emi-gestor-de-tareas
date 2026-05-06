@@ -43,6 +43,7 @@ export function AddTaskModal({ isOpen, onClose, initialData }: AddTaskModalProps
         technical_stack: { framework: "", database: "", apis_required: [] },
         business_logic: { problem: "", solution: "", monetization: [] },
         categories: [],
+        internal_score: 0,
         automation_config: { cron_schedule: "", auto_notify_telegram: false, auto_publish_to_marketplace: false }
     });
 
@@ -79,6 +80,7 @@ export function AddTaskModal({ isOpen, onClose, initialData }: AddTaskModalProps
                 technical_stack: { framework: "", database: "", apis_required: [] },
                 business_logic: { problem: "", solution: "", monetization: [] },
                 categories: [],
+                internal_score: 0,
                 automation_config: { cron_schedule: "", auto_notify_telegram: false, auto_publish_to_marketplace: false }
             });
             setMode("select");
@@ -238,6 +240,29 @@ export function AddTaskModal({ isOpen, onClose, initialData }: AddTaskModalProps
                                                 <option value="high">High</option>
                                                 <option value="critical">Critical</option>
                                             </select>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Internal Score ({formData.internal_score} Estrellas)</label>
+                                        <div className="flex gap-2 p-3 bg-white/[0.03] border border-white/5 rounded-2xl">
+                                            {[1, 2, 3, 4, 5].map((star) => (
+                                                <button
+                                                    key={star}
+                                                    type="button"
+                                                    onClick={() => setFormData({ ...formData, internal_score: star })}
+                                                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${formData.internal_score >= star ? "bg-amber-500/20 text-amber-500 shadow-lg shadow-amber-500/10" : "bg-white/5 text-neutral-600 hover:bg-white/10"
+                                                        }`}
+                                                >
+                                                    <Sparkles size={16} fill={formData.internal_score >= star ? "currentColor" : "none"} />
+                                                </button>
+                                            ))}
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData({ ...formData, internal_score: 0 })}
+                                                className="ml-auto text-[8px] font-black uppercase text-neutral-600 hover:text-white transition-colors"
+                                            >
+                                                Reset
+                                            </button>
                                         </div>
                                     </div>
                                     <div className="space-y-2">

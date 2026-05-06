@@ -68,6 +68,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "PropTech",
         "Arbitraje"
@@ -141,6 +142,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
         "LegalTech",
         "Fintech",
@@ -216,6 +218,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "Ciberseguridad"
       ]
@@ -289,6 +292,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
         "PropTech",
         "LegalTech",
@@ -364,6 +368,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "PropTech",
         "Infraestructura",
@@ -439,6 +444,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "LegalTech",
         "Arbitraje"
@@ -514,6 +520,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "Arbitraje",
         "LegalTech"
@@ -589,6 +596,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
         "Fintech",
         "LegalTech",
@@ -664,6 +672,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
         "LegalTech",
         "Fintech",
@@ -739,6 +748,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
         "LegalTech",
         "Fintech",
@@ -813,6 +823,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
         "DeFi",
         "Fintech",
@@ -887,6 +898,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
         "DevOps",
         "Arbitraje",
@@ -960,6 +972,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "DevOps",
         "Fintech",
@@ -1033,6 +1046,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
         "Arbitraje",
         "AdTech",
@@ -1106,6 +1120,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
         "Content Automation",
         "E-commerce",
@@ -1179,6 +1194,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "Cloud Infrastructure",
         "Arbitraje",
@@ -1253,6 +1269,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "Arbitraje",
         "Digital Assets",
@@ -1324,6 +1341,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
         "Arbitraje",
         "YouTube Marketing",
@@ -1395,6 +1413,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "Big Data",
         "AI Infrastructure",
@@ -1477,6 +1496,7 @@
         "auto_notify_telegram": true,
         "auto_submit_bids": true
       },
+      "internal_score": 0,
       "categories": [
         "LegalTech",
         "Automation",
@@ -1559,6 +1579,7 @@
         "auto_execute_tasks": true,
         "auto_collect_rewards": true
       },
+      "internal_score": 0,
       "categories": [
         "Automation",
         "Arbitraje",
@@ -1647,6 +1668,7 @@
         "auto_submission_enabled": true,
         "auto_notify_telegram": true
       },
+      "internal_score": 0,
       "categories": [
         "AI Automation",
         "Competitive Intelligence",
@@ -1733,6 +1755,7 @@
         "auto_optimize": true,
         "auto_claim": false
       },
+      "internal_score": 0,
       "categories": [
         "Fintech",
         "GovTech",
@@ -1824,6 +1847,7 @@
         "auto_execute_capture": true,
         "auto_optimize_routing": true
       },
+      "internal_score": 0,
       "categories": [
         "Arbitraje",
         "AdTech",
@@ -1902,6 +1926,7 @@
         "auto_notify_telegram": false,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "PrivacyTech",
         "Cybersecurity",
@@ -1981,6 +2006,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "Infrastructure Intelligence",
         "Network Analytics",
@@ -2063,6 +2089,7 @@
         "auto_publish_to_marketplace": true,
         "human_in_the_loop": false
       },
+      "internal_score": 0,
       "categories": [
         "AI Infrastructure",
         "Data Economy",
@@ -2137,6 +2164,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
         "SEO",
         "Afiliación",

@@ -22,6 +22,7 @@ export interface IExtractedData extends Document {
         category: string;
         confidence_score: number;
         relevance_score: number;
+        internal_score: number;
     };
     temporal: {
         created_at: Date;
@@ -77,7 +78,8 @@ const ExtractedDataSchema = new Schema({
         tags: [{ type: String }],
         category: { type: String },
         confidence_score: { type: Number },
-        relevance_score: { type: Number }
+        relevance_score: { type: Number },
+        internal_score: { type: Number, default: 0 }
     },
     temporal: {
         created_at: { type: Date, default: Date.now },

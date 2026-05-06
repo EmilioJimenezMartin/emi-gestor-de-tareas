@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { StatusSelector } from "@/components/tasks/status-selector";
 import { PrioritySelector } from "@/components/tasks/priority-selector";
 import { TaskDetailActions } from "@/components/tasks/task-detail-actions";
+import { InternalScoreSelector } from "@/components/tasks/internal-score-selector";
 
 export async function generateStaticParams() {
   const tasks = await getTasks();
@@ -89,6 +90,8 @@ export default async function TareaDetallePage({
               <PrioritySelector taskId={task.id} currentPriority={task.priority} />
               <div className="h-4 w-px bg-white/10" />
               <StatusSelector taskId={task.id} currentStatus={task.status} />
+              <div className="h-4 w-px bg-white/10" />
+              <InternalScoreSelector task={task} />
             </div>
             <h1 className="text-4xl sm:text-5xl font-black text-white tracking-tighter italic">
               {task.title}

@@ -18,7 +18,8 @@ import {
   CheckCircle2,
   XOctagon,
   Activity,
-  Target
+  Target,
+  Star
 } from "lucide-react";
 
 export default async function Home() {
@@ -27,7 +28,8 @@ export default async function Home() {
   const highPriority = tasks.filter(t => t.priority === "high" || t.priority === "critical").length;
   const categoriesCount = Array.from(new Set(tasks.flatMap(t => t.categories || []))).length;
   const activeTasks = tasks.filter(t => t.status === "Activa").length;
-  const avgROI = tasks.reduce((acc, t) => acc + (t.viability_metrics?.roi_potential || 0), 0) / tasks.length;
+  const avgROI = tasks.reduce((acc, t) => acc + (t.viability_metrics?.roi_potential || 0), 0) / tasks.length || 0;
+  const avgScore = tasks.reduce((acc, t) => acc + (t.internal_score || 0), 0) / tasks.length || 0;
 
   // Aggregate Data for Charts
   const tasksByCategory = Array.from(new Set(tasks.flatMap(t => t.categories || []))).map(cat => ({
@@ -51,6 +53,12 @@ export default async function Home() {
     { name: "Activa", count: tasks.filter(t => t.status === "Activa").length, color: "text-emerald-400", icon: <CheckCircle2 size={14} /> },
     { name: "Descartada", count: tasks.filter(t => t.status === "Descartada").length, color: "text-rose-400", icon: <XOctagon size={14} /> },
   ];
+
+  const scoreDistribution = [5, 4, 3, 2, 1].map(s => ({
+    name: `${s} Estrellas`,
+    count: tasks.filter(t => t.internal_score === s).length,
+    percentage: (tasks.filter(t => t.internal_score === s).length / (tasks.length || 1)) * 100
+  }));
 
   return (
     <div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
@@ -171,6 +179,88 @@ export default async function Home() {
                 </div>
               </div>
               <PriorityChart data={priorityDistribution} totalTasks={tasks.length || 1} />
+            </Card>
+          </div>
+        </section>
+
+        {/* Quality Evaluation Section */}
+        <section className="lg:col-span-12 flex flex-col gap-6">
+          <h2 className="text-xl font-bold tracking-tight">Evaluación de Calidad</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <Card variant="glass" className="lg:col-span-4 p-6 h-[400px] flex flex-col justify-between border-amber-500/10 bg-amber-500/[0.02]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-sm">Calificación Media</h3>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Nivel de confianza interno</p>
+                </div>
+                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500">
+                  <Star size={16} />
+                </div>
+              </div>
+
+              <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                <div className="text-6xl font-black italic tracking-tighter bg-gradient-to-br from-amber-400 to-yellow-600 bg-clip-text text-transparent">
+                  {avgScore.toFixed(1)}
+                </div>
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <Sparkles
+                      key={s}
+                      size={20}
+                      className={avgScore >= s ? "text-amber-500" : "text-neutral-800"}
+                      fill={avgScore >= s ? "currentColor" : "none"}
+                    />
+                  ))}
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500 mt-2 text-center max-w-[150px]">
+                  Calidad general de los motores activos
+                </p>
+              </div>
+
+              <div className="pt-4 border-t border-white/5">
+                <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-neutral-500">
+                  <span>Score Alpha</span>
+                  <span className="text-amber-500">{(avgScore * 20).toFixed(0)}%</span>
+                </div>
+              </div>
+            </Card>
+
+            <Card variant="glass" className="lg:col-span-8 p-6 h-[400px] flex flex-col gap-6 border-white/5 bg-white/[0.01]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-sm">Distribución de Internal Score</h3>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Evaluación de Calidad</p>
+                </div>
+                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500">
+                  <Sparkles size={16} />
+                </div>
+              </div>
+              <div className="flex-1 flex flex-col justify-center gap-4">
+                {scoreDistribution.map((score, i) => (
+                  <div key={score.name} className="space-y-2">
+                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-0.5">
+                          {Array.from({ length: 5 - i }).map((_, idx) => (
+                            <Sparkles key={idx} size={8} className="text-amber-500" fill="currentColor" />
+                          ))}
+                        </div>
+                        <span className="text-neutral-400">{score.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white">{score.count}</span>
+                        <span className="text-neutral-600">{score.percentage.toFixed(0)}%</span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full transition-all duration-1000"
+                        style={{ width: `${score.percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </Card>
           </div>
         </section>
