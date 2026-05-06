@@ -18,7 +18,8 @@ import {
     XOctagon,
     Trash2,
     Edit3,
-    AlertTriangle
+    AlertTriangle,
+    Download
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -70,6 +71,20 @@ export function TaskList({ initialTasks }: TaskListProps) {
         return result;
     }, [initialTasks, search, statusFilter, priorityFilter, sortBy, categoryFilter]);
 
+    const handleDownloadJSON = () => {
+        const dataStr = JSON.stringify(filteredAndSortedTasks, null, 2);
+        const dataBlob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(dataBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `emi-tasks-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success("Listado exportado correctamente");
+    };
+
     return (
         <div className="space-y-8">
             {/* Controls Bar */}
@@ -85,19 +100,31 @@ export function TaskList({ initialTasks }: TaskListProps) {
                         />
                     </div>
 
-                    <div className="hidden sm:flex items-center gap-2 bg-secondary/50 rounded-2xl p-1 border border-white/5 self-end lg:self-auto">
-                        <button
-                            onClick={() => setViewMode("grid")}
-                            className={`p-2 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-neutral-500 hover:text-neutral-300'}`}
+                    <div className="flex items-center gap-2 self-end lg:self-auto">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleDownloadJSON}
+                            className="h-9 px-4 rounded-xl border-white/5 hover:bg-white/5 text-neutral-400 hover:text-white flex items-center gap-2 text-[10px] font-black uppercase tracking-widest"
                         >
-                            <LayoutGrid size={18} />
-                        </button>
-                        <button
-                            onClick={() => setViewMode("list")}
-                            className={`p-2 rounded-xl transition-all ${viewMode === 'list' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-neutral-500 hover:text-neutral-300'}`}
-                        >
-                            <List size={18} />
-                        </button>
+                            <Download size={14} />
+                            Exportar JSON
+                        </Button>
+
+                        <div className="hidden sm:flex items-center gap-2 bg-secondary/50 rounded-2xl p-1 border border-white/5">
+                            <button
+                                onClick={() => setViewMode("grid")}
+                                className={`p-2 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-neutral-500 hover:text-neutral-300'}`}
+                            >
+                                <LayoutGrid size={18} />
+                            </button>
+                            <button
+                                onClick={() => setViewMode("list")}
+                                className={`p-2 rounded-xl transition-all ${viewMode === 'list' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-neutral-500 hover:text-neutral-300'}`}
+                            >
+                                <List size={18} />
+                            </button>
+                        </div>
                     </div>
                 </div>
 

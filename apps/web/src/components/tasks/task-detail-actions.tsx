@@ -3,7 +3,7 @@
 import { useState, useTransition, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, AlertTriangle, RotateCcw } from "lucide-react";
+import { Pencil, Trash2, AlertTriangle, RotateCcw, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Task } from "@/lib/tasks";
 import { AddTaskModal } from "./add-task-modal";
@@ -37,6 +37,17 @@ export function TaskDetailActions({ task }: TaskDetailActionsProps) {
         });
     };
 
+    const handleCopyJSON = () => {
+        const dataStr = JSON.stringify(task, null, 2);
+        navigator.clipboard.writeText(dataStr)
+            .then(() => {
+                toast.success("JSON copiado al portapapeles");
+            })
+            .catch(() => {
+                toast.error("Error al copiar al portapapeles");
+            });
+    };
+
     return (
         <>
             <div className="flex flex-col gap-3">
@@ -62,6 +73,14 @@ export function TaskDetailActions({ task }: TaskDetailActionsProps) {
                     className="w-full text-[10px] font-black uppercase tracking-widest h-12 shadow-lg shadow-primary/10 rounded-2xl"
                 >
                     Ejecutar Motor Manualmente
+                </Button>
+
+                <Button
+                    variant="outline"
+                    onClick={handleCopyJSON}
+                    className="w-full h-11 rounded-2xl font-black uppercase tracking-widest text-[10px] border border-white/5 hover:bg-white/5 text-neutral-400 hover:text-white"
+                >
+                    <Copy size={14} className="mr-2" /> Copiar JSON de la Tarea
                 </Button>
             </div>
 

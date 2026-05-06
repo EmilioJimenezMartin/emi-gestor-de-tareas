@@ -19,7 +19,7 @@ type Mode = "select" | "json" | "form";
 
 export function AddTaskModal({ isOpen, onClose, initialData }: AddTaskModalProps) {
     const isEdit = !!initialData;
-    const [mode, setMode] = useState<Mode>(isEdit ? "form" : "select");
+    const [mode, setMode] = useState<Mode>("select");
     const [step, setStep] = useState(1);
     const [isPending, startTransition] = useTransition();
     const [jsonInput, setJsonInput] = useState("");
@@ -60,7 +60,6 @@ export function AddTaskModal({ isOpen, onClose, initialData }: AddTaskModalProps
                 business_logic: { ...prev.business_logic, ...initialData.business_logic },
                 automation_config: { ...prev.automation_config, ...initialData.automation_config }
             }));
-            setMode("form");
             setJsonInput(JSON.stringify(initialData, null, 2));
         } else {
             setFormData({
@@ -187,9 +186,9 @@ export function AddTaskModal({ isOpen, onClose, initialData }: AddTaskModalProps
                                 />
                             </div>
                             <div className="pt-4 flex gap-4">
-                                {!isEdit && (
-                                    <Button variant="ghost" onClick={() => setMode("select")} className="flex-1 h-12 rounded-2xl font-black uppercase tracking-widest text-xs border border-white/5">Volver</Button>
-                                )}
+                                <Button variant="ghost" onClick={() => setMode("select")} className="flex-1 h-12 rounded-2xl font-black uppercase tracking-widest text-xs border border-white/5 text-neutral-400 hover:bg-white/5">
+                                    Volver
+                                </Button>
                                 <Button disabled={isPending} onClick={handleJsonSubmit} className="flex-1 h-12 rounded-2xl font-black uppercase tracking-widest text-xs bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-500/20">
                                     {isEdit ? "Guardar Cambios" : "Ejecutar JSON"}
                                 </Button>
@@ -306,8 +305,8 @@ export function AddTaskModal({ isOpen, onClose, initialData }: AddTaskModalProps
                                         Atrás
                                     </Button>
                                 ) : (
-                                    <Button variant="ghost" onClick={handleReset} className="flex-1 h-12 rounded-2xl font-black uppercase tracking-widest text-xs border border-white/5 text-neutral-400 hover:bg-white/5">
-                                        {isEdit ? "Cancelar" : "Seleccionar Modo"}
+                                    <Button variant="ghost" onClick={() => setMode("select")} className="flex-1 h-12 rounded-2xl font-black uppercase tracking-widest text-xs border border-white/5 text-neutral-400 hover:bg-white/5">
+                                        Volver
                                     </Button>
                                 )}
 
