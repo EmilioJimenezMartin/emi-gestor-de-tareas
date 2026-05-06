@@ -112,4 +112,19 @@ const ExtractedDataSchema = new Schema({
     extra: { type: Schema.Types.Mixed }
 });
 
+ExtractedDataSchema.index({
+    title: "text",
+    description: "text",
+    "metadata.tags": "text",
+    "source.name": "text"
+}, {
+    weights: {
+        title: 10,
+        "metadata.tags": 5,
+        description: 2,
+        "source.name": 1
+    },
+    name: "ExtractedDataTextIndex"
+});
+
 export const ExtractedData = mongoose.models.ExtractedData || mongoose.model<IExtractedData>("ExtractedData", ExtractedDataSchema);

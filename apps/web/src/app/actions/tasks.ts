@@ -78,3 +78,36 @@ export async function createTask(taskData: Record<string, any>) {
         return { success: false, error: "Failed to create task" };
     }
 }
+export async function deleteTask(taskId: string) {
+    try {
+        const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
+        try {
+            const response = await fetch(`${apiUrl}/tasks/${taskId}`, {
+                method: "DELETE",
+            });
+            if (!response.ok) {
+                console.warn(`API returned ${response.status}. Falling back to tasks.json`);
+                throw new Error("API failed");
+            }
+        } catch (apiError) {
+            console.warn("API completely unreachable. Removing from local tasks.json fallback...");
+            const fileContents = fs.readFileSync(DATA_PATH, "utf8");
+            const data = JSON.parse(fileContents);
+
+            data.tasks = data.tasks.filter((t: any) => t.id !== taskId);
+            fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2));
+        }
+
+        revalidatePath("/");
+        revalidatePath("/tareas", "layout");
+
+        return { success: true };
+    } catch (error) {
+        console.error("Error deleting task:", error);
+        return { success: false, error: "Failed to delete task" };
+    }
+}
+
+export async function updateTask(taskId: string, taskData: Record<string, any>) {
+    return updateTaskProperty(taskId, taskData);
+}

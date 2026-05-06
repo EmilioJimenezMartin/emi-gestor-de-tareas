@@ -97,4 +97,21 @@ export async function registerTaskRoutes(
         });
     });
 
+    // Delete Task Endpoint
+    app.delete("/tasks/:id", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { id } = request.params;
+            const task = await Task.findOneAndDelete({ id });
+
+            if (!task) {
+                return reply.status(404).send({ error: "Task not found" });
+            }
+
+            return reply.send({ success: true, message: "Task deleted successfully" });
+        } catch (error: any) {
+            app.log.error(error);
+            return reply.status(500).send({ error: "Failed to delete task" });
+        }
+    });
 }

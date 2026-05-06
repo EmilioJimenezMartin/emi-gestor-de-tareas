@@ -1653,6 +1653,495 @@
         "Arbitrage Systems",
         "Machine Learning Ops"
       ]
+    },
+    {
+      "id": "incentive-arbitrage-engine-023",
+      "title": "Incentive Arbitrage Engine: Captura Sistemática de Bonos e Incentivos",
+      "slug": "incentive-arbitrage-system",
+      "status": "Prototipo",
+      "priority": "critical",
+      "description": "Sistema de detección, activación y optimización de incentivos económicos públicos y privados (movilidad, energía, consumo, reciclaje) mediante automatización parcial del proceso de registro, validación y uso, maximizando el retorno recurrente sin necesidad de captación activa de clientes.",
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 8,
+        "resource_intensity": 3,
+        "time_to_mvp": 7,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Python / Node.js",
+        "database": "PostgreSQL",
+        "automation": "Playwright / Puppeteer",
+        "data_layer": "Universal Ingestion Layer (shared)",
+        "apis_required": [
+          "Portales de ayudas públicas (BOE, autonómicos, municipales)",
+          "Apps de movilidad y transporte",
+          "APIs energéticas / consumo",
+          "OCR (Tesseract / Google Vision)",
+          "Email / SMS APIs"
+        ]
+      },
+      "business_logic": {
+        "problem": "Miles de incentivos económicos quedan sin reclamar o se infrautilizan debido a fricción operativa (formularios, validaciones, desconocimiento). La mayoría de usuarios no optimiza ni repite estos procesos.",
+        "solution": "Un sistema que centraliza la detección de incentivos, evalúa elegibilidad automáticamente y ejecuta o asiste el proceso de activación y uso, maximizando el beneficio mediante repetición, optimización y agregación.",
+        "monetization": [
+          "Captura directa de incentivos (uso propio o estructuras replicables)",
+          "Optimización del uso (maximizar beneficios por incentivo activo)",
+          "Revenue share pasivo con usuarios opt-in (sin venta directa activa)",
+          "Agrupación de incentivos para generar flujos recurrentes"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Incentive Discovery",
+          "details": "Ingesta continua desde el Opportunity Layer de programas activos de incentivos."
+        },
+        {
+          "step": 2,
+          "task": "Eligibility Scoring",
+          "details": "Evaluación automática de requisitos basada en reglas (ubicación, actividad, consumo, perfil)."
+        },
+        {
+          "step": 3,
+          "task": "Semi-Automated Activation",
+          "details": "Asistencia o automatización parcial del registro y validación (formularios, documentación)."
+        },
+        {
+          "step": 4,
+          "task": "Usage Optimization",
+          "details": "Optimización del comportamiento requerido (ej. rutas, consumo, actividad) para maximizar recompensas."
+        },
+        {
+          "step": 5,
+          "task": "Payout Tracking",
+          "details": "Seguimiento de incentivos activados, pagos recibidos y rendimiento por fuente."
+        }
+      ],
+      "data_schema_preview": {
+        "incentive_id": "String",
+        "source": "String",
+        "type": "Enum ['movilidad', 'energia', 'consumo', 'reciclaje', 'otros']",
+        "estimated_value": "Number",
+        "eligibility_score": "Number",
+        "activation_status": "Enum ['detected', 'eligible', 'pending', 'active', 'collected']",
+        "recurrence": "Boolean"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */6 * * *",
+        "auto_detect": true,
+        "auto_optimize": true,
+        "auto_claim": false
+      },
+      "categories": [
+        "Fintech",
+        "GovTech",
+        "Arbitraje",
+        "Automation"
+      ]
+    },
+    {
+      "id": "orphan-value-engine-024",
+      "title": "Orphan Value Engine: Motor de Captura de Valor Abandonado",
+      "slug": "orphan-value-capture-engine",
+      "status": "Prototipo",
+      "priority": "critical",
+      "description": "Sistema unificado de detección, evaluación y explotación automática de activos digitales, tráfico y capital abandonado (dominios expirados, enlaces rotos, recursos CDN huérfanos, derechos financieros no reclamados) para su monetización sin interacción comercial.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 8,
+        "resource_intensity": 4,
+        "time_to_mvp": 7,
+        "roi_potential": 10,
+        "scalability": 10
+      },
+      "technical_stack": {
+        "framework": "Node.js / Python (Scraping & Automation)",
+        "database": "PostgreSQL + Redis (scoring en tiempo real)",
+        "infrastructure": "Cloudflare Workers / Serverless Functions",
+        "apis_required": [
+          "Whois / Domain Registrar APIs",
+          "YouTube Data API",
+          "Common Crawl",
+          "HTTP Status Checkers",
+          "Affiliate Networks (Amazon, CPA)",
+          "Ad Networks APIs",
+          "DNS & Passive DNS APIs"
+        ]
+      },
+      "business_logic": {
+        "core_thesis": "Internet y los sistemas administrativos están llenos de valor abandonado que sigue generando flujo (tráfico, dinero o derechos) pero no tiene propietario activo. Este sistema detecta esos fallos y los captura automáticamente.",
+        "problem": "Los activos abandonados (dominios expirados, enlaces 404 en contenido viral, recursos CDN caídos, derechos económicos no reclamados) siguen generando demanda pero no están siendo explotados debido a fallos técnicos o abandono humano.",
+        "solution": "Un motor autónomo que escanea múltiples fuentes en busca de señales de valor huérfano, evalúa automáticamente su potencial económico y ejecuta acciones de captura (registro de dominio, redirección, reclamación o reactivación del recurso) sin intervención humana.",
+        "monetization": [
+          "Afiliación (Amazon, CPA) mediante redirección de tráfico capturado",
+          "Publicidad programática sobre activos reactivados",
+          "Reventa de dominios con tráfico residual (SEO/branding)",
+          "Captura de leads desde tráfico huérfano",
+          "Arbitraje de datos y telemetría"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Global Signal Scanning",
+          "details": "Scraping masivo de fuentes (YouTube, Common Crawl, DNS, logs web) para detectar señales de abandono: errores 404, dominios expirados, endpoints caídos o activos sin mantenimiento."
+        },
+        {
+          "step": 2,
+          "task": "Opportunity Scoring Engine",
+          "details": "Evaluación automática del valor del activo basada en tráfico estimado, intención de usuario, facilidad de captura y potencial de monetización."
+        },
+        {
+          "step": 3,
+          "task": "Automated Capture",
+          "details": "Ejecución automática de acciones: registro de dominio, despliegue de endpoint, restauración de recurso o redirección inteligente del tráfico."
+        },
+        {
+          "step": 4,
+          "task": "Monetization Layer",
+          "details": "Aplicación dinámica de estrategias de monetización (afiliación, anuncios, CPA) según el contexto del tráfico y origen."
+        },
+        {
+          "step": 5,
+          "task": "Feedback Loop Optimization",
+          "details": "Reentrenamiento del sistema de scoring basado en conversiones reales para mejorar la detección de oportunidades futuras."
+        }
+      ],
+      "data_schema_preview": {
+        "asset_id": "String",
+        "asset_type": "Enum ['domain', 'link', 'cdn', 'financial', 'account']",
+        "source": "String",
+        "traffic_estimate": "Number",
+        "capture_cost": "Number",
+        "monetization_type": "Enum ['affiliate', 'ads', 'resale', 'leads']",
+        "status": "Enum ['detected', 'scored', 'captured', 'monetized']",
+        "roi_estimate": "Number"
+      },
+      "automation_config": {
+        "cron_schedule": "Continuous / Real-time scanning",
+        "auto_notify_telegram": true,
+        "auto_execute_capture": true,
+        "auto_optimize_routing": true
+      },
+      "categories": [
+        "Arbitraje",
+        "AdTech",
+        "SEO",
+        "Automation",
+        "Digital Assets"
+      ],
+      "strategic_insight": "No compite en mercados existentes, sino que explota ineficiencias estructurales causadas por abandono, errores humanos o falta de mantenimiento, creando una ventaja asimétrica difícil de replicar."
+    },
+    {
+      "id": "behavioral-privacy-infra-024",
+      "title": "Behavioral Privacy Infrastructure: Anti-Fingerprinting Engine",
+      "slug": "behavioral-privacy-normalization-engine",
+      "status": "Prototipo",
+      "priority": "high",
+      "description": "Motor de normalización de comportamiento digital que reduce la identificabilidad de usuarios frente a técnicas avanzadas de fingerprinting mediante variabilidad controlada en patrones de interacción.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 8,
+        "resource_intensity": 4,
+        "time_to_mvp": 7,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Node.js / Rust (core engine)",
+        "delivery": "Browser Extension / SDK embebido",
+        "database": "Redis (configuración en tiempo real)",
+        "apis_required": [
+          "Browser APIs (WebExtensions)",
+          "Cloudflare Workers (edge delivery)",
+          "Telemetry APIs (opcional para tuning)",
+          "Stripe API (licensing)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Las técnicas modernas de tracking (fingerprinting, behavioral biometrics, session correlation) permiten identificar usuarios sin cookies, generando riesgos de privacidad, discriminación de precios y problemas de cumplimiento con GDPR.",
+        "solution": "Un motor que introduce variabilidad natural en el comportamiento digital del usuario (timing, interacción, patrones de navegación) sin falsificar identidad ni generar tráfico fraudulento. El objetivo es evitar que un usuario sea identificable de forma única por sus patrones.",
+        "monetization": [
+          "Licensing B2B: Integración como SDK en herramientas de privacidad, navegadores o soluciones de ciberseguridad.",
+          "OEM Partnerships: Venta del motor a proveedores de infraestructura (VPNs, browsers, antivirus).",
+          "Compliance Layer: Producto para empresas que necesitan cumplir GDPR evitando fingerprinting excesivo.",
+          "API Usage: Cobro por uso del motor en apps que quieran proteger a sus usuarios."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Behavior Modeling",
+          "details": "Análisis de patrones humanos reales para generar modelos de interacción no deterministas pero coherentes."
+        },
+        {
+          "step": 2,
+          "task": "Normalization Engine",
+          "details": "Desarrollo de un motor que introduce micro-variaciones en eventos como clicks, scroll, typing y navegación."
+        },
+        {
+          "step": 3,
+          "task": "Integration Layer",
+          "details": "Implementación como extensión de navegador o SDK embebido para aplicaciones web y móviles."
+        },
+        {
+          "step": 4,
+          "task": "Adaptive Tuning",
+          "details": "Ajuste dinámico de patrones según contexto para evitar anomalías detectables por sistemas antifraude."
+        }
+      ],
+      "data_schema_preview": {
+        "session_id": "String",
+        "interaction_variance_score": "Float",
+        "fingerprint_risk_reduction": "Percentage",
+        "behavior_profile_type": "Enum ['neutral', 'high_variance', 'enterprise_safe']",
+        "latency_impact_ms": "Number"
+      },
+      "automation_config": {
+        "cron_schedule": "Real-time adaptive engine",
+        "auto_notify_telegram": false,
+        "auto_publish_to_marketplace": true
+      },
+      "categories": [
+        "PrivacyTech",
+        "Cybersecurity",
+        "AI Infrastructure"
+      ]
+    },
+    {
+      "id": "ip-carrier-index-025",
+      "title": "Carrier Index Engine: Inteligencia de Activos IPv4 Infrautilizados",
+      "slug": "ipv4-asset-intelligence-engine",
+      "status": "Prototipo",
+      "priority": "high",
+      "description": "Sistema de análisis y detección de bloques IPv4 infrautilizados o potencialmente transferibles mediante cruce de datos de BGP, registros RIR y estado corporativo de entidades propietarias.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 8,
+        "resource_intensity": 5,
+        "time_to_mvp": 7,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Python / Go (data pipelines)",
+        "database": "ClickHouse / PostgreSQL (ASN & IP intelligence)",
+        "processing": "BGPStream / RIPEstat APIs",
+        "apis_required": [
+          "RIPE NCC API",
+          "ARIN WHOIS API",
+          "BGP routing feeds",
+          "OpenCorporates API",
+          "Registry insolvency datasets"
+        ]
+      },
+      "business_logic": {
+        "problem": "El espacio IPv4 es un recurso finito y altamente valioso. Muchos bloques asignados históricamente a empresas han quedado infrautilizados debido a cierres, fusiones o reorganizaciones corporativas. Sin embargo, estos activos siguen estando legalmente registrados y fragmentados en múltiples jurisdicciones y registros.",
+        "solution": "Un motor de inteligencia que analiza el uso real de bloques IPv4 mediante datos de enrutamiento (BGP), cruza esa información con registros de propiedad en RIRs y estados corporativos de las entidades asociadas, y detecta oportunidades de transferencia, consolidación o valorización de activos IP de forma completamente legal y estructurada.",
+        "monetization": [
+          "SaaS de inteligencia de mercado IPv4 para brokers y fondos de infraestructura.",
+          "Suscripción a feed de bloques infrautilizados con scoring de valor estimado.",
+          "Licencias enterprise para operadores cloud y telcos.",
+          "Consultoría automatizada de optimización de inventario IP para empresas con ASN propios."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "BGP Data Ingestion",
+          "details": "Captura continua de anuncios de rutas BGP para mapear bloques IPv4 activos e inactivos."
+        },
+        {
+          "step": 2,
+          "task": "Utilization Scoring",
+          "details": "Cálculo de métricas de uso real de IPs basado en tráfico, routing stability y presencia en servicios públicos."
+        },
+        {
+          "step": 3,
+          "task": "Ownership Correlation",
+          "details": "Cruce de datos RIR (RIPE/ARIN) con registros corporativos para identificar entidades propietarias y su estado legal."
+        },
+        {
+          "step": 4,
+          "task": "Opportunity Detection",
+          "details": "Identificación de bloques con potencial de transferencia, reorganización o venta en mercados secundarios."
+        }
+      ],
+      "data_schema_preview": {
+        "asn": "String",
+        "ip_range": "String",
+        "bgp_announced": "Boolean",
+        "utilization_score": "Float",
+        "owner_entity": "String",
+        "legal_status": "Enum ['active', 'inactive', 'liquidation', 'unknown']",
+        "estimated_market_value_usd": "Number"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */3 * * *",
+        "real_time_bgp_listener": true,
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": true
+      },
+      "categories": [
+        "Infrastructure Intelligence",
+        "Network Analytics",
+        "Digital Asset Arbitrage"
+      ]
+    },
+    {
+      "id": "autonomous-data-work-executor-020",
+      "title": "Autonomous Data Work Executor: Participation Engine in Paid Data Economies",
+      "slug": "ai-data-task-fulfillment-engine",
+      "status": "Prototipo",
+      "priority": "high",
+      "description": "Sistema automatizado que detecta, ejecuta y envía tareas digitales ya remuneradas por plataformas de data labeling, AI evaluation, research studies y dataset marketplaces, actuando como un motor autónomo de cumplimiento de microtrabajos digitales.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 8,
+        "resource_intensity": 4,
+        "time_to_mvp": 6,
+        "roi_potential": 8
+      },
+      "technical_stack": {
+        "framework": "Python / Node.js (automation layer)",
+        "execution_layer": "Playwright / Puppeteer / API integrations",
+        "database": "PostgreSQL (task registry + payout tracking)",
+        "ai_layer": "LLM (task interpretation + output generation)",
+        "apis_required": [
+          "Scale AI / Surge AI (evaluation workflows where accessible)",
+          "Toloka API",
+          "Prolific API",
+          "Hugging Face Datasets API",
+          "Kaggle API",
+          "Mechanical Turk API (where available)",
+          "SerpAPI / BrightData (data acquisition support)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Existe una economía global de microtrabajos digitales (data labeling, AI evaluation, dataset cleaning, research participation) donde empresas como Scale AI, Appen o plataformas académicas pagan por la producción de datos estructurados y validaciones humanas. Estos flujos están fragmentados, manuales y no escalables individualmente por usuarios.",
+        "solution": "Un sistema autónomo que detecta oportunidades de trabajo digital remunerado en plataformas abiertas o semiabiertas, interpreta automáticamente las tareas, genera respuestas o transformaciones de datos mediante IA, y envía resultados estructurados cumpliendo los criterios de validación de cada plataforma.",
+        "monetization": [
+          "Automated Task Completion Revenue: ingresos directos por tareas aprobadas en plataformas de microtrabajo.",
+          "Dataset Contribution Rewards: recompensas por subir datasets estructurados a plataformas como Kaggle o Hugging Face.",
+          "AI Evaluation Arbitrage: ingresos por evaluación masiva de outputs de modelos en sistemas de RLHF.",
+          "Research Participation Scaling: participación automatizada en estudios pagos y encuestas de alta frecuencia."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Opportunity Discovery",
+          "details": "Monitorización de plataformas de microtareas, datasets públicos y estudios remunerados para detectar nuevas tareas disponibles con payout definido."
+        },
+        {
+          "step": 2,
+          "task": "Task Interpretation Engine",
+          "details": "Uso de LLM para traducir instrucciones de tareas en estructuras operativas (inputs, outputs, constraints, formato requerido)."
+        },
+        {
+          "step": 3,
+          "task": "Automated Execution",
+          "details": "Generación automática de respuestas, etiquetado o limpieza de datos mediante pipelines de IA y scripts de transformación."
+        },
+        {
+          "step": 4,
+          "task": "Submission & Validation Loop",
+          "details": "Envío automatizado de resultados a plataformas objetivo y ajuste iterativo basado en feedback de aceptación/rechazo."
+        }
+      ],
+      "data_schema_preview": {
+        "task_id": "String",
+        "platform_source": "String",
+        "task_type": "Enum ['labeling', 'evaluation', 'survey', 'dataset_creation']",
+        "automation_confidence": "Float",
+        "acceptance_rate": "Float",
+        "payout_usd": "Number",
+        "execution_status": "Enum ['pending', 'submitted', 'approved', 'rejected']"
+      },
+      "automation_config": {
+        "cron_schedule": "Continuous task polling",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": true,
+        "human_in_the_loop": false
+      },
+      "categories": [
+        "AI Infrastructure",
+        "Data Economy",
+        "Automation Systems"
+      ]
+    },
+    {
+      "id": "seo-arbitrage-026",
+      "title": "SearchIntent Engine: Red Autónoma de Captura de Demanda",
+      "slug": "seo-intent-capture",
+      "status": "Prototipo",
+      "priority": "high",
+      "description": "Sistema automatizado de detección, generación y posicionamiento de contenido orientado a intención de compra en nichos de baja competencia.",
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 7,
+        "resource_intensity": 5,
+        "time_to_mvp": 4,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Node.js + Express",
+        "database": "PostgreSQL",
+        "apis_required": [
+          "Google Search Console API",
+          "OpenAI API",
+          "SerpAPI",
+          "WordPress REST API"
+        ]
+      },
+      "business_logic": {
+        "problem": "Millones de búsquedas con intención comercial clara no están bien cubiertas debido a la saturación de contenido genérico. Las empresas pequeñas no tienen capacidad de generar contenido optimizado a escala.",
+        "solution": "Sistema que detecta keywords long-tail con baja competencia, genera contenido optimizado estructuralmente y lo publica automáticamente. Incluye iteración basada en métricas reales de posicionamiento.",
+        "monetization": [
+          "Afiliación (Amazon, SaaS)",
+          "Generación de leads",
+          "Venta de propiedades SEO ya posicionadas",
+          "Ads en sitios con tráfico alto"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Scraping de Keywords",
+          "details": "Extracción automática de queries desde Google Trends, foros y SERPs para identificar oportunidades long-tail con intención de compra."
+        },
+        {
+          "step": 2,
+          "task": "Clasificación de Intención",
+          "details": "Clasificación semántica de keywords en informacional, transaccional o comparativa mediante NLP."
+        },
+        {
+          "step": 3,
+          "task": "Generación de Contenido",
+          "details": "Creación de artículos estructurados con tablas, comparativas y FAQs optimizados para SEO."
+        },
+        {
+          "step": 4,
+          "task": "Publicación y Tracking",
+          "details": "Publicación automática en WordPress y monitorización de rankings para reoptimización."
+        }
+      ],
+      "data_schema_preview": {
+        "keyword": "String",
+        "search_volume": "Number",
+        "competition_score": "Number",
+        "article_url": "String",
+        "ranking_position": "Number"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */6 * * *",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": false
+      },
+      "categories": [
+        "SEO",
+        "Afiliación",
+        "Content Automation"
+      ]
     }
   ]
 }

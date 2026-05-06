@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusSelector } from "@/components/tasks/status-selector";
 import { PrioritySelector } from "@/components/tasks/priority-selector";
+import { TaskDetailActions } from "@/components/tasks/task-detail-actions";
 
 export async function generateStaticParams() {
   const tasks = await getTasks();
@@ -336,9 +337,7 @@ export default async function TareaDetallePage({
                 </Badge>
               </div>
               <div className="h-px bg-white/5 my-2" />
-              <Button variant="secondary" className="w-full text-[10px] font-black uppercase tracking-widest h-10 shadow-lg shadow-primary/10">
-                Ejecutar Motor Manualmente
-              </Button>
+              <TaskDetailActions task={task} />
             </div>
           </Card>
         </div>
