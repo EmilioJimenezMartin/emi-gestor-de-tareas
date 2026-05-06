@@ -350,8 +350,8 @@ export default function FinanzasPage() {
             <ul className="divide-y divide-white/5">
               {movementsSorted.map((e) => (
                 <li key={e._id} className="px-5 sm:px-6 py-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6 sm:gap-4">
+                    <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge
                           variant="neutral"
@@ -370,20 +370,20 @@ export default function FinanzasPage() {
                           {e.cadence}
                         </Badge>
                       </div>
-                      <p className="mt-2 text-sm font-bold text-white truncate">
+                      <p className="mt-2 text-sm sm:text-base font-bold text-white">
                         {e.title}
                       </p>
                       {e.description ? (
-                        <p className="mt-1 text-xs text-neutral-500 line-clamp-2">
+                        <p className="mt-1 text-xs text-neutral-500">
                           {e.description}
                         </p>
                       ) : null}
-                      <p className="mt-2 text-[11px] text-neutral-600 font-mono">
+                      <p className="mt-3 text-[10px] text-neutral-600 font-mono uppercase tracking-widest">
                         {new Date(e.createdAt).toLocaleString()}
                       </p>
                     </div>
 
-                    <div className="flex flex-col items-end gap-3 shrink-0">
+                    <div className="flex flex-row items-center justify-between sm:flex-col sm:items-end gap-4 sm:gap-3 shrink-0 w-full sm:w-auto pt-4 sm:pt-0 border-t sm:border-0 border-white/5">
                       <div className="flex items-center gap-2">
                         <div
                           className={`w-1.5 h-1.5 rounded-full ${e.kind === "ingreso" ? "bg-emerald-500" : "bg-rose-500"
@@ -408,9 +408,9 @@ export default function FinanzasPage() {
                             setModalMode("edit");
                             setModalOpen(true);
                           }}
-                          className="rounded-xl border border-white/10 hover:bg-white/5 text-neutral-300"
+                          className="h-9 px-3 rounded-xl border border-white/10 hover:bg-white/5 text-neutral-300 transition-all font-bold text-[10px] uppercase tracking-widest"
                         >
-                          <Pencil size={14} className="mr-2" /> Editar
+                          <Pencil size={12} className="mr-2" /> Editar
                         </Button>
                         <Button
                           variant="ghost"
@@ -420,9 +420,9 @@ export default function FinanzasPage() {
                             setModalMode("delete");
                             setModalOpen(true);
                           }}
-                          className="rounded-xl border border-white/10 hover:bg-rose-500/10 hover:text-rose-400 text-neutral-400"
+                          className="h-9 px-3 rounded-xl border border-white/10 hover:bg-rose-500/10 hover:text-rose-400 text-neutral-400 transition-all font-bold text-[10px] uppercase tracking-widest"
                         >
-                          <Trash2 size={14} className="mr-2" /> Borrar
+                          <Trash2 size={12} className="mr-2" /> Borrar
                         </Button>
                       </div>
                     </div>
