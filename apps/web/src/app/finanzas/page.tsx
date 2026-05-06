@@ -99,6 +99,20 @@ export default function FinanzasPage() {
     return { income, expense, net: income - expense };
   }, [movements]);
 
+  const ring = useMemo(() => {
+    const r = 30;
+    const c = 2 * Math.PI * r;
+    const total = Math.max(1, totals.income + totals.expense);
+    const incomeRatio = totals.income / total;
+    const expenseRatio = totals.expense / total;
+    return {
+      c,
+      incomeDash: `${c * incomeRatio} ${c}`,
+      expenseDash: `${c * expenseRatio} ${c}`,
+      expenseOffset: c * incomeRatio,
+    };
+  }, [totals.expense, totals.income]);
+
   const movementsSorted = useMemo(
     () =>
       movements
@@ -187,7 +201,7 @@ export default function FinanzasPage() {
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <Card
           variant="outline"
-          className="lg:col-span-5 border-white/5 bg-white/[0.02] p-5 sm:p-6"
+          className="lg:col-span-5 lg:sticky lg:top-8 h-fit border-white/5 bg-white/[0.02] p-5 sm:p-6"
         >
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -272,78 +286,50 @@ export default function FinanzasPage() {
 
         <div className="lg:col-span-7 space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card
-              variant="outline"
-              className="border-white/5 bg-white/[0.02] p-5 sm:p-6"
-            >
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
-                  Ingresos
-                </p>
-                <ArrowUpRight size={16} className="text-emerald-400" />
+            <div className="relative group overflow-hidden p-5 sm:p-6 rounded-3xl border border-white/5 bg-white/[0.02] hover:border-emerald-500/20 transition-all duration-500">
+              <div className="absolute -right-6 -top-6 w-24 h-24 bg-gradient-to-br from-emerald-500 to-teal-400 opacity-0 group-hover:opacity-10 blur-2xl transition-opacity duration-500" />
+              <div className="relative space-y-4">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-400 w-fit text-white shadow-lg shadow-black/20">
+                  <ArrowUpRight size={16} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.2em]">Ingresos</p>
+                  <p className="text-2xl sm:text-3xl font-black tracking-tighter bg-gradient-to-br from-emerald-400 to-teal-300 bg-clip-text text-transparent italic tabular-nums mt-1">
+                    {formatEur(totals.income)}
+                  </p>
+                </div>
               </div>
-              <div className="mt-3 flex items-end gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]" />
-                <p className="text-3xl font-black italic tracking-tighter tabular-nums bg-gradient-to-br from-emerald-400 to-teal-300 bg-clip-text text-transparent">
-                  {formatEur(totals.income)}
-                </p>
-              </div>
-            </Card>
+            </div>
 
-            <Card
-              variant="outline"
-              className="border-white/5 bg-white/[0.02] p-5 sm:p-6"
-            >
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
-                  Gastos
-                </p>
-                <ArrowDownRight size={16} className="text-rose-400" />
+            <div className="relative group overflow-hidden p-5 sm:p-6 rounded-3xl border border-white/5 bg-white/[0.02] hover:border-rose-500/20 transition-all duration-500">
+              <div className="absolute -right-6 -top-6 w-24 h-24 bg-gradient-to-br from-rose-500 to-orange-400 opacity-0 group-hover:opacity-10 blur-2xl transition-opacity duration-500" />
+              <div className="relative space-y-4">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-rose-500 to-orange-400 w-fit text-white shadow-lg shadow-black/20">
+                  <ArrowDownRight size={16} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.2em]">Gastos</p>
+                  <p className="text-2xl sm:text-3xl font-black tracking-tighter bg-gradient-to-br from-rose-400 to-orange-300 bg-clip-text text-transparent italic tabular-nums mt-1">
+                    {formatEur(totals.expense)}
+                  </p>
+                </div>
               </div>
-              <div className="mt-3 flex items-end gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.4)]" />
-                <p className="text-3xl font-black italic tracking-tighter tabular-nums bg-gradient-to-br from-rose-400 to-orange-300 bg-clip-text text-transparent">
-                  {formatEur(totals.expense)}
-                </p>
-              </div>
-            </Card>
+            </div>
 
-            <Card
-              variant="outline"
-              className="border-white/5 bg-white/[0.02] p-5 sm:p-6"
-            >
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
-                  Neto
-                </p>
-                <Badge
-                  variant="neutral"
-                  className={
-                    totals.net >= 0
-                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                      : "bg-rose-500/10 text-rose-400 border-rose-500/20"
-                  }
-                >
-                  {totals.net >= 0 ? "positivo" : "negativo"}
-                </Badge>
+            <div className={`relative group overflow-hidden p-5 sm:p-6 rounded-3xl border border-white/5 bg-white/[0.02] hover:border-amber-500/20 transition-all duration-500 ${totals.net >= 0 ? "hover:border-emerald-500/20" : "hover:border-rose-500/20"}`}>
+              <div className={`absolute -right-6 -top-6 w-24 h-24 bg-gradient-to-br ${totals.net >= 0 ? "from-emerald-500 to-teal-400" : "from-rose-500 to-orange-400"} opacity-0 group-hover:opacity-10 blur-2xl transition-opacity duration-500`} />
+              <div className="relative space-y-4">
+                <div className={`p-2 rounded-xl bg-gradient-to-br ${totals.net >= 0 ? "from-emerald-500 to-teal-400" : "from-rose-500 to-orange-400"} w-fit text-white shadow-lg shadow-black/20`}>
+                  <TrendingUp size={16} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.2em]">Neto Total</p>
+                  <p className={`text-2xl sm:text-3xl font-black tracking-tighter bg-gradient-to-br ${totals.net >= 0 ? "from-emerald-400 to-teal-300" : "from-rose-400 to-orange-300"} bg-clip-text text-transparent italic tabular-nums mt-1`}>
+                    {formatEur(totals.net)}
+                  </p>
+                </div>
               </div>
-              <div className="mt-3 flex items-end gap-2">
-                <div
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    totals.net >= 0 ? "bg-emerald-500" : "bg-rose-500"
-                  } shadow-[0_0_10px_rgba(25,113,255,0.25)]`}
-                />
-                <p
-                  className={`text-3xl font-black italic tracking-tighter tabular-nums bg-clip-text text-transparent ${
-                    totals.net >= 0
-                      ? "bg-gradient-to-br from-emerald-400 to-teal-300"
-                      : "bg-gradient-to-br from-rose-400 to-orange-300"
-                  }`}
-                >
-                  {formatEur(totals.net)}
-                </p>
-              </div>
-            </Card>
+            </div>
           </div>
 
           <Card
@@ -400,16 +386,14 @@ export default function FinanzasPage() {
                     <div className="flex flex-col items-end gap-3 shrink-0">
                       <div className="flex items-center gap-2">
                         <div
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            e.kind === "ingreso" ? "bg-emerald-500" : "bg-rose-500"
-                          } shadow-[0_0_10px_rgba(255,255,255,0.12)]`}
+                          className={`w-1.5 h-1.5 rounded-full ${e.kind === "ingreso" ? "bg-emerald-500" : "bg-rose-500"
+                            } shadow-[0_0_10px_rgba(255,255,255,0.12)]`}
                         />
                         <p
-                          className={`text-xl font-black italic tracking-tighter tabular-nums bg-clip-text text-transparent ${
-                            e.kind === "ingreso"
-                              ? "bg-gradient-to-br from-emerald-300 to-teal-200"
-                              : "bg-gradient-to-br from-rose-300 to-orange-200"
-                          }`}
+                          className={`text-xl font-black italic tracking-tighter tabular-nums bg-clip-text text-transparent ${e.kind === "ingreso"
+                            ? "bg-gradient-to-br from-emerald-300 to-teal-200"
+                            : "bg-gradient-to-br from-rose-300 to-orange-200"
+                            }`}
                         >
                           {e.kind === "gasto" ? "-" : "+"}
                           {formatEur(e.amount)}

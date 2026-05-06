@@ -225,16 +225,8 @@ export function TaskList({ initialTasks }: TaskListProps) {
                                         </div>
                                     </div>
 
-                                    {/* Internal Score (bottom-right) */}
-                                    <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 flex items-center gap-1.5 rounded-2xl border border-white/10 bg-black/30 px-3 py-2 backdrop-blur-md">
-                                        <Sparkles size={14} className="text-amber-500" />
-                                        <span className="text-xs font-black italic tabular-nums bg-gradient-to-br from-amber-300 to-yellow-500 bg-clip-text text-transparent">
-                                            {(t.internal_score || 0)}/5
-                                        </span>
-                                    </div>
-
                                     {/* Metrics - Forced Single Line on Mobile */}
-                                    <div className={`grid grid-cols-3 gap-2 sm:flex sm:items-center sm:gap-x-8 border-white/5 ${viewMode === 'list' ? 'lg:border-l lg:pl-8' : 'border-t pt-4'}`}>
+                                    <div className={`grid grid-cols-4 gap-2 sm:flex sm:items-center sm:gap-x-8 border-white/5 ${viewMode === 'list' ? 'lg:border-l lg:pl-8' : 'border-t pt-4'}`}>
                                         <div className="flex flex-col items-start px-2 sm:px-0">
                                             <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">ROI</span>
                                             <div className="flex items-center gap-1.5 sm:gap-2">
@@ -254,6 +246,15 @@ export function TaskList({ initialTasks }: TaskListProps) {
                                             <div className="flex items-center gap-1.5 sm:gap-2">
                                                 <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.4)]" />
                                                 <span className="text-sm sm:text-lg font-black text-white tabular-nums italic tracking-tighter">{10 - (t.viability_metrics?.implementation_ease || 0)}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col items-start px-2 sm:px-0 sm:ml-auto sm:items-end">
+                                            <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">Score</span>
+                                            <div className="flex items-center gap-1.5 sm:gap-2">
+                                                <Sparkles size={14} className="text-amber-500" />
+                                                <span className="text-sm sm:text-lg font-black italic tabular-nums bg-gradient-to-br from-amber-300 to-yellow-500 bg-clip-text text-transparent tracking-tighter">
+                                                    {(t.internal_score || 0)}/5
+                                                </span>
                                             </div>
                                         </div>
                                     </div>
