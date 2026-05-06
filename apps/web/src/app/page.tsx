@@ -21,6 +21,7 @@ import {
   Target,
   Star
 } from "lucide-react";
+import { FinanceSummaryClient } from "@/components/finance/finance-summary-client";
 
 export default async function Home() {
   const tasks = await getTasks();
@@ -180,6 +181,16 @@ export default async function Home() {
               </div>
               <PriorityChart data={priorityDistribution} totalTasks={tasks.length || 1} />
             </Card>
+          </div>
+        </section>
+
+        {/* Finance Snapshot */}
+        <section className="lg:col-span-12 flex flex-col gap-6">
+          <h2 className="text-xl font-bold tracking-tight">Finanzas</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-12">
+              <FinanceSummaryClient />
+            </div>
           </div>
         </section>
 

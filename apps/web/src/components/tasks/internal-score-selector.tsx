@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { updateTask } from "@/app/actions/tasks";
 import { toast } from "sonner";
@@ -11,6 +12,7 @@ interface InternalScoreSelectorProps {
 }
 
 export function InternalScoreSelector({ task }: InternalScoreSelectorProps) {
+    const router = useRouter();
     const [score, setScore] = useState(task.internal_score || 0);
     const [isPending, startTransition] = useTransition();
 
@@ -20,6 +22,7 @@ export function InternalScoreSelector({ task }: InternalScoreSelectorProps) {
             const result = await updateTask(task.id, { ...task, internal_score: newScore });
             if (result.success) {
                 toast.success(`Score actualizado: ${newScore} estrellas`);
+                router.refresh();
             } else {
                 toast.error("Error al actualizar score");
                 setScore(task.internal_score || 0);

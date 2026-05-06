@@ -19,7 +19,8 @@ import {
     Trash2,
     Edit3,
     AlertTriangle,
-    Download
+    Download,
+    Sparkles
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -66,6 +67,8 @@ export function TaskList({ initialTasks }: TaskListProps) {
             result.sort((a, b) => (b.viability_metrics?.roi_potential || 0) - (a.viability_metrics?.roi_potential || 0));
         } else if (sortBy === "difficulty") {
             result.sort((a, b) => (a.viability_metrics?.implementation_ease || 10) - (b.viability_metrics?.implementation_ease || 10));
+        } else if (sortBy === "score") {
+            result.sort((a, b) => (b.internal_score || 0) - (a.internal_score || 0));
         }
 
         return result;
@@ -162,6 +165,7 @@ export function TaskList({ initialTasks }: TaskListProps) {
                         <option value="priority">PRIORIDAD</option>
                         <option value="roi">MEJOR ROI</option>
                         <option value="difficulty">MÁS FÁCIL</option>
+                        <option value="score">MEJOR SCORE</option>
                     </select>
                 </div>
             </div>
@@ -219,6 +223,14 @@ export function TaskList({ initialTasks }: TaskListProps) {
                                                 </Badge>
                                             ))}
                                         </div>
+                                    </div>
+
+                                    {/* Internal Score (bottom-right) */}
+                                    <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 flex items-center gap-1.5 rounded-2xl border border-white/10 bg-black/30 px-3 py-2 backdrop-blur-md">
+                                        <Sparkles size={14} className="text-amber-500" />
+                                        <span className="text-xs font-black italic tabular-nums bg-gradient-to-br from-amber-300 to-yellow-500 bg-clip-text text-transparent">
+                                            {(t.internal_score || 0)}/5
+                                        </span>
                                     </div>
 
                                     {/* Metrics - Forced Single Line on Mobile */}

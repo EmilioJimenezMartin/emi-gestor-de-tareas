@@ -11,6 +11,7 @@ import {
 } from "redux-persist";
 import createWebStorage from "redux-persist/lib/storage/createWebStorage";
 import { itemsReducer } from "./items-slice";
+import { financeReducer } from "./finance-slice";
 
 const storage =
   typeof window !== "undefined"
@@ -31,6 +32,7 @@ const rootReducer = combineReducers({
     },
     itemsReducer
   ),
+  finance: financeReducer,
 });
 
 export const store = configureStore({
@@ -47,4 +49,3 @@ export const persistor = persistStore(store);
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
-

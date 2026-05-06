@@ -10,7 +10,7 @@ export function registerSocket(app: FastifyInstance, env: Env): SocketIOServer {
   const options: Partial<ServerOptions> = {
     cors: {
       origin,
-      methods: ["GET", "POST", "OPTIONS"],
+      methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     },
   };
 
@@ -45,4 +45,3 @@ export function registerSocket(app: FastifyInstance, env: Env): SocketIOServer {
 
   return io;
 }
-

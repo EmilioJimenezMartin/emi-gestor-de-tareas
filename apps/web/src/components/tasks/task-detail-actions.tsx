@@ -3,7 +3,7 @@
 import { useState, useTransition, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, AlertTriangle, RotateCcw, Copy } from "lucide-react";
+import { Pencil, Trash2, AlertTriangle, Copy, Database } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Task } from "@/lib/tasks";
 import { AddTaskModal } from "./add-task-modal";
@@ -71,8 +71,9 @@ export function TaskDetailActions({ task }: TaskDetailActionsProps) {
                 <Button
                     variant="secondary"
                     className="w-full text-[10px] font-black uppercase tracking-widest h-12 shadow-lg shadow-primary/10 rounded-2xl"
+                    onClick={() => router.push(`/dashboard?task=${encodeURIComponent(task.slug ?? task.id)}`)}
                 >
-                    Ejecutar Motor Manualmente
+                    <Database size={14} className="mr-2" /> Extractor
                 </Button>
 
                 <Button

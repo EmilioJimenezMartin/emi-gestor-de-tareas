@@ -7,6 +7,7 @@ export interface ITask extends Document {
     status: string;
     priority: string;
     categories?: string[];
+    internal_score?: number;
     description: string;
     viability_metrics: {
         implementation_ease: number;
@@ -40,6 +41,7 @@ const TaskSchema: Schema = new Schema({
     status: { type: String, required: true },
     priority: { type: String, required: true },
     categories: [{ type: String }],
+    internal_score: { type: Number, default: 0 },
     description: { type: String, required: true },
     viability_metrics: {
         implementation_ease: { type: Number },
