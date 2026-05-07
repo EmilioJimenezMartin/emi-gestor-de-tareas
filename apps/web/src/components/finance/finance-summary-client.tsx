@@ -20,7 +20,7 @@ function calculateForecast(movements: FinanceMovement[], years: number) {
   let expense = 0;
 
   for (const m of movements) {
-    const created = new Date(m.createdAt);
+    const created = new Date(m.date || m.createdAt);
     let occurrences = 0;
 
     if (m.cadence === "puntual") {
@@ -78,6 +78,37 @@ export function FinanceSummaryClient() {
   const totals = useMemo(() => {
     return forecast1Y; // Use the 1-year lifetime forecast as the main total for the dashboard
   }, [forecast1Y]);
+
+  const trend = useMemo(() => {
+    const current = calculateForecast(movements, 0); // Value as of now
+    let monthlyNet = 0;
+    for (const m of movements) {
+      let val = 0;
+      if (m.cadence === "mensual") val = m.amount;
+      else if (m.cadence === "anual") val = m.amount / 12;
+
+      if (val === 0) continue;
+      if (m.kind === "ingreso") monthlyNet += val;
+      else monthlyNet -= val;
+    }
+
+    if (current.net >= 0 && monthlyNet >= 0) return { status: "pos", label: "Tendencia positiva estable" };
+    if (current.net < 0 && monthlyNet <= 0) return { status: "neg", label: "Tendencia negativa estable" };
+
+    if (current.net < 0 && monthlyNet > 0) {
+      const months = Math.abs(current.net) / monthlyNet;
+      const flip = new Date();
+      flip.setMonth(flip.getMonth() + months);
+      return { status: "recup", label: `Balance positivo en ${flip.toLocaleDateString()}` };
+    }
+    if (current.net > 0 && monthlyNet < 0) {
+      const months = current.net / Math.abs(monthlyNet);
+      const flip = new Date();
+      flip.setMonth(flip.getMonth() + months);
+      return { status: "deplet", label: `Balance negativo en ${flip.toLocaleDateString()}` };
+    }
+    return { status: "stable", label: "Tendencia estable" };
+  }, [movements]);
 
   const compare = useMemo(() => {
     return {
@@ -212,7 +243,25 @@ export function FinanceSummaryClient() {
         </div>
       </div>
 
-      {/* (Quitado) composición adicional */}
+      <div className="mt-8 pt-5 border-t border-white/5">
+        <div className="relative group overflow-hidden rounded-2xl bg-white/[0.02] border border-white/5 p-4 transition-all duration-500 hover:bg-white/[0.04]">
+          <div className={`absolute -left-10 -top-10 w-32 h-32 blur-3xl opacity-0 group-hover:opacity-10 transition-opacity duration-700 bg-gradient-to-br ${trend.status === 'pos' ? 'from-emerald-500 to-teal-400' : trend.status === 'neg' ? 'from-rose-500 to-orange-400' : 'from-primary to-blue-400'}`} />
+          <div className="relative flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-xl border ${trend.status === 'pos' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : trend.status === 'neg' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-primary/10 text-primary border-primary/20'}`}>
+                <TrendingUp size={16} />
+              </div>
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-neutral-500">Perspectiva de Capital</p>
+                <p className="text-xs font-bold text-white mt-0.5 tracking-tight">{trend.label}</p>
+              </div>
+            </div>
+            <Badge variant="neutral" className={`bg-white/5 border-white/10 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 ${trend.status === 'pos' ? 'text-emerald-400' : trend.status === 'neg' ? 'text-rose-400' : 'text-primary'}`}>
+              {trend.status === 'pos' || trend.status === 'recup' ? 'Saludable' : 'Riesgo'}
+            </Badge>
+          </div>
+        </div>
+      </div>
     </Card>
   );
 }

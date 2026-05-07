@@ -10,6 +10,7 @@ const createBodySchema = z.object({
   title: z.string().min(1),
   description: z.string().optional().default(""),
   amount: z.number().finite().positive(),
+  date: z.coerce.date().optional(),
 });
 
 const updateBodySchema = createBodySchema.partial().refine((v) => Object.keys(v).length > 0, {

@@ -37,7 +37,7 @@ function calculateForecast(movements: FinanceMovement[], years: number) {
   let expense = 0;
 
   for (const m of movements) {
-    const created = new Date(m.createdAt);
+    const created = new Date(m.date || m.createdAt);
     let occurrences = 0;
 
     if (m.cadence === "puntual") {
@@ -74,6 +74,7 @@ export default function FinanzasPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"edit" | "delete">("edit");
@@ -133,6 +134,37 @@ export default function FinanzasPage() {
   const forecast1Y = useMemo(() => calculateForecast(movements, 1), [movements]);
   const forecast10Y = useMemo(() => calculateForecast(movements, 10), [movements]);
 
+  const trend = useMemo(() => {
+    const current = calculateForecast(movements, 0); // Value as of now
+    let monthlyNet = 0;
+    for (const m of movements) {
+      let val = 0;
+      if (m.cadence === "mensual") val = m.amount;
+      else if (m.cadence === "anual") val = m.amount / 12;
+
+      if (val === 0) continue;
+      if (m.kind === "ingreso") monthlyNet += val;
+      else monthlyNet -= val;
+    }
+
+    if (current.net >= 0 && monthlyNet >= 0) return { status: "pos", label: "Tendencia positiva estable" };
+    if (current.net < 0 && monthlyNet <= 0) return { status: "neg", label: "Tendencia negativa estable" };
+
+    if (current.net < 0 && monthlyNet > 0) {
+      const months = Math.abs(current.net) / monthlyNet;
+      const flip = new Date();
+      flip.setMonth(flip.getMonth() + months);
+      return { status: "recup", label: `Balance positivo en ${flip.toLocaleDateString()}` };
+    }
+    if (current.net > 0 && monthlyNet < 0) {
+      const months = current.net / Math.abs(monthlyNet);
+      const flip = new Date();
+      flip.setMonth(flip.getMonth() + months);
+      return { status: "deplet", label: `Balance negativo en ${flip.toLocaleDateString()}` };
+    }
+    return { status: "stable", label: "Tendencia estable" };
+  }, [movements]);
+
   const ring = useMemo(() => {
     const r = 30;
     const c = 2 * Math.PI * r;
@@ -151,7 +183,7 @@ export default function FinanzasPage() {
     () =>
       movements
         .slice()
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+        .sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || "")),
     [movements]
   );
 
@@ -180,6 +212,7 @@ export default function FinanzasPage() {
           title: normalizedTitle,
           description: normalizedDescription,
           amount: parsedAmount,
+          date: new Date(date).toISOString(),
         }),
       });
 
@@ -307,63 +340,68 @@ export default function FinanzasPage() {
             />
 
             <Button
-              variant="secondary"
-              onClick={submit}
-              disabled={isSubmitting || title.trim().length === 0 || amount.trim().length === 0}
-              isLoading={isSubmitting}
+              onClick={() => {
+                setModalMode("edit");
+                setActiveMovement(null);
+                setModalOpen(true);
+              }}
               className="h-12 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary/10"
             >
               <Plus size={14} className="mr-2" /> Añadir
             </Button>
+
+            <div className="space-y-4 pt-4 border-t border-white/5">
+              <Input
+                label="Fecha del primer movimiento"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="h-12 bg-white/[0.03] border-white/10 rounded-2xl focus:ring-primary/20 transition-all text-white"
+              />
+
+              <Button
+                onClick={submit}
+                disabled={isSubmitting}
+                className="w-full h-14 bg-gradient-to-br from-primary to-blue-600 hover:from-primary/90 hover:to-blue-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-primary/10 transition-all active:scale-[0.98] disabled:opacity-50"
+              >
+                {isSubmitting ? "Guardando..." : "Crear movimiento"}
+              </Button>
+            </div>
           </div>
         </Card>
 
         <div className="lg:col-span-7 space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="relative group overflow-hidden p-5 sm:p-6 rounded-3xl border border-white/5 bg-white/[0.02] hover:border-emerald-500/20 transition-all duration-500">
-              <div className="absolute -right-6 -top-6 w-24 h-24 bg-gradient-to-br from-emerald-500 to-teal-400 opacity-0 group-hover:opacity-10 blur-2xl transition-opacity duration-500" />
-              <div className="relative space-y-4">
-                <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-400 w-fit text-white shadow-lg shadow-black/20">
-                  <ArrowUpRight size={16} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Trend Intelligence Card */}
+            <div className={`relative group overflow-hidden p-6 rounded-3xl border border-white/5 bg-white/[0.02] transition-all duration-500 ${trend.status === 'pos' ? 'hover:border-emerald-500/20' : trend.status === 'neg' ? 'hover:border-rose-500/20' : 'hover:border-primary/20'}`}>
+              <div className={`absolute -right-6 -top-6 w-24 h-24 blur-2xl transition-opacity duration-500 opacity-0 group-hover:opacity-10 bg-gradient-to-br ${trend.status === 'pos' ? 'from-emerald-500 to-teal-400' : trend.status === 'neg' ? 'from-rose-500 to-orange-400' : 'from-primary to-blue-400'}`} />
+              <div className="relative flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <TrendingUp size={14} className={trend.status === 'pos' ? 'text-emerald-400' : trend.status === 'neg' ? 'text-rose-400' : 'text-primary'} />
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">Tendencia de Capital</span>
                 </div>
-                <div>
-                  <p className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.2em]">Ingresos</p>
-                  <p className="text-2xl sm:text-3xl font-black tracking-tighter bg-gradient-to-br from-emerald-400 to-teal-300 bg-clip-text text-transparent italic tabular-nums mt-1">
-                    {formatEur(totals.income)}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="relative group overflow-hidden p-5 sm:p-6 rounded-3xl border border-white/5 bg-white/[0.02] hover:border-rose-500/20 transition-all duration-500">
-              <div className="absolute -right-6 -top-6 w-24 h-24 bg-gradient-to-br from-rose-500 to-orange-400 opacity-0 group-hover:opacity-10 blur-2xl transition-opacity duration-500" />
-              <div className="relative space-y-4">
-                <div className="p-2 rounded-xl bg-gradient-to-br from-rose-500 to-orange-400 w-fit text-white shadow-lg shadow-black/20">
-                  <ArrowDownRight size={16} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.2em]">Gastos</p>
-                  <p className="text-2xl sm:text-3xl font-black tracking-tighter bg-gradient-to-br from-rose-400 to-orange-300 bg-clip-text text-transparent italic tabular-nums mt-1">
-                    {formatEur(totals.expense)}
-                  </p>
+                <h4 className="text-lg font-bold text-white tracking-tight">
+                  {trend.label}
+                </h4>
+                <div className="flex items-center gap-2">
+                  <div className={`px-2 py-1 rounded-md text-[8px] font-bold uppercase tracking-widest ${trend.status === 'pos' ? 'bg-emerald-500/10 text-emerald-400' : trend.status === 'neg' ? 'bg-rose-500/10 text-rose-400' : 'bg-primary/10 text-primary'}`}>
+                    {trend.status === 'pos' || trend.status === 'recup' ? 'Saludable' : 'Riesgo'}
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className={`relative group overflow-hidden p-5 sm:p-6 rounded-3xl border border-white/5 bg-white/[0.02] hover:border-amber-500/20 transition-all duration-500 ${totals.net >= 0 ? "hover:border-emerald-500/20" : "hover:border-rose-500/20"}`}>
-              <div className={`absolute -right-6 -top-6 w-24 h-24 bg-gradient-to-br ${totals.net >= 0 ? "from-emerald-500 to-teal-400" : "from-rose-500 to-orange-400"} opacity-0 group-hover:opacity-10 blur-2xl transition-opacity duration-500`} />
-              <div className="relative space-y-4">
-                <div className={`p-2 rounded-xl bg-gradient-to-br ${totals.net >= 0 ? "from-emerald-500 to-teal-400" : "from-rose-500 to-orange-400"} w-fit text-white shadow-lg shadow-black/20`}>
-                  <TrendingUp size={16} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.2em]">Neto Total</p>
-                  <p className={`text-2xl sm:text-3xl font-black tracking-tighter bg-gradient-to-br ${totals.net >= 0 ? "from-emerald-400 to-teal-300" : "from-rose-400 to-orange-300"} bg-clip-text text-transparent italic tabular-nums mt-1`}>
-                    {formatEur(totals.net)}
-                  </p>
+            <Card
+              className="relative group overflow-hidden border-white/5 bg-white/[0.02] p-6 rounded-3xl"
+            >
+              <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-primary/20 blur-3xl opacity-0 group-hover:opacity-20 transition-all duration-500" />
+              <div className="relative flex flex-col items-center justify-center h-full text-center">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-600 mb-2">balance neto total</p>
+                <div className={`text-4xl font-black italic tracking-tighter tabular-nums bg-clip-text text-transparent bg-gradient-to-br ${totals.net >= 0 ? "from-emerald-400 to-teal-400" : "from-rose-400 to-orange-400"}`}>
+                  {formatEur(totals.net)}
                 </div>
               </div>
-            </div>
+            </Card>
           </div>
 
           <div className="space-y-4">
@@ -413,7 +451,7 @@ export default function FinanzasPage() {
             <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-white/5">
               <div>
                 <h2 className="text-xs font-black uppercase tracking-widest text-neutral-500">
-                  Movimientos
+                  Historial de movimientos
                 </h2>
                 <p className="mt-1 text-[11px] text-neutral-500">
                   {movementsSorted.length} elemento(s)
@@ -453,7 +491,7 @@ export default function FinanzasPage() {
                         </p>
                       ) : null}
                       <p className="mt-3 text-[10px] text-neutral-600 font-mono uppercase tracking-widest">
-                        {new Date(e.createdAt).toLocaleString()}
+                        Fecha del primer movimiento: {new Date(e.date || e.createdAt).toLocaleDateString()}
                       </p>
                     </div>
 
