@@ -11,10 +11,33 @@ function formatEur(v: number) {
   return `${v.toFixed(2)}€`;
 }
 
-function effectiveMonthlyAmount(m: FinanceMovement): number {
-  // Annualized view: mensual = 12x anual (user requirement), puntual treated like anual.
-  if (m.cadence === "mensual") return m.amount * 12;
-  return m.amount;
+function calculateForecast(movements: FinanceMovement[], years: number) {
+  const now = new Date();
+  const end = new Date();
+  end.setFullYear(now.getFullYear() + years);
+
+  let income = 0;
+  let expense = 0;
+
+  for (const m of movements) {
+    const created = new Date(m.createdAt);
+    let occurrences = 0;
+
+    if (m.cadence === "puntual") {
+      occurrences = 1;
+    } else if (m.cadence === "mensual") {
+      const months = (end.getFullYear() - created.getFullYear()) * 12 + (end.getMonth() - created.getMonth()) + 1;
+      occurrences = Math.max(0, months);
+    } else if (m.cadence === "anual") {
+      const yearsElapsed = end.getFullYear() - created.getFullYear() + 1;
+      occurrences = Math.max(0, yearsElapsed);
+    }
+
+    const total = occurrences * m.amount;
+    if (m.kind === "ingreso") income += total;
+    else expense += total;
+  }
+  return { income, expense, net: income - expense };
 }
 
 export function FinanceSummaryClient() {
@@ -50,16 +73,11 @@ export function FinanceSummaryClient() {
     };
   }, [apiUrl]);
 
+  const forecast1Y = useMemo(() => calculateForecast(movements, 1), [movements]);
+
   const totals = useMemo(() => {
-    let income = 0;
-    let expense = 0;
-    for (const m of movements) {
-      const amt = effectiveMonthlyAmount(m);
-      if (m.kind === "ingreso") income += amt;
-      else expense += amt;
-    }
-    return { income, expense, net: income - expense };
-  }, [movements]);
+    return forecast1Y; // Use the 1-year lifetime forecast as the main total for the dashboard
+  }, [forecast1Y]);
 
   const compare = useMemo(() => {
     return {
@@ -90,7 +108,7 @@ export function FinanceSummaryClient() {
           <TrendingUp size={16} />
           <h3 className="text-sm font-bold">Finanzas</h3>
           <Badge variant="neutral" className="bg-white/5 border-white/10 text-[8px] font-black uppercase tracking-widest">
-            anualizado
+            Proyección 1 Año
           </Badge>
         </div>
         <Badge

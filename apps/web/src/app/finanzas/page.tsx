@@ -28,8 +28,39 @@ function formatEur(v: number) {
   return `${v.toFixed(2)}€`;
 }
 
+function calculateForecast(movements: FinanceMovement[], years: number) {
+  const now = new Date();
+  const end = new Date();
+  end.setFullYear(now.getFullYear() + years);
+
+  let income = 0;
+  let expense = 0;
+
+  for (const m of movements) {
+    const created = new Date(m.createdAt);
+    let occurrences = 0;
+
+    if (m.cadence === "puntual") {
+      // Every puntual movement counts once in a lifetime forecast
+      occurrences = 1;
+    } else if (m.cadence === "mensual") {
+      // Total months from creation until the end of the projection period
+      const months = (end.getFullYear() - created.getFullYear()) * 12 + (end.getMonth() - created.getMonth()) + 1;
+      occurrences = Math.max(0, months);
+    } else if (m.cadence === "anual") {
+      // Total years (including partial) from creation until the end of the projection period
+      const yearsElapsed = end.getFullYear() - created.getFullYear() + 1;
+      occurrences = Math.max(0, yearsElapsed);
+    }
+
+    const total = occurrences * m.amount;
+    if (m.kind === "ingreso") income += total;
+    else expense += total;
+  }
+  return { income, expense, net: income - expense };
+}
+
 function annualizedAmount(cadence: FinanceEntryCadence, amount: number) {
-  // Requirement: anual and puntual count the same; mensual is 12x anual.
   if (cadence === "mensual") return amount * 12;
   return amount;
 }
@@ -98,6 +129,9 @@ export default function FinanzasPage() {
     }
     return { income, expense, net: income - expense };
   }, [movements]);
+
+  const forecast1Y = useMemo(() => calculateForecast(movements, 1), [movements]);
+  const forecast10Y = useMemo(() => calculateForecast(movements, 10), [movements]);
 
   const ring = useMemo(() => {
     const r = 30;
@@ -327,6 +361,46 @@ export default function FinanzasPage() {
                   <p className={`text-2xl sm:text-3xl font-black tracking-tighter bg-gradient-to-br ${totals.net >= 0 ? "from-emerald-400 to-teal-300" : "from-rose-400 to-orange-300"} bg-clip-text text-transparent italic tabular-nums mt-1`}>
                     {formatEur(totals.net)}
                   </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-primary/60 px-1">
+              <TrendingUp size={14} />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em]">Proyecciones a futuro</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* 1 Year Forecast */}
+              <div className="relative group overflow-hidden p-5 rounded-3xl border border-white/5 bg-white/[0.02] hover:border-primary/20 transition-all duration-500">
+                <div className="absolute -right-6 -top-6 w-24 h-24 bg-gradient-to-br from-primary to-blue-400 opacity-0 group-hover:opacity-5 blur-2xl transition-opacity duration-500" />
+                <div className="relative flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[9px] font-black text-neutral-500 uppercase tracking-[0.2em]">Previsión 1 Año</p>
+                    <p className={`text-xl font-black tracking-tighter italic tabular-nums mt-1 bg-gradient-to-br bg-clip-text text-transparent ${forecast1Y.net >= 0 ? "from-emerald-400 to-teal-300" : "from-rose-400 to-orange-300"}`}>
+                      {formatEur(forecast1Y.net)}
+                    </p>
+                  </div>
+                  <div className="p-2 rounded-xl bg-white/5 text-primary border border-white/10">
+                    <TrendingUp size={14} />
+                  </div>
+                </div>
+              </div>
+
+              {/* 10 Year Forecast */}
+              <div className="relative group overflow-hidden p-5 rounded-3xl border border-white/5 bg-white/[0.02] hover:border-amber-500/20 transition-all duration-500">
+                <div className="absolute -right-6 -top-6 w-24 h-24 bg-gradient-to-br from-amber-500 to-orange-400 opacity-0 group-hover:opacity-5 blur-2xl transition-opacity duration-500" />
+                <div className="relative flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[9px] font-black text-neutral-500 uppercase tracking-[0.2em]">Previsión 10 Años</p>
+                    <p className={`text-xl font-black tracking-tighter italic tabular-nums mt-1 bg-gradient-to-br bg-clip-text text-transparent ${forecast10Y.net >= 0 ? "from-amber-400 to-yellow-300" : "from-rose-400 to-orange-300"}`}>
+                      {formatEur(forecast10Y.net)}
+                    </p>
+                  </div>
+                  <div className="p-2 rounded-xl bg-white/5 text-amber-400 border border-white/10">
+                    <TrendingUp size={14} />
+                  </div>
                 </div>
               </div>
             </div>

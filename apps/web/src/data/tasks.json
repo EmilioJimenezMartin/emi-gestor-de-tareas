@@ -76,78 +76,225 @@
     },
     {
       "id": "recovery-arbitrage-002",
-      "title": "Recovery-Arbitrage: Guardián de Fondos NextGen",
+      "title": "Recovery Arbitrage: Guardián Inteligente de Fondos Europeos",
       "slug": "eu-funds-matching-engine",
-      "status": "Prototipo",
-      "priority": "critical",
-      "description": "Motor de emparejamiento predictivo entre fondos estructurales de la UE y PYMES españolas mediante análisis de idoneidad automatizado.",
+      "status": "Arquitectura Validada",
+      "priority": "high",
+      "description": "Infraestructura automatizada de matching predictivo entre subvenciones europeas y empresas elegibles mediante NLP jurídico y scoring financiero.",
       "viability_metrics": {
-        "implementation_ease": 6,
-        "success_probability": 9,
-        "resource_intensity": 4,
-        "time_to_mvp": 7,
-        "roi_potential": 10
+        "implementation_ease": 5,
+        "success_probability": 8,
+        "resource_intensity": 6,
+        "time_to_mvp": 6,
+        "roi_potential": 10,
+        "automation_leverage": 9,
+        "market_size_score": 10,
+        "data_moat_score": 9,
+        "regulatory_complexity": 6,
+        "sales_complexity": 4
       },
       "technical_stack": {
-        "framework": "Next.js",
+        "frontend": "Next.js 15",
+        "backend": "Node.js + Python NLP Workers",
         "database": "MongoDB",
+        "queue_system": "BullMQ + Redis",
+        "nlp_stack": [
+          "spaCy",
+          "OpenAI API",
+          "Sentence Transformers",
+          "LangChain"
+        ],
+        "document_processing": [
+          "PyMuPDF",
+          "PDFPlumber",
+          "Tesseract OCR"
+        ],
+        "scraping_stack": [
+          "Playwright",
+          "Cheerio",
+          "BeautifulSoup"
+        ],
+        "cloud_infrastructure": [
+          "Railway",
+          "Hetzner",
+          "Cloudflare Workers",
+          "Cloudflare R2"
+        ],
+        "notification_channels": [
+          "Telegram Bot API",
+          "Slack Webhooks",
+          "Email SMTP",
+          "WhatsApp Business API"
+        ],
         "apis_required": [
-          "API de la Base de Datos Nacional de Subvenciones",
-          "BOE/DOUE Scraper",
-          "Registro Mercantil (CNAE/Balances)",
-          "Buscador de Ayudas (Cámara de Comercio)"
+          {
+            "name": "Base de Datos Nacional de Subvenciones (BDNS)",
+            "url": "https://www.infosubvenciones.es",
+            "purpose": "Fuente principal de convocatorias públicas españolas."
+          },
+          {
+            "name": "BOE API",
+            "url": "https://www.boe.es/datosabiertos/api/api.php",
+            "purpose": "Extracción estructurada de boletines oficiales y convocatorias."
+          },
+          {
+            "name": "TED Europa / DOUE",
+            "url": "https://ted.europa.eu",
+            "purpose": "Fondos y programas europeos complementarios."
+          },
+          {
+            "name": "Cámara de Comercio",
+            "url": "https://www.camara.es",
+            "purpose": "Validación y enriquecimiento de ayudas empresariales."
+          },
+          {
+            "name": "eInforma / Axesor",
+            "url": "https://www.einforma.com",
+            "purpose": "Datos mercantiles, CNAE y balances empresariales."
+          },
+          {
+            "name": "INE API",
+            "url": "https://www.ine.es",
+            "purpose": "Datos estadísticos sectoriales y geográficos."
+          },
+          {
+            "name": "AEAT",
+            "url": "https://sede.agenciatributaria.gob.es",
+            "purpose": "Validaciones fiscales y criterios tributarios."
+          }
         ]
       },
       "business_logic": {
-        "problem": "La ejecución de los fondos europeos en España sufre de una paradoja: hay un exceso de capital disponible (más de 160.000M€) pero un déficit de acceso. Las PYMES no tienen departamentos legales para leer los boletines oficiales diarios y las convocatorias públicas utilizan un lenguaje administrativo críptico. El resultado es que el 60% de las ayudas no llegan a su destino o se agotan por 'orden de llegada' antes de que las empresas elegibles se enteren. Las consultoras tradicionales son lentas y caras para el volumen masivo de micro-ayudas digitales e industriales.",
-        "solution": "Un motor de 'Matching' proactivo basado en NLP. El sistema extrae en tiempo real los requisitos técnicos de las nuevas convocatorias publicadas en el BOE y DOUE. Cruza estos datos con el perfil financiero y de actividad real (CNAE, facturación, número de empleados) de millones de empresas españolas extraídas del Registro Mercantil. El algoritmo no solo detecta la ayuda, sino que predice la probabilidad de éxito y prepara el 'draft' de la solicitud antes incluso de que la empresa sepa que la ayuda existe.",
+        "problem": "España y la Unión Europea movilizan cientos de miles de millones en subvenciones, ayudas y programas de transformación digital, sostenibilidad e innovación. Sin embargo, las PYMES carecen de tiempo, conocimiento jurídico y capacidad administrativa para monitorizar diariamente boletines oficiales complejos y altamente fragmentados. Como consecuencia, miles de ayudas quedan infrautilizadas o son capturadas únicamente por grandes consultoras y empresas con departamentos especializados.",
+        "solution": "Un motor automatizado de inteligencia de subvenciones basado en NLP jurídico y matching empresarial. El sistema monitoriza en tiempo real nuevas convocatorias públicas, interpreta automáticamente requisitos técnicos y cruza la elegibilidad con datos empresariales como CNAE, tamaño, localización, facturación y solvencia. El resultado es un radar predictivo que identifica empresas potencialmente elegibles antes de que descubran la ayuda por sus propios medios.",
+        "competitive_advantage": [
+          "Automatización de un sector todavía altamente manual.",
+          "Capacidad de procesar cientos de convocatorias diarias.",
+          "Scoring propietario de probabilidad de concesión.",
+          "Matching masivo entre ayudas y empresas.",
+          "Ventaja temporal frente a asesorías tradicionales."
+        ],
         "monetization": [
-          "Success Fee: Cobro de una comisión del 3% al 5% sobre la subvención neta concedida, alineando los intereses del bot con los del cliente.",
-          "Lead Generation B2B: Venta de leads cualificados (empresas con 100% de elegibilidad) a bancos que ofrecen préstamos puente para financiar el IVA de las subvenciones.",
-          "SaaS de Alerta Temprana: Suscripción mensual para gestorías y despachos que quieren recibir alertas de ayudas para su cartera de clientes de forma automatizada.",
-          "Tramitación Express: Fee por el uso de la herramienta de pre-cumplimentación de expedientes mediante firma digital."
+          "SaaS mensual para gestorías y despachos profesionales.",
+          "Fee por generación automática de expediente subvencionable.",
+          "Lead generation para bancos y fintechs que financian anticipos de subvenciones.",
+          "Success fee opcional sobre ayudas finalmente concedidas.",
+          "API privada de matching de subvenciones para ERPs y software empresarial.",
+          "Licenciamiento white-label a consultoras y asociaciones empresariales."
+        ],
+        "go_to_market": [
+          "Fase 1: Feed premium de ayudas para gestorías.",
+          "Fase 2: Automatización documental y scoring.",
+          "Fase 3: API de elegibilidad para terceros.",
+          "Fase 4: Marketplace financiero de anticipos y financiación puente."
+        ],
+        "risk_factors": [
+          "Interpretación jurídica inconsistente entre convocatorias.",
+          "Dependencia de fuentes públicas parcialmente estructuradas.",
+          "Cambios regulatorios en subvenciones europeas.",
+          "Necesidad de revisión humana en ayudas complejas.",
+          "Posible resistencia de asesorías tradicionales."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "NLP Ingestion de Boletines",
-          "details": "Análisis diario de textos legales para clasificar subvenciones por: CNAE permitidos, geografía, cuantía y tipo de gasto elegible (Capex/Opex)."
+          "task": "Government Feed Monitoring",
+          "details": "Monitorización continua de BOE, BDNS, DOUE y organismos autonómicos para detectar nuevas ayudas y modificaciones regulatorias.",
+          "sources": [
+            "https://www.boe.es",
+            "https://www.infosubvenciones.es",
+            "https://ted.europa.eu"
+          ],
+          "_id": "69ee50d976d2934a52a2e28b"
         },
         {
           "step": 2,
-          "task": "Profiling de Mercado Masivo",
-          "details": "Carga y filtrado de datos de sociedades mercantiles para identificar empresas con balances saneados y actividad compatible con las líneas estratégicas de la UE."
+          "task": "Legal NLP Extraction",
+          "details": "Extracción automática de requisitos: CNAE elegibles, límites de facturación, intensidad de ayuda, geografía, deadlines y gastos subvencionables.",
+          "technologies": [
+            "spaCy",
+            "OpenAI",
+            "Regex pipelines",
+            "Embeddings semánticos"
+          ],
+          "_id": "69ee50d976d2934a52a2e28c"
         },
         {
           "step": 3,
-          "task": "Matching de Idoneidad",
-          "details": "Algoritmo de scoring que compara los requisitos de la base reguladora con la situación real de la PYME, generando un ranking de beneficiarios potenciales."
+          "task": "Massive Business Profiling",
+          "details": "Enriquecimiento de perfiles empresariales mediante datos mercantiles y categorización sectorial automatizada.",
+          "_id": "69ee50d976d2934a52a2e28d"
         },
         {
           "step": 4,
-          "task": "Generación de Lead Cualificado",
-          "details": "Disparo de notificaciones personalizadas vía API/Telegram a los responsables de la empresa con el informe de viabilidad pre-aprobado."
+          "task": "Eligibility Scoring Engine",
+          "details": "Algoritmo que calcula elegibilidad, probabilidad de concesión y valor económico potencial por empresa.",
+          "_id": "69ee50d976d2934a52a2e28e"
+        },
+        {
+          "step": 5,
+          "task": "Automated Alert System",
+          "details": "Envío automático de alertas y oportunidades vía Telegram, email, CRM o API.",
+          "_id": "69ee50d976d2934a52a2e28f"
+        },
+        {
+          "step": 6,
+          "task": "Draft Application Builder",
+          "details": "Generación automática de borradores y pre-cumplimentación documental para acelerar la tramitación.",
+          "_id": "69ee50d976d2934a52a2e290"
         }
       ],
       "data_schema_preview": {
-        "cif_empresa": "String",
         "grant_id": "String",
+        "grant_title": "String",
+        "grant_type": "Enum ['digitalization', 'energy', 'innovation', 'industrial']",
+        "eligible_cnaes": "Array",
+        "max_grant_amount": "Number",
+        "company_cif": "String",
+        "company_name": "String",
+        "company_cnae": "String",
+        "annual_revenue": "Number",
+        "employee_count": "Number",
         "eligibility_score": "Number (0-100)",
+        "grant_probability_score": "Number (0-100)",
         "estimated_grant_value": "Number",
-        "status_prospeccion": "Enum ['detectada', 'contactada', 'firmada']"
+        "submission_deadline": "Date",
+        "required_documents": "Array",
+        "status_prospeccion": "Enum ['detected', 'contacted', 'qualified', 'submitted', 'approved']"
       },
       "automation_config": {
         "cron_schedule": "0 6 * * *",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
-      "internal_score": 0,
+      "internal_score": 89,
       "categories": [
         "LegalTech",
         "Fintech",
-        "Arbitraje"
-      ]
+        "GovTech",
+        "Automation",
+        "B2B SaaS"
+      ],
+      "_id": "69ee50d976d2934a52a2e28a",
+      "automation_opportunities": [
+        "Clasificación automática de ayudas mediante embeddings.",
+        "Predicción ML de probabilidad de concesión.",
+        "Auto-generación de expedientes PDF.",
+        "Integración CRM para asesorías.",
+        "Alertas inteligentes por CNAE y región.",
+        "Ranking automático de ayudas por ROI potencial."
+      ],
+      "moat_strategy": [
+        "Dataset propietario de ayudas históricas y resultados.",
+        "Motor NLP especializado en lenguaje administrativo español.",
+        "Scoring histórico de éxito por tipo de convocatoria.",
+        "Integraciones profundas con gestorías y despachos.",
+        "Feedback loop continuo basado en resultados reales."
+      ],
+      "__v": 1,
+      "createdAt": "2026-04-26T17:52:25.524Z",
+      "updatedAt": "2026-05-06T18:05:00.000Z"
     },
     {
       "id": "cyber-heatmap-003",
@@ -528,80 +675,242 @@
     },
     {
       "id": "index-arb-engine-008",
-      "title": "The Index-Arb Engine: Arbitraje de Activos Desiertos",
+      "title": "The Index-Arb Engine: Arbitraje Automatizado de Activos Desiertos",
       "slug": "index-arb-crowd-financial-engine",
-      "status": "Prototipo",
-      "priority": "critical",
-      "description": "Motor de detección de activos en fase de venta directa que cruza datos de edictos judiciales con valoraciones de mercado para activar financiación automática.",
+      "status": "Arquitectura Validada",
+      "priority": "high",
+      "description": "Motor automatizado de detección, valoración y financiación de activos judiciales desiertos mediante OCR, NLP jurídico y arbitraje de liquidación.",
       "viability_metrics": {
-        "implementation_ease": 3,
+        "implementation_ease": 4,
         "success_probability": 8,
         "resource_intensity": 8,
-        "time_to_mvp": 4,
-        "roi_potential": 10
+        "time_to_mvp": 5,
+        "roi_potential": 10,
+        "legal_complexity": 9,
+        "automation_leverage": 10,
+        "market_inefficiency_score": 9,
+        "capital_dependency": 8
       },
       "technical_stack": {
-        "framework": "Next.js / Python (OCR Pipeline)",
+        "frontend": "Next.js 15",
+        "backend": "Node.js + Python Workers",
+        "ocr_pipeline": "Python + Tesseract OCR + PaddleOCR + OpenCV",
         "database": "MongoDB",
+        "queue_system": "BullMQ + Redis",
+        "scraping_stack": [
+          "Playwright",
+          "Cheerio",
+          "PDFPlumber",
+          "PyMuPDF"
+        ],
+        "cloud_infrastructure": [
+          "Railway",
+          "Hetzner",
+          "Cloudflare R2",
+          "Cloudflare Workers"
+        ],
+        "notification_channels": [
+          "Telegram Bot API",
+          "Discord Webhooks",
+          "Email SMTP",
+          "Twilio WhatsApp API"
+        ],
         "apis_required": [
-          "BOE Portal de Subastas (Edictos)",
-          "Tesseract OCR / Google Vision API",
-          "Idealista/Fotocasa API (Market Price)",
-          "VIN Decoder / Eurotax API",
-          "Lemonway / Mangopay API (Financiación)"
+          {
+            "name": "Portal BOE Subastas",
+            "url": "https://subastas.boe.es",
+            "purpose": "Extracción de subastas judiciales, AEAT y Seguridad Social."
+          },
+          {
+            "name": "BOE API",
+            "url": "https://www.boe.es/datosabiertos/api/api.php",
+            "purpose": "Acceso estructurado a edictos y metadatos oficiales."
+          },
+          {
+            "name": "Catastro API",
+            "url": "https://www.sedecatastro.gob.es",
+            "purpose": "Obtención de referencia catastral, superficie y uso urbanístico."
+          },
+          {
+            "name": "Google Vision API",
+            "url": "https://cloud.google.com/vision",
+            "purpose": "OCR avanzado para PDFs judiciales escaneados."
+          },
+          {
+            "name": "Idealista",
+            "url": "https://www.idealista.com",
+            "purpose": "Estimación comparativa de mercado inmobiliario."
+          },
+          {
+            "name": "Fotocasa",
+            "url": "https://www.fotocasa.es",
+            "purpose": "Benchmark de precios y velocidad de venta."
+          },
+          {
+            "name": "VIN Decoder API",
+            "url": "https://vindecoder.eu",
+            "purpose": "Decodificación de bastidores y vehículos."
+          },
+          {
+            "name": "Milanuncios",
+            "url": "https://www.milanuncios.com",
+            "purpose": "Valoración secundaria de vehículos y maquinaria."
+          },
+          {
+            "name": "Escrapalia",
+            "url": "https://www.escrapalia.com",
+            "purpose": "Comparativa de liquidaciones industriales y lotes."
+          },
+          {
+            "name": "Lemonway",
+            "url": "https://www.lemonway.com",
+            "purpose": "Gestión de wallets e inversión sindicada."
+          },
+          {
+            "name": "Mangopay",
+            "url": "https://mangopay.com",
+            "purpose": "Distribución de capital e infraestructura de crowdlending."
+          }
         ]
       },
       "business_logic": {
-        "problem": "Existe un 'limbo' legal: las subastas que quedan desiertas (nadie puja). En esta fase, el activo pasa a 'Venta Directa' o se puede negociar con el acreedor por una fracción de la deuda. Son las mejores gangas de internet, pero son invisibles porque los edictos están en PDFs escaneados de mala calidad. Además, requieren una liquidez inmediata (cash) que la mayoría de los pequeños inversores no tienen disponible en 48 horas.",
-        "solution": "Un orquestador de 'Financiación Flash'. El bot lee los edictos judiciales, extrae los datos del activo (referencia catastral de un piso o el bastidor de un coche de lujo) y calcula el valor de mercado real. Si la oportunidad es masiva, el sistema genera automáticamente una 'oportunidad de inversión' en un dashboard para un club de inversores (crowdlending), recaudando el capital necesario en horas para adjudicarse el activo antes de que salga al mercado abierto.",
+        "problem": "Existe una enorme ineficiencia estructural en las subastas judiciales y concursales españolas. Miles de activos pasan a fase de 'subasta desierta' o 'venta directa' porque los edictos están enterrados en PDFs jurídicos difíciles de interpretar, con mala indexación SEO y lenguaje administrativo opaco. La mayoría de pequeños inversores no monitoriza estas oportunidades ni dispone de liquidez inmediata para reaccionar en ventanas de 24-72 horas. Como consecuencia, acreedores, bancos y administradores concursales aceptan descuentos extremos sobre activos perfectamente revendibles.",
+        "solution": "Un motor de arbitraje legal-financiero que detecta automáticamente activos desiertos o infravalorados, extrae datos clave mediante OCR y NLP jurídico, calcula el valor real de liquidación y activa financiación colectiva inmediata. El sistema funciona como un hedge-fund automatizado de oportunidades judiciales: identifica activos con alto descuento implícito, genera un informe técnico de viabilidad y abre rondas express de financiación para adjudicarse el activo antes de que llegue al mercado abierto.",
+        "competitive_advantage": [
+          "Automatización de una industria todavía manual y jurídica.",
+          "Acceso temprano a oportunidades invisibles para retail.",
+          "Capacidad de reacción en horas frente a semanas de una gestoría tradicional.",
+          "Motor de OCR especializado en documentos judiciales deteriorados.",
+          "Scoring propietario de riesgo jurídico y rentabilidad esperada."
+        ],
         "monetization": [
-          "Management Fee: Comisión fija por la gestión técnica y legal de la adjudicación del activo (3-5%).",
-          "Carry Interest: Porcentaje de los beneficios finales tras la reventa del activo (20-30% de la plusvalía).",
-          "SaaS para Inversores: Cuota mensual para acceder al feed de activos desiertos con valoración de mercado pre-calculada.",
-          "Fee de Originación: Cobro a las plataformas de crowdlending por llevarles operaciones con colateral real verificado."
+          "Management Fee: Comisión fija del 3% al 5% sobre cada operación adjudicada.",
+          "Carry Interest: Participación del 20%-30% sobre beneficios netos tras liquidación.",
+          "SaaS Premium: Acceso mensual al feed privado de oportunidades filtradas.",
+          "Originación de operaciones para fondos oportunistas y plataformas de crowdlending.",
+          "Marketplace privado de activos adjudicados para inversores recurrentes.",
+          "Fee de automatización documental para despachos y procuradores."
+        ],
+        "risk_factors": [
+          "Complejidad regulatoria en crowdlending y captación de capital.",
+          "Necesidad de revisión jurídica humana en operaciones críticas.",
+          "Riesgo de cargas ocultas o litigios sobre activos.",
+          "Dependencia de fuentes públicas no estructuradas.",
+          "Posibles limitaciones anti-scraping."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Deep Document Scraping",
-          "details": "Descarga masiva de los anexos y edictos de subastas terminadas sin postores para buscar el contacto del administrador concursal o procurador."
+          "task": "Judicial Feed Monitoring",
+          "details": "Monitorización continua del Portal de Subastas BOE, concursos de acreedores y plataformas de liquidación industrial para detectar subastas finalizadas sin pujas o con actividad mínima.",
+          "sources": [
+            "https://subastas.boe.es",
+            "https://www.escrapalia.com",
+            "https://www.gobid.es"
+          ],
+          "_id": "69ee50d976d2934a52a2e2a9"
         },
         {
           "step": 2,
-          "task": "Automated Value Appraisal",
-          "details": "Cruce de la ubicación exacta (inmuebles) o matrícula/VIN (vehículos) con bases de datos de precios reales de cierre, no solo de oferta."
+          "task": "Deep OCR + Legal Parsing",
+          "details": "Extracción avanzada de datos desde PDFs judiciales: cargas, ubicación, bastidores, administradores concursales, embargos y situación posesoria.",
+          "technologies": [
+            "Tesseract OCR",
+            "OpenCV",
+            "PyMuPDF",
+            "Google Vision API"
+          ],
+          "_id": "69ee50d976d2934a52a2e2aa"
         },
         {
           "step": 3,
-          "task": "Investor Alert Generation",
-          "details": "Publicación de la ficha técnica en el portal privado indicando el 'Escenario de Salida' (ej. venta en 6 meses con 25% de ROI)."
+          "task": "Automated Asset Valuation",
+          "details": "Valoración automática mediante comparativas inmobiliarias, depreciación de vehículos, lotes industriales y velocidad de liquidación secundaria.",
+          "market_sources": [
+            "Idealista",
+            "Fotocasa",
+            "Milanuncios",
+            "Wallapop",
+            "Escrapalia"
+          ],
+          "_id": "69ee50d976d2934a52a2e2ab"
         },
         {
           "step": 4,
-          "task": "Liquidation Orchestration",
-          "details": "Sincronización con partners de venta rápida (iBuyers o compraventas) para asegurar que el activo se venda nada más recibir las llaves."
+          "task": "Opportunity Scoring Engine",
+          "details": "Algoritmo propietario que calcula arbitraje potencial, dificultad legal, tiempo estimado de adjudicación y ROI esperado.",
+          "_id": "69ee50d976d2934a52a2e2ac"
+        },
+        {
+          "step": 5,
+          "task": "Investor Syndication Layer",
+          "details": "Publicación automática de oportunidades en un dashboard privado donde inversores sindicados pueden reservar capital para adjudicación rápida.",
+          "_id": "69ee50d976d2934a52a2e2ad"
+        },
+        {
+          "step": 6,
+          "task": "Exit & Liquidation Automation",
+          "details": "Conexión con compradores rápidos, fondos oportunistas e iBuyers para liquidar el activo inmediatamente tras adjudicación.",
+          "_id": "69ee50d976d2934a52a2e2ae"
         }
       ],
       "data_schema_preview": {
-        "asset_vin_catastro": "String",
+        "auction_id": "String",
+        "asset_type": "Enum ['property', 'vehicle', 'industrial', 'mixed']",
+        "asset_reference": "String",
+        "cadastral_reference": "String",
+        "vin_number": "String",
+        "judicial_status": "Enum ['auction', 'deserted', 'direct_sale', 'awarded']",
+        "detected_liens": "Array",
         "liquidation_value": "Number",
-        "real_market_value": "Number",
-        "investor_payout_proyected": "Number",
-        "arb_engine_commission": "Number",
-        "funding_status": "Enum ['detecting', 'funding', 'adjudicated', 'liquidated']"
+        "estimated_market_value": "Number",
+        "discount_percentage": "Number",
+        "projected_roi": "Number",
+        "legal_risk_score": "Number (0-100)",
+        "time_to_exit_days": "Number",
+        "funding_target": "Number",
+        "funding_raised": "Number",
+        "investor_count": "Number",
+        "status": "Enum ['detecting', 'reviewing', 'funding', 'adjudicated', 'liquidated']"
       },
       "automation_config": {
         "cron_schedule": "0 */2 * * *",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
-      "internal_score": 0,
+      "internal_score": 91,
       "categories": [
         "Fintech",
         "LegalTech",
-        "Arbitraje"
-      ]
+        "Arbitraje",
+        "PropTech",
+        "Alternative Investments"
+      ],
+      "_id": "69ee50d976d2934a52a2e2a8",
+      "automation_opportunities": [
+        "Telegram alerts para activos con ROI > 25%.",
+        "Clasificación automática de PDFs judiciales.",
+        "Generación automática de dossiers PDF para inversores.",
+        "Auto-bidding strategy engine.",
+        "Predicción de activos desiertos mediante ML histórico.",
+        "Sistema de watchlists geográficas."
+      ],
+      "moat_strategy": [
+        "Dataset histórico propietario de subastas desiertas.",
+        "OCR entrenado específicamente para documentación judicial española.",
+        "Network effects de inversores recurrentes.",
+        "Ventaja temporal en detección de oportunidades."
+      ],
+      "go_to_market": {
+        "phase_1": "Feed privado de alertas premium para inversores particulares.",
+        "phase_2": "Crowdlending privado para operaciones sindicadas.",
+        "phase_3": "Marketplace institucional de activos adjudicados.",
+        "phase_4": "Licenciamiento del motor a fondos distressed y despachos."
+      },
+      "__v": 1,
+      "createdAt": "2026-04-26T17:52:25.525Z",
+      "updatedAt": "2026-05-06T16:44:00.000Z"
     },
     {
       "id": "cash-recovery-arbitrage-009",
