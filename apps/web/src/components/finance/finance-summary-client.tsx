@@ -13,23 +13,28 @@ function formatEur(v: number) {
 
 function calculateForecast(movements: FinanceMovement[], years: number) {
   const now = new Date();
-  const end = new Date();
-  end.setFullYear(now.getFullYear() + years);
+  const forecastEnd = new Date();
+  forecastEnd.setFullYear(now.getFullYear() + years);
 
   let income = 0;
   let expense = 0;
 
   for (const m of movements) {
-    const created = new Date(m.date || m.createdAt);
+    const start = new Date(m.date || m.createdAt);
+    const mEnd = m.endDate ? new Date(m.endDate) : null;
+    const limit = mEnd && mEnd < forecastEnd ? mEnd : forecastEnd;
+
+    if (start > limit) continue;
+
     let occurrences = 0;
 
     if (m.cadence === "puntual") {
       occurrences = 1;
     } else if (m.cadence === "mensual") {
-      const months = (end.getFullYear() - created.getFullYear()) * 12 + (end.getMonth() - created.getMonth()) + 1;
+      const months = (limit.getFullYear() - start.getFullYear()) * 12 + (limit.getMonth() - start.getMonth()) + 1;
       occurrences = Math.max(0, months);
     } else if (m.cadence === "anual") {
-      const yearsElapsed = end.getFullYear() - created.getFullYear() + 1;
+      const yearsElapsed = limit.getFullYear() - start.getFullYear() + 1;
       occurrences = Math.max(0, yearsElapsed);
     }
 

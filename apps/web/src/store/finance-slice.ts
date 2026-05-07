@@ -11,6 +11,7 @@ export type FinanceMovement = {
   description: string;
   amount: number;
   date: string;
+  endDate?: string;
   createdAt: string;
   updatedAt?: string;
 };

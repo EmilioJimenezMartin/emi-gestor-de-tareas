@@ -40,6 +40,7 @@ export function MovementEditModal({
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   useEffect(() => setMounted(true), []);
 
@@ -54,6 +55,11 @@ export function MovementEditModal({
       setDate(new Date(movement.date).toISOString().split("T")[0]);
     } else if (movement.createdAt) {
       setDate(new Date(movement.createdAt).toISOString().split("T")[0]);
+    }
+    if (movement.endDate) {
+      setEndDate(new Date(movement.endDate).toISOString().split("T")[0]);
+    } else {
+      setEndDate("");
     }
   }, [movement]);
 
@@ -197,16 +203,29 @@ export function MovementEditModal({
                 className="bg-black/40 border-white/10"
               />
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600 ml-1">
-                  Fecha del primer movimiento
-                </label>
-                <Input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="bg-black/40 border-white/10"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600 ml-1">
+                    Fecha inicio
+                  </label>
+                  <Input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="bg-black/40 border-white/10"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600 ml-1">
+                    Fecha fin (Opcional)
+                  </label>
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="bg-black/40 border-white/10"
+                  />
+                </div>
               </div>
 
               <div className="pt-2 flex gap-3">
@@ -243,6 +262,7 @@ export function MovementEditModal({
                             description: normalizedDescription,
                             amount: parsedAmount,
                             date: new Date(date).toISOString(),
+                            endDate: endDate ? new Date(endDate).toISOString() : null,
                           }),
                         }
                       );

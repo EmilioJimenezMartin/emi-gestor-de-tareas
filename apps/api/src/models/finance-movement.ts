@@ -18,6 +18,7 @@ const financeMovementSchema = new mongoose.Schema(
     description: { type: String, required: false, default: "" },
     amount: { type: Number, required: true, min: 0 },
     date: { type: Date, required: true, default: Date.now },
+    endDate: { type: Date, required: false },
   },
   { timestamps: true }
 );

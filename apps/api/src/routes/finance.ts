@@ -11,6 +11,7 @@ const createBodySchema = z.object({
   description: z.string().optional().default(""),
   amount: z.number().finite().positive(),
   date: z.coerce.date().optional(),
+  endDate: z.coerce.date().optional(),
 });
 
 const updateBodySchema = createBodySchema.partial().refine((v) => Object.keys(v).length > 0, {

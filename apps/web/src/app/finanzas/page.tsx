@@ -30,26 +30,30 @@ function formatEur(v: number) {
 
 function calculateForecast(movements: FinanceMovement[], years: number) {
   const now = new Date();
-  const end = new Date();
-  end.setFullYear(now.getFullYear() + years);
+  const forecastEnd = new Date();
+  forecastEnd.setFullYear(now.getFullYear() + years);
 
   let income = 0;
   let expense = 0;
 
   for (const m of movements) {
-    const created = new Date(m.date || m.createdAt);
+    const start = new Date(m.date || m.createdAt);
+    const mEnd = m.endDate ? new Date(m.endDate) : null;
+
+    // The limit of our calculation is either the forecast end or the movement's end, whichever is sooner.
+    const limit = mEnd && mEnd < forecastEnd ? mEnd : forecastEnd;
+
+    if (start > limit) continue;
+
     let occurrences = 0;
 
     if (m.cadence === "puntual") {
-      // Every puntual movement counts once in a lifetime forecast
       occurrences = 1;
     } else if (m.cadence === "mensual") {
-      // Total months from creation until the end of the projection period
-      const months = (end.getFullYear() - created.getFullYear()) * 12 + (end.getMonth() - created.getMonth()) + 1;
+      const months = (limit.getFullYear() - start.getFullYear()) * 12 + (limit.getMonth() - start.getMonth()) + 1;
       occurrences = Math.max(0, months);
     } else if (m.cadence === "anual") {
-      // Total years (including partial) from creation until the end of the projection period
-      const yearsElapsed = end.getFullYear() - created.getFullYear() + 1;
+      const yearsElapsed = limit.getFullYear() - start.getFullYear() + 1;
       occurrences = Math.max(0, yearsElapsed);
     }
 
@@ -75,6 +79,7 @@ export default function FinanzasPage() {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [endDate, setEndDate] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"edit" | "delete">("edit");
@@ -191,17 +196,12 @@ export default function FinanzasPage() {
     const normalizedTitle = title.trim();
     const normalizedDescription = description.trim();
     const parsedAmount = Number(amount.replace(",", "."));
-    if (!normalizedTitle) {
-      toast.error("Añade un título");
-      return;
-    }
-    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-      toast.error("Importe inválido");
-      return;
-    }
-    if (isSubmitting) return;
-    setIsSubmitting(true);
 
+    if (!normalizedTitle) return toast.error("Añade un título");
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) return toast.error("Importe inválido");
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
     try {
       const res = await fetch(`${apiUrl}/finance/movements`, {
         method: "POST",
@@ -213,20 +213,13 @@ export default function FinanzasPage() {
           description: normalizedDescription,
           amount: parsedAmount,
           date: new Date(date).toISOString(),
+          endDate: endDate ? new Date(endDate).toISOString() : undefined,
         }),
       });
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
-        if (res.status === 503) {
-          toast.error("MongoDB no está conectado");
-        } else {
-          if (res.status === 404) {
-            toast.error("API sin endpoints de Finanzas (reinicia/rebuild la API)");
-            return;
-          }
-          toast.error(text ? `No se pudo guardar: ${text}` : "No se pudo guardar el movimiento");
-        }
+        toast.error(text ? `Error: ${text}` : "No se pudo guardar");
         return;
       }
 
@@ -238,8 +231,9 @@ export default function FinanzasPage() {
       setTitle("");
       setDescription("");
       setAmount("");
+      setEndDate("");
     } catch {
-      toast.error("Error de red conectando con la API");
+      toast.error("Error de red");
     } finally {
       setIsSubmitting(false);
     }
@@ -339,25 +333,23 @@ export default function FinanzasPage() {
               className="bg-black/40 border-white/10"
             />
 
-            <Button
-              onClick={() => {
-                setModalMode("edit");
-                setActiveMovement(null);
-                setModalOpen(true);
-              }}
-              className="h-12 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary/10"
-            >
-              <Plus size={14} className="mr-2" /> Añadir
-            </Button>
-
             <div className="space-y-4 pt-4 border-t border-white/5">
-              <Input
-                label="Fecha del primer movimiento"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="h-12 bg-white/[0.03] border-white/10 rounded-2xl focus:ring-primary/20 transition-all text-white"
-              />
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="Fecha inicio"
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="h-12 bg-white/[0.03] border-white/10 rounded-2xl focus:ring-primary/20 transition-all text-white"
+                />
+                <Input
+                  label="Fecha fin (Opcional)"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="h-12 bg-white/[0.03] border-white/10 rounded-2xl focus:ring-primary/20 transition-all text-white"
+                />
+              </div>
 
               <Button
                 onClick={submit}
