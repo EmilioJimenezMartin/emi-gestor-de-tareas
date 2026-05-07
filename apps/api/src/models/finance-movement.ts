@@ -19,9 +19,12 @@ const financeMovementSchema = new mongoose.Schema(
     amount: { type: Number, required: true, min: 0 },
     date: { type: Date, required: true, default: Date.now },
     endDate: { type: Date, required: false },
+    taskIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "Task", default: [] }],
   },
   { timestamps: true }
 );
+
+financeMovementSchema.index({ taskIds: 1 });
 
 financeMovementSchema.index({ createdAt: -1 });
 

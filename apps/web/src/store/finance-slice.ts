@@ -12,6 +12,7 @@ export type FinanceMovement = {
   amount: number;
   date: string;
   endDate?: string;
+  taskIds?: string[];
   createdAt: string;
   updatedAt?: string;
 };

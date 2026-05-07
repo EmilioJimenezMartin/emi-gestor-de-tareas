@@ -20,9 +20,13 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Pencil,
+  Briefcase,
+  Search,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { MovementEditModal } from "@/components/finance/movement-edit-modal";
+import { getTasks, type Task } from "@/lib/tasks";
 
 function formatEur(v: number) {
   return `${v.toFixed(2)}€`;
@@ -80,7 +84,14 @@ export default function FinanzasPage() {
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [endDate, setEndDate] = useState("");
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const [taskSearch, setTaskSearch] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    getTasks().then(setAllTasks).catch(() => { });
+  }, []);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"edit" | "delete">("edit");
   const [activeMovement, setActiveMovement] = useState<FinanceMovement | null>(
@@ -214,6 +225,7 @@ export default function FinanzasPage() {
           amount: parsedAmount,
           date: new Date(date).toISOString(),
           endDate: endDate ? new Date(endDate).toISOString() : undefined,
+          taskIds: selectedTaskIds,
         }),
       });
 
@@ -351,6 +363,70 @@ export default function FinanzasPage() {
                 />
               </div>
 
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between px-1">
+                  <div className="flex items-center gap-2">
+                    <Briefcase size={12} className="text-primary/60" />
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">Asociar a tareas</span>
+                  </div>
+                  <span className="text-[9px] font-bold text-neutral-600">{selectedTaskIds.length} seleccionadas</span>
+                </div>
+
+                {/* Selected Badges */}
+                {selectedTaskIds.length > 0 && (
+                  <div className="flex flex-wrap gap-2 p-2 bg-white/[0.02] border border-white/5 rounded-xl">
+                    {selectedTaskIds.map(id => {
+                      const t = allTasks.find(task => (task as any)._id === id || task.id === id);
+                      if (!t) return null;
+                      return (
+                        <div key={id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-primary/20 border border-primary/50 text-white transition-all">
+                          <span className="text-[10px] font-bold truncate max-w-[150px]">{t.title}</span>
+                          <button onClick={() => setSelectedTaskIds(selectedTaskIds.filter(pid => pid !== id))} className="text-primary hover:text-white shrink-0 ml-1">
+                            <X size={12} strokeWidth={3} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Search and List */}
+                <div className="flex flex-col border border-white/10 rounded-xl overflow-hidden bg-white/[0.02] focus-within:border-primary/50 transition-colors">
+                  <div className="flex items-center px-3 border-b border-white/5 shrink-0">
+                    <Search size={14} className="text-neutral-500 shrink-0" />
+                    <input
+                      type="text"
+                      value={taskSearch}
+                      onChange={(e) => setTaskSearch(e.target.value)}
+                      placeholder="Buscar tareas..."
+                      className="flex-1 h-10 bg-transparent border-none text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:ring-0 px-3"
+                    />
+                  </div>
+                  <div className="max-h-[140px] overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-white/5">
+                    {allTasks.filter(t => t.title.toLowerCase().includes(taskSearch.toLowerCase()) && !selectedTaskIds.includes((t as any)._id || t.id)).map(t => {
+                      const taskId = (t as any)._id || t.id;
+                      return (
+                        <button
+                          key={taskId}
+                          onClick={() => {
+                            setSelectedTaskIds([...selectedTaskIds, taskId]);
+                            setTaskSearch("");
+                          }}
+                          className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
+                        >
+                          {t.title}
+                        </button>
+                      );
+                    })}
+                    {allTasks.filter(t => t.title.toLowerCase().includes(taskSearch.toLowerCase()) && !selectedTaskIds.includes((t as any)._id || t.id)).length === 0 && (
+                      <div className="px-3 py-4 text-center text-[10px] uppercase tracking-widest text-neutral-600">
+                        {taskSearch ? "No hay coincidencias" : "Todas las tareas seleccionadas / Ninguna tarea disponible"}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <Button
                 onClick={submit}
                 disabled={isSubmitting}
@@ -453,57 +529,30 @@ export default function FinanzasPage() {
 
             <ul className="divide-y divide-white/5">
               {movementsSorted.map((e) => (
-                <li key={e._id} className="px-5 sm:px-6 py-4">
-                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6 sm:gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge
-                          variant="neutral"
-                          className={
-                            e.kind === "ingreso"
-                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                              : "bg-rose-500/10 text-rose-400 border-rose-500/20"
-                          }
-                        >
-                          {e.kind}
-                        </Badge>
-                        <Badge
-                          variant="neutral"
-                          className="bg-white/5 border-white/10 text-[8px] font-black uppercase tracking-widest"
-                        >
-                          {e.cadence}
-                        </Badge>
+                <li key={e._id} className="p-4 sm:p-5 hover:bg-white/[0.02] transition-colors relative">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div className={`w-1 h-12 rounded-full ${e.kind === 'ingreso' ? 'bg-emerald-500/40' : 'bg-rose-500/40'}`} />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-sm font-bold text-white truncate">{e.title}</p>
+                          {e.taskIds && e.taskIds.length > 0 && (
+                            <Badge variant="neutral" className="bg-primary/10 text-primary border-primary/20 text-[8px] font-black uppercase tracking-widest flex items-center gap-1">
+                              <Briefcase size={8} />
+                              {e.taskIds.length}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-neutral-500 uppercase tracking-widest">{e.cadence} • {new Date(e.date || e.createdAt).toLocaleDateString()}</p>
+                        {e.description && <p className="text-xs text-neutral-400 mt-1 truncate">{e.description}</p>}
                       </div>
-                      <p className="mt-2 text-sm sm:text-base font-bold text-white">
-                        {e.title}
-                      </p>
-                      {e.description ? (
-                        <p className="mt-1 text-xs text-neutral-500">
-                          {e.description}
-                        </p>
-                      ) : null}
-                      <p className="mt-3 text-[10px] text-neutral-600 font-mono uppercase tracking-widest">
-                        Fecha del primer movimiento: {new Date(e.date || e.createdAt).toLocaleDateString()}
-                      </p>
                     </div>
 
-                    <div className="flex flex-row items-center justify-between sm:flex-col sm:items-end gap-4 sm:gap-3 shrink-0 w-full sm:w-auto pt-4 sm:pt-0 border-t sm:border-0 border-white/5">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={`w-1.5 h-1.5 rounded-full ${e.kind === "ingreso" ? "bg-emerald-500" : "bg-rose-500"
-                            } shadow-[0_0_10px_rgba(255,255,255,0.12)]`}
-                        />
-                        <p
-                          className={`text-xl font-black italic tracking-tighter tabular-nums bg-clip-text text-transparent ${e.kind === "ingreso"
-                            ? "bg-gradient-to-br from-emerald-300 to-teal-200"
-                            : "bg-gradient-to-br from-rose-300 to-orange-200"
-                            }`}
-                        >
-                          {e.kind === "gasto" ? "-" : "+"}
-                          {formatEur(e.amount)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 w-full sm:w-auto mt-2 sm:mt-0 pl-5 sm:pl-0">
+                      <span className={`text-lg font-black italic tracking-tighter tabular-nums ${e.kind === 'ingreso' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {e.kind === 'ingreso' ? '+' : '-'}{formatEur(e.amount)}
+                      </span>
+                      <div className="flex items-center gap-1 mt-2 sm:mt-0">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -512,9 +561,9 @@ export default function FinanzasPage() {
                             setModalMode("edit");
                             setModalOpen(true);
                           }}
-                          className="h-9 px-3 rounded-xl border border-white/10 hover:bg-white/5 text-neutral-300 transition-all font-bold text-[10px] uppercase tracking-widest"
+                          className="h-8 w-8 p-0 rounded-xl hover:bg-white/10 text-neutral-400 hover:text-white transition-all bg-white/5 sm:bg-transparent"
                         >
-                          <Pencil size={12} className="mr-2" /> Editar
+                          <Pencil size={14} />
                         </Button>
                         <Button
                           variant="ghost"
@@ -524,9 +573,9 @@ export default function FinanzasPage() {
                             setModalMode("delete");
                             setModalOpen(true);
                           }}
-                          className="h-9 px-3 rounded-xl border border-white/10 hover:bg-rose-500/10 hover:text-rose-400 text-neutral-400 transition-all font-bold text-[10px] uppercase tracking-widest"
+                          className="h-8 w-8 p-0 rounded-xl hover:bg-rose-500/10 hover:text-rose-400 text-neutral-400 transition-all bg-white/5 sm:bg-transparent"
                         >
-                          <Trash2 size={12} className="mr-2" /> Borrar
+                          <Trash2 size={14} />
                         </Button>
                       </div>
                     </div>
@@ -535,7 +584,7 @@ export default function FinanzasPage() {
               ))}
 
               {movementsSorted.length === 0 ? (
-                <li className="px-5 sm:px-6 py-10 text-center text-sm text-neutral-500">
+                <li className="px-5 sm:px-6 py-10 text-center text-[10px] uppercase tracking-widest font-bold text-neutral-600">
                   No hay movimientos todavía.
                 </li>
               ) : null}

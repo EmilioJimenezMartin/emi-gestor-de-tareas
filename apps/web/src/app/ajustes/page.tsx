@@ -26,7 +26,7 @@ export default function AjustesPage() {
     const [isSaving, setIsSaving] = useState(false);
 
     const [defaultProvider, setDefaultProvider] = useState("google");
-    const [defaultModel, setDefaultModel] = useState("gemini-2.5-flash");
+    const [defaultModel, setDefaultModel] = useState("gemini-1.5-flash");
 
     const apiUrl = useMemo(() => (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, ""), []);
 
@@ -174,13 +174,14 @@ export default function AjustesPage() {
                                         <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Google Target Model</label>
                                         <select
                                             className="w-full h-10 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-bold text-white outline-none focus:border-primary transition-all appearance-none cursor-pointer"
-                                            value={defaultProvider === 'google' ? defaultModel : 'gemini-2.5-flash'}
+                                            value={defaultProvider === 'google' ? defaultModel : 'gemini-1.5-flash'}
                                             onChange={(e) => { handleProviderChange('google', e.target.value) }}
                                         >
-                                            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                                            <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-                                            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                                            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Exp)</option>
+                                            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                                            <option value="gemini-2.0-pro-exp">Gemini 2.0 Pro (Exp)</option>
                                             <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                                            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
                                         </select>
                                     </div>
                                     <p className="text-[11px] text-neutral-500 leading-relaxed">
@@ -240,13 +241,16 @@ export default function AjustesPage() {
                                         <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">HF Target Model</label>
                                         <select
                                             className="w-full h-10 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-bold text-white outline-none focus:border-primary transition-all appearance-none cursor-pointer"
-                                            value={defaultProvider === 'huggingface' ? defaultModel : 'meta-llama/Meta-Llama-3-70B'}
+                                            value={defaultProvider === 'huggingface' ? defaultModel : 'google/gemma-2-9b-it'}
                                             onChange={(e) => { handleProviderChange('huggingface', e.target.value) }}
                                         >
-                                            <option value="deepseek-r1">DeepSeek (R1)</option>
-                                            <option value="qwen-2.5-instruct">Qwen 2.5 (Instruct)</option>
-                                            <option value="meta-llama/Meta-Llama-3-70B">Llama (70B Instruct)</option>
-                                            <option value="mistralai/Mistral-Nemo-Instruct">Mistral NeMo (12B)</option>
+                                            <option value="google/gemma-2-2b-it">Gemma 2 (2B)</option>
+                                            <option value="google/gemma-2-9b-it">Gemma 2 (9B)</option>
+                                            <option value="google/gemma-2-27b-it">Gemma 2 (27B)</option>
+                                            <option value="meta-llama/Llama-3.2-3B-Instruct">Llama 3.2 (3B)</option>
+                                            <option value="Qwen/Qwen2.5-7B-Instruct">Qwen 2.5 (7B)</option>
+                                            <option value="deepseek-ai/DeepSeek-R1-Distill-Qwen-14B">DeepSeek R1 (14B)</option>
+                                            <option value="mistralai/Mistral-7B-v0.1">Mistral (7B)</option>
                                         </select>
                                     </div>
                                     <p className="text-[11px] text-neutral-500 leading-relaxed">

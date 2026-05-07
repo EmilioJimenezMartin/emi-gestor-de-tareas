@@ -63,6 +63,27 @@ export default async function TareaDetallePage({
   const task = await getTaskBySlug((await params).slug);
   if (!task) notFound();
 
+  const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
+  let movements: any[] = [];
+  try {
+    const res = await fetch(`${apiUrl}/finance/movements?taskId=${task.id}`, { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      movements = data.movements || [];
+    }
+  } catch (e) {
+    console.error("Error fetching movements for task", e);
+  }
+
+  const taskIncome = movements.filter(m => m.kind === 'ingreso').reduce((acc, m) => acc + m.amount, 0);
+  const taskExpense = movements.filter(m => m.kind === 'gasto').reduce((acc, m) => acc + m.amount, 0);
+  const taskNet = taskIncome - taskExpense;
+  const realRoi = taskExpense > 0 ? (taskNet / taskExpense) * 100 : 0;
+
+  function formatEur(v: number) {
+    return `${v.toFixed(2)}€`;
+  }
+
   // Simple Radar Chart Points for Viability
   const metrics = [
     { label: 'ROI', val: task.viability_metrics.roi_potential },
@@ -210,6 +231,69 @@ export default async function TareaDetallePage({
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left Column: Business & Logic */}
         <div className="lg:col-span-8 space-y-8 min-w-0">
+          {/* Rentabilidad y Finanzas Section */}
+          {movements.length > 0 && (
+            <Card variant="outline" className="p-5 sm:p-8 space-y-6 border-white/5 bg-white/[0.02] overflow-hidden relative group">
+              <div className="absolute -right-20 -top-20 w-64 h-64 bg-emerald-500/5 blur-[100px] pointer-events-none group-hover:bg-emerald-500/10 transition-all duration-700" />
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative">
+                <div className="space-y-2">
+                  <h2 className="text-xl font-bold flex items-center gap-2 text-white">
+                    <TrendingUp className="text-emerald-400" size={20} />
+                    Rentabilidad y Finanzas
+                  </h2>
+                  <div className="h-1 w-20 bg-gradient-to-r from-emerald-500 to-transparent rounded-full" />
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">ROI Real</span>
+                  <span className={`text-sm font-black italic tracking-tighter ${realRoi >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                    {realRoi > 0 ? "+" : ""}{realRoi.toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative">
+                <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-1">
+                  <span className="text-[8px] font-black uppercase tracking-[0.2em] text-neutral-600">Ingresos Totales</span>
+                  <span className="text-xl font-black italic tracking-tighter text-emerald-400 tabular-nums">
+                    {formatEur(taskIncome)}
+                  </span>
+                </div>
+                <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-1">
+                  <span className="text-[8px] font-black uppercase tracking-[0.2em] text-neutral-600">Gastos Totales</span>
+                  <span className="text-xl font-black italic tracking-tighter text-rose-400 tabular-nums">
+                    -{formatEur(taskExpense)}
+                  </span>
+                </div>
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-white/[0.05] to-transparent border border-white/10 flex flex-col gap-1 shadow-xl">
+                  <span className="text-[8px] font-black uppercase tracking-[0.2em] text-neutral-500">Balance Neto</span>
+                  <span className={`text-xl font-black italic tracking-tighter tabular-nums ${taskNet >= 0 ? "text-white" : "text-rose-400"}`}>
+                    {formatEur(taskNet)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Movimientos Asociados</h4>
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-white/5">
+                  {movements.map((m) => (
+                    <div key={m._id} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-colors group/row">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-1 h-8 rounded-full ${m.kind === 'ingreso' ? 'bg-emerald-500/40' : 'bg-rose-500/40'}`} />
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold text-white truncate">{m.title}</p>
+                          <p className="text-[9px] text-neutral-500 uppercase tracking-widest">{m.cadence} • {new Date(m.date || m.createdAt).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                      <span className={`text-xs font-black italic tracking-tighter tabular-nums ${m.kind === 'ingreso' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {m.kind === 'ingreso' ? '+' : '-'}{formatEur(m.amount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
+          )}
+
           <Card variant="outline" className="p-5 sm:p-8 space-y-6 border-white/5 bg-white/[0.02] max-w-full overflow-hidden">
             <div className="space-y-2">
               <h2 className="text-xl font-bold flex items-center gap-2">
@@ -256,12 +340,15 @@ export default async function TareaDetallePage({
               <Card variant="outline" className="p-5 sm:p-6 border-white/5 bg-white/[0.01] h-full max-w-full overflow-hidden">
                 <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-4">Monetización</h3>
                 <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 w-full">
-                  {task.business_logic.monetization.map(m => (
-                    <div key={m} className="flex items-start gap-2 bg-white/5 px-3 py-2 rounded-xl border border-white/5 text-[10px] font-bold text-neutral-300 transition-colors hover:border-primary/30 w-full sm:w-auto break-words">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1" />
-                      <span className="leading-relaxed whitespace-normal break-words min-w-0">{m}</span>
-                    </div>
-                  ))}
+                  {(task.business_logic.monetization || []).map((m: any, idx: number) => {
+                    const label = typeof m === "string" ? m : m.name || m.title || `Monetización ${idx + 1}`;
+                    return (
+                      <div key={label || idx} className="flex items-start gap-2 bg-white/5 px-3 py-2 rounded-xl border border-white/5 text-[10px] font-bold text-neutral-300 transition-colors hover:border-primary/30 w-full sm:w-auto break-words">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1" />
+                        <span className="leading-relaxed whitespace-normal break-words min-w-0">{label}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </Card>
             </div>
@@ -278,6 +365,29 @@ export default async function TareaDetallePage({
 
         {/* Right Column: Stack & Automation */}
         <div className="lg:col-span-4 space-y-8">
+          <Card variant="glass" className="p-6 border-primary/10 bg-primary/5">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-primary mb-4 flex items-center gap-2">
+              <Zap size={14} />
+              Estado del Motor
+            </h3>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-bold text-neutral-500 uppercase">Notificaciones</span>
+                <Badge variant={task.automation_config?.auto_notify_telegram ? "success" : "neutral"} className="text-[8px] font-black">
+                  {task.automation_config?.auto_notify_telegram ? "ESTABLECIDO" : "NO ACTIVO"}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-bold text-neutral-500 uppercase">Distribución Marketplace</span>
+                <Badge variant={task.automation_config?.auto_publish_to_marketplace ? "success" : "neutral"} className="text-[8px] font-black">
+                  {task.automation_config?.auto_publish_to_marketplace ? "ACTIVO" : "PENDIENTE"}
+                </Badge>
+              </div>
+              <div className="h-px bg-white/5 my-2" />
+              <TaskDetailActions task={task} />
+            </div>
+          </Card>
+
           <Card variant="outline" className="p-6 space-y-6 border-white/5 bg-white/[0.02]">
             <h3 className="text-xs font-black uppercase tracking-widest text-white flex items-center gap-2">
               <Cpu size={16} className="text-primary" />
@@ -311,38 +421,20 @@ export default async function TareaDetallePage({
             <div>
               <h4 className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-3 ml-1">Protocolos de Red (APIs)</h4>
               <div className="flex flex-col gap-2">
-                {(task.technical_stack?.apis_required || []).map(api => (
-                  <div key={api} className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-white/5 group hover:border-primary/20 transition-colors">
-                    <span className="text-[10px] font-bold text-neutral-400">{api}</span>
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)] group-hover:animate-pulse" />
-                  </div>
-                ))}
+                {(task.technical_stack?.apis_required || []).map((api: any, idx: number) => {
+                  const name = typeof api === "string" ? api : api.name;
+                  return (
+                    <div key={name || idx} className="flex items-center justify-between p-3 rounded-xl bg-black/20 border border-white/5 group hover:border-primary/20 transition-colors">
+                      <span className="text-[10px] font-bold text-neutral-400">{name}</span>
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)] group-hover:animate-pulse" />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </Card>
 
-          <Card variant="glass" className="p-6 border-primary/10 bg-primary/5">
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-primary mb-4 flex items-center gap-2">
-              <Zap size={14} />
-              Estado del Motor
-            </h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] font-bold text-neutral-500 uppercase">Notificaciones</span>
-                <Badge variant={task.automation_config?.auto_notify_telegram ? "success" : "neutral"} className="text-[8px] font-black">
-                  {task.automation_config?.auto_notify_telegram ? "ESTABLECIDO" : "NO ACTIVO"}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] font-bold text-neutral-500 uppercase">Distribución Marketplace</span>
-                <Badge variant={task.automation_config?.auto_publish_to_marketplace ? "success" : "neutral"} className="text-[8px] font-black">
-                  {task.automation_config?.auto_publish_to_marketplace ? "ACTIVO" : "PENDIENTE"}
-                </Badge>
-              </div>
-              <div className="h-px bg-white/5 my-2" />
-              <TaskDetailActions task={task} />
-            </div>
-          </Card>
+
         </div>
       </section>
     </div>

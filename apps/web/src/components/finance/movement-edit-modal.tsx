@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Save, Trash2, AlertTriangle } from "lucide-react";
+import { X, Save, Trash2, AlertTriangle, Briefcase, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type {
@@ -11,6 +11,7 @@ import type {
   FinanceMovement,
 } from "@/store/finance-slice";
 import { toast } from "sonner";
+import { getTasks, type Task } from "@/lib/tasks";
 
 type Props = {
   open: boolean;
@@ -41,8 +42,14 @@ export function MovementEditModal({
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const [taskSearch, setTaskSearch] = useState("");
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+    getTasks().then(setAllTasks).catch(() => { });
+  }, []);
 
   useEffect(() => {
     if (!movement) return;
@@ -61,6 +68,7 @@ export function MovementEditModal({
     } else {
       setEndDate("");
     }
+    setSelectedTaskIds(movement.taskIds || []);
   }, [movement]);
 
   const show = open && mounted && movement;
@@ -228,6 +236,70 @@ export function MovementEditModal({
                 </div>
               </div>
 
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between px-1">
+                  <div className="flex items-center gap-2">
+                    <Briefcase size={12} className="text-primary/60" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Asociar a tareas</span>
+                  </div>
+                  <span className="text-[9px] font-bold text-neutral-600">{selectedTaskIds.length} seleccionadas</span>
+                </div>
+
+                {/* Selected Badges */}
+                {selectedTaskIds.length > 0 && (
+                  <div className="flex flex-wrap gap-2 p-2 bg-black/40 border border-white/5 rounded-xl">
+                    {selectedTaskIds.map(id => {
+                      const t = allTasks.find(task => (task as any)._id === id || task.id === id);
+                      if (!t) return null;
+                      return (
+                        <div key={id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-primary/20 border border-primary/50 text-white transition-all">
+                          <span className="text-[10px] font-bold truncate max-w-[150px]">{t.title}</span>
+                          <button onClick={() => setSelectedTaskIds(selectedTaskIds.filter(pid => pid !== id))} className="text-primary hover:text-white shrink-0 ml-1">
+                            <X size={12} strokeWidth={3} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Search and List */}
+                <div className="flex flex-col border border-white/10 rounded-xl overflow-hidden bg-black/40 focus-within:border-primary/50 transition-colors">
+                  <div className="flex items-center px-3 border-b border-white/5 shrink-0">
+                    <Search size={14} className="text-neutral-500 shrink-0" />
+                    <input
+                      type="text"
+                      value={taskSearch}
+                      onChange={(e) => setTaskSearch(e.target.value)}
+                      placeholder="Buscar tareas..."
+                      className="flex-1 h-10 bg-transparent border-none text-xs text-white placeholder:text-neutral-600 focus:outline-none focus:ring-0 px-3"
+                    />
+                  </div>
+                  <div className="max-h-[140px] overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-white/5">
+                    {allTasks.filter(t => t.title.toLowerCase().includes(taskSearch.toLowerCase()) && !selectedTaskIds.includes((t as any)._id || t.id)).map(t => {
+                      const taskId = (t as any)._id || t.id;
+                      return (
+                        <button
+                          key={taskId}
+                          onClick={() => {
+                            setSelectedTaskIds([...selectedTaskIds, taskId]);
+                            setTaskSearch("");
+                          }}
+                          className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
+                        >
+                          {t.title}
+                        </button>
+                      );
+                    })}
+                    {allTasks.filter(t => t.title.toLowerCase().includes(taskSearch.toLowerCase()) && !selectedTaskIds.includes((t as any)._id || t.id)).length === 0 && (
+                      <div className="px-3 py-4 text-center text-[10px] uppercase tracking-widest text-neutral-600">
+                        {taskSearch ? "No hay coincidencias" : "Todas las tareas seleccionadas / Ninguna tarea disponible"}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div className="pt-2 flex gap-3">
                 <Button
                   variant="ghost"
@@ -263,6 +335,7 @@ export function MovementEditModal({
                             amount: parsedAmount,
                             date: new Date(date).toISOString(),
                             endDate: endDate ? new Date(endDate).toISOString() : null,
+                            taskIds: selectedTaskIds,
                           }),
                         }
                       );

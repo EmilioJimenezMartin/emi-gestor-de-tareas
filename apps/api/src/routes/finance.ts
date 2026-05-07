@@ -12,6 +12,7 @@ const createBodySchema = z.object({
   amount: z.number().finite().positive(),
   date: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),
+  taskIds: z.array(z.string()).optional(),
 });
 
 const updateBodySchema = createBodySchema.partial().refine((v) => Object.keys(v).length > 0, {
@@ -20,6 +21,7 @@ const updateBodySchema = createBodySchema.partial().refine((v) => Object.keys(v)
 
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(500).default(200),
+  taskId: z.string().optional(),
 });
 
 export async function registerFinanceRoutes(
@@ -36,8 +38,11 @@ export async function registerFinanceRoutes(
 
   app.get("/finance/movements", async (req, reply) => {
     if (!ensureMongo(reply)) return;
-    const { limit } = listQuerySchema.parse(req.query);
-    const movements = await FinanceMovementModel.find({}, { __v: 0 })
+    const { limit, taskId } = listQuerySchema.parse(req.query);
+    const filter: any = {};
+    if (taskId) filter.taskIds = taskId;
+
+    const movements = await FinanceMovementModel.find(filter, { __v: 0 })
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
