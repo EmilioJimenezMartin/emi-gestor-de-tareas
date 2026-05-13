@@ -106,13 +106,17 @@ export default async function TareaDetallePage({
           {/* Background Heading Glow */}
           <div className="absolute -left-20 -top-20 w-64 h-64 bg-primary/10 blur-[100px] pointer-events-none" />
 
-          <div className="relative space-y-4 max-w-3xl">
-            <div className="flex items-center gap-3">
-              <PrioritySelector taskId={task.id} currentPriority={task.priority} />
-              <div className="h-4 w-px bg-white/10" />
-              <StatusSelector taskId={task.id} currentStatus={task.status} />
-              <div className="h-4 w-px bg-white/10" />
-              <InternalScoreSelector task={task} />
+          <div className="relative space-y-6 max-w-3xl">
+            <div className="flex flex-col gap-6">
+              <div className="flex items-center gap-3">
+                <PrioritySelector taskId={task.id} currentPriority={task.priority || "medium"} />
+                <div className="h-4 w-px bg-white/10" />
+                <StatusSelector taskId={task.id} currentStatus={task.status || "backlog"} />
+              </div>
+              <div className="flex items-center gap-3">
+                <InternalScoreSelector task={task} />
+                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-600 ml-1">Valoración Interna</span>
+              </div>
             </div>
             <h1 className="text-4xl sm:text-5xl font-black text-white tracking-tighter italic">
               {task.title}
@@ -321,7 +325,7 @@ export default async function TareaDetallePage({
             <div className="pt-4">
               <h4 className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-4">Pipeline de Implementación</h4>
               <div className="space-y-4 relative ml-2 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-px before:bg-white/10">
-                {task.execution_pipeline.sort((a, b) => a.step - b.step).map((step) => (
+                {(task.execution_pipeline || []).sort((a, b) => a.step - b.step).map((step) => (
                   <div key={step.step} className="relative pl-6">
                     <div className="absolute left-[-4px] top-2 w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(25,113,255,0.4)]" />
                     <div className="flex items-baseline gap-3 mb-1">
