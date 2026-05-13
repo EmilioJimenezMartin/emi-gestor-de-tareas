@@ -2479,6 +2479,691 @@
         "Afiliación",
         "Content Automation"
       ]
+    },
+    {
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 6,
+        "resource_intensity": 3,
+        "time_to_mvp": 7,
+        "roi_potential": 7
+      },
+      "technical_stack": {
+        "framework": "Next.js + Node.js (orchestración) + Python (scraping + scoring)",
+        "database": "MongoDB (signals + products + performance tracking)",
+        "automation_layer": "n8n (cron pipelines opcionales)",
+        "apis_required": [
+          "Keepa API (Amazon price + rank tracking)",
+          "Etsy public scraping (search + listing parsing)",
+          "Google Trends (keyword interest baseline)",
+          "OpenAI API (content generation + structuring)"
+        ],
+        "infrastructure": "Contabo VPS (5€/mes) + Puppeteer/Playwright headless scraping"
+      },
+      "business_logic": {
+        "problem": "Los marketplaces como Etsy y Amazon KDP no exponen datos claros de demanda real ni tendencias accionables. Los creadores individuales dependen de intuición o investigación manual lenta para decidir qué productos crear, lo que limita la velocidad de iteración y reduce la probabilidad de encontrar productos rentables antes de saturación.",
+        "solution": "Un sistema de ingeniería inversa de mercado que usa señales públicas (ventas visibles, reviews, rankings, densidad de listings y crecimiento de búsquedas) para inferir demanda real por categoría. El sistema no predice tendencias globales, sino que identifica patrones repetidos de venta en nichos específicos y genera automáticamente variantes de productos digitales optimizados para esos patrones.",
+        "monetization": [
+          "Venta directa en Etsy de printables optimizados (planners, templates, trackers)",
+          "Publicación en Amazon KDP de journals y low-content books derivados",
+          "Reutilización de assets en Gumroad como bundles digitales",
+          "Escalado por volumen (100–500 listings automatizados con iteración continua)",
+          "Reinversión de profits en nuevas categorías detectadas por el sistema"
+        ]
+      },
+      "core_engine_design": {
+        "architecture_type": "signal-driven product factory",
+        "data_flow": [
+          "Marketplace scraping (Etsy + Amazon)",
+          "Signal extraction (sales, reviews, density, freshness)",
+          "Scoring engine (demand vs competition vs velocity)",
+          "Product template selection",
+          "AI content generation (structured assets)",
+          "Listing export (Etsy/KDP-ready packages)"
+        ],
+        "key_principle": "No prediction, only inference from observable market artifacts"
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Marketplace Signal Scraping",
+          "details": "Scraping de búsquedas en Etsy y Amazon por keyword semilla. Extracción de: número de ventas visibles, número de reviews, fecha de últimas reviews, densidad de listings similares y presencia de etiquetas 'bestseller'.",
+          "output": "raw_market_signals.json"
+        },
+        {
+          "step": 2,
+          "task": "Signal Normalization",
+          "details": "Conversión de HTML y datos inconsistentes en estructura homogénea. Cálculo de métricas comparables entre productos dentro de la misma categoría.",
+          "output": "normalized_signals.json"
+        },
+        {
+          "step": 3,
+          "task": "Demand Scoring Engine",
+          "details": "Algoritmo que evalúa cada nicho usando: velocidad de ventas, saturación de competencia, crecimiento de reviews y estabilidad de demanda.",
+          "formula": "score = (sales_velocity * 0.4) + (review_growth * 0.3) + (low_competition * 0.2) + (trend_stability * 0.1)",
+          "output": "ranked_opportunities.json"
+        },
+        {
+          "step": 4,
+          "task": "Product Template Matching",
+          "details": "Selección automática del tipo de producto más rentable según patrón detectado (planner, journal, checklist, template, tracker).",
+          "output": "product_blueprint.json"
+        },
+        {
+          "step": 5,
+          "task": "AI Product Generation",
+          "details": "Generación de assets finales: PDFs estructurados, descripciones SEO, títulos optimizados y variantes del producto para test A/B.",
+          "output": "ready_to_publish_assets/"
+        },
+        {
+          "step": 6,
+          "task": "Marketplace Export",
+          "details": "Preparación automática de listings para Etsy y KDP (metadata, keywords, mockups, descripción y formato correcto).",
+          "output": "etsy_listing_package / kdp_upload_package"
+        }
+      ],
+      "data_schema": {
+        "market_signal": {
+          "keyword": "string",
+          "platform": "etsy | amazon",
+          "sales_estimate": "number",
+          "review_count": "number",
+          "review_velocity": "number",
+          "competition_density": "number",
+          "trend_score": "number"
+        },
+        "product_blueprint": {
+          "product_type": "planner | journal | template | checklist",
+          "target_niche": "string",
+          "structure": "json",
+          "seo_keywords": "array",
+          "estimated_demand_score": "number"
+        },
+        "generated_asset": {
+          "title": "string",
+          "format": "PDF | PNG bundle | KDP interior",
+          "pages": "number",
+          "tags": "array",
+          "platform_ready": "etsy | kdp | gumroad"
+        }
+      },
+      "limitations": {
+        "scraping_risk": "medium (Etsy/Amazon anti-bot measures requieren rotación y throttling)",
+        "data_accuracy": "estimated, no exact demand metrics available",
+        "automation_level": "70-85% (requires manual review before publishing batch)",
+        "scalability_ceiling": "depends on marketplace saturation per niche"
+      },
+      "internal_score": 0,
+      "id": "market-signal-product-factory-001",
+      "title": "Market Signal Product Factory",
+      "description": "Sistema de ingeniería inversa de marketplaces que convierte señales públicas de ventas en productos digitales listos para Etsy y Amazon KDP mediante scoring y generación automática de assets.",
+      "slug": "market-signal-product-factory-001"
+    },
+    {
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 6,
+        "resource_intensity": 3,
+        "time_to_mvp": 7,
+        "roi_potential": 7
+      },
+      "technical_stack": {
+        "framework": "Next.js + Node.js (orchestración) + Python (scraping + scoring)",
+        "database": "MongoDB (signals + products + performance tracking)",
+        "automation_layer": "n8n (cron pipelines opcionales)",
+        "apis_required": [
+          "Keepa API (Amazon price + rank tracking)",
+          "Etsy public scraping (search + listing parsing)",
+          "Google Trends (keyword interest baseline)",
+          "OpenAI API (content generation + structuring)"
+        ],
+        "infrastructure": "Contabo VPS (5€/mes) + Puppeteer/Playwright headless scraping"
+      },
+      "business_logic": {
+        "problem": "Los marketplaces como Etsy y Amazon KDP no exponen datos claros de demanda real ni tendencias accionables. Los creadores individuales dependen de intuición o investigación manual lenta para decidir qué productos crear, lo que limita la velocidad de iteración y reduce la probabilidad de encontrar productos rentables antes de saturación.",
+        "solution": "Un sistema de ingeniería inversa de mercado que usa señales públicas (ventas visibles, reviews, rankings, densidad de listings y crecimiento de búsquedas) para inferir demanda real por categoría. El sistema no predice tendencias globales, sino que identifica patrones repetidos de venta en nichos específicos y genera automáticamente variantes de productos digitales optimizados para esos patrones.",
+        "monetization": [
+          "Venta directa en Etsy de printables optimizados (planners, templates, trackers)",
+          "Publicación en Amazon KDP de journals y low-content books derivados",
+          "Reutilización de assets en Gumroad como bundles digitales",
+          "Escalado por volumen (100–500 listings automatizados con iteración continua)",
+          "Reinversión de profits en nuevas categorías detectadas por el sistema"
+        ]
+      },
+      "core_engine_design": {
+        "architecture_type": "signal-driven product factory",
+        "data_flow": [
+          "Marketplace scraping (Etsy + Amazon)",
+          "Signal extraction (sales, reviews, density, freshness)",
+          "Scoring engine (demand vs competition vs velocity)",
+          "Product template selection",
+          "AI content generation (structured assets)",
+          "Listing export (Etsy/KDP-ready packages)"
+        ],
+        "key_principle": "No prediction, only inference from observable market artifacts"
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Marketplace Signal Scraping",
+          "details": "Scraping de búsquedas en Etsy y Amazon por keyword semilla. Extracción de: número de ventas visibles, número de reviews, fecha de últimas reviews, densidad de listings similares y presencia de etiquetas 'bestseller'.",
+          "output": "raw_market_signals.json"
+        },
+        {
+          "step": 2,
+          "task": "Signal Normalization",
+          "details": "Conversión de HTML y datos inconsistentes en estructura homogénea. Cálculo de métricas comparables entre productos dentro de la misma categoría.",
+          "output": "normalized_signals.json"
+        },
+        {
+          "step": 3,
+          "task": "Demand Scoring Engine",
+          "details": "Algoritmo que evalúa cada nicho usando: velocidad de ventas, saturación de competencia, crecimiento de reviews y estabilidad de demanda.",
+          "formula": "score = (sales_velocity * 0.4) + (review_growth * 0.3) + (low_competition * 0.2) + (trend_stability * 0.1)",
+          "output": "ranked_opportunities.json"
+        },
+        {
+          "step": 4,
+          "task": "Product Template Matching",
+          "details": "Selección automática del tipo de producto más rentable según patrón detectado (planner, journal, checklist, template, tracker).",
+          "output": "product_blueprint.json"
+        },
+        {
+          "step": 5,
+          "task": "AI Product Generation",
+          "details": "Generación de assets finales: PDFs estructurados, descripciones SEO, títulos optimizados y variantes del producto para test A/B.",
+          "output": "ready_to_publish_assets/"
+        },
+        {
+          "step": 6,
+          "task": "Marketplace Export",
+          "details": "Preparación automática de listings para Etsy y KDP (metadata, keywords, mockups, descripción y formato correcto).",
+          "output": "etsy_listing_package / kdp_upload_package"
+        }
+      ],
+      "data_schema": {
+        "market_signal": {
+          "keyword": "string",
+          "platform": "etsy | amazon",
+          "sales_estimate": "number",
+          "review_count": "number",
+          "review_velocity": "number",
+          "competition_density": "number",
+          "trend_score": "number"
+        },
+        "product_blueprint": {
+          "product_type": "planner | journal | template | checklist",
+          "target_niche": "string",
+          "structure": "json",
+          "seo_keywords": "array",
+          "estimated_demand_score": "number"
+        },
+        "generated_asset": {
+          "title": "string",
+          "format": "PDF | PNG bundle | KDP interior",
+          "pages": "number",
+          "tags": "array",
+          "platform_ready": "etsy | kdp | gumroad"
+        }
+      },
+      "limitations": {
+        "scraping_risk": "medium (Etsy/Amazon anti-bot measures requieren rotación y throttling)",
+        "data_accuracy": "estimated, no exact demand metrics available",
+        "automation_level": "70-85% (requires manual review before publishing batch)",
+        "scalability_ceiling": "depends on marketplace saturation per niche"
+      },
+      "internal_score": 0,
+      "id": "market-signal-product-factory-001",
+      "title": "Market Signal Product Factory",
+      "description": "Sistema de ingeniería inversa de marketplaces que convierte señales públicas de ventas en productos digitales listos para Etsy y Amazon KDP mediante scoring y generación automática de assets.",
+      "slug": "market-signal-product-factory-001"
+    },
+    {
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 6,
+        "resource_intensity": 3,
+        "time_to_mvp": 7,
+        "roi_potential": 7
+      },
+      "technical_stack": {
+        "framework": "Next.js + Node.js (orchestración) + Python (scraping + scoring)",
+        "database": "MongoDB (signals + products + performance tracking)",
+        "automation_layer": "n8n (cron pipelines opcionales)",
+        "apis_required": [
+          "Keepa API (Amazon price + rank tracking)",
+          "Etsy public scraping (search + listing parsing)",
+          "Google Trends (keyword interest baseline)",
+          "OpenAI API (content generation + structuring)"
+        ],
+        "infrastructure": "Contabo VPS (5€/mes) + Puppeteer/Playwright headless scraping"
+      },
+      "business_logic": {
+        "problem": "Los marketplaces como Etsy y Amazon KDP no exponen datos claros de demanda real ni tendencias accionables. Los creadores individuales dependen de intuición o investigación manual lenta para decidir qué productos crear, lo que limita la velocidad de iteración y reduce la probabilidad de encontrar productos rentables antes de saturación.",
+        "solution": "Un sistema de ingeniería inversa de mercado que usa señales públicas (ventas visibles, reviews, rankings, densidad de listings y crecimiento de búsquedas) para inferir demanda real por categoría. El sistema no predice tendencias globales, sino que identifica patrones repetidos de venta en nichos específicos y genera automáticamente variantes de productos digitales optimizados para esos patrones.",
+        "monetization": [
+          "Venta directa en Etsy de printables optimizados (planners, templates, trackers)",
+          "Publicación en Amazon KDP de journals y low-content books derivados",
+          "Reutilización de assets en Gumroad como bundles digitales",
+          "Escalado por volumen (100–500 listings automatizados con iteración continua)",
+          "Reinversión de profits en nuevas categorías detectadas por el sistema"
+        ]
+      },
+      "core_engine_design": {
+        "architecture_type": "signal-driven product factory",
+        "data_flow": [
+          "Marketplace scraping (Etsy + Amazon)",
+          "Signal extraction (sales, reviews, density, freshness)",
+          "Scoring engine (demand vs competition vs velocity)",
+          "Product template selection",
+          "AI content generation (structured assets)",
+          "Listing export (Etsy/KDP-ready packages)"
+        ],
+        "key_principle": "No prediction, only inference from observable market artifacts"
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Marketplace Signal Scraping",
+          "details": "Scraping de búsquedas en Etsy y Amazon por keyword semilla. Extracción de: número de ventas visibles, número de reviews, fecha de últimas reviews, densidad de listings similares y presencia de etiquetas 'bestseller'.",
+          "output": "raw_market_signals.json"
+        },
+        {
+          "step": 2,
+          "task": "Signal Normalization",
+          "details": "Conversión de HTML y datos inconsistentes en estructura homogénea. Cálculo de métricas comparables entre productos dentro de la misma categoría.",
+          "output": "normalized_signals.json"
+        },
+        {
+          "step": 3,
+          "task": "Demand Scoring Engine",
+          "details": "Algoritmo que evalúa cada nicho usando: velocidad de ventas, saturación de competencia, crecimiento de reviews y estabilidad de demanda.",
+          "formula": "score = (sales_velocity * 0.4) + (review_growth * 0.3) + (low_competition * 0.2) + (trend_stability * 0.1)",
+          "output": "ranked_opportunities.json"
+        },
+        {
+          "step": 4,
+          "task": "Product Template Matching",
+          "details": "Selección automática del tipo de producto más rentable según patrón detectado (planner, journal, checklist, template, tracker).",
+          "output": "product_blueprint.json"
+        },
+        {
+          "step": 5,
+          "task": "AI Product Generation",
+          "details": "Generación de assets finales: PDFs estructurados, descripciones SEO, títulos optimizados y variantes del producto para test A/B.",
+          "output": "ready_to_publish_assets/"
+        },
+        {
+          "step": 6,
+          "task": "Marketplace Export",
+          "details": "Preparación automática de listings para Etsy y KDP (metadata, keywords, mockups, descripción y formato correcto).",
+          "output": "etsy_listing_package / kdp_upload_package"
+        }
+      ],
+      "data_schema": {
+        "market_signal": {
+          "keyword": "string",
+          "platform": "etsy | amazon",
+          "sales_estimate": "number",
+          "review_count": "number",
+          "review_velocity": "number",
+          "competition_density": "number",
+          "trend_score": "number"
+        },
+        "product_blueprint": {
+          "product_type": "planner | journal | template | checklist",
+          "target_niche": "string",
+          "structure": "json",
+          "seo_keywords": "array",
+          "estimated_demand_score": "number"
+        },
+        "generated_asset": {
+          "title": "string",
+          "format": "PDF | PNG bundle | KDP interior",
+          "pages": "number",
+          "tags": "array",
+          "platform_ready": "etsy | kdp | gumroad"
+        }
+      },
+      "limitations": {
+        "scraping_risk": "medium (Etsy/Amazon anti-bot measures requieren rotación y throttling)",
+        "data_accuracy": "estimated, no exact demand metrics available",
+        "automation_level": "70-85% (requires manual review before publishing batch)",
+        "scalability_ceiling": "depends on marketplace saturation per niche"
+      },
+      "internal_score": 0,
+      "id": "market-signal-product-factory-001",
+      "title": "Market Signal Product Factory",
+      "description": "Sistema de ingeniería inversa de marketplaces que convierte señales públicas de ventas en productos digitales listos para Etsy y Amazon KDP mediante scoring y generación automática de assets.",
+      "slug": "market-signal-product-factory-001"
+    },
+    {
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 6,
+        "resource_intensity": 3,
+        "time_to_mvp": 7,
+        "roi_potential": 7
+      },
+      "system_type": "signal_to_product_factory",
+      "technical_stack": {
+        "frontend": "Next.js dashboard (control + métricas + ejecución manual)",
+        "backend": "Node.js (orchestrator) + Python workers (scraping + scoring)",
+        "database": "MongoDB",
+        "automation": "n8n (cron jobs + fallback workflows)",
+        "scraping_layer": "Playwright (headless browsing + rotation)",
+        "ai_layer": "OpenAI API (GPT-4o mini / GPT-4o for generation)",
+        "hosting": "Contabo VPS (single node deployment)"
+      },
+      "data_sources": {
+        "etsy": {
+          "method": "public scraping",
+          "signals": [
+            "sales_count_visible",
+            "review_count",
+            "review_recency",
+            "bestseller_tag",
+            "search_result_density"
+          ]
+        },
+        "amazon_kdp": {
+          "method": "Keepa API + partial scraping",
+          "signals": [
+            "bsr_rank",
+            "review_velocity",
+            "category_saturation",
+            "listing_freshness"
+          ]
+        },
+        "google_trends": {
+          "method": "API",
+          "signals": [
+            "keyword_interest",
+            "growth_rate"
+          ]
+        }
+      },
+      "business_logic": {
+        "core_problem": "Los marketplaces no ofrecen datos de demanda accionables. Los creadores dependen de intuición, lo que limita la velocidad de iteración y reduce probabilidad de encontrar productos rentables antes de saturación.",
+        "core_solution": "Sistema que convierte señales públicas indirectas en estimaciones de demanda por nicho y automatiza la generación de productos digitales simples (printables, journals, templates) alineados con esos patrones.",
+        "constraint_assumptions": [
+          "No predicción de tendencias globales",
+          "No scraping a gran escala industrial",
+          "No dependencia de APIs oficiales completas",
+          "No necesidad de usuarios externos"
+        ]
+      },
+      "core_pipeline": [
+        {
+          "step": 1,
+          "name": "Market Signal Collection",
+          "description": "Scraping ligero de Etsy + extracción de datos básicos de Amazon KDP + keywords de Google Trends",
+          "output": "raw_signals"
+        },
+        {
+          "step": 2,
+          "name": "Normalization Layer",
+          "description": "Estandarización de métricas entre plataformas para comparabilidad",
+          "output": "normalized_signals"
+        },
+        {
+          "step": 3,
+          "name": "Demand Scoring Engine",
+          "description": "Algoritmo que combina ventas, competencia y crecimiento en un score único por nicho",
+          "formula": "(sales_velocity * 0.4) + (review_growth * 0.3) + (low_competition * 0.2) + (trend_growth * 0.1)",
+          "output": "ranked_niches"
+        },
+        {
+          "step": 4,
+          "name": "Product Mapping Engine",
+          "description": "Traduce nicho → tipo de producto óptimo (planner, checklist, journal, template)",
+          "output": "product_blueprints"
+        },
+        {
+          "step": 5,
+          "name": "Asset Generation",
+          "description": "Generación automática de PDFs, descripciones, títulos y variantes mediante LLM",
+          "output": "digital_products"
+        },
+        {
+          "step": 6,
+          "name": "Export Layer",
+          "description": "Preparación de paquetes listos para subir manualmente a Etsy / KDP / Gumroad",
+          "output": "marketplace_packages"
+        }
+      ],
+      "execution_model": {
+        "mode": "batch_pipeline",
+        "trigger": "cron_daily_or_manual_dashboard",
+        "human_in_loop": true,
+        "automation_level": "70_percent",
+        "manual_steps_required": [
+          "review_before_publish",
+          "upload_to_marketplace (optional manual or semi-auto)"
+        ]
+      },
+      "data_schema": {
+        "signal": {
+          "keyword": "string",
+          "platform": "etsy | amazon | trends",
+          "score_components": {
+            "sales_velocity": "number",
+            "competition": "number",
+            "growth": "number"
+          },
+          "final_score": "number"
+        },
+        "product": {
+          "type": "planner | journal | template | checklist",
+          "niche": "string",
+          "title": "string",
+          "seo_tags": "array",
+          "format": "pdf | png_bundle",
+          "status": "generated | reviewed | published"
+        }
+      },
+      "limitations": {
+        "scraping_risk": "medium (anti-bot systems en Etsy/Amazon)",
+        "data_precision": "approximate (no exact sales data available)",
+        "automation_limit": "no full autopublishing reliable sin riesgo de bans",
+        "market_saturation_risk": "medium-high en nichos low-content"
+      },
+      "cost_estimate_monthly": {
+        "vps": 5,
+        "apis": 20,
+        "llm_usage": 30,
+        "total_estimated": 55
+      },
+      "internal_score": 0,
+      "id": "market-signal-factory-v2",
+      "title": "Market Signal Product Factory (Realistic Implementation)",
+      "slug": "market-signal-factory-v2"
+    },
+    {
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 8,
+        "resource_intensity": 3,
+        "time_to_mvp": 7,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Next.js",
+        "database": "MongoDB",
+        "apis_required": [
+          "BOE API / Scraper oficial",
+          "BDNS (Base de Datos Nacional de Subvenciones)",
+          "Sede Electrónica AEAT (datos fiscales agregados si disponibles)",
+          "INE API (datos empresariales agregados)",
+          "Registro Mercantil (CNAE + cuentas depositadas)"
+        ]
+      },
+      "business_logic": {
+        "problem": "La mayoría de ayudas públicas, subvenciones regionales y programas europeos tienen baja adopción por parte de empresas pequeñas y medianas debido a la fragmentación de la información, la complejidad del lenguaje administrativo y la falta de sistemas de alerta personalizados. Esto provoca que millones de euros en financiación pública se asignen tarde o se infrautilicen en sectores donde sí existe elegibilidad real pero desconocimiento total.",
+        "solution": "Un sistema de inteligencia administrativa que monitoriza en tiempo real nuevas convocatorias públicas (BOE, BDNS, comunidades autónomas) y las transforma en oportunidades estructuradas por perfil empresarial. El sistema clasifica automáticamente las ayudas, extrae requisitos técnicos, los normaliza y los cruza con perfiles empresariales agregados (CNAE, tamaño, sector, ubicación). Genera un ranking de elegibilidad y un dossier automático listo para presentación o derivación a gestoría.",
+        "monetization": [
+          "Fee por lead cualificado (venta de empresas 100% elegibles a gestorías o consultoras)",
+          "SaaS de alertas premium para asesorías fiscales y despachos",
+          "Pago por generación de dossier de subvención pre-rellenado",
+          "Licencia de uso del motor de matching a consultoras B2B",
+          "Revenue share sobre subvenciones tramitadas correctamente"
+        ]
+      },
+      "internal_score": 0,
+      "_id": "auto_generated_001",
+      "id": "public-funding-intelligence-003",
+      "title": "Public Funding Intelligence Engine",
+      "slug": "eu-spain-grant-matching-system",
+      "status": "Prototipo",
+      "priority": "low",
+      "categories": [
+        "GovTech",
+        "LegalTech",
+        "Data Intelligence"
+      ],
+      "description": "Sistema de análisis automatizado de subvenciones públicas que cruza convocatorias oficiales con perfiles empresariales para detectar elegibilidad y generar oportunidades de financiación estructuradas.",
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Ingesta de Convocatorias Públicas",
+          "details": "Scraping y parsing de BOE, BDNS y boletines autonómicos para extraer nuevas ayudas, subvenciones y programas de financiación.",
+          "_id": "step_001"
+        },
+        {
+          "step": 2,
+          "task": "Estructuración Semántica",
+          "details": "Conversión de texto legal en estructura normalizada: requisitos, CNAE válidos, importes, plazos y restricciones.",
+          "_id": "step_002"
+        },
+        {
+          "step": 3,
+          "task": "Normalización de Empresas",
+          "details": "Construcción de base de datos de perfiles empresariales usando CNAE, tamaño, facturación estimada y ubicación geográfica.",
+          "_id": "step_003"
+        },
+        {
+          "step": 4,
+          "task": "Motor de Matching",
+          "details": "Algoritmo de compatibilidad entre requisitos de subvención y perfiles empresariales para calcular elegibilidad y probabilidad de éxito.",
+          "_id": "step_004"
+        },
+        {
+          "step": 5,
+          "task": "Generación de Dossier",
+          "details": "Creación automática de documento estructurado con resumen de ayuda, requisitos cumplidos y pasos de solicitud.",
+          "_id": "step_005"
+        },
+        {
+          "step": 6,
+          "task": "Distribución de Oportunidades",
+          "details": "Envío de leads cualificados a gestorías, consultoras o usuarios finales mediante panel o API.",
+          "_id": "step_006"
+        }
+      ],
+      "data_schema_preview": {
+        "grant_id": "String",
+        "company_cnae": "String",
+        "eligibility_score": "Number (0-100)",
+        "grant_amount": "Number",
+        "application_deadline": "Date",
+        "status": "Enum ['detected', 'matched', 'sent', 'converted']"
+      },
+      "__v": 0,
+      "createdAt": "2026-05-11T00:00:00.000Z",
+      "updatedAt": "2026-05-11T00:00:00.000Z"
+    },
+    {
+      "viability_metrics": {
+        "implementation_ease": 8,
+        "success_probability": 7,
+        "resource_intensity": 2,
+        "time_to_mvp": 8,
+        "roi_potential": 8
+      },
+      "technical_stack": {
+        "framework": "Next.js + Node.js",
+        "database": "MongoDB",
+        "apis_required": [
+          "Etsy Search Scraper",
+          "Creative Market Scraper",
+          "Canva Automation / Puppeteer",
+          "OpenAI API / Ollama"
+        ]
+      },
+      "business_logic": {
+        "problem": "Miles de profesionales pequeños (terapeutas, agentes inmobiliarios, profesores, coaches, hosts de Airbnb, freelancers) necesitan constantemente documentos repetitivos, formularios y sistemas organizativos. La mayoría termina comprando packs digitales baratos en marketplaces porque crear todo desde cero consume demasiado tiempo. Sin embargo, gran parte de la oferta actual es genérica, poco especializada y hecha manualmente.",
+        "solution": "Una fábrica automatizada de bundles digitales que detecta nichos con demanda activa en marketplaces como Etsy o Creative Market y genera packs completos de documentos listos para usar. El sistema analiza búsquedas, reviews y productos más vendidos para detectar carencias específicas. Después genera automáticamente formularios, checklists, planners, hojas de cálculo, contratos básicos y assets organizativos adaptados a micro nichos concretos.",
+        "monetization": [
+          "Venta directa de bundles digitales en Etsy",
+          "Venta de packs premium en Gumroad",
+          "Distribución de templates en Creative Market",
+          "Licenciamiento de bundles a pequeñas agencias",
+          "Creación automatizada de múltiples variantes por nicho"
+        ]
+      },
+      "internal_score": 0,
+      "_id": "69fcfactorytemplate001",
+      "id": "template-bundle-factory-031",
+      "title": "Template Bundle Factory",
+      "slug": "automated-template-bundle-engine",
+      "status": "Prototipo",
+      "priority": "medium",
+      "categories": [
+        "Digital Assets",
+        "Automation",
+        "Marketplace Arbitrage"
+      ],
+      "description": "Sistema automatizado de generación de packs digitales especializados para marketplaces con demanda ya validada.",
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Marketplace Demand Discovery",
+          "details": "Scraping de Etsy y Creative Market para detectar keywords con ventas altas, baja calidad media o reviews negativas repetidas.",
+          "_id": "step_001"
+        },
+        {
+          "step": 2,
+          "task": "Micro-Niche Detection",
+          "details": "Clasificación automática de nichos específicos con intención de compra clara y baja especialización de oferta.",
+          "_id": "step_002"
+        },
+        {
+          "step": 3,
+          "task": "Template Generation",
+          "details": "Generación automática de formularios, planners, checklists, hojas de cálculo y documentos mediante IA.",
+          "_id": "step_003"
+        },
+        {
+          "step": 4,
+          "task": "Bundle Packaging",
+          "details": "Agrupación automática de assets relacionados en packs coherentes y listos para marketplaces.",
+          "_id": "step_004"
+        },
+        {
+          "step": 5,
+          "task": "SEO Listing Optimization",
+          "details": "Generación de títulos, tags, thumbnails y descripciones optimizadas para Etsy y Creative Market.",
+          "_id": "step_005"
+        },
+        {
+          "step": 6,
+          "task": "Marketplace Publishing",
+          "details": "Publicación automatizada y tracking de ventas, favoritos y CTR de cada bundle.",
+          "_id": "step_006"
+        }
+      ],
+      "data_schema_preview": {
+        "bundle_name": "String",
+        "target_niche": "String",
+        "asset_count": "Number",
+        "marketplace": "String",
+        "sales_estimate": "Number",
+        "conversion_score": "Number (0-100)",
+        "status": "Enum ['generated', 'published', 'selling', 'inactive']"
+      },
+      "__v": 0,
+      "createdAt": "2026-05-12T00:00:00.000Z",
+      "updatedAt": "2026-05-12T00:00:00.000Z"
     }
   ]
 }

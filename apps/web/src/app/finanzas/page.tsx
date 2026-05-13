@@ -23,6 +23,10 @@ import {
   Briefcase,
   Search,
   X,
+  Activity,
+  History,
+  BarChart3,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { MovementEditModal } from "@/components/finance/movement-edit-modal";
@@ -255,7 +259,7 @@ export default function FinanzasPage() {
     <div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
       <header className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-primary">
-          <TrendingUp size={16} className="sm:size-5" />
+          <TrendingUp size={24} className="sm:size-6" strokeWidth={2.5} />
           <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest">
             Finanzas
           </span>
@@ -274,16 +278,24 @@ export default function FinanzasPage() {
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <Card
           variant="outline"
-          className="lg:col-span-5 lg:sticky lg:top-8 h-fit border-white/5 bg-white/[0.02] p-5 sm:p-6"
+          className="lg:col-span-5 lg:sticky lg:top-8 h-fit border-white/5 bg-white/[0.02] p-5 sm:p-6 group overflow-hidden relative"
         >
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-xs font-black uppercase tracking-widest text-neutral-500">
-                Nuevo movimiento
-              </h2>
-              <p className="mt-1 text-xs text-neutral-500">
-                Guardado en MongoDB (vía API).
-              </p>
+          {/* Reactive Shiny Gradient */}
+          <div className={`absolute -right-10 -top-10 w-40 h-40 blur-3xl transition-all duration-1000 opacity-20 ${kind === 'ingreso' ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`} />
+
+          <div className="flex items-start justify-between gap-4 relative z-10">
+            <div className="flex items-start gap-4">
+              <div className={`p-3 rounded-2xl bg-gradient-to-br border shadow-lg shadow-black/20 transition-all duration-500 ${kind === 'ingreso' ? 'from-emerald-500/20 to-teal-600/20 text-emerald-400 border-emerald-500/20' : 'from-rose-500/20 to-orange-600/20 text-rose-400 border-rose-500/20'}`}>
+                <Plus size={28} strokeWidth={2.5} />
+              </div>
+              <div>
+                <h2 className="text-xs font-black uppercase tracking-widest text-neutral-500">
+                  Nuevo movimiento
+                </h2>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Guardado en MongoDB (vía API).
+                </p>
+              </div>
             </div>
           </div>
 
@@ -430,9 +442,16 @@ export default function FinanzasPage() {
               <Button
                 onClick={submit}
                 disabled={isSubmitting}
-                className="w-full h-14 bg-gradient-to-br from-primary to-blue-600 hover:from-primary/90 hover:to-blue-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-primary/10 transition-all active:scale-[0.98] disabled:opacity-50"
+                className="w-full h-14 bg-gradient-to-br from-primary to-blue-600 hover:from-primary/90 hover:to-blue-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-primary/10 transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-3"
               >
-                {isSubmitting ? "Guardando..." : "Crear movimiento"}
+                {isSubmitting ? (
+                  "Guardando..."
+                ) : (
+                  <>
+                    <Plus size={22} strokeWidth={3} />
+                    <span>Crear movimiento</span>
+                  </>
+                )}
               </Button>
             </div>
           </div>
@@ -442,11 +461,13 @@ export default function FinanzasPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Trend Intelligence Card */}
             <div className={`relative group overflow-hidden p-6 rounded-3xl border border-white/5 bg-white/[0.02] transition-all duration-500 ${trend.status === 'pos' ? 'hover:border-emerald-500/20' : trend.status === 'neg' ? 'hover:border-rose-500/20' : 'hover:border-primary/20'}`}>
-              <div className={`absolute -right-6 -top-6 w-24 h-24 blur-2xl transition-opacity duration-500 opacity-0 group-hover:opacity-10 bg-gradient-to-br ${trend.status === 'pos' ? 'from-emerald-500 to-teal-400' : trend.status === 'neg' ? 'from-rose-500 to-orange-400' : 'from-primary to-blue-400'}`} />
-              <div className="relative flex flex-col gap-3">
-                <div className="flex items-center gap-2">
-                  <TrendingUp size={14} className={trend.status === 'pos' ? 'text-emerald-400' : trend.status === 'neg' ? 'text-rose-400' : 'text-primary'} />
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500">Tendencia de Capital</span>
+              <div className={`absolute -right-6 -top-6 w-32 h-32 blur-3xl transition-opacity duration-700 opacity-10 group-hover:opacity-30 bg-gradient-to-br ${trend.status === 'pos' ? 'from-emerald-500 to-teal-400' : trend.status === 'neg' ? 'from-rose-500 to-orange-400' : 'from-primary to-blue-400'}`} />
+              <div className="relative flex flex-col gap-4">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2.5 rounded-2xl border shadow-inner transition-all duration-500 ${trend.status === 'pos' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : trend.status === 'neg' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-primary/10 text-primary border-primary/10'}`}>
+                    <TrendingUp size={20} strokeWidth={2.5} />
+                  </div>
+                  <span className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-500">Tendencia de Capital</span>
                 </div>
                 <h4 className="text-lg font-bold text-white tracking-tight">
                   {trend.label}
@@ -462,9 +483,12 @@ export default function FinanzasPage() {
             <Card
               className="relative group overflow-hidden border-white/5 bg-white/[0.02] p-6 rounded-3xl"
             >
-              <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-primary/20 blur-3xl opacity-0 group-hover:opacity-20 transition-all duration-500" />
+              <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-primary/20 blur-3xl opacity-15 group-hover:opacity-25 transition-all duration-1000" />
               <div className="relative flex flex-col items-center justify-center h-full text-center">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-600 mb-2">balance neto total</p>
+                <div className="mb-4 p-3.5 rounded-2xl bg-gradient-to-br from-primary/10 to-blue-600/10 text-primary border border-primary/20 shadow-xl shadow-black/20">
+                  <Activity size={28} strokeWidth={2.5} />
+                </div>
+                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-500 mb-2">balance neto total</p>
                 <div className={`text-4xl font-black italic tracking-tighter tabular-nums bg-clip-text text-transparent bg-gradient-to-br ${totals.net >= 0 ? "from-emerald-400 to-teal-400" : "from-rose-400 to-orange-400"}`}>
                   {formatEur(totals.net)}
                 </div>
@@ -480,7 +504,7 @@ export default function FinanzasPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* 1 Year Forecast */}
               <div className="relative group overflow-hidden p-5 rounded-3xl border border-white/5 bg-white/[0.02] hover:border-primary/20 transition-all duration-500">
-                <div className="absolute -right-6 -top-6 w-24 h-24 bg-gradient-to-br from-primary to-blue-400 opacity-0 group-hover:opacity-5 blur-2xl transition-opacity duration-500" />
+                <div className="absolute -right-6 -top-6 w-24 h-24 bg-gradient-to-br from-primary to-blue-400 opacity-5 group-hover:opacity-20 blur-2xl transition-all duration-700" />
                 <div className="relative flex items-center justify-between gap-4">
                   <div>
                     <p className="text-[9px] font-black text-neutral-500 uppercase tracking-[0.2em]">Previsión 1 Año</p>
@@ -488,15 +512,15 @@ export default function FinanzasPage() {
                       {formatEur(forecast1Y.net)}
                     </p>
                   </div>
-                  <div className="p-2 rounded-xl bg-white/5 text-primary border border-white/10">
-                    <TrendingUp size={14} />
+                  <div className="p-2.5 rounded-2xl bg-white/5 text-primary border border-white/10">
+                    <TrendingUp size={20} strokeWidth={2.5} />
                   </div>
                 </div>
               </div>
 
               {/* 10 Year Forecast */}
               <div className="relative group overflow-hidden p-5 rounded-3xl border border-white/5 bg-white/[0.02] hover:border-amber-500/20 transition-all duration-500">
-                <div className="absolute -right-6 -top-6 w-24 h-24 bg-gradient-to-br from-amber-500 to-orange-400 opacity-0 group-hover:opacity-5 blur-2xl transition-opacity duration-500" />
+                <div className="absolute -right-6 -top-6 w-24 h-24 bg-gradient-to-br from-amber-500 to-orange-400 opacity-5 group-hover:opacity-20 blur-2xl transition-all duration-700" />
                 <div className="relative flex items-center justify-between gap-4">
                   <div>
                     <p className="text-[9px] font-black text-neutral-500 uppercase tracking-[0.2em]">Previsión 10 Años</p>
@@ -504,8 +528,8 @@ export default function FinanzasPage() {
                       {formatEur(forecast10Y.net)}
                     </p>
                   </div>
-                  <div className="p-2 rounded-xl bg-white/5 text-amber-400 border border-white/10">
-                    <TrendingUp size={14} />
+                  <div className="p-2.5 rounded-2xl bg-white/5 text-amber-400 border border-white/10">
+                    <TrendingUp size={20} strokeWidth={2.5} />
                   </div>
                 </div>
               </div>
@@ -514,25 +538,36 @@ export default function FinanzasPage() {
 
           <Card
             variant="outline"
-            className="border-white/5 bg-white/[0.02] p-0 overflow-hidden"
+            className="border-white/5 bg-white/[0.02] p-0 overflow-hidden group relative"
           >
-            <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-white/5">
-              <div>
-                <h2 className="text-xs font-black uppercase tracking-widest text-neutral-500">
-                  Historial de movimientos
-                </h2>
-                <p className="mt-1 text-[11px] text-neutral-500">
-                  {movementsSorted.length} elemento(s)
-                </p>
+            {/* Persistent Shiny Gradient */}
+            <div className="absolute -right-20 -top-20 w-60 h-60 bg-primary/10 blur-[80px] opacity-10 group-hover:opacity-20 transition-all duration-1000" />
+
+            <div className="flex items-center justify-between px-5 sm:px-6 py-5 border-b border-white/5 relative z-10">
+              <div className="flex items-center gap-5">
+                <div className="p-3.5 rounded-2xl bg-gradient-to-br from-white/5 to-white/[0.02] text-primary border border-white/10 shadow-xl shadow-black/20">
+                  <BarChart3 size={28} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-[0.1em] text-white/90">
+                    Historial de movimientos
+                  </h2>
+                  <p className="mt-1 text-[11px] text-neutral-500 font-medium">
+                    {movementsSorted.length} elemento(s) registrados
+                  </p>
+                </div>
               </div>
             </div>
 
             <ul className="divide-y divide-white/5">
               {movementsSorted.map((e) => (
-                <li key={e._id} className="p-4 sm:p-5 hover:bg-white/[0.02] transition-colors relative">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <li key={e._id} className="group p-5 sm:p-6 hover:bg-white/[0.04] transition-all duration-500 relative overflow-hidden border-b border-white/[0.02] last:border-0 border-t-0">
+                  {/* Shiny Corner Gradient - FIXED COLORS */}
+                  <div className={`absolute -right-12 -top-12 w-32 h-32 blur-3xl transition-all duration-1000 opacity-10 group-hover:opacity-30 bg-gradient-to-br ${e.kind === 'ingreso' ? 'from-emerald-500 to-teal-400' : 'from-rose-500 to-orange-400'}`} />
+
+                  <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-4 min-w-0">
-                      <div className={`w-1 h-12 rounded-full ${e.kind === 'ingreso' ? 'bg-emerald-500/40' : 'bg-rose-500/40'}`} />
+                      <div className={`w-1.5 h-12 rounded-full shrink-0 ${e.kind === 'ingreso' ? 'bg-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-rose-500/40 shadow-[0_0_10px_rgba(244,63,94,0.2)]'}`} />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <p className="text-sm font-bold text-white truncate">{e.title}</p>
@@ -543,16 +578,16 @@ export default function FinanzasPage() {
                             </Badge>
                           )}
                         </div>
-                        <p className="text-[10px] text-neutral-500 uppercase tracking-widest">{e.cadence} • {new Date(e.date || e.createdAt).toLocaleDateString()}</p>
-                        {e.description && <p className="text-xs text-neutral-400 mt-1 truncate">{e.description}</p>}
+                        <p className="text-[10px] text-neutral-500 uppercase tracking-widest font-medium">{e.cadence} • {new Date(e.date || e.createdAt).toLocaleDateString()}</p>
+                        {e.description && <p className="text-xs text-neutral-400 mt-1 truncate max-w-md">{e.description}</p>}
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 w-full sm:w-auto mt-2 sm:mt-0 pl-5 sm:pl-0">
-                      <span className={`text-lg font-black italic tracking-tighter tabular-nums ${e.kind === 'ingreso' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto mt-2 sm:mt-0">
+                      <span className={`text-xl font-black italic tracking-tighter tabular-nums ${e.kind === 'ingreso' ? 'text-emerald-400' : 'text-rose-400'}`}>
                         {e.kind === 'ingreso' ? '+' : '-'}{formatEur(e.amount)}
                       </span>
-                      <div className="flex items-center gap-1 mt-2 sm:mt-0">
+                      <div className="flex items-center gap-3 relative z-20">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -561,9 +596,10 @@ export default function FinanzasPage() {
                             setModalMode("edit");
                             setModalOpen(true);
                           }}
-                          className="h-8 w-8 p-0 rounded-xl hover:bg-white/10 text-neutral-400 hover:text-white transition-all bg-white/5 sm:bg-transparent"
+                          className="h-11 w-11 p-0 rounded-2xl bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white transition-all border border-white/5 active:scale-90 group/btn relative overflow-hidden"
                         >
-                          <Pencil size={14} />
+                          <div className="absolute inset-0 bg-primary/20 blur-xl opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none" />
+                          <Pencil size={20} strokeWidth={2.5} className="relative z-10" />
                         </Button>
                         <Button
                           variant="ghost"
@@ -573,9 +609,10 @@ export default function FinanzasPage() {
                             setModalMode("delete");
                             setModalOpen(true);
                           }}
-                          className="h-8 w-8 p-0 rounded-xl hover:bg-rose-500/10 hover:text-rose-400 text-neutral-400 transition-all bg-white/5 sm:bg-transparent"
+                          className="h-11 w-11 p-0 rounded-2xl bg-white/5 hover:bg-rose-500/10 hover:text-rose-400 text-neutral-400 transition-all border border-white/5 active:scale-90 group/btn relative overflow-hidden"
                         >
-                          <Trash2 size={14} />
+                          <div className="absolute inset-0 bg-rose-500/20 blur-xl opacity-0 group-hover/btn:opacity-100 transition-opacity pointer-events-none" />
+                          <Trash2 size={20} strokeWidth={2.5} className="relative z-10" />
                         </Button>
                       </div>
                     </div>
