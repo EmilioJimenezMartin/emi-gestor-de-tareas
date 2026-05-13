@@ -3,7 +3,7 @@
 import { useState, useTransition, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, AlertTriangle, Copy, Database } from "lucide-react";
+import { Pencil, Trash2, AlertTriangle, Copy, Database, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Task } from "@/lib/tasks";
 import { AddTaskModal } from "./add-task-modal";
@@ -68,13 +68,23 @@ export function TaskDetailActions({ task }: TaskDetailActionsProps) {
                     </Button>
                 </div>
 
-                <Button
-                    variant="secondary"
-                    className="w-full text-[10px] font-black uppercase tracking-widest h-12 shadow-lg shadow-primary/10 rounded-2xl"
-                    onClick={() => router.push(`/dashboard?task=${encodeURIComponent(task.slug ?? task.id)}`)}
-                >
-                    <Database size={14} className="mr-2" /> Extractor
-                </Button>
+                {task.slug === "amazon-kdp-ai-automation" ? (
+                    <Button
+                        variant="secondary"
+                        className="w-full text-[10px] font-black uppercase tracking-widest h-12 shadow-lg shadow-primary/10 rounded-2xl bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-600 border-none hover:opacity-90 transition-all group"
+                        onClick={() => router.push(`/tareas/${task.slug}/aplicacion`)}
+                    >
+                        <Rocket size={14} className="mr-2 group-hover:scale-110 transition-transform" /> Aplicación
+                    </Button>
+                ) : (
+                    <Button
+                        variant="secondary"
+                        className="w-full text-[10px] font-black uppercase tracking-widest h-12 shadow-lg shadow-primary/10 rounded-2xl"
+                        onClick={() => router.push(`/dashboard?task=${encodeURIComponent(task.slug ?? task.id)}`)}
+                    >
+                        <Database size={14} className="mr-2" /> Extractor
+                    </Button>
+                )}
 
                 <Button
                     variant="outline"

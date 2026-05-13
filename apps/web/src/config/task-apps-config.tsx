@@ -1,0 +1,23 @@
+import { KdpFactoryApp } from "@/components/tasks/apps/kdp-factory-app";
+import { ReactNode } from "react";
+
+export interface TaskAppConfig {
+    component: ReactNode;
+    title: string;
+    description: string;
+    engineStatus: string;
+}
+
+export const TASK_APPS_REGISTRY: Record<string, TaskAppConfig> = {
+    "amazon-kdp-ai-automation": {
+        component: <KdpFactoryApp />,
+        title: "KDP Factory",
+        description: "Panel de control avanzado para la generación industrializada de activos digitales. Gestiona el ciclo de vida completo desde el brainstorming de nichos hasta la exportación final.",
+        engineStatus: "READY_TO_BOOT"
+    },
+    // Future apps go here
+};
+
+export function getTaskAppConfig(slug: string): TaskAppConfig | null {
+    return TASK_APPS_REGISTRY[slug] || null;
+}
