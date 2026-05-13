@@ -65,7 +65,8 @@ export async function registerExtractorRoutes(
             }
 
             const jobId = `job-${Date.now()}`;
-            log(deps.io, jobId, "info", `[INIT] Job ${jobId} started with ${allTargets.length} source(s)`);
+            log(deps.io, jobId, "info", `[INIT] Solicitud recibida. Iniciando trabajo ${jobId}...`);
+            log(deps.io, jobId, "info", `[CONFIG] Analizando ${allTargets.length} fuente(s)`);
             log(deps.io, jobId, "info", `[CONFIG] Prompt: "${prompt.substring(0, 80)}..."`);
             if (excludeKeywords.length > 0) {
                 log(deps.io, jobId, "info", `[CONFIG] Excluding keywords: ${excludeKeywords.join(", ")}`);
