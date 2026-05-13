@@ -6,55 +6,62 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
 const TASK_JSON_MODEL = {
-    "title": { "type": "string", "required": true, "description": "Nombre de la oportunidad" },
-    "slug": { "type": "string", "required": true, "description": "Identificador único en formato url-friendly" },
-    "status": { "type": "string", "required": true, "options": ["backlog", "in-progress", "done"] },
-    "priority": { "type": "string", "required": true, "options": ["low", "medium", "high", "urgent"] },
-    "categories": { "type": "array", "items": "string", "required": false },
-    "internal_score": { "type": "number", "required": false, "default": 0 },
-    "description": { "type": "string", "required": true, "description": "Descripción detallada del problema y solución" },
+    "_id": "ObjectId",
+
+    "id": "string",
+    "title": "string",
+    "slug": "string",
+
+    "status": "enum",
+    "priority": "enum",
+
+    "categories": ["string"],
+
+    "description": "string",
+
+    "internal_score": "number",
+
     "viability_metrics": {
-        "type": "object",
-        "required": true,
-        "properties": {
-            "implementation_ease": { "type": "number", "range": [1, 5] },
-            "success_probability": { "type": "number", "range": [1, 5] },
-            "resource_intensity": { "type": "number", "range": [1, 5] },
-            "time_to_mvp": { "type": "number", "range": [1, 5] },
-            "roi_potential": { "type": "number", "range": [1, 5] }
-        }
+        "implementation_ease": "number",
+        "success_probability": "number",
+        "resource_intensity": "number",
+        "time_to_mvp": "number",
+        "roi_potential": "number"
     },
+
     "technical_stack": {
-        "type": "object",
-        "required": true,
-        "properties": {
-            "framework": { "type": "string" },
-            "database": { "type": "string" },
-            "apis_required": { "type": "array", "items": "string" }
-        }
+        "framework": "string",
+        "database": "string",
+        "apis_required": ["string"]
     },
+
     "business_logic": {
-        "type": "object",
-        "required": true,
-        "properties": {
-            "problem": { "type": "string" },
-            "solution": { "type": "string" },
-            "monetization": { "type": "array", "items": "string" }
-        }
+        "problem": "string",
+        "solution": "string",
+        "monetization": ["string"]
     },
-    "execution_pipeline": {
-        "type": "array",
-        "required": true,
-        "items": {
-            "type": "object",
-            "properties": {
-                "step": { "type": "number", "required": true },
-                "task": { "type": "string", "required": true },
-                "details": { "type": "string", "required": true }
-            }
+
+    "execution_pipeline": [
+        {
+            "_id": "ObjectId|string",
+            "step": "number",
+            "task": "string",
+            "details": "string"
         }
+    ],
+
+    "data_schema_preview": {
+        "entity_primary": "string",
+        "entity_relation": "string",
+        "entity_score": "number",
+        "entity_value": "number",
+        "entity_status": "enum"
     },
-    "data_schema_preview": { "type": "object", "required": true, "description": "JSON de ejemplo del esquema de datos que manejará la app" }
+
+    "createdAt": "Date",
+    "updatedAt": "Date",
+
+    "__v": "number"
 };
 
 export function TaskSchemaCTA() {
