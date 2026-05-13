@@ -14,28 +14,25 @@ export async function updateTaskProperty(taskId: string, updates: Record<string,
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(updates),
+                cache: "no-store",
             });
-            if (!response.ok) {
-                console.warn(`API returned ${response.status}. Falling back to tasks.json`);
-                throw new Error("API failed");
+            const data = await response.json();
+            if (response.ok && data.success) {
+                console.log(`[updateTaskProperty] SUCCESS for ${taskId}`);
+            } else {
+                console.error(`[updateTaskProperty] API ERROR for ${taskId}:`, data);
+                throw new Error("API responded with error");
             }
-        } catch (apiError) {
-            console.warn("API completely unreachable. Modifying local tasks.json fallback...");
-            const fileContents = fs.readFileSync(DATA_PATH, "utf8");
-            const data = JSON.parse(fileContents);
-
-            const taskIndex = data.tasks.findIndex((t: any) => t.id === taskId);
-
-            if (taskIndex === -1) {
-                throw new Error("Task not found in fallback JSON");
-            }
-
-            data.tasks[taskIndex] = { ...data.tasks[taskIndex], ...updates };
-            fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2));
+        } catch (apiError: any) {
+            console.error(`[updateTaskProperty] Persistence failed for ${taskId}:`, apiError.message);
+            // We write to JSON as a LAST RESORT, but we notify the error
+            throw apiError;
         }
 
         revalidatePath("/");
         revalidatePath("/tareas", "layout");
+        revalidatePath("/tareas/[slug]", "page");
+        revalidatePath("/dashboard", "layout");
 
         return { success: true };
     } catch (error) {
@@ -110,4 +107,83 @@ export async function deleteTask(taskId: string) {
 
 export async function updateTask(taskId: string, taskData: Record<string, any>) {
     return updateTaskProperty(taskId, taskData);
+}
+
+export async function addTaskComment(taskId: string, text: string) {
+    try {
+        const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
+        const response = await fetch(`${apiUrl}/tasks/${taskId}/comments`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text }),
+            cache: "no-store",
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            console.error(`[addTaskComment] API ERROR for ${taskId}:`, data);
+            return { success: false, error: data?.error || "Failed to add comment" };
+        }
+
+        revalidatePath("/");
+        revalidatePath("/tareas", "layout");
+        revalidatePath("/tareas/[slug]", "page");
+        revalidatePath("/dashboard", "layout");
+
+        return { success: true, task: data.task, comment: data.comment };
+    } catch (error: any) {
+        console.error("Error adding task comment:", error);
+        return { success: false, error: "Failed to add comment" };
+    }
+}
+
+export async function updateTaskComment(taskId: string, commentId: string, text: string) {
+    try {
+        const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
+        const response = await fetch(`${apiUrl}/tasks/${taskId}/comments/${commentId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text }),
+            cache: "no-store",
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            console.error(`[updateTaskComment] API ERROR for ${taskId}/${commentId}:`, data);
+            return { success: false, error: data?.error || "Failed to update comment" };
+        }
+
+        revalidatePath("/");
+        revalidatePath("/tareas", "layout");
+        revalidatePath("/tareas/[slug]", "page");
+        revalidatePath("/dashboard", "layout");
+
+        return { success: true, task: data.task };
+    } catch (error: any) {
+        console.error("Error updating task comment:", error);
+        return { success: false, error: "Failed to update comment" };
+    }
+}
+
+export async function deleteTaskComment(taskId: string, commentId: string) {
+    try {
+        const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
+        const response = await fetch(`${apiUrl}/tasks/${taskId}/comments/${commentId}`, {
+            method: "DELETE",
+            cache: "no-store",
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+            console.error(`[deleteTaskComment] API ERROR for ${taskId}/${commentId}:`, data);
+            return { success: false, error: data?.error || "Failed to delete comment" };
+        }
+
+        revalidatePath("/");
+        revalidatePath("/tareas", "layout");
+        revalidatePath("/tareas/[slug]", "page");
+        revalidatePath("/dashboard", "layout");
+
+        return { success: true, task: data.task };
+    } catch (error: any) {
+        console.error("Error deleting task comment:", error);
+        return { success: false, error: "Failed to delete comment" };
+    }
 }

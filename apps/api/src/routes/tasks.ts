@@ -18,6 +18,36 @@ export async function registerTaskRoutes(
         return true;
     };
 
+    const buildTaskQuery = (id: string) => {
+        const query: any = { $or: [{ id: id }, { slug: id }] };
+        if (id && id.length === 24 && /^[0-9a-fA-F]{24}$/.test(id)) {
+            query.$or.push({ _id: new mongoose.Types.ObjectId(id) });
+        }
+        return query;
+    };
+
+    const normalizeComments = (raw: any): any[] => {
+        if (!Array.isArray(raw)) return [];
+        return raw
+            .map((c) => {
+                if (typeof c === "string") {
+                    const text = c.trim();
+                    if (!text) return null;
+                    return { id: new mongoose.Types.ObjectId().toString(), text, createdAt: new Date() };
+                }
+                if (c && typeof c === "object") {
+                    const text = typeof c.text === "string" ? c.text.trim() : "";
+                    if (!text) return null;
+                    const id = typeof c.id === "string" && c.id ? c.id : new mongoose.Types.ObjectId().toString();
+                    const createdAt = c.createdAt ? new Date(c.createdAt) : new Date();
+                    const updatedAt = c.updatedAt ? new Date(c.updatedAt) : undefined;
+                    return { id, text, createdAt, ...(updatedAt ? { updatedAt } : {}) };
+                }
+                return null;
+            })
+            .filter(Boolean);
+    };
+
     app.get("/tasks", async (request, reply) => {
         if (!ensureMongo(reply)) return;
         try {
@@ -44,19 +74,130 @@ export async function registerTaskRoutes(
     app.patch("/tasks/:id", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const { id } = request.params;
-            const updateProps = request.body as Record<string, any>;
+            const id = request.params.id;
+            const updateProps = request.body || {};
 
-            const task = await Task.findOneAndUpdate({ id }, { $set: updateProps }, { new: true });
+            if (Object.prototype.hasOwnProperty.call(updateProps, "comments")) {
+                updateProps.comments = normalizeComments(updateProps.comments);
+            }
+
+            console.log("[PATCH /tasks/" + id + "] Updating with:", JSON.stringify(updateProps));
+
+            const query = buildTaskQuery(id);
+
+            // Using the Mongoose model but with strict: false (set in the model file)
+            // findOneAndUpdate with { new: true } returns the updated document
+            const task = await Task.findOneAndUpdate(
+                query,
+                { $set: updateProps },
+                { new: true, runValidators: false }
+            );
 
             if (!task) {
-                return reply.status(404).send({ error: "Task not found" });
+                console.warn("[PATCH /tasks/" + id + "] Task not found");
+                return reply.status(404).send({ error: "Task not found", searched: id });
+            }
+
+            console.log("[PATCH /tasks/" + id + "] SUCCESS. Comments count:", (task as any).comments ? (task as any).comments.length : 0);
+            return reply.send({ success: true, task: task });
+        } catch (error: any) {
+            app.log.error(error);
+            return reply.status(500).send({ error: "Failed to update task", message: error.message });
+        }
+    });
+
+    // Add a single comment to an existing task (atomic $push)
+    app.post("/tasks/:id/comments", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const id = request.params.id;
+            const body = request.body || {};
+            const text = typeof body.text === "string" ? body.text.trim() : "";
+
+            if (!text) {
+                return reply.status(400).send({ success: false, error: "Comment text is required" });
+            }
+
+            const comment = {
+                id: new mongoose.Types.ObjectId().toString(),
+                text,
+                createdAt: new Date()
+            };
+
+            const query = buildTaskQuery(id);
+            const task = await Task.findOneAndUpdate(
+                query,
+                { $push: { comments: comment } },
+                { new: true, runValidators: false }
+            );
+
+            if (!task) {
+                return reply.status(404).send({ success: false, error: "Task not found", searched: id });
+            }
+
+            return reply.status(201).send({ success: true, comment, task });
+        } catch (error: any) {
+            app.log.error(error);
+            return reply.status(500).send({ success: false, error: "Failed to add comment", message: error.message });
+        }
+    });
+
+    app.patch("/tasks/:id/comments/:commentId", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const id = request.params.id;
+            const commentId = request.params.commentId;
+            const body = request.body || {};
+            const text = typeof body.text === "string" ? body.text.trim() : "";
+
+            if (!text) {
+                return reply.status(400).send({ success: false, error: "Comment text is required" });
+            }
+
+            const query = buildTaskQuery(id);
+            const task = await Task.findOneAndUpdate(
+                { ...query, "comments.id": commentId },
+                {
+                    $set: {
+                        "comments.$.text": text,
+                        "comments.$.updatedAt": new Date()
+                    }
+                },
+                { new: true, runValidators: false }
+            );
+
+            if (!task) {
+                return reply.status(404).send({ success: false, error: "Task or comment not found" });
             }
 
             return reply.send({ success: true, task });
         } catch (error: any) {
             app.log.error(error);
-            return reply.status(500).send({ error: "Failed to update task" });
+            return reply.status(500).send({ success: false, error: "Failed to update comment", message: error.message });
+        }
+    });
+
+    app.delete("/tasks/:id/comments/:commentId", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const id = request.params.id;
+            const commentId = request.params.commentId;
+
+            const query = buildTaskQuery(id);
+            const task = await Task.findOneAndUpdate(
+                query,
+                { $pull: { comments: { id: commentId } } },
+                { new: true, runValidators: false }
+            );
+
+            if (!task) {
+                return reply.status(404).send({ success: false, error: "Task not found" });
+            }
+
+            return reply.send({ success: true, task });
+        } catch (error: any) {
+            app.log.error(error);
+            return reply.status(500).send({ success: false, error: "Failed to delete comment", message: error.message });
         }
     });
 
@@ -64,9 +205,9 @@ export async function registerTaskRoutes(
     app.post("/tasks", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const taskData = request.body as Record<string, any>;
+            const taskData = request.body || {};
             if (!taskData.id) {
-                taskData.id = taskData.slug || `task-${Date.now()}`;
+                taskData.id = taskData.slug || "task-" + Date.now();
             }
             if (!taskData.slug) {
                 taskData.slug = taskData.id;
@@ -82,18 +223,17 @@ export async function registerTaskRoutes(
         }
     });
 
-    // Endpoint de prueba que el Dashboard puede llamar
+    // Trigger dummy task
     app.post("/tasks/trigger", async (request, reply) => {
         if (!deps.agenda) {
             return reply.status(503).send({ success: false, error: "Agenda not ready" });
         }
-        // agenda.now() añade la tarea a MongoDB para ejecución inmediata
         await deps.agenda.now("dummy-task", { name: "Usuario de Prueba del Dashboard" });
         deps.io?.emit("tasks:enqueued", { name: "dummy-task" });
 
         return reply.send({
             success: true,
-            message: "La tarea 'dummy-task' ha sido encolada correctamente para su ejecución inmediata."
+            message: "La tarea ha sido encolada correctamente."
         });
     });
 
@@ -101,10 +241,13 @@ export async function registerTaskRoutes(
     app.delete("/tasks/:id", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const { id } = request.params;
-            const task = await Task.findOneAndDelete({ id });
+            const id = request.params.id;
 
-            if (!task) {
+            const query = buildTaskQuery(id);
+
+            const deleted = await Task.findOneAndDelete(query);
+
+            if (!deleted) {
                 return reply.status(404).send({ error: "Task not found" });
             }
 

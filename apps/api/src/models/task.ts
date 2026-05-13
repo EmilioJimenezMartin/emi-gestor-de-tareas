@@ -1,5 +1,12 @@
 import mongoose, { Schema, Document } from "mongoose";
 
+export interface ITaskComment {
+    id: string;
+    text: string;
+    createdAt: Date;
+    updatedAt?: Date;
+}
+
 export interface ITask extends Document {
     id: string;
     title: string;
@@ -32,7 +39,7 @@ export interface ITask extends Document {
         details: string;
     }>;
     data_schema_preview: Record<string, any>;
-    comments?: string[];
+    comments?: ITaskComment[];
 }
 
 const TaskSchema: Schema = new Schema({
@@ -67,9 +74,12 @@ const TaskSchema: Schema = new Schema({
         details: { type: String, required: true }
     }],
     data_schema_preview: { type: Schema.Types.Mixed, required: true },
-    comments: [{ type: String, default: [] }]
+    // Mixed to accept legacy string[] values already stored in Mongo,
+    // while allowing the new {id,text,createdAt,...} objects.
+    comments: { type: [Schema.Types.Mixed], default: [] }
 }, {
-    timestamps: true
+    timestamps: true,
+    strict: false // Permitir guardar campos nuevos como 'comments' sin reiniciar la API si es necesario
 });
 
 export const Task = mongoose.models.Task || mongoose.model<ITask>("Task", TaskSchema);

@@ -61,7 +61,14 @@ const TASK_JSON_MODEL = {
     "createdAt": "Date",
     "updatedAt": "Date",
 
-    "comments": ["string"],
+    "comments": [
+        {
+            "id": "string",
+            "text": "string",
+            "createdAt": "Date",
+            "updatedAt": "Date?"
+        }
+    ],
 
     "__v": "number"
 };

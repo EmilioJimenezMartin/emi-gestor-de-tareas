@@ -54,10 +54,14 @@ export function FinanceSummaryClient() {
 
   useEffect(() => {
     const run = async () => {
-      const res = await fetch(`${apiUrl}/finance/movements?limit=200`, { method: "GET" });
-      if (!res.ok) return;
-      const json = (await res.json()) as { movements: FinanceMovement[] };
-      setMovements(json.movements ?? []);
+      try {
+        const res = await fetch(`${apiUrl}/finance/movements?limit=200`, { method: "GET" });
+        if (!res.ok) return;
+        const json = (await res.json()) as { movements: FinanceMovement[] };
+        setMovements(json.movements ?? []);
+      } catch {
+        // API offline/unreachable: keep UI usable and avoid unhandledRejection in dev.
+      }
     };
     void run();
   }, [apiUrl]);
