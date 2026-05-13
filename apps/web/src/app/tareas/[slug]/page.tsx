@@ -21,6 +21,7 @@ import { StatusSelector } from "@/components/tasks/status-selector";
 import { PrioritySelector } from "@/components/tasks/priority-selector";
 import { TaskDetailActions } from "@/components/tasks/task-detail-actions";
 import { InternalScoreSelector } from "@/components/tasks/internal-score-selector";
+import { TaskComments } from "@/components/tasks/task-comments";
 
 export async function generateStaticParams() {
   const tasks = await getTasks();
@@ -339,32 +340,46 @@ export default async function TareaDetallePage({
             </div>
           </Card>
 
-          <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="min-w-0">
-              <Card variant="outline" className="p-5 sm:p-6 border-white/5 bg-white/[0.01] h-full max-w-full overflow-hidden">
-                <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-4">Monetización</h3>
-                <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 w-full">
+          <Card variant="outline" className="p-0 border-white/5 bg-white/[0.01] overflow-hidden">
+            <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/5">
+              {/* Monetización Part */}
+              <div className="p-6 sm:p-8 space-y-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400">
+                    <TrendingUp size={14} />
+                  </div>
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Monetización</h3>
+                </div>
+                <div className="space-y-3">
                   {(task.business_logic.monetization || []).map((m: any, idx: number) => {
                     const label = typeof m === "string" ? m : m.name || m.title || `Monetización ${idx + 1}`;
                     return (
-                      <div key={label || idx} className="flex items-start gap-2 bg-white/5 px-3 py-2 rounded-xl border border-white/5 text-[10px] font-bold text-neutral-300 transition-colors hover:border-primary/30 w-full sm:w-auto break-words">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1" />
-                        <span className="leading-relaxed whitespace-normal break-words min-w-0">{label}</span>
+                      <div key={label || idx} className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/5 hover:border-emerald-500/20 transition-colors group/item">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1.5 group-hover/item:scale-125 transition-transform" />
+                        <span className="text-[11px] font-bold text-neutral-300 leading-relaxed">{label}</span>
                       </div>
                     );
                   })}
                 </div>
-              </Card>
-            </div>
-            <div className="min-w-0">
-              <Card variant="outline" className="p-5 sm:p-6 border-white/5 bg-white/[0.01] h-full max-w-full overflow-hidden">
-                <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-4">Esquema de Datos</h3>
-                <div className="rounded-xl bg-black/40 p-4 border border-white/5 max-h-[150px] overflow-auto font-mono text-[9px] text-blue-400/70 scrollbar-thin scrollbar-thumb-white/10 w-full">
-                  <pre className="whitespace-pre-wrap break-all min-w-0">{JSON.stringify(task.data_schema_preview, null, 2)}</pre>
+              </div>
+
+              {/* Esquema de Datos Part */}
+              <div className="p-6 sm:p-8 space-y-6 bg-black/20">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400">
+                    <Layers size={14} />
+                  </div>
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Esquema de Datos</h3>
                 </div>
-              </Card>
+                <div className="relative group/code">
+                  <div className="absolute inset-0 bg-blue-500/5 blur-2xl opacity-0 group-hover/code:opacity-100 transition-opacity" />
+                  <div className="relative rounded-xl bg-black/40 p-5 border border-white/5 font-mono text-[10px] leading-relaxed text-blue-400/80 overflow-auto max-h-[300px] scrollbar-thin scrollbar-thumb-white/10">
+                    <pre className="whitespace-pre-wrap break-all">{JSON.stringify(task.data_schema_preview, null, 2)}</pre>
+                  </div>
+                </div>
+              </div>
             </div>
-          </section>
+          </Card>
         </div>
 
         {/* Right Column: Stack & Automation */}
@@ -437,10 +452,10 @@ export default async function TareaDetallePage({
               </div>
             </div>
           </Card>
-
-
         </div>
       </section>
+
+      <TaskComments task={task} />
     </div>
   );
 }

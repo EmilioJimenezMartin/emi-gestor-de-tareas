@@ -32,6 +32,7 @@ export interface ITask extends Document {
         details: string;
     }>;
     data_schema_preview: Record<string, any>;
+    comments?: string[];
 }
 
 const TaskSchema: Schema = new Schema({
@@ -65,7 +66,8 @@ const TaskSchema: Schema = new Schema({
         task: { type: String, required: true },
         details: { type: String, required: true }
     }],
-    data_schema_preview: { type: Schema.Types.Mixed, required: true }
+    data_schema_preview: { type: Schema.Types.Mixed, required: true },
+    comments: [{ type: String, default: [] }]
 }, {
     timestamps: true
 });
