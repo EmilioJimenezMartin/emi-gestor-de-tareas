@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
     Cpu,
     Sparkles,
@@ -43,7 +43,8 @@ import {
     ChevronRight,
     Activity,
     Lightbulb,
-    Download
+    Download,
+    Store
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -69,7 +70,9 @@ const PRODUCT_TYPES = [
     { id: "kdp-color-book", name: "KDP Color Book", icon: <BookOpen size={18} />, color: "text-blue-400", bg: "bg-blue-500/10" },
     { id: "poster-digital", name: "Poster Digital", icon: <ImageIcon size={18} />, color: "text-emerald-400", bg: "bg-emerald-500/10" },
     { id: "clothing", name: "Patrones para Ropa", icon: <Shirt size={18} />, color: "text-purple-400", bg: "bg-purple-500/10" },
-    { id: "frames", name: "Cuadros Imprimibles", icon: <Frame size={18} />, color: "text-rose-400", bg: "bg-rose-500/10" }
+    { id: "frames", name: "Cuadros Imprimibles", icon: <Frame size={18} />, color: "text-rose-400", bg: "bg-rose-500/10" },
+    { id: "etsy-products", name: "Productos Etsy", icon: <Store size={18} />, color: "text-orange-400", bg: "bg-orange-500/10" },
+    { id: "landing-page-template", name: "Landing Page Template", icon: <FileText size={18} />, color: "text-cyan-400", bg: "bg-cyan-500/10" }
 ];
 
 const AI_MODELS = [
@@ -207,6 +210,7 @@ export function KdpFactoryApp() {
     const [generatedImage, setGeneratedImage] = useState<string | null>(null);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [vaultImages, setVaultImages] = useState<{ url: string, model: string, dim: string }[]>([]);
+    const generatedImageObjectUrlRef = useRef<string | null>(null);
 
     const downloadImage = (url: string, filenameBase: string) => {
         const a = document.createElement("a");
@@ -216,6 +220,32 @@ export function KdpFactoryApp() {
         a.click();
         a.remove();
     };
+
+    const setGeneratedImageFromFile = (file: File) => {
+        if (!file.type.startsWith("image/")) {
+            toast.error("Solo se aceptan imágenes");
+            return;
+        }
+        if (generatedImageObjectUrlRef.current) {
+            URL.revokeObjectURL(generatedImageObjectUrlRef.current);
+            generatedImageObjectUrlRef.current = null;
+        }
+        const url = URL.createObjectURL(file);
+        generatedImageObjectUrlRef.current = url;
+        setIsGenerating(false);
+        setIsImageLoading(true);
+        setGeneratedImage(url);
+        toast.success("Imagen cargada");
+    };
+
+    useEffect(() => {
+        return () => {
+            if (generatedImageObjectUrlRef.current) {
+                URL.revokeObjectURL(generatedImageObjectUrlRef.current);
+                generatedImageObjectUrlRef.current = null;
+            }
+        };
+    }, []);
 
     // Sincronizar estado de carga cuando cambia la URL
     useEffect(() => {
@@ -777,7 +807,28 @@ export function KdpFactoryApp() {
                 </Card>
 
                 {/* Preview Area */}
-                <Card variant="glass" className="relative border-white/5 bg-white/[0.01] overflow-hidden min-h-[400px] flex items-center justify-center group rounded-[40px]">
+                <Card
+                    variant="glass"
+                    className="relative border-white/5 bg-white/[0.01] overflow-hidden min-h-[400px] flex items-center justify-center group rounded-[40px] focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                    tabIndex={0}
+                    onClick={(e) => (e.currentTarget as HTMLElement).focus()}
+                    onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }}
+                    onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) setGeneratedImageFromFile(file);
+                    }}
+                    onPaste={(e) => {
+                        const items = Array.from(e.clipboardData?.items || []);
+                        const imageItem = items.find((it) => it.kind === "file" && it.type.startsWith("image/"));
+                        const file = imageItem?.getAsFile() || null;
+                        if (file) setGeneratedImageFromFile(file);
+                    }}
+                >
                     {generatedImage ? (
                         <div className="relative w-full h-full animate-in fade-in zoom-in duration-700">
                             <img
@@ -872,7 +923,7 @@ export function KdpFactoryApp() {
                                     </div>
                                     <div className="space-y-1">
                                         <p className="text-xs font-black uppercase tracking-widest text-white">Visual Engine Ready</p>
-                                        <p className="text-[10px] text-neutral-600 font-medium italic">El lienzo está esperando tu prompt...</p>
+                                        <p className="text-[10px] text-neutral-600 font-medium italic">Arrastra una imagen aquí o pégala (Ctrl/⌘+V).</p>
                                     </div>
                                 </div>
                             )}
