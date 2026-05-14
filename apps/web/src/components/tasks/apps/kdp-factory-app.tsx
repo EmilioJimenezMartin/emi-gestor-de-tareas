@@ -72,10 +72,17 @@ const PRODUCT_TYPES = [
 ];
 
 const AI_MODELS = [
+    // Mantener los modelos originales (algunos pueden estar más rate-limited / con licencias no-OSS).
     { id: "flux-schnell", name: "FLUX.1 [schnell]", provider: "Hugging Face", type: "Ultra High Quality", modelId: "black-forest-labs/FLUX.1-schnell" },
     { id: "sd-3.5", name: "Stable Diffusion 3.5", provider: "Hugging Face", type: "Versatile", modelId: "stabilityai/stable-diffusion-3.5-large-turbo" },
     { id: "openjourney-v4", name: "OpenJourney v4", provider: "Hugging Face", type: "Artistic/MJ Style", modelId: "prompthero/openjourney" },
-    { id: "google-imagen", name: "Google Imagen 3", provider: "Google", type: "Photorealistic", modelId: "google/imagen-3" }
+    { id: "google-imagen", name: "Google Imagen 3", provider: "Google", type: "Photorealistic", modelId: "google/imagen-3" },
+
+    // Modelos con pesos públicos / licencias abiertas en Hugging Face (mejor base OSS).
+    { id: "sdxl-base", name: "Stable Diffusion XL Base 1.0", provider: "Hugging Face", type: "General (OSS weights)", modelId: "stabilityai/stable-diffusion-xl-base-1.0" },
+    { id: "sdxl-turbo", name: "SDXL Turbo", provider: "Hugging Face", type: "Fast (OSS weights)", modelId: "stabilityai/sdxl-turbo" },
+    { id: "sd-1.5", name: "Stable Diffusion 1.5", provider: "Hugging Face", type: "Classic (OSS weights)", modelId: "runwayml/stable-diffusion-v1-5" },
+    { id: "kandinsky-2.2", name: "Kandinsky 2.2", provider: "Hugging Face", type: "Creative", modelId: "ai-forever/Kandinsky-2.2" }
 ];
 
 const AI_DIMENSIONS = [
@@ -236,6 +243,12 @@ export function KdpFactoryApp() {
                 setGeneratedImage(url);
                 setIsGenerating(false);
                 toast.success(`Arte generado con éxito vía Proxy Seguro`);
+                return;
+            } else if (response.status === 429 && retryCount < 2) {
+                const retryAfter = Number(response.headers.get("Retry-After") || "10");
+                const waitMs = Number.isFinite(retryAfter) ? Math.max(3, retryAfter) * 1000 : 10000;
+                toast.info(`Límite alcanzado. Reintentando en ${Math.round(waitMs / 1000)}s (${retryCount + 1}/2)`);
+                setTimeout(() => handleGenerateImage(retryCount + 1), waitMs);
                 return;
             } else if (response.status === 503 && retryCount < 2) {
                 // Manejo de Cold Boot desde el Proxy
