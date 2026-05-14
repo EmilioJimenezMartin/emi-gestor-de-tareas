@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import {
     Cpu,
     Sparkles,
@@ -211,14 +212,22 @@ export function KdpFactoryApp() {
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [vaultImages, setVaultImages] = useState<{ url: string, model: string, dim: string }[]>([]);
     const generatedImageObjectUrlRef = useRef<string | null>(null);
+    const [bookEditorOpen, setBookEditorOpen] = useState(false);
+    const [bookFooterText, setBookFooterText] = useState("");
+    const [bookFileName, setBookFileName] = useState("libro-kdp");
+    const [isBuildingPdf, setIsBuildingPdf] = useState(false);
 
-    const downloadImage = (url: string, filenameBase: string) => {
+    const downloadFile = (url: string, filename: string) => {
         const a = document.createElement("a");
         a.href = url;
-        a.download = `${filenameBase}.png`;
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         a.remove();
+    };
+
+    const downloadPng = (url: string, filenameBase: string) => {
+        downloadFile(url, `${filenameBase}.png`);
     };
 
     const setGeneratedImageFromFile = (file: File) => {
@@ -236,6 +245,94 @@ export function KdpFactoryApp() {
         setIsImageLoading(true);
         setGeneratedImage(url);
         toast.success("Imagen cargada");
+    };
+
+    const ensureObjectUrl = async (url: string) => {
+        if (url.startsWith("blob:")) return url;
+        const res = await fetch(url);
+        const blob = await res.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        return objectUrl;
+    };
+
+    const buildBookPdf = async () => {
+        if (vaultImages.length === 0) return;
+
+        setIsBuildingPdf(true);
+        try {
+            const pdf = await PDFDocument.create();
+            const pageWidth = 595.28; // A4 portrait in points
+            const pageHeight = 841.89;
+            const margin = 48;
+
+            const totalPages = 1 + vaultImages.length * 2;
+            const pages = Array.from({ length: totalPages }, () => pdf.addPage([pageWidth, pageHeight]));
+
+            // Page 1: blank + footer text bottom-right
+            if (bookFooterText.trim()) {
+                const font = await pdf.embedFont(StandardFonts.Helvetica);
+                const fontSize = 12;
+                const text = bookFooterText.trim();
+                const textWidth = font.widthOfTextAtSize(text, fontSize);
+                pages[0].drawText(text, {
+                    x: Math.max(margin, pageWidth - margin - textWidth),
+                    y: margin,
+                    size: fontSize,
+                    font,
+                    color: rgb(0.2, 0.2, 0.2),
+                });
+            }
+
+            // Images centered on odd pages: 3,5,7... (index 2,4,6...)
+            for (let i = 0; i < vaultImages.length; i++) {
+                const targetPageIndex = 2 + i * 2;
+                const page = pages[targetPageIndex];
+                const url = vaultImages[i].url;
+
+                let bytes: Uint8Array;
+                try {
+                    const res = await fetch(url);
+                    const buf = await res.arrayBuffer();
+                    bytes = new Uint8Array(buf);
+                } catch {
+                    // If URL is not fetchable (CORS), try converting to an object URL first
+                    const objectUrl = await ensureObjectUrl(url);
+                    const res = await fetch(objectUrl);
+                    bytes = new Uint8Array(await res.arrayBuffer());
+                }
+
+                let embedded: any = null;
+                try {
+                    embedded = await pdf.embedPng(bytes);
+                } catch {
+                    embedded = await pdf.embedJpg(bytes);
+                }
+
+                const imgW = embedded.width;
+                const imgH = embedded.height;
+                const maxW = pageWidth - margin * 2;
+                const maxH = pageHeight - margin * 2;
+                const scale = Math.min(maxW / imgW, maxH / imgH);
+                const drawW = imgW * scale;
+                const drawH = imgH * scale;
+                const x = (pageWidth - drawW) / 2;
+                const y = (pageHeight - drawH) / 2;
+
+                page.drawImage(embedded, { x, y, width: drawW, height: drawH });
+            }
+
+            const pdfBytes = await pdf.save();
+            const blob = new Blob([pdfBytes], { type: "application/pdf" });
+            const url = URL.createObjectURL(blob);
+            downloadFile(url, `${(bookFileName.trim() || "libro-kdp")}.pdf`);
+            setTimeout(() => URL.revokeObjectURL(url), 30_000);
+            toast.success("PDF generado");
+        } catch (e) {
+            console.error(e);
+            toast.error("No se pudo generar el PDF");
+        } finally {
+            setIsBuildingPdf(false);
+        }
     };
 
     useEffect(() => {
@@ -331,13 +428,20 @@ export function KdpFactoryApp() {
         }
     };
 
-    const handleKeepImage = () => {
+    const handleKeepImage = async () => {
         if (generatedImage) {
             const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "Unknown";
             const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1:1";
 
+            let urlToStore = generatedImage;
+            try {
+                urlToStore = await ensureObjectUrl(generatedImage);
+            } catch {
+                // keep original URL if it cannot be fetched (may impact PDF generation)
+            }
+
             setVaultImages([{
-                url: generatedImage,
+                url: urlToStore,
                 model: modelName,
                 dim: dimName
             }, ...vaultImages]);
@@ -865,7 +969,7 @@ export function KdpFactoryApp() {
                                                 onClick={() => {
                                                     const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
                                                     const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
-                                                    downloadImage(generatedImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
+                                                    downloadPng(generatedImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
                                                 }}
                                                 className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
                                                 aria-label="Descargar imagen"
@@ -945,6 +1049,12 @@ export function KdpFactoryApp() {
                                 <p className="text-[10px] text-neutral-600 font-medium italic">Sesión actual: {vaultImages.length} activos conservados</p>
                             </div>
                         </div>
+                        <Button
+                            onClick={() => setBookEditorOpen(true)}
+                            className="h-10 rounded-2xl bg-white/10 border border-white/10 text-white hover:bg-white hover:text-black transition-all text-[10px] font-black uppercase tracking-widest"
+                        >
+                            Crear Libro PDF
+                        </Button>
                     </div>
 
                     <div className="flex gap-5 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
@@ -977,7 +1087,7 @@ export function KdpFactoryApp() {
                                             <button
                                                 onClick={() => {
                                                     const safeName = `vault-${vaultImages.length - i}`.replaceAll(" ", "_");
-                                                    downloadImage(img.url, safeName);
+                                                    downloadPng(img.url, safeName);
                                                 }}
                                                 className="w-9 h-9 rounded-xl bg-white/10 backdrop-blur-md text-white border border-white/10 hover:bg-white hover:text-black transition-all flex items-center justify-center shrink-0"
                                                 aria-label="Descargar imagen"
@@ -1173,7 +1283,7 @@ export function KdpFactoryApp() {
                                 onClick={() => {
                                     const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
                                     const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
-                                    downloadImage(previewImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
+                                    downloadPng(previewImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
                                 }}
                                 className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
                                 aria-label="Descargar imagen"
@@ -1189,6 +1299,96 @@ export function KdpFactoryApp() {
                             >
                                 <X size={18} />
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Book Editor Modal */}
+            {bookEditorOpen && (
+                <div
+                    className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
+                    onClick={() => setBookEditorOpen(false)}
+                    role="dialog"
+                    aria-modal="true"
+                >
+                    <div
+                        className="relative w-full max-w-6xl rounded-3xl border border-white/10 bg-[#0a0a0a]/80 overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="p-6 md:p-8 border-b border-white/10 flex items-center justify-between gap-4">
+                            <div className="space-y-1">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Editor de Libro</p>
+                                <p className="text-sm text-neutral-300 font-medium italic">Pág. 1 en blanco + texto; imágenes centradas en páginas impares.</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    onClick={buildBookPdf}
+                                    disabled={isBuildingPdf || vaultImages.length === 0}
+                                    className="h-11 rounded-2xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest"
+                                >
+                                    {isBuildingPdf ? "Generando..." : "Descargar PDF"}
+                                </Button>
+                                <button
+                                    onClick={() => setBookEditorOpen(false)}
+                                    className="p-3 rounded-2xl bg-white/5 text-white hover:bg-rose-500 transition-all border border-white/10"
+                                    aria-label="Cerrar editor"
+                                    title="Cerrar"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="p-6 md:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+                            <div className="lg:col-span-4 space-y-5">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Nombre del archivo</label>
+                                    <input
+                                        value={bookFileName}
+                                        onChange={(e) => setBookFileName(e.target.value)}
+                                        className="w-full h-11 rounded-2xl bg-white/5 border border-white/10 px-4 text-sm text-white outline-none focus:border-amber-500/40"
+                                        placeholder="libro-kdp"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Texto (página 1, abajo derecha)</label>
+                                    <textarea
+                                        value={bookFooterText}
+                                        onChange={(e) => setBookFooterText(e.target.value)}
+                                        className="w-full min-h-[120px] rounded-2xl bg-white/5 border border-white/10 p-4 text-sm text-white outline-none focus:border-amber-500/40 resize-none"
+                                        placeholder="Ej: © 2026 Tu Marca"
+                                    />
+                                </div>
+                                <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-[10px] text-neutral-400 font-medium">
+                                    Total páginas: {1 + vaultImages.length * 2} (las pares quedan en blanco).
+                                </div>
+                            </div>
+
+                            <div className="lg:col-span-8 space-y-4">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Previsualización</p>
+                                <div className="max-h-[60vh] overflow-auto pr-1 space-y-4">
+                                    {Array.from({ length: 1 + vaultImages.length }).map((_, spreadIndex) => {
+                                        // spreadIndex 0 => (página 0 izq en blanco) + (página 1 der con texto)
+                                        // spreadIndex n>0 => (página 2n izq en blanco) + (página 2n+1 der con imagen n-1)
+                                        const img = spreadIndex === 0 ? null : vaultImages[spreadIndex - 1];
+                                        return (
+                                            <div key={spreadIndex} className="grid grid-cols-2 gap-4">
+                                                <div className="aspect-[1/1.414] rounded-2xl bg-white/[0.02] border border-white/10" />
+                                                <div className="aspect-[1/1.414] rounded-2xl bg-white/[0.02] border border-white/10 relative overflow-hidden flex items-center justify-center">
+                                                    {spreadIndex === 0 ? (
+                                                        <div className="absolute bottom-3 right-3 text-[9px] font-bold text-neutral-400">
+                                                            {bookFooterText.trim() || " "}
+                                                        </div>
+                                                    ) : img ? (
+                                                        <img src={img.url} alt="Preview" className="max-w-[90%] max-h-[90%] object-contain" />
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
