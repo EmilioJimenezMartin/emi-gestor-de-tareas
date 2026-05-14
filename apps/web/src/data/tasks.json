@@ -4,7 +4,7 @@
       "id": "bioterra-arbitrage-001",
       "title": "BioTerra-Arbitrage: Terminal de Activos de Compensación",
       "slug": "bioterra-carbon-sourcing",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "high",
       "description": "Plataforma de identificación y valorización de terrenos rurales para la generación de créditos de carbono y biodiversidad (UE 2026).",
       "viability_metrics": {
@@ -25,34 +25,35 @@
         ]
       },
       "business_logic": {
-        "problem": "Las corporaciones obligadas por el CBAM/UE no encuentran suelo certificado para compensación biogénica.",
-        "solution": "Algoritmo de 'Match' que cruza datos catastrales con biomasa satelital para detectar parcelas infravaloradas con alto potencial de captura.",
+        "problem": "Con la entrada en vigor definitiva del Mecanismo de Ajuste en Frontera por Carbono (CBAM) en 2026, las empresas europeas de sectores pesados (acero, cemento, fertilizantes) tienen una obligación legal de compensar emisiones. Sin embargo, el mercado de créditos de carbono es opaco y está fragmentado. Existen miles de hectáreas rústicas en España y Portugal que están 'atrapadas' en una valoración de suelo agrícola bajo, cuando su valor real como sumideros de CO2 certificados es 10 veces superior. Los propietarios no saben que su 'monte' es una mina de oro digital y las corporaciones no tienen una herramienta para localizar este inventario de forma masiva.",
+        "solution": "Un orquestador de datos que actúa como un 'scanner' de activos biogénicos de alta resolución. El sistema cruza la titularidad catastral con índices de vigor vegetativo satelital (NDVI) de los últimos 24 meses y nubes de puntos LIDAR del IGN. Esto permite pre-certificar parcelas de forma automática, identificando exactamente cuántas toneladas de CO2 absorbe cada referencia catastral. El motor detecta dónde el arbitraje es máximo: comprar o arrendar derechos de uso de suelo a precio de 'terreno abandonado' y vender el derecho de absorción certificado a corporaciones obligadas por la normativa UE.",
         "monetization": [
-          "SaaS Subscription (Tier Premium para Fondos)",
-          "Success Fee (Comisión por transacción de suelo)",
-          "API Data Licensing (Venta de datos crudos a consultoras)"
+          "SaaS Subscription: Acceso premium para fondos de inversión ESG a un mapa de calor de oportunidades de compra directa de suelo con alto potencial de absorción.",
+          "Success Fee: Comisión del 10-15% sobre la adjudicación de créditos de carbono generados en parcelas localizadas y gestionadas por el bot.",
+          "Arbitraje de Derechos: Compra de opciones de arrendamiento sobre terrenos identificados para reventa del derecho de compensación a empresas del IBEX35.",
+          "Data Licensing: Venta de capas de datos procesados (biomasa real vs. teórica catastral) para consultoras ambientales y de ingeniería."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Scraping Catastral",
-          "details": "Identificación de parcelas rústicas abandonadas mediante filtrado de valor catastral mínimo."
+          "task": "Scraping Catastral y Registral",
+          "details": "Minería de datos en la Sede Electrónica del Catastro para filtrar parcelas rústicas de más de 5 hectáreas con un valor catastral inferior a la media regional, lo que indica infrautilización o abandono productivo."
         },
         {
           "step": 2,
-          "task": "Análisis de Biomasa (Sentinel-2)",
-          "details": "Cálculo automático de índices NDVI para descartar tierras áridas y confirmar potencial de reforestación."
+          "task": "Análisis de Biomasa Dinámico",
+          "details": "Procesamiento de imágenes multiespectrales de Sentinel-2 para calcular la salud foliar, el estrés hídrico y la capacidad fotosintética real de la parcela, descartando zonas quemadas o áridas."
         },
         {
           "step": 3,
-          "task": "Cálculo LIDAR",
-          "details": "Procesamiento de nubes de puntos del IGN para estimar biomasa aérea actual y capacidad de absorción incremental."
+          "task": "Volumetría LIDAR de Precisión",
+          "details": "Uso de datos de nubes de puntos (PNOA) para medir la estructura tridimensional del bosque, calculando la altura del dosel y la densidad de biomasa aérea para estimar toneladas de carbono fijado."
         },
         {
           "step": 4,
-          "task": "Scoring de Rentabilidad",
-          "details": "Cálculo de ROI: (Coste Suelo + Gestión) vs (Valor Créditos Carbono UE 2026)."
+          "task": "Generación de Scoring de Arbitraje",
+          "details": "Cálculo automático del ROI basado en: (Coste de adquisición/arrendamiento del suelo + costes de certificación) vs (Precio de mercado de los créditos de carbono proyectado para 2026-2030)."
         }
       ],
       "data_schema_preview": {
@@ -67,6 +68,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "PropTech",
         "Arbitraje"
@@ -74,82 +76,231 @@
     },
     {
       "id": "recovery-arbitrage-002",
-      "title": "Recovery-Arbitrage: Guardián de Fondos NextGen",
+      "title": "Recovery Arbitrage: Guardián Inteligente de Fondos Europeos",
       "slug": "eu-funds-matching-engine",
-      "status": "active",
-      "priority": "critical",
-      "description": "Motor de emparejamiento predictivo entre fondos estructurales de la UE y PYMES españolas mediante análisis de idoneidad automatizado.",
+      "status": "Arquitectura Validada",
+      "priority": "high",
+      "description": "Infraestructura automatizada de matching predictivo entre subvenciones europeas y empresas elegibles mediante NLP jurídico y scoring financiero.",
       "viability_metrics": {
-        "implementation_ease": 6,
-        "success_probability": 9,
-        "resource_intensity": 4,
-        "time_to_mvp": 7,
-        "roi_potential": 10
+        "implementation_ease": 5,
+        "success_probability": 8,
+        "resource_intensity": 6,
+        "time_to_mvp": 6,
+        "roi_potential": 10,
+        "automation_leverage": 9,
+        "market_size_score": 10,
+        "data_moat_score": 9,
+        "regulatory_complexity": 6,
+        "sales_complexity": 4
       },
       "technical_stack": {
-        "framework": "Next.js",
+        "frontend": "Next.js 15",
+        "backend": "Node.js + Python NLP Workers",
         "database": "MongoDB",
+        "queue_system": "BullMQ + Redis",
+        "nlp_stack": [
+          "spaCy",
+          "OpenAI API",
+          "Sentence Transformers",
+          "LangChain"
+        ],
+        "document_processing": [
+          "PyMuPDF",
+          "PDFPlumber",
+          "Tesseract OCR"
+        ],
+        "scraping_stack": [
+          "Playwright",
+          "Cheerio",
+          "BeautifulSoup"
+        ],
+        "cloud_infrastructure": [
+          "Railway",
+          "Hetzner",
+          "Cloudflare Workers",
+          "Cloudflare R2"
+        ],
+        "notification_channels": [
+          "Telegram Bot API",
+          "Slack Webhooks",
+          "Email SMTP",
+          "WhatsApp Business API"
+        ],
         "apis_required": [
-          "API de la Base de Datos Nacional de Subvenciones",
-          "BOE/DOUE Scraper",
-          "Registro Mercantil (CNAE/Balances)",
-          "Buscador de Ayudas (Cámara de Comercio)"
+          {
+            "name": "Base de Datos Nacional de Subvenciones (BDNS)",
+            "url": "https://www.infosubvenciones.es",
+            "purpose": "Fuente principal de convocatorias públicas españolas."
+          },
+          {
+            "name": "BOE API",
+            "url": "https://www.boe.es/datosabiertos/api/api.php",
+            "purpose": "Extracción estructurada de boletines oficiales y convocatorias."
+          },
+          {
+            "name": "TED Europa / DOUE",
+            "url": "https://ted.europa.eu",
+            "purpose": "Fondos y programas europeos complementarios."
+          },
+          {
+            "name": "Cámara de Comercio",
+            "url": "https://www.camara.es",
+            "purpose": "Validación y enriquecimiento de ayudas empresariales."
+          },
+          {
+            "name": "eInforma / Axesor",
+            "url": "https://www.einforma.com",
+            "purpose": "Datos mercantiles, CNAE y balances empresariales."
+          },
+          {
+            "name": "INE API",
+            "url": "https://www.ine.es",
+            "purpose": "Datos estadísticos sectoriales y geográficos."
+          },
+          {
+            "name": "AEAT",
+            "url": "https://sede.agenciatributaria.gob.es",
+            "purpose": "Validaciones fiscales y criterios tributarios."
+          }
         ]
       },
       "business_logic": {
-        "problem": "El 60% de los fondos de la UE no se ejecutan por la complejidad burocrática y falta de comunicación con las PYMES.",
-        "solution": "Identificación proactiva de beneficiarios mediante el cruce de requisitos técnicos de ayudas con datos financieros reales de empresas.",
+        "problem": "España y la Unión Europea movilizan cientos de miles de millones en subvenciones, ayudas y programas de transformación digital, sostenibilidad e innovación. Sin embargo, las PYMES carecen de tiempo, conocimiento jurídico y capacidad administrativa para monitorizar diariamente boletines oficiales complejos y altamente fragmentados. Como consecuencia, miles de ayudas quedan infrautilizadas o son capturadas únicamente por grandes consultoras y empresas con departamentos especializados.",
+        "solution": "Un motor automatizado de inteligencia de subvenciones basado en NLP jurídico y matching empresarial. El sistema monitoriza en tiempo real nuevas convocatorias públicas, interpreta automáticamente requisitos técnicos y cruza la elegibilidad con datos empresariales como CNAE, tamaño, localización, facturación y solvencia. El resultado es un radar predictivo que identifica empresas potencialmente elegibles antes de que descubran la ayuda por sus propios medios.",
+        "competitive_advantage": [
+          "Automatización de un sector todavía altamente manual.",
+          "Capacidad de procesar cientos de convocatorias diarias.",
+          "Scoring propietario de probabilidad de concesión.",
+          "Matching masivo entre ayudas y empresas.",
+          "Ventaja temporal frente a asesorías tradicionales."
+        ],
         "monetization": [
-          "Success Fee (3-5% de la subvención concedida)",
-          "B2B API Licensing (Venta de leads cualificados a banca comercial)",
-          "Gestión automatizada de expedientes (SaaS de tramitación)"
+          "SaaS mensual para gestorías y despachos profesionales.",
+          "Fee por generación automática de expediente subvencionable.",
+          "Lead generation para bancos y fintechs que financian anticipos de subvenciones.",
+          "Success fee opcional sobre ayudas finalmente concedidas.",
+          "API privada de matching de subvenciones para ERPs y software empresarial.",
+          "Licenciamiento white-label a consultoras y asociaciones empresariales."
+        ],
+        "go_to_market": [
+          "Fase 1: Feed premium de ayudas para gestorías.",
+          "Fase 2: Automatización documental y scoring.",
+          "Fase 3: API de elegibilidad para terceros.",
+          "Fase 4: Marketplace financiero de anticipos y financiación puente."
+        ],
+        "risk_factors": [
+          "Interpretación jurídica inconsistente entre convocatorias.",
+          "Dependencia de fuentes públicas parcialmente estructuradas.",
+          "Cambios regulatorios en subvenciones europeas.",
+          "Necesidad de revisión humana en ayudas complejas.",
+          "Posible resistencia de asesorías tradicionales."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Ingesta de Boletines (NLP)",
-          "details": "Extracción de requisitos de elegibilidad (CNAE, tamaño, facturación) de nuevas ayudas publicadas en BOE/DOUE."
+          "task": "Government Feed Monitoring",
+          "details": "Monitorización continua de BOE, BDNS, DOUE y organismos autonómicos para detectar nuevas ayudas y modificaciones regulatorias.",
+          "sources": [
+            "https://www.boe.es",
+            "https://www.infosubvenciones.es",
+            "https://ted.europa.eu"
+          ],
+          "_id": "69ee50d976d2934a52a2e28b"
         },
         {
           "step": 2,
-          "task": "Profiling de PYMES",
-          "details": "Carga masiva de datos mercantiles de empresas activas en España filtradas por solvencia."
+          "task": "Legal NLP Extraction",
+          "details": "Extracción automática de requisitos: CNAE elegibles, límites de facturación, intensidad de ayuda, geografía, deadlines y gastos subvencionables.",
+          "technologies": [
+            "spaCy",
+            "OpenAI",
+            "Regex pipelines",
+            "Embeddings semánticos"
+          ],
+          "_id": "69ee50d976d2934a52a2e28c"
         },
         {
           "step": 3,
-          "task": "Predictive Matching",
-          "details": "Algoritmo de scoring que asigna un porcentaje de probabilidad de éxito por cada empresa/ayuda."
+          "task": "Massive Business Profiling",
+          "details": "Enriquecimiento de perfiles empresariales mediante datos mercantiles y categorización sectorial automatizada.",
+          "_id": "69ee50d976d2934a52a2e28d"
         },
         {
           "step": 4,
-          "task": "Generación de Lead/Expediente",
-          "details": "Pre-cumplimentación de formularios de solicitud con los datos ya almacenados en el sistema."
+          "task": "Eligibility Scoring Engine",
+          "details": "Algoritmo que calcula elegibilidad, probabilidad de concesión y valor económico potencial por empresa.",
+          "_id": "69ee50d976d2934a52a2e28e"
+        },
+        {
+          "step": 5,
+          "task": "Automated Alert System",
+          "details": "Envío automático de alertas y oportunidades vía Telegram, email, CRM o API.",
+          "_id": "69ee50d976d2934a52a2e28f"
+        },
+        {
+          "step": 6,
+          "task": "Draft Application Builder",
+          "details": "Generación automática de borradores y pre-cumplimentación documental para acelerar la tramitación.",
+          "_id": "69ee50d976d2934a52a2e290"
         }
       ],
       "data_schema_preview": {
-        "cif_empresa": "String",
         "grant_id": "String",
+        "grant_title": "String",
+        "grant_type": "Enum ['digitalization', 'energy', 'innovation', 'industrial']",
+        "eligible_cnaes": "Array",
+        "max_grant_amount": "Number",
+        "company_cif": "String",
+        "company_name": "String",
+        "company_cnae": "String",
+        "annual_revenue": "Number",
+        "employee_count": "Number",
         "eligibility_score": "Number (0-100)",
+        "grant_probability_score": "Number (0-100)",
         "estimated_grant_value": "Number",
-        "status_prospeccion": "Enum ['detectada', 'contactada', 'firmada']"
+        "submission_deadline": "Date",
+        "required_documents": "Array",
+        "status_prospeccion": "Enum ['detected', 'contacted', 'qualified', 'submitted', 'approved']"
       },
       "automation_config": {
         "cron_schedule": "0 6 * * *",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 89,
       "categories": [
         "LegalTech",
         "Fintech",
-        "Arbitraje"
-      ]
+        "GovTech",
+        "Automation",
+        "B2B SaaS"
+      ],
+      "_id": "69ee50d976d2934a52a2e28a",
+      "automation_opportunities": [
+        "Clasificación automática de ayudas mediante embeddings.",
+        "Predicción ML de probabilidad de concesión.",
+        "Auto-generación de expedientes PDF.",
+        "Integración CRM para asesorías.",
+        "Alertas inteligentes por CNAE y región.",
+        "Ranking automático de ayudas por ROI potencial."
+      ],
+      "moat_strategy": [
+        "Dataset propietario de ayudas históricas y resultados.",
+        "Motor NLP especializado en lenguaje administrativo español.",
+        "Scoring histórico de éxito por tipo de convocatoria.",
+        "Integraciones profundas con gestorías y despachos.",
+        "Feedback loop continuo basado en resultados reales."
+      ],
+      "__v": 1,
+      "createdAt": "2026-04-26T17:52:25.524Z",
+      "updatedAt": "2026-05-06T18:05:00.000Z"
     },
     {
       "id": "cyber-heatmap-003",
       "title": "Cyber-Vulnerability Heatmap: NIS2 Guardian",
       "slug": "cyber-risk-osint-dashboard",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "high",
       "description": "Visualizador de riesgos digitales en tiempo real basado en inteligencia de fuentes abiertas (OSINT) y cumplimiento de la directiva NIS2.",
       "viability_metrics": {
@@ -171,34 +322,35 @@
         ]
       },
       "business_logic": {
-        "problem": "Los directivos son responsables legales de la ciberseguridad (NIS2) pero no entienden los informes técnicos complejos.",
-        "solution": "Un panel visual de 'puntos de calor' que traduce datos técnicos de vulnerabilidad en riesgo de negocio y probabilidad de multa.",
+        "problem": "La nueva directiva europea NIS2 eleva la ciberseguridad a nivel de responsabilidad penal para los consejos de administración. Sin embargo, los directivos de PYMES y grandes empresas no entienden los logs técnicos de seguridad. Existe una 'ceguera de riesgo': las empresas tienen activos expuestos (servidores antiguos, bases de datos sin password, correos filtrados) que los hackers ven en 5 minutos pero que los directivos ignoran hasta que sufren un ransomware. La brecha de comunicación entre el departamento técnico y el de negocio es crítica.",
+        "solution": "Un panel visual de 'puntos de calor' que traduce datos técnicos complejos obtenidos mediante OSINT (inteligencia de fuentes abiertas) a un lenguaje de impacto de negocio. El bot escanea la superficie de ataque externa de cualquier dominio corporativo sin tocar su infraestructura (modo pasivo). Cruza puertos abiertos, certificados caducados y filtraciones de empleados en la Dark Web para generar un 'Nivel de Riesgo NIS2' que los directivos pueden entender y actuar en consecuencia.",
         "monetization": [
-          "SaaS Enterprise (Suscripción por monitoreo de dominio)",
-          "Consultoría Express (Informes de impacto visual para consejos de administración)",
-          "White-label para Aseguradoras (Evaluación de riesgo para pólizas)"
+          "SaaS Enterprise: Suscripción por el monitoreo continuo de la superficie de ataque y alertas instantáneas ante nuevas fugas de datos.",
+          "Consultoría de Cumplimiento: Informes detallados para C-Levels que necesitan justificar presupuestos de seguridad ante el consejo bajo presión de la directiva NIS2.",
+          "Canal de Seguros: Evaluación de riesgo 'pre-póliza' para compañías de seguros que quieren saber el riesgo real de un cliente antes de emitir un ciber-seguro.",
+          "White-Label: Proveer la tecnología a empresas de servicios de IT para que ofrezcan auditorías rápidas a sus propios clientes."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Domain Surface Mapping",
-          "details": "Identificación de subdominios, IPs corporativas y certificados SSL activos mediante APIs de DNS pasivo."
+          "task": "External Surface Discovery",
+          "details": "Uso de APIs de DNS pasivo y Shodan para listar todos los subdominios e IPs corporativas que 'asoman' a internet, detectando activos olvidados."
         },
         {
           "step": 2,
-          "task": "Vulnerability Correlation",
-          "details": "Cruce de IPs con Shodan para detectar servicios críticos abiertos (RDP, bases de datos, SMB)."
+          "task": "Audit de Servicios Críticos",
+          "details": "Identificación de protocolos peligrosos (RDP, SMB, bases de datos expuestas) y cruce con bases de datos de CVE (vulnerabilidades conocidas)."
         },
         {
           "step": 3,
-          "task": "Breach Intelligence",
-          "details": "Escaneo de dominios de correo corporativo en bases de datos de filtraciones masivas."
+          "task": "Deep-Web Credential Scan",
+          "details": "Búsqueda de correos corporativos en dumps de filtraciones masivas para detectar identidades de directivos comprometidas que faciliten el phishing."
         },
         {
           "step": 4,
-          "task": "Legal Risk Translation",
-          "details": "Asignación de score de riesgo basado en los pilares de la directiva NIS2 (Gobernanza, Gestión de riesgos, Respuesta)."
+          "task": "Traducción a Riesgo Normativo",
+          "details": "Algoritmo que asigna un peso económico al fallo basado en las multas previstas en la directiva NIS2 por falta de diligencia debida."
         }
       ],
       "data_schema_preview": {
@@ -213,6 +365,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "Ciberseguridad"
       ]
@@ -221,7 +374,7 @@
       "id": "land-ghost-004",
       "title": "Land-Ghost: Rastreador de Derechos de Reversión",
       "slug": "expropiaciones-fallidas-tracker",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "high",
       "description": "Detección automatizada de activos inmobiliarios expropiados y no ejecutados con potencial de recuperación legal mediante derecho de reversión.",
       "viability_metrics": {
@@ -243,34 +396,35 @@
         ]
       },
       "business_logic": {
-        "problem": "El State expropia terrenos que nunca utiliza; los dueños originales desconocen su derecho legal de recuperarlos a coste histórico.",
-        "solution": "Cruce de anuncios de expropiación antiguos con el estado constructivo actual mediante satélite para identificar anomalías de ejecución.",
+        "problem": "España tiene una 'historia oculta' de expropiaciones fallidas. Durante las décadas de burbuja de infraestructuras, el Estado expropió millones de metros cuadrados para hospitales, polígonos o aeropuertos que jamás se construyeron. Según la ley, si tras un plazo (generalmente 10-20 años) la utilidad pública no se ha cumplido, los antiguos propietarios o sus herederos tienen el derecho legal de recuperar la finca devolviendo el precio original. El problema es que el Estado no avisa y los herederos han olvidado esas tierras. Es un activo 'fantasma' de miles de millones de euros.",
+        "solution": "Un sistema de inteligencia inmobiliaria que cruza el pasado con el presente. El bot utiliza OCR masivo para leer los anuncios de expropiación en boletines antiguos. Posteriormente, verifica mediante visión artificial sobre imágenes satelitales actuales si la obra prevista existe o no. Si detecta una parcela expropiada que sigue siendo campo baldío 15 años después, el sistema activa una búsqueda OSINT para localizar a los descendientes de los dueños originales y proponerles la recuperación legal de la propiedad.",
         "monetization": [
-          "Sourcing para Fondos 'Special Situations'",
-          "Bounty de Reclamación (Comisión sobre plusvalía)",
-          "Venta de leads a despachos de abogados especializados"
+          "Litigation Funding: Financiar los gastos de la reclamación legal a cambio de un porcentaje (25-40%) del valor final del terreno recuperado.",
+          "Lead Selling: Venta de expedientes de reversión contrastados a bufetes de abogados especialistas en derecho administrativo.",
+          "Sourcing Inmobiliario: Identificación de parcelas para fondos inmobiliarios que pueden comprar los derechos de reversión a los herederos por una fracción de su valor de mercado.",
+          "Consultoría Institucional: Informes para ayuntamientos que quieren regularizar su inventario de suelo heredado."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Historical Scraping",
-          "details": "Minería de datos en boletines históricos para extraer listados de fincas expropiadas y su causa de utilidad pública."
+          "task": "Minería de Edictos Históricos",
+          "details": "Extracción de coordenadas, planos antiguos y nombres de expropiados de archivos del BOE y Boletines Provinciales mediante modelos de extracción de entidades (NER)."
         },
         {
           "step": 2,
-          "task": "Catastral Cross-Check",
-          "details": "Verificación de referencias catastrales expropiadas para comprobar si el uso actual coincide con el fin legal."
+          "task": "Verificación de 'Causa de Utilidad'",
+          "details": "Clasificación automática de imágenes satelitales Sentinel-2 para confirmar la ausencia de infraestructuras sobre el polígono expropiado."
         },
         {
           "step": 3,
-          "task": "Visual Proofing",
-          "details": "Análisis IA de imágenes satelitales para confirmar ausencia de infraestructuras en la parcela."
+          "task": "Auditoría de Titularidad Actual",
+          "details": "Consulta al Catastro para confirmar que la parcela sigue en manos públicas y que no ha expirado el plazo legal para ejercer la reversión."
         },
         {
           "step": 4,
-          "task": "Genealogy Search",
-          "details": "Localización de herederos de propietarios originales mediante inteligencia de fuentes abiertas."
+          "task": "Genealogía de Propietarios",
+          "details": "Uso de registros civiles y obituarios digitales para rastrear el linaje de los dueños originales y validar la legitimidad de la reclamación."
         }
       ],
       "data_schema_preview": {
@@ -285,6 +439,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
         "PropTech",
         "LegalTech",
@@ -295,9 +450,9 @@
       "id": "datacenter-arbitrage-005",
       "title": "Data-Land Sourcing: Infraestructura de IA y Data Centers",
       "slug": "datacenter-site-sourcing-engine",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "critical",
-      "description": "Motor de identificación y valorización de parcelas rústicas estratégicas para la ubicación de Data Centers mediante el cruce de nudos de transporte eléctrico y redes de fibra óptica de gran capacidad.",
+      "description": "Motor de identificación y valorización de parcelas rústicas estratégicas para la ubicación de Data Centers mediante el cruce de nudos de transporte eléctrico y redes de fibra óptica.",
       "viability_metrics": {
         "implementation_ease": 4,
         "success_probability": 8,
@@ -308,7 +463,7 @@
       "technical_stack": {
         "framework": "Next.js",
         "database": "MongoDB",
-        "visualization": "Mapbox GL JS / Deck.gl (Capas GeoJSON)",
+        "visualization": "Mapbox GL JS / Deck.gl",
         "apis_required": [
           "REE ESIOS API (Capacidad de nudos)",
           "CNMC (Mapas de Fibra Oscura)",
@@ -317,34 +472,35 @@
         ]
       },
       "business_logic": {
-        "problem": "La escasez de suelo con acceso inmediato a >20MW de potencia y conectividad de fibra frena la expansión de la IA en Europa.",
-        "solution": "Identificación proactiva de parcelas infravaloradas (patatales) que cumplen requisitos técnicos críticos antes de que el mercado las detecte.",
+        "problem": "La explosión de la Inteligencia Artificial requiere una capacidad física inaudita en Europa: suelo masivo con acceso inmediato a potencia eléctrica de alta tensión (>20MW) y fibra óptica de gran capacidad. Los desarrolladores de Data Centers pierden meses buscando ubicaciones que cumplan ambos requisitos técnicos simultáneamente. Una parcela rústica (un patatal) que esté a menos de 500m de una subestación con capacidad de evacuación vale 100 veces más de lo que marca el mercado agrícola, pero esa información es un secreto técnico.",
+        "solution": "Un motor de inteligencia geoespacial que actúa como un 'headhunter' de parcelas críticas. El bot mapea todos los nudos de transporte de Red Eléctrica (REE) y los cruza con los trazados de fibra óptica troncal. Identifica parcelas rústicas llanas, no protegidas ambientalmente, situadas estratégicamente en estos 'puntos calientes' de infraestructura. El sistema genera un dossier de viabilidad técnica que permite comprar o señalizar el suelo antes de que los grandes fondos detecten la ubicación.",
         "monetization": [
-          "Sub-arrendamiento de derechos de superficie (Renta por MW)",
-          "Venta de Dossiers de Viabilidad Técnica a Hyperscalers",
-          "Success Fee por cierre de contrato con operador de Data Center"
+          "Dossiers de Sourcing: Venta de informes de viabilidad llave en mano a Hyperscalers (Google, Amazon, Microsoft) o colocation providers.",
+          "Arbitraje de Suelo: Arrendamiento a largo plazo de las parcelas detectadas para sub-arrendar a operadores de centros de datos por un precio basado en el MW disponible.",
+          "Consultoría de Ingeniería: Ofrecer la pre-tramitación administrativa del acceso a red (punto de conexión) basado en los datos extraídos por el bot.",
+          "Success Fee: Porcentaje sobre el cierre de la operación de compraventa de activos inmobiliarios de infraestructura."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Energy Grid Scraping",
-          "details": "Extracción y mapeo de nudos de transporte de Red Eléctrica (REE) con capacidad de evacuación y acceso disponible mensualmente."
+          "task": "Power Grid Mapping",
+          "details": "Extracción de la capacidad de subestaciones eléctricas y trazado de líneas de 220kV/400kV a través de los datos abiertos de REE."
         },
         {
           "step": 2,
-          "task": "Fiber Proximity Analysis",
-          "details": "Cruce geoespacial con trazados de fibra óptica de gran capacidad (ADIF/Red Eléctrica/Gaseoductos)."
+          "task": "Fiber Optic Overlay",
+          "details": "Cruce de datos de infraestructura de fibra oscura y rutas de telecomunicaciones de gran capacidad (ADIF/Gaseoductos)."
         },
         {
           "step": 3,
-          "task": "Land Owner Identification",
-          "details": "Filtrado catastral de parcelas rústicas de >5.000m2 en el radio de 1km de los puntos críticos de energía y fibra."
+          "task": "Land Eligibility Scan",
+          "details": "Filtrado automático de parcelas rústicas según orografía (pendiente <5%), clasificación urbanística y ausencia de zonas de especial protección (ZEPA)."
         },
         {
           "step": 4,
-          "task": "Dossier Auto-Generation",
-          "details": "Generación automática de informes técnicos con estimación de costes de conexión y probabilidad de éxito urbanístico."
+          "task": "Technical Due Diligence Auto",
+          "details": "Generación del informe PDF con estimación de costes de acometida y latencia proyectada a los principales IXP (Internet Exchange Points)."
         }
       ],
       "data_schema_preview": {
@@ -359,6 +515,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "PropTech",
         "Infraestructura",
@@ -369,9 +526,9 @@
       "id": "grant-arbitrage-006",
       "title": "Subsidy-Lead Engine: Sniper de Subvenciones Públicas",
       "slug": "public-grants-arbitrage-bot",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "high",
-      "description": "Sistema automatizado de detección de subvenciones por orden de llegada (concurrencia no competitiva) y generación de leads cualificados mediante análisis geoespacial de naves industriales y datos mercantiles.",
+      "description": "Sistema automatizado de detección de subvenciones por orden de llegada y generación de leads cualificados mediante análisis geoespacial de activos físicos.",
       "viability_metrics": {
         "implementation_ease": 8,
         "success_probability": 9,
@@ -385,39 +542,40 @@
         "apis_required": [
           "BOE/BOCM/DOGC API (OpenData)",
           "Google Maps Static API (Análisis de tejados)",
-          "Apollo.io / Hunter.io API (Emails directivos)",
+          "Apollo.io / Hunter.io API",
           "Registro Mercantil API"
         ]
       },
       "business_logic": {
-        "problem": "Las PYMES pierden millones en ayudas por desconocimiento o falta de rapidez en solicitudes que se agotan en horas.",
-        "solution": "Detección instantánea de convocatorias y filtrado de beneficiarios por capacidad física (m2 de nave) y financiera antes de que la competencia reaccione.",
+        "problem": "Muchos fondos públicos (como el autoconsumo solar o la eficiencia energética) se rigen por 'concurrencia no competitiva': los fondos se asignan por estricto orden de entrada de la solicitud hasta agotar el presupuesto. Esto genera una guerra de velocidad. Las empresas de instalación solar o eficiencia no tienen tiempo de buscar clientes manualmente cuando sale una ayuda. Necesitan saber hoy mismo qué naves industriales de su zona tienen el tejado perfecto para poner placas y qué dueños tienen la solvencia para pagarlo.",
+        "solution": "Un 'Sniper' de leads industriales. El bot monitoriza los boletines oficiales minuto a minuto. En cuanto se publica una línea de ayudas (ej. 20M€ para tejados industriales), el sistema activa un escáner visual sobre naves industriales en zonas elegibles. Usa visión artificial para medir los m2 de cubierta y cruza la dirección con el Registro Mercantil para extraer el contacto del CEO. En menos de 1 hora tras la publicación de la ayuda, el instalador recibe un listado de 500 clientes potenciales con el presupuesto de la ayuda ya calculado.",
         "monetization": [
-          "Venta de leads cualificados a consultoras (100€-300€/contacto)",
-          "Revenue Share por éxito (15-20% de la comisión de la gestoría)",
-          "SaaS de Alerta Competitiva para empresas del mismo sector"
+          "Bounty por Lead: Venta de cada contacto cualificado (empresa con nave de >500m2 + solvencia + contacto CEO) por un precio fijo (50-200€).",
+          "Revenue Share: Porcentaje de la subvención captada si se gestiona el expediente a través de partners asociados.",
+          "SaaS de Vigilancia: Cuota mensual para empresas que quieren bloquear a la competencia sabiendo antes que nadie dónde están los nichos de subvención.",
+          "White Label: Integración en CRMs de grandes comercializadoras de energía."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Gazette Monitoring (NLP)",
-          "details": "Escaneo diario de boletines oficiales buscando palabras clave de convocatorias activas y presupuestos asignados."
+          "task": "Gazette Monitoring",
+          "details": "Escaneo de palabras clave en el extracto de subvenciones para detectar convocatorias de 'pago por orden de llegada'."
         },
         {
           "step": 2,
-          "task": "Visual Property Filtering",
-          "details": "Uso de visión artificial sobre Google Maps para identificar empresas con naves de >500m2 aptas para eficiencia energética."
+          "task": "Visual Property Analysis",
+          "details": "Uso de modelos de segmentación de imágenes sobre Google Maps para identificar naves industriales con cubiertas despejadas y orientación sur."
         },
         {
           "step": 3,
-          "task": "Corporate OSINT",
-          "details": "Extracción automática de cargos C-Level y correos electrónicos mediante scraping de Registro Mercantil y LinkedIn."
+          "task": "Corporate OSINT enrichment",
+          "details": "Extracción automática de cargos directivos, correos electrónicos y teléfonos de contacto vinculados a la titularidad de la nave."
         },
         {
           "step": 4,
-          "task": "Automated Lead Dispatch",
-          "details": "Envío inmediato del perfil de empresa + ayuda detectada a la consultora aliada para contacto telefónico instantáneo."
+          "task": "Automated Outreach",
+          "details": "Disparo automático de una campaña de email/WhatsApp informando al dueño de la nave que tiene una subvención pre-aprobada por su superficie."
         }
       ],
       "data_schema_preview": {
@@ -433,6 +591,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "LegalTech",
         "Arbitraje"
@@ -442,9 +601,9 @@
       "id": "liquidation-arbitrage-007",
       "title": "The Liquidation Snatcher: Arbitraje de Activos Públicos",
       "slug": "liquidation-snatcher-pricing-errors",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "high",
-      "description": "Sistema de detección de errores de tasación en subastas públicas (BOE/Seguridad Social) mediante visión artificial para identificar activos de alto valor mal catalogados como 'lotes genéricos'.",
+      "description": "Sistema de detección de errores de tasación en subastas públicas mediante visión artificial para identificar activos de alto valor mal catalogados.",
       "viability_metrics": {
         "implementation_ease": 4,
         "success_probability": 7,
@@ -464,34 +623,35 @@
         ]
       },
       "business_logic": {
-        "problem": "La administración pública cataloga lotes tecnológicos o industriales de forma pésima, ocultando activos de alta demanda bajo descripciones genéricas.",
-        "solution": "Uso de IA visual para auditar las fotos de las subastas, identificar modelos específicos y calcular el beneficio neto automático tras costes logísticos.",
+        "problem": "Las Administraciones Públicas (Seguridad Social, Juzgados, Aduanas) son pésimas vendedoras. Cuando liquidan activos de empresas en quiebra, a menudo catalogan lotes de forma genérica: 'Lote de material informático' o 'Maquinaria industrial'. Dentro de esos lotes pueden haber activos de altísimo valor (servidores de última generación, endoscopios médicos, estaciones de soldadura de precisión) que el funcionario no ha identificado. El mercado de subastas está lleno de ruido, y los compradores humanos no pueden auditar visualmente 10.000 fotos de baja calidad al día.",
+        "solution": "Un auditor visual automático. El bot realiza un scraping masivo del Portal de Subastas del BOE. Procesa cada fotografía adjunta mediante modelos YOLOv8 entrenados para identificar marcas y modelos específicos de hardware profesional. Cuando detecta un activo cuyo valor de mercado (comprobado en tiempo real vía eBay/Keepa) supera en un 300% el precio de salida del lote, el sistema emite una alerta de compra inmediata, calculando incluso el coste de envío mediante logística de terceros (3PL).",
         "monetization": [
-          "Arbitraje de inventario (Buy low, sell high)",
-          "Dropshipping de liquidaciones (Venta pre-adjudicación)",
-          "Sourcing B2B para retailers de segunda mano"
+          "Arbitraje Directo: Compra del lote a precio de liquidación y reventa en mercados especializados (BackMarket, eBay, brokers industriales).",
+          "Sourcing B2B: Cobro de una cuota mensual a retailers de segunda mano por enviarles leads de lotes 'mal tasados' antes de que la subasta sea viral.",
+          "Dropshipping de Liquidación: Venta del activo en una plataforma secundaria antes de haber ganado la subasta, asegurando el margen.",
+          "Consultoría de Tasación: Venta de datos a la propia administración para mejorar sus procesos de liquidación (modelo B2G)."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Auction Ingestion",
-          "details": "Scraping recurrente de la sección de Bienes Muebles en el portal de subastas del BOE y Seguridad Social."
+          "task": "Auction Ingestion & Filtering",
+          "details": "Conexión recurrente al portal del BOE filtrando por subastas de 'Bienes Muebles' con pujas abiertas en las últimas 24 horas."
         },
         {
           "step": 2,
-          "task": "Visual Asset Audit",
-          "details": "Procesamiento de imágenes de baja calidad mediante modelos YOLO para identificar marcas y modelos de hardware (médico, industrial o TI)."
+          "task": "Visual Asset Recognition",
+          "details": "Uso de visión artificial para extraer etiquetas de modelos, números de serie o logotipos de fabricantes de las fotos de los peritos."
         },
         {
           "step": 3,
-          "task": "Real-time Valuation",
-          "details": "Cruce automático con precios de 'Sold Items' en eBay y BackMarket para determinar el valor real de mercado del lote."
+          "task": "Dynamic Price Scraping",
+          "details": "Cruce del modelo detectado con APIs de marketplaces para obtener el 'precio medio de venta' en estado usado/refurbished."
         },
         {
           "step": 4,
-          "task": "Automated Logistics",
-          "details": "Envío de órdenes de recogida y envío directo a almacenes 3PL/FBA para automatizar la catalogación y venta final."
+          "task": "Profitability Analysis",
+          "details": "Cálculo de la puja máxima recomendada restando impuestos (ITP), comisión del portal y costes de recogida y almacenamiento."
         }
       ],
       "data_schema_preview": {
@@ -507,6 +667,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
         "Arbitraje",
         "LegalTech"
@@ -514,87 +675,250 @@
     },
     {
       "id": "index-arb-engine-008",
-      "title": "The Index-Arb Engine: Arbitraje de Activos Desiertos",
+      "title": "The Index-Arb Engine: Arbitraje Automatizado de Activos Desiertos",
       "slug": "index-arb-crowd-financial-engine",
-      "status": "active",
-      "priority": "critical",
-      "description": "Motor de detección de activos en fase de venta directa o subasta desierta que cruza datos de edictos judiciales (PDF/OCR) con valoraciones de mercado en tiempo real para activar rondas de financiación participativa automáticas.",
+      "status": "Arquitectura Validada",
+      "priority": "high",
+      "description": "Motor automatizado de detección, valoración y financiación de activos judiciales desiertos mediante OCR, NLP jurídico y arbitraje de liquidación.",
       "viability_metrics": {
-        "implementation_ease": 3,
+        "implementation_ease": 4,
         "success_probability": 8,
         "resource_intensity": 8,
-        "time_to_mvp": 4,
-        "roi_potential": 10
+        "time_to_mvp": 5,
+        "roi_potential": 10,
+        "legal_complexity": 9,
+        "automation_leverage": 10,
+        "market_inefficiency_score": 9,
+        "capital_dependency": 8
       },
       "technical_stack": {
-        "framework": "Next.js / Python (OCR Pipeline)",
+        "frontend": "Next.js 15",
+        "backend": "Node.js + Python Workers",
+        "ocr_pipeline": "Python + Tesseract OCR + PaddleOCR + OpenCV",
         "database": "MongoDB",
-        "visualization": "D3.js (Gráficas de ROI proyectado)",
+        "queue_system": "BullMQ + Redis",
+        "scraping_stack": [
+          "Playwright",
+          "Cheerio",
+          "PDFPlumber",
+          "PyMuPDF"
+        ],
+        "cloud_infrastructure": [
+          "Railway",
+          "Hetzner",
+          "Cloudflare R2",
+          "Cloudflare Workers"
+        ],
+        "notification_channels": [
+          "Telegram Bot API",
+          "Discord Webhooks",
+          "Email SMTP",
+          "Twilio WhatsApp API"
+        ],
         "apis_required": [
-          "BOE Portal de Subastas (Edictos)",
-          "Tesseract OCR / Google Vision API",
-          "Idealista/Fotocasa API (Market Price)",
-          "VIN Decoder / Eurotax API (Valoración motor)",
-          "Lemonway / Mangopay API (Crowdlending Ops)"
+          {
+            "name": "Portal BOE Subastas",
+            "url": "https://subastas.boe.es",
+            "purpose": "Extracción de subastas judiciales, AEAT y Seguridad Social."
+          },
+          {
+            "name": "BOE API",
+            "url": "https://www.boe.es/datosabiertos/api/api.php",
+            "purpose": "Acceso estructurado a edictos y metadatos oficiales."
+          },
+          {
+            "name": "Catastro API",
+            "url": "https://www.sedecatastro.gob.es",
+            "purpose": "Obtención de referencia catastral, superficie y uso urbanístico."
+          },
+          {
+            "name": "Google Vision API",
+            "url": "https://cloud.google.com/vision",
+            "purpose": "OCR avanzado para PDFs judiciales escaneados."
+          },
+          {
+            "name": "Idealista",
+            "url": "https://www.idealista.com",
+            "purpose": "Estimación comparativa de mercado inmobiliario."
+          },
+          {
+            "name": "Fotocasa",
+            "url": "https://www.fotocasa.es",
+            "purpose": "Benchmark de precios y velocidad de venta."
+          },
+          {
+            "name": "VIN Decoder API",
+            "url": "https://vindecoder.eu",
+            "purpose": "Decodificación de bastidores y vehículos."
+          },
+          {
+            "name": "Milanuncios",
+            "url": "https://www.milanuncios.com",
+            "purpose": "Valoración secundaria de vehículos y maquinaria."
+          },
+          {
+            "name": "Escrapalia",
+            "url": "https://www.escrapalia.com",
+            "purpose": "Comparativa de liquidaciones industriales y lotes."
+          },
+          {
+            "name": "Lemonway",
+            "url": "https://www.lemonway.com",
+            "purpose": "Gestión de wallets e inversión sindicada."
+          },
+          {
+            "name": "Mangopay",
+            "url": "https://mangopay.com",
+            "purpose": "Distribución de capital e infraestructura de crowdlending."
+          }
         ]
       },
       "business_logic": {
-        "problem": "Las subastas desiertas esconden descuentos del 50% sobre mercado, pero requieren liquidez inmediata que los cazadores de gangas no siempre tienen.",
-        "solution": "Un orquestador de datos que detecta la anomalía de precio y levanta el capital necesario mediante crowdlending, usando el propio activo adjudicado como colateral.",
+        "problem": "Existe una enorme ineficiencia estructural en las subastas judiciales y concursales españolas. Miles de activos pasan a fase de 'subasta desierta' o 'venta directa' porque los edictos están enterrados en PDFs jurídicos difíciles de interpretar, con mala indexación SEO y lenguaje administrativo opaco. La mayoría de pequeños inversores no monitoriza estas oportunidades ni dispone de liquidez inmediata para reaccionar en ventanas de 24-72 horas. Como consecuencia, acreedores, bancos y administradores concursales aceptan descuentos extremos sobre activos perfectamente revendibles.",
+        "solution": "Un motor de arbitraje legal-financiero que detecta automáticamente activos desiertos o infravalorados, extrae datos clave mediante OCR y NLP jurídico, calcula el valor real de liquidación y activa financiación colectiva inmediata. El sistema funciona como un hedge-fund automatizado de oportunidades judiciales: identifica activos con alto descuento implícito, genera un informe técnico de viabilidad y abre rondas express de financiación para adjudicarse el activo antes de que llegue al mercado abierto.",
+        "competitive_advantage": [
+          "Automatización de una industria todavía manual y jurídica.",
+          "Acceso temprano a oportunidades invisibles para retail.",
+          "Capacidad de reacción en horas frente a semanas de una gestoría tradicional.",
+          "Motor de OCR especializado en documentos judiciales deteriorados.",
+          "Scoring propietario de riesgo jurídico y rentabilidad esperada."
+        ],
         "monetization": [
-          "Management Fee por gestión de la adjudicación (3-5% del capital)",
-          "Success Fee sobre el beneficio de reventa (20-30%)",
-          "SaaS de alertas para inversores institucionales"
+          "Management Fee: Comisión fija del 3% al 5% sobre cada operación adjudicada.",
+          "Carry Interest: Participación del 20%-30% sobre beneficios netos tras liquidación.",
+          "SaaS Premium: Acceso mensual al feed privado de oportunidades filtradas.",
+          "Originación de operaciones para fondos oportunistas y plataformas de crowdlending.",
+          "Marketplace privado de activos adjudicados para inversores recurrentes.",
+          "Fee de automatización documental para despachos y procuradores."
+        ],
+        "risk_factors": [
+          "Complejidad regulatoria en crowdlending y captación de capital.",
+          "Necesidad de revisión jurídica humana en operaciones críticas.",
+          "Riesgo de cargas ocultas o litigios sobre activos.",
+          "Dependencia de fuentes públicas no estructuradas.",
+          "Posibles limitaciones anti-scraping."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Deep Document Scraping",
-          "details": "Descarga de edictos de subastas desiertas y extracción de VINs (vehículos) o Referencias Catastrales (inmuebles) mediante OCR."
+          "task": "Judicial Feed Monitoring",
+          "details": "Monitorización continua del Portal de Subastas BOE, concursos de acreedores y plataformas de liquidación industrial para detectar subastas finalizadas sin pujas o con actividad mínima.",
+          "sources": [
+            "https://subastas.boe.es",
+            "https://www.escrapalia.com",
+            "https://www.gobid.es"
+          ],
+          "_id": "69ee50d976d2934a52a2e2a9"
         },
         {
           "step": 2,
-          "task": "Anomaly Detection",
-          "details": "Cruce masivo de datos para identificar activos donde el valor de adjudicación directa es <60% del valor de mercado real."
+          "task": "Deep OCR + Legal Parsing",
+          "details": "Extracción avanzada de datos desde PDFs judiciales: cargas, ubicación, bastidores, administradores concursales, embargos y situación posesoria.",
+          "technologies": [
+            "Tesseract OCR",
+            "OpenCV",
+            "PyMuPDF",
+            "Google Vision API"
+          ],
+          "_id": "69ee50d976d2934a52a2e2aa"
         },
         {
           "step": 3,
-          "task": "Automated Fundraising",
-          "details": "Publicación automática de la oportunidad en plataformas de financiación participativa con el dossier técnico pre-generado."
+          "task": "Automated Asset Valuation",
+          "details": "Valoración automática mediante comparativas inmobiliarias, depreciación de vehículos, lotes industriales y velocidad de liquidación secundaria.",
+          "market_sources": [
+            "Idealista",
+            "Fotocasa",
+            "Milanuncios",
+            "Wallapop",
+            "Escrapalia"
+          ],
+          "_id": "69ee50d976d2934a52a2e2ab"
         },
         {
           "step": 4,
-          "task": "Liquidación de Activo",
-          "details": "Venta automática a través de partners profesionales (compraventa de vehículos o iBuyers inmobiliarios) para cerrar el ciclo de retorno."
+          "task": "Opportunity Scoring Engine",
+          "details": "Algoritmo propietario que calcula arbitraje potencial, dificultad legal, tiempo estimado de adjudicación y ROI esperado.",
+          "_id": "69ee50d976d2934a52a2e2ac"
+        },
+        {
+          "step": 5,
+          "task": "Investor Syndication Layer",
+          "details": "Publicación automática de oportunidades en un dashboard privado donde inversores sindicados pueden reservar capital para adjudicación rápida.",
+          "_id": "69ee50d976d2934a52a2e2ad"
+        },
+        {
+          "step": 6,
+          "task": "Exit & Liquidation Automation",
+          "details": "Conexión con compradores rápidos, fondos oportunistas e iBuyers para liquidar el activo inmediatamente tras adjudicación.",
+          "_id": "69ee50d976d2934a52a2e2ae"
         }
       ],
       "data_schema_preview": {
-        "asset_vin_catastro": "String",
+        "auction_id": "String",
+        "asset_type": "Enum ['property', 'vehicle', 'industrial', 'mixed']",
+        "asset_reference": "String",
+        "cadastral_reference": "String",
+        "vin_number": "String",
+        "judicial_status": "Enum ['auction', 'deserted', 'direct_sale', 'awarded']",
+        "detected_liens": "Array",
         "liquidation_value": "Number",
-        "real_market_value": "Number",
-        "investor_payout_proyected": "Number",
-        "arb_engine_commission": "Number",
-        "funding_status": "Enum ['detecting', 'funding', 'adjudicated', 'liquidated']"
+        "estimated_market_value": "Number",
+        "discount_percentage": "Number",
+        "projected_roi": "Number",
+        "legal_risk_score": "Number (0-100)",
+        "time_to_exit_days": "Number",
+        "funding_target": "Number",
+        "funding_raised": "Number",
+        "investor_count": "Number",
+        "status": "Enum ['detecting', 'reviewing', 'funding', 'adjudicated', 'liquidated']"
       },
       "automation_config": {
         "cron_schedule": "0 */2 * * *",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 91,
       "categories": [
         "Fintech",
         "LegalTech",
-        "Arbitraje"
-      ]
+        "Arbitraje",
+        "PropTech",
+        "Alternative Investments"
+      ],
+      "_id": "69ee50d976d2934a52a2e2a8",
+      "automation_opportunities": [
+        "Telegram alerts para activos con ROI > 25%.",
+        "Clasificación automática de PDFs judiciales.",
+        "Generación automática de dossiers PDF para inversores.",
+        "Auto-bidding strategy engine.",
+        "Predicción de activos desiertos mediante ML histórico.",
+        "Sistema de watchlists geográficas."
+      ],
+      "moat_strategy": [
+        "Dataset histórico propietario de subastas desiertas.",
+        "OCR entrenado específicamente para documentación judicial española.",
+        "Network effects de inversores recurrentes.",
+        "Ventaja temporal en detección de oportunidades."
+      ],
+      "go_to_market": {
+        "phase_1": "Feed privado de alertas premium para inversores particulares.",
+        "phase_2": "Crowdlending privado para operaciones sindicadas.",
+        "phase_3": "Marketplace institucional de activos adjudicados.",
+        "phase_4": "Licenciamiento del motor a fondos distressed y despachos."
+      },
+      "__v": 1,
+      "createdAt": "2026-04-26T17:52:25.525Z",
+      "updatedAt": "2026-05-06T16:44:00.000Z"
     },
     {
       "id": "cash-recovery-arbitrage-009",
       "title": "Justice-Cash Miner: Arbitraje de Depósitos Abandonados",
       "slug": "justice-deposits-recovery-engine",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "critical",
-      "description": "Sistema de minería de datos sobre cuentas de consignación judicial y edictos de concursos concluidos para la adquisición de derechos de cobro olvidados mediante contratos de cesión de crédito.",
+      "description": "Sistema de minería de datos sobre cuentas de consignación judicial para la adquisición de derechos de cobro olvidados.",
       "viability_metrics": {
         "implementation_ease": 3,
         "success_probability": 9,
@@ -607,40 +931,41 @@
         "database": "MongoDB",
         "apis_required": [
           "BOE / TEU Scraper (Edictos Judiciales)",
-          "Portal de la Administración de Justicia (Cuentas de Consignación)",
-          "LinkedIn API / Registro Mercantil (Localización de administradores)",
-          "Signaturit / DocuSign API (Cesión de crédito digital)"
+          "Portal de la Administración de Justicia",
+          "LinkedIn API / Registro Mercantil",
+          "Signaturit API (Firma Digital)"
         ]
       },
       "business_logic": {
-        "problem": "Millones de euros quedan bloqueados en cuentas judiciales porque las empresas beneficiarias cerraron o cambiaron de domicilio, prescribiendo a favor del Estado por falta de reclamación.",
-        "solution": "Identificación de saldos positivos en expedientes archivados y compra del derecho de cobro al antiguo titular por un valor simbólico, asumiendo la reclamación legal como nuevo acreedor.",
+        "problem": "En España hay más de 4.000 millones de euros 'olvidados' en las Cuentas de Depósitos y Consignaciones Judiciales. Esto ocurre cuando una empresa gana un juicio o un concurso de acreedores pero, para cuando el dinero llega a la cuenta del juzgado, la empresa ya ha cerrado, el dueño ha fallecido o el administrador se ha jubilado. El dinero se queda ahí 10 o 20 años hasta que prescribe y se lo queda el Estado. Los juzgados no tienen personal para perseguir a los beneficiarios.",
+        "solution": "Un 'rastreador de herencias corporativas'. El bot analiza los edictos de conclusión de concursos de acreedores con saldo positivo. Identifica quiénes eran los acreedores que nunca cobraron su parte. Luego, mediante OSINT, localiza a los antiguos dueños o herederos. La oferta es sencilla: 'Sé que tienes un dinero bloqueado que dabas por perdido; fírmame esta cesión de crédito, te pago el 20% hoy en efectivo, y yo me encargo de pelearme con el juzgado para sacar el 100%'.",
         "monetization": [
-          "Arbitraje de valor de activos financieros (Compra por 2% y cobro del 100%)",
-          "Compra de carteras de deuda judicializada",
-          "Servicio de recuperación bajo comisión (25-40% del éxito)"
+          "Compra de Deuda: Adquisición de derechos de cobro judicial por una fracción de su valor nominal (Arbitraje financiero puro).",
+          "Gestión por Éxito: Cobro de una comisión del 30-50% del capital recuperado para el cliente legítimo.",
+          "Venta de Carteras: Empaquetar miles de estos derechos de cobro y venderlos a fondos de 'distressed debt'.",
+          "SaaS para Procuradores: Herramienta para que los profesionales localicen fondos pendientes de sus clientes antiguos."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Archive Mining",
-          "details": "Escaneo de edictos de conclusión de concursos de acreedores y archivo de actuaciones de los últimos 10 años para extraer nombres de titulares y números de expediente."
+          "task": "Archive Data Mining",
+          "details": "Procesamiento de boletines de los últimos 10 años para extraer listados de beneficiarios de mandamientos de devolución no ejecutados."
         },
         {
           "step": 2,
-          "task": "Deposit Verification",
-          "details": "Cruce con las listas de saldos en cuentas de consignación del Ministerio de Justicia para confirmar la existencia de fondos líquidos."
+          "task": "Existence Verification",
+          "details": "Cruce con las listas de 'Saldos de Cuentas Judiciales' (cuando son publicadas) o verificación de inactividad del CIF en el Registro Mercantil."
         },
         {
           "step": 3,
           "task": "Social OSINT Lookup",
-          "details": "Localización automatizada de los administradores de las sociedades extintas para proponer la compra del derecho mediante contrato de cesión."
+          "details": "Localización de los antiguos liquidadores o familiares mediante scraping de redes profesionales y registros civiles."
         },
         {
           "step": 4,
-          "task": "Legal Claim Execution",
-          "details": "Presentación telemática del contrato de cesión ante el juzgado correspondiente para solicitar el mandamiento de devolución a la cuenta del motor de arbitraje."
+          "task": "Digital Contract Dispatch",
+          "details": "Envío automatizado de un contrato de cesión de crédito para firma telemática, simplificando el proceso legal al máximo."
         }
       ],
       "data_schema_preview": {
@@ -656,6 +981,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
         "LegalTech",
         "Fintech",
@@ -666,9 +992,9 @@
       "id": "ghost-deposit-hunter-010",
       "title": "The Ghost Deposit Hunter: Rescate de Fianzas y Sobrantes",
       "slug": "ghost-deposit-sourcing-engine",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "critical",
-      "description": "Motor de detección de capitales huérfanos en la Caja General de Depósitos y juzgados, centrado en fianzas de licitación no devueltas, subvenciones bloqueadas y sobrantes de adjudicación tras subasta.",
+      "description": "Motor de detección de capitales huérfanos en la Caja General de Depósitos, centrado en fianzas de licitación no devueltas.",
       "viability_metrics": {
         "implementation_ease": 4,
         "success_probability": 9,
@@ -677,48 +1003,49 @@
         "roi_potential": 10
       },
       "technical_stack": {
-        "framework": "Next.js / Python (Advanced Scrapers)",
+        "framework": "Next.js / Python",
         "database": "MongoDB",
         "apis_required": [
           "Plataforma de Contratación del Sector Público API",
-          "BOE / Registro Mercantil API",
-          "Sede Electrónica CGD (Caja General de Depósitos)",
-          "OSINT Tools (Localización de liquidadores/deudores)"
+          "Sede Electrónica CGD",
+          "Registro Mercantil API",
+          "Digital Identity Validation API"
         ]
       },
       "business_logic": {
-        "problem": "El Estado retiene miles de millones en garantías y sobrantes de subastas que nunca se reclaman por insolvencia, desconocimiento o cese de actividad de los titulares originales.",
-        "solution": "Identificación de contratos liquidados con garantías pendientes y localización de deudores con sobrantes de subasta para ejecutar la reclamación vía cesión de crédito o gestión por éxito.",
+        "problem": "Para participar en obras públicas, las constructoras deben depositar una fianza (aval) del 5% del contrato en la Caja General de Depósitos. Muchas de estas empresas quiebran o se fusionan durante la obra (que puede durar años). Al terminar, nadie solicita la devolución del aval. Lo mismo ocurre con los 'sobrantes de subasta': si una casa se subasta por más de lo que se debía, el sobrante pertenece al antiguo dueño desahuciado, pero este suele estar 'desaparecido' o hundido en deudas y no sabe que ese dinero le espera.",
+        "solution": "Un 'interlocutor administrativo' automatizado. El sistema cruza los contratos finalizados en la Plataforma de Contratación con el estado del CIF de la empresa adjudicataria. Si la empresa está extinguida y el aval sigue depositado, el bot localiza al liquidador concursal para recuperar el dinero. En el caso de desahucios, localiza al antiguo dueño para rescatar el sobrante de la subasta, actuando como un servicio de justicia social y arbitraje financiero.",
         "monetization": [
-          "Compra de derechos de cobro (Cesión de crédito al 10-20% del valor)",
-          "Success Fee por gestión de cobro de subvenciones (50% de comisión)",
-          "Bounty por localización y rescate de sobrantes de adjudicación"
+          "Comisión de Rescate: Cobro del 40% del capital recuperado de fianzas olvidadas de empresas en concurso.",
+          "Compra de Derechos de Sobrante: Pago de una cantidad fija al desahuciado a cambio del derecho a reclamar el sobrante judicial.",
+          "SaaS para Administradores Concursales: Herramienta de auditoría de activos olvidados en cajas públicas.",
+          "Bounty de Localización: Pago por parte de despachos de abogados por encontrar a los beneficiarios de depósitos 'fantasma'."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
           "task": "Contract Lifecycle Mining",
-          "details": "Escaneo de la Plataforma de Contratación para listar contratos terminados/liquidados cuyos avales del 5% no han sido liberados por inactividad del CIF."
+          "details": "Identificación de contratos públicos marcados como 'Liquidados' o 'Finalizados' cuya fianza provisional o definitiva no ha sido cancelada."
         },
         {
           "step": 2,
-          "task": "Auction Surplus Audit",
-          "details": "Identificación de subastas con puja final superior a la deuda reclamada (sobrante) y verificación de depósito en cuenta de consignación."
+          "task": "CIF Status Audit",
+          "details": "Verificación en tiempo real de si la empresa titular del depósito ha cambiado de nombre, se ha disuelto o está en fase de liquidación."
         },
         {
           "step": 3,
-          "task": "Heir/Liquidator OSINT",
-          "details": "Rastreo de antiguos administradores de empresas disueltas o deudores desahuciados para ofrecer el rescate del capital."
+          "task": "Surplus Identification",
+          "details": "Análisis de actas de adjudicación de subastas inmobiliarias para calcular la diferencia positiva entre la puja ganadora y la deuda total reclamada."
         },
         {
           "step": 4,
-          "task": "Administrative Recovery",
-          "details": "Tramitación de la solicitud de devolución ante la Caja General de Depósitos o el Juzgado mediante firma digital y poder de representación."
+          "task": "Claim Automation",
+          "details": "Generación del modelo de solicitud de devolución ante la Tesorería General o el juzgado competente."
         }
       ],
       "data_schema_preview": {
-        "deposit_type": "Enum ['Fianza', 'Subvencion', 'Sobrante']",
+        "deposit_type": "Enum ['Fianza', 'Sobrante']",
         "entity_cif_dni": "String",
         "locked_amount": "Number",
         "acquisition_cost_est": "Number",
@@ -730,6 +1057,7 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
         "LegalTech",
         "Fintech",
@@ -740,9 +1068,9 @@
       "id": "yield-vacuum-011",
       "title": "The Yield Vacuum: Arbitraje Flash Loan & MEV",
       "slug": "yield-vacuum-flash-loan-engine",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "critical",
-      "description": "Bot de arbitraje de alta frecuencia que utiliza Flash Loans para capturar diferenciales de tasas de interés y desequilibrios de liquidez en protocolos DeFi sin exposición de capital propio.",
+      "description": "Bot de arbitraje de alta frecuencia que utiliza Flash Loans para capturar diferenciales de tasas de interés en protocolos DeFi.",
       "viability_metrics": {
         "implementation_ease": 2,
         "success_probability": 6,
@@ -752,144 +1080,72 @@
       },
       "technical_stack": {
         "framework": "Next.js (Dashboard) / Rust (Bot Engine)",
-        "database": "Redis (Low Latency)",
-        "smart_contracts": "Solidity (Vyper opcional)",
+        "smart_contracts": "Solidity (EVM)",
         "apis_required": [
           "Flash Loan Providers (Aave/Uniswap)",
           "Chainlink Oracles (Price Feeds)",
-          "High-Speed RPC Nodes (Alchemy/Infura/Custom Node)",
-          "DEX Aggregators (1inch/ParaSwap API)"
+          "High-Speed RPC Nodes (Alchemy)",
+          "DEX Aggregators (1inch API)"
         ]
       },
       "business_logic": {
-        "problem": "Existen ineficiencias temporales en los tipos de interés y precios de activos entre protocolos DeFi (Aave, Compound, Curve) debido a la latencia de sincronización.",
-        "solution": "Ejecución de transacciones atómicas mediante contratos inteligentes que piden prestado, arbitran y devuelven el capital en un solo bloque de la blockchain.",
+        "problem": "El mercado de criptoactivos está fragmentado en cientos de protocolos (Aave, Compound, Uniswap). Las tasas de interés y los precios de los tokens varían entre ellos por milisegundos. Un humano no puede detectar que puede pedir prestado en el Protocolo A al 2% y prestarlo en el Protocolo B al 3% de forma instantánea. Además, para mover millones y sacar provecho de esas migajas, se necesita un capital enorme que la mayoría no tiene.",
+        "solution": "Uso de Flash Loans (préstamos instantáneos sin colateral que deben devolverse en la misma transacción). El bot escanea todas las 'pools' de liquidez. Cuando detecta un diferencial de precio o tasa, solicita un préstamo de, por ejemplo, 10 millones de dólares, ejecuta el arbitraje entre protocolos y devuelve el préstamo con interés, todo en 12 segundos. El beneficio neto (menos el gas) es para el dueño del bot, con riesgo cero de pérdida de capital propio.",
         "monetization": [
-          "Captura de Spread de tipos de interés (Arbitraje de Yield)",
-          "Arbitraje de precios entre DEXs (CEX-DEX Arbitrage)",
-          "Liquidaciones automáticas de préstamos infra-colateralizados"
+          "Arbitraje Directo: Captura del diferencial neto (Spread) en cada transacción exitosa.",
+          "Liquidación de Préstamos: Recibir recompensas por liquidar posiciones de usuarios que han caído por debajo de su ratio de colateral.",
+          "Arbitraje de Tasas: Mover liquidez entre protocolos de 'lending' para optimizar el rendimiento pasivo.",
+          "Front-running (Ético): Capturar ineficiencias de deslizamiento (slippage) en grandes operaciones de intercambio."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
           "task": "Mempool Monitoring",
-          "details": "Escaneo de transacciones pendientes en la red para detectar movimientos de liquidez que generen desequilibrios de precios antes de que se confirmen."
+          "details": "Vigilancia de las transacciones pendientes en la red Ethereum/L2 para detectar movimientos que causarán desequilibrios de precio."
         },
         {
           "step": 2,
-          "task": "Mathematical Validation",
-          "details": "Cálculo en milisegundos del beneficio neto restando: (Gas Fees + Flash Loan Fee + Slippage) vs (Arbitrage Profit)."
+          "task": "Flash Loan Trigger",
+          "details": "Llamada automática al contrato inteligente de Aave para obtener liquidez instantánea sin colateral."
         },
         {
           "step": 3,
-          "task": "Smart Contract Trigger",
-          "details": "Llamada al contrato personalizado que solicita el Flash Loan (ej. 10M USDT) y ejecuta la ruta de intercambio optimizada."
+          "task": "Cross-Protocol Swap",
+          "details": "Ejecución de la ruta de intercambio más rentable (ej. ETH -> USDC en Uniswap, USDC -> ETH en SushiSwap)."
         },
         {
           "step": 4,
-          "task": "Atomic Settlement",
-          "details": "Devolución automática del préstamo al pool de origen y transferencia del beneficio neto (Spread) a la Cold Wallet del propietario."
+          "task": "Repayment & Profit Capture",
+          "details": "Devolución del préstamo principal y transferencia del beneficio neto a la wallet de tesorería del sistema."
         }
       ],
       "data_schema_preview": {
-        "transaction_hash": "String",
-        "borrowed_amount": "Number",
-        "gas_price_gwei": "Number",
-        "net_profit_eth": "Number",
-        "execution_time_ms": "Number",
-        "status": "Enum ['success', 'reverted', 'failed_gas']"
+        "tx_hash": "String",
+        "loan_amount": "Number",
+        "gas_cost_eth": "Number",
+        "net_profit_usd": "Number",
+        "protocol_route": "Array"
       },
       "automation_config": {
-        "cron_schedule": "24/7 Real-time Monitoring",
+        "cron_schedule": "Real-time Event Listener",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
+        "DeFi",
         "Fintech",
         "Arbitraje"
       ]
     },
     {
-      "id": "ghost-tenant-012",
-      "title": "The Ghost Tenant: Subdomain Takeover & SEO Arbitrage",
-      "slug": "ghost-tenant-subdomain-takeover",
-      "status": "active",
-      "priority": "high",
-      "description": "Sistema de detección de registros DNS huérfanos que apuntan a servicios externos (GitHub, S3, Azure) no reclamados, permitiendo la 'okupación' legal del subdominio para capturar tráfico residual y autoridad SEO.",
-      "viability_metrics": {
-        "implementation_ease": 7,
-        "success_probability": 5,
-        "resource_intensity": 2,
-        "time_to_mvp": 9,
-        "roi_potential": 8
-      },
-      "technical_stack": {
-        "framework": "Go / Python (Scanners)",
-        "database": "Redis",
-        "infrastructure": "GitHub Pages / Netlify / Vercel (Hosting gratuito)",
-        "apis_required": [
-          "SecurityTrails API (Histórico de subdominios)",
-          "Chaos (ProjectDiscovery) API",
-          "FullHunt.io (Surface monitoring)",
-          "Amazon S3 / Azure SDK (Para chequeo de buckets)"
-        ]
-      },
-      "business_logic": {
-        "problem": "Las corporaciones dejan registros CNAME apuntando a servicios de terceros que ya han dado de baja, creando un agujero de seguridad y una oportunidad de tráfico.",
-        "solution": "Reclamar el identificador en el servicio externo (ej. nombre de bucket o repo) para que el tráfico del subdominio corporativo resuelva en un servidor controlado por ti.",
-        "monetization": [
-          "SEO Ghosting (Backlinks de altísima autoridad hacia tus otros proyectos)",
-          "Marketing de Afiliación (Landing pages 'oficiales' con links de referido)",
-          "Publicidad Programática (Tráfico accidental de alta calidad)"
-        ]
-      },
-      "execution_pipeline": [
-        {
-          "step": 1,
-          "task": "Passive Reconnaissance",
-          "details": "Enumeración masiva de subdominios de empresas Fortune 500 usando bases de datos de DNS pasivo."
-        },
-        {
-          "step": 2,
-          "task": "Dangling DNS Detection",
-          "details": "Escaneo de respuestas HTTP/DNS buscando firmas de error específicas (ej: '404 - NoSuchBucket' en S3 o 'There isn't a GitHub Pages site here')."
-        },
-        {
-          "step": 3,
-          "task": "Service Claiming",
-          "details": "Automatización del despliegue en el proveedor (GitHub/Vercel) para 'conectar' el subdominio al instante antes de que sea detectado."
-        },
-        {
-          "step": 4,
-          "task": "Content Ghosting",
-          "details": "Inyección de contenido estático optimizado para SEO o redirecciones de afiliados para monetizar el tráfico residual."
-        }
-      ],
-      "data_schema_preview": {
-        "target_subdomain": "String",
-        "parent_domain_authority": "Number (0-100)",
-        "vulnerability_type": "Enum ['CNAME', 'S3', 'Azure', 'GitHub']",
-        "detected_at": "Timestamp",
-        "monetization_active": "Boolean"
-      },
-      "automation_config": {
-        "cron_schedule": "0 */6 * * *",
-        "auto_notify_telegram": true,
-        "auto_publish_to_marketplace": false
-      },
-      "categories": [
-        "Ciberseguridad",
-        "Infraestructura"
-      ]
-    },
-    {
-      "id": "silent-router-013",
+      "id": "silent-router-012",
       "title": "The Silent Router: Arbitraje de Webhooks Huérfanos",
       "slug": "silent-router-webhook-recovery",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "high",
-      "description": "Sistema de interceptación y re-enrutamiento de señales de pago (Webhooks) perdidas debido a errores 404 o DNS mal configurados en sistemas legacy, monetizando la recuperación de suscripciones automáticas.",
+      "description": "Escuchador de tráfico huérfano que captura señales de pago perdidas (Webhooks) de empresas que han cambiado de servidor o DNS.",
       "viability_metrics": {
         "implementation_ease": 3,
         "success_probability": 6,
@@ -898,292 +1154,295 @@
         "roi_potential": 9
       },
       "technical_stack": {
-        "framework": "Go (para concurrencia masiva) / Node.js",
-        "database": "Redis (Cola de mensajes)",
-        "infrastructure": "Serverless Functions (AWS Lambda / Edge Runtime)",
+        "framework": "Go / Node.js",
+        "infrastructure": "Serverless Edge Functions (Cloudflare)",
         "apis_required": [
-          "Stripe/Paddle Webhook Signatures (Validación)",
-          "ChurnZero API",
-          "Postmark/SendGrid (Notificaciones de recuperación)",
-          "Cloudflare Workers (Interceptación en el Edge)"
+          "Stripe/PayPal Webhook Signatures",
+          "ChurnZero / Paddle API",
+          "Passive DNS Databases",
+          "SendGrid API"
         ]
       },
       "business_logic": {
-        "problem": "Las empresas pierden entre un 3% y 5% de su facturación recurrente porque sus servidores no reciben correctamente la confirmación de pago de las pasarelas, provocando cancelaciones erróneas.",
-        "solution": "Actuar como un nodo de redundancia que captura estas señales perdidas mediante la reclamación de subdominios DNS abandonados o rutas de API huérfanas.",
+        "problem": "Internet está lleno de 'cables rotos'. Miles de empresas de suscripción (SaaS, revistas, servicios legacy) cambian de web o servidor y olvidan actualizar la URL de recepción de pagos (Webhook) en su pasarela (Stripe, PayPal). El cliente paga, la pasarela envía la señal de éxito, pero esta choca contra un error 404. El sistema de la empresa no se entera del pago y cancela la suscripción del cliente. La empresa pierde un 3-5% de su facturación sin saber por qué.",
+        "solution": "Un 'repetidor' de red. El bot escanea logs de DNS y subdominios abandonados que antes apuntaban a sistemas de pago. Tú reclamas esos subdominios en servicios de hosting gratuitos o configuras un 'catch-all'. Cuando recibes el Webhook huérfano, validas criptográficamente que el pago es real y utilizas una plataforma de 'Revenue Recovery' para avisar a la empresa: 'He salvado este pago de 500€ que estabas perdiendo'.",
         "monetization": [
-          "Bounty por suscripción salvada (vía plataformas de Revenue Recovery)",
-          "SaaS de 'Integridad de Pagos' para empresas Enterprise",
-          "Fee por transacción recuperada (Revenue Share)"
+          "Bounty por Recuperación: Cobro de un fijo (2€-5€) por cada transacción 'salvada' y re-enviada correctamente.",
+          "Revenue Share: Porcentaje (10%) del ingreso recuperado de suscripciones que iban a ser canceladas por error técnico.",
+          "SaaS de Integridad: Venta de un panel de monitoreo a empresas Enterprise para asegurar que sus hooks nunca mueran.",
+          "Partnership con Pasarelas: Recompensa por parte de Stripe/Paddle por mejorar la tasa de éxito de sus clientes."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Endpoint Latency & Error Scoping",
-          "details": "Escaneo de subdominios de pago conocidos buscando respuestas 404 o errores de resolución DNS en rutas de callback estándar."
+          "task": "Dangling DNS Detection",
+          "details": "Búsqueda de subdominios del tipo 'hooks.empresa.com' que apuntan a servicios externos no reclamados o que devuelven errores 404."
         },
         {
           "step": 2,
-          "task": "Dangling Hook Capture",
-          "details": "Reclamación del subdominio en el proveedor original o configuración de un proxy inverso para recibir los paquetes HTTP huérfanos."
+          "task": "Webhook Catching",
+          "details": "Despliegue de una función en el Edge que actúe como receptor universal, capturando los payloads JSON de las pasarelas de pago."
         },
         {
           "step": 3,
-          "task": "Signature & Payload Validation",
-          "details": "Verificación criptográfica (HMAC) de que el Webhook es legítimo y proviene de la pasarela de pago (Stripe, PayPal, etc.) para evitar inyecciones falsas."
+          "task": "Validation & Parsing",
+          "details": "Verificación de la firma HMAC para asegurar que el mensaje es legítimo y extracción del ID de transacción y cliente."
         },
         {
           "step": 4,
-          "task": "Revenue Recovery Trigger",
-          "details": "Reenvío de la señal de éxito al sistema de la empresa mediante una ruta alternativa o reporte a la plataforma de recuperación de ingresos para procesar la comisión."
+          "task": "Recovery Notification",
+          "details": "Envío de la señal de éxito al sistema de la empresa a través de una ruta alternativa o contacto con su equipo técnico para la re-conexión."
         }
       ],
       "data_schema_preview": {
         "webhook_source": "String",
         "transaction_id": "String",
-        "recovery_status": "Enum ['captured', 'validated', 'rerouted', 'collected']",
+        "recovery_status": "Enum ['captured', 'rerouted', 'collected']",
         "estimated_revenue_saved": "Number",
         "commission_earned": "Number"
       },
       "automation_config": {
-        "cron_schedule": "Real-time Monitoring (Websockets)",
+        "cron_schedule": "Real-time Monitoring",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
-        "Infraestructura",
+        "DevOps",
+        "Arbitraje",
         "Fintech"
       ]
     },
     {
-      "id": "universal-endpoint-014",
-      "title": "The Universal Endpoint: Arbitraje de Micro-Lógica",
-      "slug": "universal-endpoint-logic-bridge",
-      "status": "active",
+      "id": "universal-endpoint-013",
+      "title": "The Universal Endpoint: Orquestador de Micro-Lógica",
+      "slug": "universal-api-proxy-engine",
+      "status": "Prototipo",
       "priority": "normal",
-      "description": "Despliegue de scripts de alta especificidad (Puppeteer/Playwright) en marketplaces de automatización para capturar royalties por ejecución mediante la resolución de cuellos de botella técnicos sin API oficial.",
+      "description": "Capa de abstracción que unifica múltiples APIs de IA y servicios cloud en un solo endpoint inteligente con gestión de cuotas y costes.",
       "viability_metrics": {
-        "implementation_ease": 6,
+        "implementation_ease": 7,
         "success_probability": 8,
-        "resource_intensity": 2,
+        "resource_intensity": 3,
         "time_to_mvp": 9,
         "roi_potential": 7
       },
       "technical_stack": {
-        "framework": "Node.js (Playwright) / TypeScript",
-        "database": "NoSQL (Logging de ejecuciones)",
-        "infrastructure": "AWS Lambda / Google Cloud Functions (Free Tier)",
+        "framework": "Next.js / Go",
+        "database": "Redis",
         "apis_required": [
-          "Pipedream Component API",
-          "n8n Node Dev Kit",
-          "Zapier CLI",
-          "Chainlink / Witnet SDK (para la variante de Oráculos)"
+          "OpenAI / Anthropic / Mistral / Google Gemini",
+          "Stripe API (Billing)",
+          "Cloudflare Workers"
         ]
       },
       "business_logic": {
-        "problem": "Las plataformas de automatización no-code fallan cuando no existe una API oficial o cuando se requiere interactuar con el DOM de una web compleja.",
-        "solution": "Creación de 'piezas de motor' (nodos) que ejecutan lógica de scraping o interacción web en la nube y devuelven datos limpios a través de marketplaces de terceros.",
+        "problem": "Los desarrolladores y empresas pierden semanas integrando cada nueva API de IA que sale al mercado. Además, gestionar las keys, los límites de tasa (rate-limits) y el gasto disparado entre diferentes proveedores es una pesadilla logística. No hay una forma sencilla de cambiar de modelo (ej. de GPT-4o a Claude 3.5) sin tocar el código de producción, ni de revender acceso controlado a clientes finales.",
+        "solution": "Un proxy inteligente que ofrece una única API compatible con el formato estándar de OpenAI. Por detrás, el motor decide en milisegundos qué proveedor usar basándose en disponibilidad, latencia y coste actual. Permite crear 'sub-keys' para clientes, aplicar márgenes de beneficio sobre el uso de tokens y actuar como un interruptor centralizado (kill-switch) para todo el ecosistema de IA de una empresa.",
         "monetization": [
-          "Royalties por ejecución en marketplaces (Pipedream/Make)",
-          "Suscripción 'Pay-per-Node' para integraciones Enterprise",
-          "Recompensas por verificación de datos en redes de Oráculos (Oracle Fees)"
+          "Arbitraje de Tokens: Compra de capacidad por volumen y venta al por menor con un margen del 20-30%.",
+          "SaaS de Gobernanza: Cuota por el panel de control y analítica de uso para empresas con múltiples departamentos.",
+          "Resiliencia como Servicio: Garantizar que la app del cliente nunca caiga redirigiendo el tráfico a modelos alternativos automáticamente.",
+          "Venta de Micro-servicios: Encapsular prompts complejos (ej. 'Analizador Legal') y venderlos como endpoints específicos."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Bottleneck Identification",
-          "details": "Investigación en foros de Zapier/n8n para detectar tareas recurrentes que los usuarios no pueden resolver (ej: extraer datos de portales gubernamentales sin API)."
+          "task": "Endpoint Mapping",
+          "details": "Desarrollo de una interfaz unificada que traduzca las peticiones entrantes al formato específico de cada proveedor de IA."
         },
         {
           "step": 2,
-          "task": "Headless Script Development",
-          "details": "Programación de un script ultra-robusto con Playwright que gestione proxies, rotación de User-Agents y resolución de captchas de forma invisible."
+          "task": "Dynamic Routing Logic",
+          "details": "Implementación de reglas de balanceo: 'Si latencia > 500ms en OpenAI, redirigir a Anthropic'."
         },
         {
           "step": 3,
-          "task": "Marketplace Wrapping",
-          "details": "Empaquetado del script como un componente oficial de Pipedream o un nodo de n8n, cumpliendo con los estándares de entrada/salida de la plataforma."
+          "task": "Metering & Billing System",
+          "details": "Contabilización exacta de tokens por usuario en Redis y generación de facturas automáticas vía Stripe."
         },
         {
           "step": 4,
-          "task": "Passive Execution Scaling",
-          "details": "Publicación en el marketplace y monitoreo de la tasa de éxito; el crecimiento es orgánico basado en la búsqueda interna de la plataforma."
+          "task": "Cache Layer Deployment",
+          "details": "Almacenamiento de respuestas comunes para ahorrar costes y ofrecer respuestas instantáneas a peticiones idénticas."
         }
       ],
       "data_schema_preview": {
-        "execution_id": "String",
-        "payload_processed": "Object",
-        "gas_cost_lambda": "Number",
-        "royalty_per_call": "Number",
-        "total_monthly_executions": "Number"
+        "unified_key_id": "String",
+        "active_provider": "Enum ['OpenAI', 'Anthropic', 'Gemini']",
+        "token_usage_total": "Number",
+        "profit_margin_generated": "Number",
+        "latency_ms": "Number"
       },
       "automation_config": {
-        "cron_schedule": "Event-driven (Webhook based)",
+        "cron_schedule": "Real-time routing",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
-        "Infraestructura",
-        "Creatividad"
+        "DevOps",
+        "Fintech",
+        "AI Infrastructure"
       ]
     },
     {
-      "id": "ghost-asset-synthesizer-015",
-      "title": "The Ghost Asset Synthesizer: Arbitraje de Telemetría de CDNs",
-      "slug": "ghost-asset-cdn-sink",
-      "status": "active",
-      "priority": "high",
-      "description": "Sistema de captura de tráfico residual de máquinas (M2M) mediante la ocupación de subdominios de descarga huérfanos en CDNs, monetizando los metadatos de telemetría a través de plataformas de Threat Intelligence.",
+      "id": "ghost-asset-synthesizer-014",
+      "title": "Ghost Asset Synthesizer: Telemetría de CDNs",
+      "slug": "cdn-traffic-arbitrage",
+      "status": "Prototipo",
+      "priority": "normal",
+      "description": "Sistema de detección de activos estáticos (imágenes/JS) en CDNs públicas que generan tráfico huérfano para su monetización o redirección.",
       "viability_metrics": {
-        "implementation_ease": 4,
-        "success_probability": 7,
-        "resource_intensity": 3,
+        "implementation_ease": 5,
+        "success_probability": 6,
+        "resource_intensity": 5,
         "time_to_mvp": 6,
-        "roi_potential": 9
+        "roi_potential": 8
       },
       "technical_stack": {
-        "framework": "FastAPI (para alta concurrencia) / Python",
-        "database": "ClickHouse (Optimizado para Logs)",
-        "infrastructure": "Cloudflare Workers / Edge Functions (Tier Gratuito)",
+        "framework": "Node.js",
+        "database": "ClickHouse (Big Data)",
         "apis_required": [
-          "Project Sonar / BinaryEdge API (Passive DNS)",
-          "CT Logs Scraper (Transparency Reports)",
-          "GreyNoise / Censys Partner API (Monetización de Datos)",
-          "MaxMind GeoIP API"
+          "Cloudflare Analytics API",
+          "Common Crawl Data",
+          "Domain Expiry APIs"
         ]
       },
       "business_logic": {
-        "problem": "Millones de sistemas legacy intentan descargar recursos de URLs que ya no existen, generando un ruido de red que las empresas ignoran pero que contiene datos críticos sobre infraestructura global.",
-        "solution": "Actuar como un 'Sumidero de Datos' (Data Sink) reclamando subdominios de CDNs abandonados para recolectar y anonimizar los logs de conexión de estos dispositivos.",
+        "problem": "Miles de sitios web cargan librerías o imágenes desde dominios que ya han caducado o CDNs mal configuradas. Esto genera millones de peticiones diarias que 'mueren' en errores 404. Ese tráfico es oro puro: son usuarios reales ejecutando peticiones desde sitios activos. Es una audiencia cautiva que nadie está reclamando porque el 'cable' técnico está suelto.",
+        "solution": "Un 'recolector de tráfico fantasma'. El bot identifica dominios antiguos que antes servían activos populares (ej. un plugin de WordPress descatalogado) y los reclama. Al levantar de nuevo el servidor, el bot empieza a recibir todo ese tráfico de golpe. En lugar de dar error, sirve el activo solicitado pero incluye telemetría o redirecciones éticas para monetizar ese volumen masivo de peticiones mediante publicidad programática o CPA.",
         "monetization": [
-          "Venta de feeds de telemetría a empresas de Ciberseguridad",
-          "Identificación de vulnerabilidades en sistemas industriales para programas de Bounties",
-          "Reportes de cuotas de mercado de hardware/software real-time"
+          "Inyección de CPA: Redirigir el tráfico de error hacia ofertas de afiliados relacionadas con la temática del activo.",
+          "Arbitraje de Datos: Venta de informes de telemetría sobre qué sitios web siguen usando tecnologías obsoletas.",
+          "Venta de Dominios de Tráfico: Revender los dominios capturados a agencias de SEO por su alta autoridad y volumen de visitas.",
+          "Publicidad en Activos: Servir scripts optimizados que incluyan micro-anuncios no intrusivos."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Orphaned Subdomain Discovery",
-          "details": "Cruce de registros CNAME de CDNs (Akamai, Cloudfront) con certificados SSL expirados o fallos de resolución 404 en subdominios de tipo 'assets', 'dl' o 'update'."
+          "task": "Orphan Resource Detection",
+          "details": "Escaneo de Common Crawl para encontrar URLs de scripts o imágenes recurrentes que devuelven errores de DNS."
         },
         {
           "step": 2,
-          "task": "Edge Claiming & Sinkhole",
-          "details": "Despliegue de una función en el Edge (Cloudflare/Vercel) que responda con el código de estado esperado (200 OK) y un payload mínimo para mantener la conexión activa."
+          "task": "Domain Sniping",
+          "details": "Automatización de la compra del dominio en cuanto queda libre (backorder) si el volumen de peticiones detectado es >100k/mes."
         },
         {
           "step": 3,
-          "task": "Metadata Extraction",
-          "details": "Parseo masivo de User-Agents, cabeceras personalizadas y patrones de request para identificar versiones de firmware, modelos de dispositivos y geolocalización."
+          "task": "Asset Restoration",
+          "details": "Re-servir el archivo original para no romper los sitios web clientes, pero insertando el pixel de seguimiento o lógica de arbitraje."
         },
         {
           "step": 4,
-          "task": "Telemetry Arbitrage",
-          "details": "Agregación de datos y envío automatizado a APIs de socios de inteligencia de amenazas para recibir pagos por volumen de eventos únicos detectados."
+          "task": "Traffic Monetization",
+          "details": "Distribución del tráfico hacia ofertas de conversión según el contexto del sitio de origen (Referrer)."
         }
       ],
       "data_schema_preview": {
-        "source_ip": "String (Hashed)",
-        "user_agent_raw": "String",
-        "identified_device_type": "String",
-        "request_path": "String",
-        "events_per_minute": "Number",
-        "estimated_data_value": "Number (USD)"
+        "source_domain": "String",
+        "requests_per_day": "Number",
+        "asset_type": "Enum ['JS', 'Image', 'CSS']",
+        "monetization_yield": "Number",
+        "status": "Enum ['monitoring', 'captured', 'active']"
       },
       "automation_config": {
-        "cron_schedule": "0 */12 * * * (Discovery scans)",
+        "cron_schedule": "0 */6 * * *",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
-        "Ciberseguridad",
-        "Infraestructura"
+        "Arbitraje",
+        "AdTech",
+        "DevOps"
       ]
     },
     {
-      "id": "kdp-asset-factory-016",
-      "title": "KDP Factory: Generador Automático de Libros Low-Content",
-      "slug": "kdp-low-content-automation-engine",
-      "status": "active",
-      "priority": "normal",
-      "description": "Sistema de procesamiento por lotes de activos generados por IA (imágenes, relatos, mandalas) para la creación automática de archivos PDF listos para imprenta (Amazon KDP) con maquetación profesional y gestión de metadatos.",
+      "id": "kdp-factory-015",
+      "title": "KDP Factory: Generador de Activos IA para Amazon",
+      "slug": "amazon-kdp-ai-automation",
+      "status": "Prototipo",
+      "priority": "high",
+      "description": "Pipeline de creación automática de libros (mandalas, relatos, diarios) maquetados profesionalmente para su venta directa en Amazon KDP.",
       "viability_metrics": {
         "implementation_ease": 8,
         "success_probability": 7,
         "resource_intensity": 3,
         "time_to_mvp": 8,
-        "roi_potential": 7
+        "roi_potential": 8
       },
       "technical_stack": {
-        "framework": "Python (Pillow / ReportLab para PDFs)",
-        "database": "SQLite (Catálogo de libros y ventas)",
-        "frontend": "Next.js (Dashboard de gestión)",
+        "framework": "Python (Pillow / ReportLab)",
+        "database": "SQLite",
         "apis_required": [
-          "OpenAI API (DALL-E 3 / GPT-4o)",
-          "Midjourney API (vía wrappers)",
-          "Keepa API (para búsqueda de nichos rentables)",
-          "Playwright (para automatización de subida opcional)"
+          "OpenAI (DALL-E 3 / GPT-4o)",
+          "Midjourney API",
+          "Keepa API (Market Research)"
         ]
       },
       "business_logic": {
-        "problem": "Crear libros de colorear o de relatos cortos manualmente es lento. La clave de Amazon KDP es el volumen y la detección de nichos (micro-nichos) antes que la competencia.",
-        "solution": "Un 'pipeline' que toma imágenes en bruto, las escala, les añade márgenes de seguridad (bleed), genera páginas de título/créditos y exporta un PDF perfecto según los estándares de Amazon.",
+        "problem": "Publicar en Amazon KDP es un juego de volumen y nichos. Crear un libro de colorear de mandalas o un libro de micro-relatos lleva días de trabajo manual: generar imágenes, ajustar márgenes (bleed), crear portadas que encajen con el lomo (spine) y subir los metadatos. La mayoría de los autores fallan porque no pueden publicar 50 libros al mes para testear qué nicho funciona.",
+        "solution": "Una fábrica de libros digital. Tú le das un título y un nicho (ej. 'Gatos Astronautas para niños'). El bot genera 100 imágenes consistentes, las escala a 300 DPI, calcula los márgenes de seguridad de Amazon, añade páginas de créditos y genera un PDF de interior y una portada milimétrica. El sistema monitoriza qué nichos están 'hot' en Amazon mediante Keepa y sugiere la creación de nuevos títulos automáticamente.",
         "monetization": [
-          "Royalties por venta directa en Amazon KDP (Ingresos pasivos)",
-          "Venta de archivos digitales (Etsy/Gumroad)",
-          "Publicación multiplataforma (IngramSpark / Lulu)"
+          "Royalties Directos: Ingresos pasivos por cada venta de libro físico impreso por Amazon.",
+          "Venta de PDF (Etsy): Reutilizar los mismos archivos para vender la versión imprimible en mercados digitales.",
+          "Publicación Multi-idioma: Traducir automáticamente los relatos para atacar mercados en DE, FR, JP y USA.",
+          "SaaS B2B: Permitir que otros usuarios usen tu 'fábrica' a cambio de una suscripción o reparto de beneficios."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Niche & Keyword Research",
-          "details": "Escaneo automático de Amazon para detectar términos de búsqueda con alta demanda y baja competencia (ej: 'Mandalas de gatos steampunk para adultos')."
+          "task": "Niche Trend Analysis",
+          "details": "Escaneo de categorías de Amazon para detectar libros con bajo BSR (Best Seller Rank) y poca competencia en reseñas."
         },
         {
           "step": 2,
           "task": "AI Asset Generation",
-          "details": "Generación masiva de imágenes (mandalas/dibujos) o texto (micro-relatos) usando prompts optimizados para blanco y negro y alta resolución."
+          "details": "Generación por lotes de imágenes (mandalas/ilustraciones) con prompts optimizados para impresión en blanco y negro."
         },
         {
           "step": 3,
           "task": "Automated Typesetting",
-          "details": "Procesamiento de imágenes: centrado, escalado a 300 DPI, inserción de páginas en blanco (para evitar traspaso de tinta) y generación de PDF con el tamaño de trim exacto."
+          "details": "Ensamblado de PDF usando ReportLab, aplicando márgenes de 0.125' y generando el lomo según el número de páginas."
         },
         {
           "step": 4,
-          "task": "Listing & Metadata Prep",
-          "details": "Generación automática de títulos, descripciones optimizadas para SEO (A+ Content) y categorías sugeridas para maximizar la visibilidad."
+          "task": "Metadata & Listing Prep",
+          "details": "Generación de descripción SEO, palabras clave y categorías sugeridas para el proceso de subida manual o semi-automática."
         }
       ],
       "data_schema_preview": {
-        "book_id": "String",
-        "format": "Enum ['6x9', '8.5x11']",
+        "book_title": "String",
         "page_count": "Number",
-        "keywords": "Array",
-        "amazon_asin": "String (nullable)",
-        "sales_count": "Number"
+        "trim_size": "String (e.g., 8.5x11)",
+        "amazon_status": "Enum ['draft', 'published', 'sales_detected']",
+        "roi_per_unit": "Number"
       },
       "automation_config": {
-        "cron_schedule": "Weekly (Niche Analysis)",
+        "cron_schedule": "Weekly (New Niche Discovery)",
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": false
       },
+      "internal_score": 0,
       "categories": [
-        "Creatividad",
-        "Arbitraje"
+        "Content Automation",
+        "E-commerce",
+        "AI Generative"
       ]
     },
     {
-      "id": "cloud-credit-arbiter-017",
-      "title": "Cloud Credit Arbiter: Arbitraje de Capacidad Computacional",
+      "id": "cloud-credit-arbiter-016",
+      "title": "Cloud Credit Arbiter: Arbitraje de Cómputo",
       "slug": "cloud-credit-resale-engine",
-      "status": "active",
+      "status": "Prototipo",
       "priority": "normal",
-      "description": "Sistema de agregación de créditos cloud infrautilizados y cuotas de API sobrantes para la reventa de capacidad de cómputo/IA a precios inferiores a los de mercado oficial.",
+      "description": "Sistema de gestión y reventa de créditos cloud infrautilizados mediante un proxy de API para desarrolladores.",
       "viability_metrics": {
         "implementation_ease": 5,
         "success_probability": 7,
@@ -1192,51 +1451,51 @@
         "roi_potential": 8
       },
       "technical_stack": {
-        "framework": "Go (Proxy de alta velocidad)",
-        "database": "Redis (Gestión de cuotas en tiempo real)",
-        "infrastructure": "Docker / Kubernetes",
+        "framework": "Go (Proxy)",
+        "database": "Redis",
         "apis_required": [
-          "OpenAI / Anthropic API (Endpoints)",
-          "AWS / GCP Billing API",
-          "Stripe (para el cobro del uso del proxy)"
+          "AWS / GCP / Azure Billing APIs",
+          "OpenAI Management API",
+          "Stripe"
         ]
       },
       "business_logic": {
-        "problem": "El 30% de los créditos cloud gratuitos caducan sin ser usados, mientras que desarrolladores independientes buscan acceso barato a modelos de IA potentes.",
-        "solution": "Un túnel (Proxy) que distribuye las peticiones entre múltiples cuentas con saldos promocionales, ofreciendo un precio unificado y ultra-competitivo.",
+        "problem": "Las grandes nubes regalan miles de dólares en créditos a startups que a menudo no se consumen y caducan a los 12 meses. Al mismo tiempo, desarrolladores independientes o proyectos pequeños necesitan potencia de cálculo o tokens de IA pero no pueden pagar los precios oficiales. Existe un mercado secundario de 'créditos huérfanos' que nadie está conectando de forma técnica y segura.",
+        "solution": "Un 'pool' de capacidad de cómputo. El bot permite a poseedores de créditos cloud 'alquilar' su acceso a través de tu proxy. Tú vendes el acceso a la API un 40% más barato que el precio oficial de mercado. El comprador ahorra, el dueño del crédito monetiza algo que iba a perder, y tú te quedas con el diferencial del arbitraje sin tener infraestructura propia.",
         "monetization": [
-          "Arbitraje de precio por token (Buy credit at 10%, sell at 50%)",
-          "Suscripción a API 'Low-Cost' para desarrolladores",
-          "Venta de potencia de minería/renderizado distribuida"
+          "Margen de Arbitraje: Comprar crédito al 20% de su valor y venderlo al 60%.",
+          "Fee de Gestión: Cobro por la seguridad y el balanceo de carga entre múltiples cuentas origen.",
+          "Venta de Instancias 'Spot': Reventa de capacidad de procesamiento para minería o renderizado a bajo coste.",
+          "SaaS de Optimización: Herramienta para empresas que quieren donar/vender su exceso de crédito de forma legal."
         ]
       },
       "execution_pipeline": [
         {
           "step": 1,
-          "task": "Credit Sourcing",
-          "details": "Identificación de cuentas con créditos promocionales activos mediante scripts de auditoría de facturación automática."
+          "task": "Credit Source Auditing",
+          "details": "Verificación automática del saldo y fecha de caducidad de las cuentas cloud conectadas al sistema."
         },
         {
           "step": 2,
           "task": "Proxy Tunneling",
-          "details": "Configuración de un balanceador de carga que rota las API Keys para no exceder los límites de rate-limit de las cuentas origen."
+          "details": "Configuración de un túnel seguro que oculte las API Keys originales y gestione los rate-limits de forma agregada."
         },
         {
           "step": 3,
-          "task": "Endpoint Unification",
-          "details": "Exposición de una única URL de API que simula el formato oficial (ej. compatible con la librería de OpenAI) pero redirige al pool de créditos baratos."
+          "task": "Marketplace Exposure",
+          "details": "Publicación del endpoint 'Low-Cost' en foros de desarrolladores y comunidades de IA."
         },
         {
           "step": 4,
-          "task": "Usage Billing",
-          "details": "Sistema de medición (metering) para cobrar al usuario final solo por lo que consume, manteniendo un margen de beneficio constante."
+          "task": "Settlement Automation",
+          "details": "Reparto automático de beneficios entre el proveedor del crédito y la plataforma tras confirmar el consumo real."
         }
       ],
       "data_schema_preview": {
-        "pool_total_credits": "Number",
-        "avg_cost_reduction": "Percentage",
+        "pool_capacity_usd": "Number",
         "active_proxies": "Number",
-        "margin_per_request": "Number",
+        "avg_discount_offered": "Percentage",
+        "margin_net_usd": "Number",
         "expiry_watchdog": "Timestamp"
       },
       "automation_config": {
@@ -1244,10 +1503,1667 @@
         "auto_notify_telegram": true,
         "auto_publish_to_marketplace": true
       },
+      "internal_score": 0,
       "categories": [
-        "Infraestructura",
+        "Cloud Infrastructure",
+        "Arbitraje",
+        "Fintech"
+      ]
+    },
+    {
+      "id": "orphan-oracle-017",
+      "title": "The Orphan Oracle: Arbitraje de Activos Digitales Olvidados",
+      "slug": "digital-asset-orphan-oracle",
+      "status": "Prototipo",
+      "priority": "high",
+      "description": "Detector de activos digitales con valor intrínseco (dominios con tráfico, nombres de usuario, apps abandonadas) para su recuperación y reventa.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 7,
+        "resource_intensity": 3,
+        "time_to_mvp": 9,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Next.js / Node.js",
+        "database": "PostgreSQL",
+        "apis_required": [
+          "Whois API",
+          "App Store / Play Store Scraper",
+          "Social Media Handle Checkers",
+          "SEMrush / Ahrefs API"
+        ]
+      },
+      "business_logic": {
+        "problem": "Cada día caducan activos digitales que tienen un valor de mercado latente: dominios con miles de backlinks, nombres de usuario de redes sociales ('handles') de 3 letras que valen miles de dólares, o aplicaciones móviles con 50.000 usuarios activos que el desarrollador ha dejado de actualizar. Es un cementerio de valor digital que se puede 'resucitar' con una mínima intervención técnica.",
+        "solution": "Un oráculo que vigila la muerte de activos. El bot monitoriza listas de dominios a punto de expirar con métricas SEO altas, escanea apps que llevan >2 años sin actualizar pero mantienen buen ranking, y rastrea cuentas de redes sociales de marcas extintas. Cuando el activo queda libre o el dueño es localizable tras años de inactividad, el sistema dispara una oferta de compra o ejecuta el registro instantáneo.",
+        "monetization": [
+          "Reventa de Activos (Flipping): Compra por 10$ (registro de dominio) y venta por 2.000$ en marketplaces especializados.",
+          "App Acquisition: Comprar apps abandonadas, insertar un nuevo SDK de anuncios y monetizar la base de usuarios existente.",
+          "Lead Generation: Usar dominios con tráfico temático para capturar leads y venderlos a empresas del sector.",
+          "Renta de Identidad Digital: Alquiler de nombres de usuario premium para marcas o influencers."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Asset Expiry Monitoring",
+          "details": "Vigilancia de listas de dominios 'Pending Delete' y apps en estado 'Zombie' (sin updates pero con tráfico)."
+        },
+        {
+          "step": 2,
+          "task": "Value Appraisal",
+          "details": "Cálculo automático del valor basado en: Tráfico orgánico, Autoridad de dominio (DR) y escasez del nombre."
+        },
+        {
+          "step": 3,
+          "task": "Automated Sniping",
+          "details": "Ejecución de scripts de registro ultrarrápido en el milisegundo en que el activo queda disponible."
+        },
+        {
+          "step": 4,
+          "task": "Outreach & Exit",
+          "details": "Contacto automático con compradores potenciales (competidores o inversores) para cerrar la venta del activo capturado."
+        }
+      ],
+      "data_schema_preview": {
+        "asset_id": "String",
+        "traffic_est_monthly": "Number",
+        "acquisition_cost": "Number",
+        "est_resale_value": "Number",
+        "status": "Enum ['tracking', 'sniped', 'sold']"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */1 * * *",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": true
+      },
+      "internal_score": 0,
+      "categories": [
+        "Arbitraje",
+        "Digital Assets",
+        "SEO"
+      ]
+    },
+    {
+      "id": "link-rot-broker-018",
+      "title": "The Link Rot Broker: Rescate de Tráfico Perdido",
+      "slug": "link-rot-brokerage",
+      "status": "Prototipo",
+      "priority": "high",
+      "description": "Detección de enlaces muertos (404) en las descripciones de videos virales antiguos de YouTube que aún reciben tráfico recurrente.",
+      "viability_metrics": {
+        "implementation_ease": 9,
+        "success_probability": 8,
+        "resource_intensity": 1,
+        "time_to_mvp": 10,
+        "roi_potential": 8
+      },
+      "technical_stack": {
+        "framework": "Python (YT-DLP + Requests)",
+        "database": "SQLite",
+        "apis_required": [
+          "YouTube Data API v3",
+          "Hunter.io API (para localizar correos)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Miles de videos 'evergreen' con millones de visitas redirigen a tiendas cerradas o dominios expirados, perdiendo miles de euros en comisiones de afiliados cada mes.",
+        "solution": "Un sniper que audita automáticamente descripciones de videos populares buscando códigos de estado 404 o dominios en venta para sustituirlos por enlaces activos mediante acuerdos con los creadores.",
+        "monetization": [
+          "Revenue Share: Reparto 50/50 de las comisiones recuperadas con el YouTuber.",
+          "Arbitraje de Dominios: Registro de dominios expirados que aún reciben tráfico desde YouTube para redirigirlos a ofertas CPA.",
+          "SaaS de Mantenimiento: Cuota mensual a grandes canales por 'limpiar' y optimizar sus enlaces de forma recurrente."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Niche Video Audit",
+          "details": "Escaneo de canales de nicho (Tecnología, Cocina, Reviews) filtrando videos de hace +2 años con crecimiento de visitas estable."
+        },
+        {
+          "step": 2,
+          "task": "Link Status Check",
+          "details": "Verificación masiva de cabeceras HTTP de todos los links en descripciones para detectar fallos 404 o redirecciones a parkings de dominios."
+        },
+        {
+          "step": 3,
+          "task": "Outreach Automation",
+          "details": "Envío de propuesta automática al creador detallando el dinero exacto que está perdiendo y la solución lista para copiar/pegar."
+        },
+        {
+          "step": 4,
+          "task": "Link Performance Tracking",
+          "details": "Monitorización de clics y conversiones en los nuevos links para asegurar el cobro de la comisión pactada."
+        }
+      ],
+      "data_schema_preview": {
+        "video_id": "String",
+        "broken_url": "String",
+        "replacement_url": "String",
+        "est_monthly_clicks": "Number",
+        "contact_status": "Enum ['pending', 'contacted', 'resolved']"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */12 * * *",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": false
+      },
+      "internal_score": 0,
+      "categories": [
+        "Arbitraje",
+        "YouTube Marketing",
+        "SEO"
+      ]
+    },
+    {
+      "id": "dataset-miner-019",
+      "title": "The Dataset Alchemist: Suministro de Inteligencia a Modelos",
+      "slug": "automated-ai-dataset-miner",
+      "status": "Prototipo",
+      "priority": "high",
+      "description": "Extractor automático de conversaciones y datos estructurados de foros técnicos nicho para la creación de datasets de entrenamiento para IA.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 8,
+        "resource_intensity": 2,
+        "time_to_mvp": 7,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Python (Scrapy + LangChain)",
+        "database": "MongoDB (Unstructured Data)",
+        "apis_required": [
+          "Hugging Face API",
+          "Ollama (para limpieza local de datos)"
+        ]
+      },
+      "business_logic": {
+        "problem": "La escasez de datos de alta calidad para entrenar modelos especializados. Los foros técnicos contienen conocimiento experto pero están llenos de ruido y formatos inconsistentes.",
+        "solution": "Un minero que extrae hilos de 'Pregunta-Respuesta' de comunidades expertas, los limpia de metadatos basura y los etiqueta mediante una IA local para crear datasets 'Ready-to-Train'.",
+        "monetization": [
+          "Venta de Datasets: Comercialización directa en Hugging Face o Kaggle.",
+          "Data Bounties: Ejecución de encargos específicos para laboratorios de IA (OpenAI, Mistral, etc.).",
+          "Suscripción de Datos: Acceso API a un flujo constante de nuevos datos frescos de nichos específicos (ej. LegalTech)."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Target Sourcing",
+          "details": "Identificación de foros con alto ratio de respuestas correctas (marcadas por la comunidad) en sectores técnicos."
+        },
+        {
+          "step": 2,
+          "task": "Raw Scraping & Cleaning",
+          "details": "Extracción de texto plano eliminando firmas, anuncios y ruido HTML mediante selectores CSS dinámicos."
+        },
+        {
+          "step": 3,
+          "task": "AI Refinement",
+          "details": "Uso de Llama-3 local para reformatear las conversaciones en pares de 'Instrucción/Respuesta' coherentes."
+        },
+        {
+          "step": 4,
+          "task": "Automated Sync",
+          "details": "Carga automática del dataset resultante en repositorios de Hugging Face con control de versiones."
+        }
+      ],
+      "data_schema_preview": {
+        "source_forum": "String",
+        "instruction_pair_count": "Number",
+        "avg_quality_score": "Float",
+        "token_size_kb": "Number",
+        "license_type": "String"
+      },
+      "automation_config": {
+        "cron_schedule": "0 0 * * *",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": true
+      },
+      "internal_score": 0,
+      "categories": [
+        "Big Data",
+        "AI Infrastructure",
+        "Machine Learning"
+      ]
+    },
+    {
+      "id": "tender-bot-020",
+      "title": "Tender Bot-as-a-Bidder: Licitador Fantasma Automatizado",
+      "slug": "autonomous-tender-bidding-engine",
+      "status": "Prototipo",
+      "priority": "critical",
+      "description": "Sistema autónomo de detección, presentación y ejecución de licitaciones públicas y privadas de bajo ticket, optimizado para capturar contratos con baja competencia sin intervención humana.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 8,
+        "resource_intensity": 4,
+        "time_to_mvp": 7,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Next.js / Python (Automation + Scraping)",
+        "database": "PostgreSQL",
+        "apis_required": [
+          "Plataforma de Contratación del Sector Público API",
+          "BOE API",
+          "AutoFirma / Firma Digital API",
+          "DocuSign / Signaturit API",
+          "Freelance APIs (Upwork / Fiverr)",
+          "Email / SMTP API"
+        ]
+      },
+      "business_logic": {
+        "problem": "Miles de contratos públicos y privados de bajo importe quedan desiertos o reciben una única oferta debido a la baja rentabilidad percibida y la fricción burocrática. Las empresas tradicionales ignoran estos contratos, generando una ineficiencia estructural en la asignación de recursos.",
+        "solution": "Un licitador autónomo que detecta oportunidades de baja competencia, genera automáticamente la documentación requerida, presenta ofertas competitivas y ejecuta los contratos mediante automatización o subcontratación programática.",
+        "monetization": [
+          "Captura Directa de Contratos: Ingresos provenientes de adjudicaciones ganadas con costes de ejecución mínimos.",
+          "Optimización de Margen: Selección de contratos con alta automatización y bajo coste operativo.",
+          "Estrategia de Volumen: Participación masiva en licitaciones de bajo ticket para maximizar tasa de adjudicación.",
+          "Dataset Propietario: Mejora continua basada en patrones de éxito en adjudicaciones previas."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Tender Intelligence Scraping",
+          "details": "Extracción automatizada de licitaciones filtradas por importe, complejidad técnica y nivel de competencia histórica."
+        },
+        {
+          "step": 2,
+          "task": "Opportunity Scoring Engine",
+          "details": "Evaluación de probabilidad de adjudicación basada en número de licitadores previos, requisitos mínimos y margen estimado."
+        },
+        {
+          "step": 3,
+          "task": "Automated Bid Generation",
+          "details": "Generación automática de documentación administrativa, técnica y económica mediante plantillas parametrizadas."
+        },
+        {
+          "step": 4,
+          "task": "Digital Submission & Tracking",
+          "details": "Envío automático de propuestas a través de plataformas oficiales y monitorización del estado de la licitación."
+        },
+        {
+          "step": 5,
+          "task": "Autonomous Execution Layer",
+          "details": "Ejecución del contrato mediante bots o delegación automática en freelancers/APIs según el tipo de servicio adjudicado."
+        }
+      ],
+      "data_schema_preview": {
+        "tender_id": "String",
+        "estimated_value": "Number",
+        "competition_score": "Number",
+        "submission_status": "Enum ['draft', 'submitted', 'awarded', 'rejected']",
+        "execution_mode": "Enum ['automated', 'outsourced']",
+        "net_profit_estimate": "Number"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */2 * * *",
+        "auto_notify_telegram": true,
+        "auto_submit_bids": true
+      },
+      "internal_score": 0,
+      "categories": [
+        "LegalTech",
+        "Automation",
         "Arbitraje"
       ]
+    },
+    {
+      "id": "bounty-harvester-021",
+      "title": "Bounty Harvester Engine: Colector Autónomo de Recompensas",
+      "slug": "automated-bounty-collection-engine",
+      "status": "Prototipo",
+      "priority": "critical",
+      "description": "Sistema autónomo que detecta, ejecuta y monetiza tareas con recompensa automática (bounties) ofrecidas por entidades públicas y privadas, sin necesidad de interacción comercial ni adquisición de clientes.",
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 7,
+        "resource_intensity": 2,
+        "time_to_mvp": 8,
+        "roi_potential": 8
+      },
+      "technical_stack": {
+        "framework": "Python (Scraping + Automation) / Node.js",
+        "database": "PostgreSQL",
+        "apis_required": [
+          "Open Data Portals APIs",
+          "Bug Bounty Platforms APIs",
+          "Government Transparency APIs",
+          "Email / SMTP API",
+          "Webhook Receivers",
+          "Automation Tools (Playwright / Puppeteer)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Existen múltiples sistemas donde entidades públicas y privadas pagan por la ejecución de tareas específicas (detección de errores, envío de datos, validación de información), pero estas oportunidades están fragmentadas, son de bajo valor individual y no están automatizadas, lo que impide su explotación a escala.",
+        "solution": "Un motor que centraliza fuentes de recompensas, normaliza sus reglas, genera automáticamente las entradas requeridas mediante bots y ejecuta envíos masivos para capturar ingresos recurrentes sin intervención humana.",
+        "monetization": [
+          "Captura Directa de Bounties: Ingresos por ejecución automática de tareas con recompensa definida.",
+          "Arbitraje de Fragmentación: Agregación de múltiples micro-ingresos en un flujo continuo.",
+          "Optimización Algorítmica: Priorización de tareas con mayor ratio recompensa/esfuerzo.",
+          "Descubrimiento Automatizado: Identificación continua de nuevas fuentes de ingresos basadas en reglas públicas."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Bounty Source Discovery",
+          "details": "Identificación automática de plataformas, organismos y sistemas que ofrecen recompensas por tareas objetivas."
+        },
+        {
+          "step": 2,
+          "task": "Rule Normalization Engine",
+          "details": "Estandarización de condiciones de participación, validación y pago en un formato ejecutable por el sistema."
+        },
+        {
+          "step": 3,
+          "task": "Automated Input Generation",
+          "details": "Creación de datos, reportes o validaciones mediante scrapers, modelos de IA o lógica determinística."
+        },
+        {
+          "step": 4,
+          "task": "Submission & Validation",
+          "details": "Envío automático de resultados a los sistemas correspondientes y verificación de aceptación."
+        },
+        {
+          "step": 5,
+          "task": "Reward Collection & Optimization",
+          "details": "Recepción de pagos, análisis de rendimiento y ajuste dinámico de estrategias de ejecución."
+        }
+      ],
+      "data_schema_preview": {
+        "bounty_id": "String",
+        "source_platform": "String",
+        "task_type": "Enum ['bug', 'data', 'validation', 'report']",
+        "reward_value": "Number",
+        "execution_status": "Enum ['pending', 'submitted', 'accepted', 'rejected']",
+        "roi_score": "Float"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */1 * * *",
+        "auto_execute_tasks": true,
+        "auto_collect_rewards": true
+      },
+      "internal_score": 0,
+      "categories": [
+        "Automation",
+        "Arbitraje",
+        "Open Data",
+        "AI Infrastructure"
+      ]
+    },
+    {
+      "id": "autonomous-competition-miner-022",
+      "title": "Autonomous Competition Miner: Motor de Captura de Premios Públicos y Bounties",
+      "slug": "ai-competition-reward-miner",
+      "status": "Prototipo",
+      "priority": "critical",
+      "description": "Sistema autónomo que detecta concursos, bounties y desafíos con recompensas económicas activas en plataformas públicas, genera soluciones automatizadas y prepara envíos estructurados para maximizar la probabilidad de premio sin intervención humana directa.",
+      "viability_metrics": {
+        "implementation_ease": 5,
+        "success_probability": 6,
+        "resource_intensity": 4,
+        "time_to_mvp": 6,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Python (LangChain + Scrapy + FastAPI)",
+        "automation_layer": "CrewAI / AutoGen agents",
+        "database": "PostgreSQL",
+        "ai_models": [
+          "OpenAI / Claude / Llama 3 (multi-agent reasoning)",
+          "Hugging Face transformers (task-specific models)"
+        ],
+        "apis_required": [
+          "Kaggle API",
+          "HackerOne / Bugcrowd Public APIs (or scraping layers)",
+          "Devpost API / hackathon aggregators",
+          "EU Funding & Grants Open Data APIs"
+        ]
+      },
+      "business_logic": {
+        "problem": "Existen miles de competiciones, bounties y retos públicos con premios económicos, pero los humanos no pueden monitorizarlos ni optimizar soluciones a escala. El valor está fragmentado en oportunidades temporales con baja competencia algorítmica.",
+        "solution": "Un sistema autónomo que actúa como 'participante digital' en competiciones abiertas. Detecta oportunidades nuevas, evalúa si son resolubles por IA, genera soluciones técnicas completas (código, modelos, informes), y automatiza el proceso de envío según los formatos requeridos.",
+        "monetization": [
+          "Prize Capture: ingresos directos por premios ganados en competiciones",
+          "Bounty Execution: recompensas por bugs, datasets o soluciones técnicas",
+          "Model Reuse: reutilización de soluciones para múltiples concursos similares",
+          "Signal Arbitrage: detección temprana de competiciones con baja participación y alta recompensa"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Opportunity Mining",
+          "details": "Escaneo continuo de plataformas de concursos, bounties y grants abiertos con filtrado por recompensa, dificultad y automatizabilidad."
+        },
+        {
+          "step": 2,
+          "task": "Feasibility Scoring",
+          "details": "Modelo de scoring que determina si una competición puede resolverse de forma autónoma por agentes IA (clasificación, generación, optimización o código)."
+        },
+        {
+          "step": 3,
+          "task": "Solution Generation",
+          "details": "Pipeline multi-agente que genera soluciones completas: código, papers técnicos, modelos entrenados o reportes estructurados."
+        },
+        {
+          "step": 4,
+          "task": "Auto-Submission Engine",
+          "details": "Adaptación automática del output al formato requerido por la competición (zip, notebook, API response, PDF técnico)."
+        },
+        {
+          "step": 5,
+          "task": "Feedback Loop Optimization",
+          "details": "Análisis de resultados, rankings o validaciones para mejorar futuras soluciones mediante fine-tuning continuo."
+        }
+      ],
+      "data_schema_preview": {
+        "competition_id": "String",
+        "platform": "String",
+        "reward_value": "Number",
+        "difficulty_score": "Number",
+        "submission_status": "Enum ['detected', 'analyzing', 'submitted', 'ranked', 'won']",
+        "ai_solution_type": "Enum ['code', 'model', 'report', 'dataset']",
+        "expected_success_probability": "Float"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */3 * * *",
+        "real_time_event_listeners": true,
+        "auto_submission_enabled": true,
+        "auto_notify_telegram": true
+      },
+      "internal_score": 0,
+      "categories": [
+        "AI Automation",
+        "Competitive Intelligence",
+        "Arbitrage Systems",
+        "Machine Learning Ops"
+      ]
+    },
+    {
+      "id": "incentive-arbitrage-engine-023",
+      "title": "Incentive Arbitrage Engine: Captura Sistemática de Bonos e Incentivos",
+      "slug": "incentive-arbitrage-system",
+      "status": "Prototipo",
+      "priority": "critical",
+      "description": "Sistema de detección, activación y optimización de incentivos económicos públicos y privados (movilidad, energía, consumo, reciclaje) mediante automatización parcial del proceso de registro, validación y uso, maximizando el retorno recurrente sin necesidad de captación activa de clientes.",
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 8,
+        "resource_intensity": 3,
+        "time_to_mvp": 7,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Python / Node.js",
+        "database": "PostgreSQL",
+        "automation": "Playwright / Puppeteer",
+        "data_layer": "Universal Ingestion Layer (shared)",
+        "apis_required": [
+          "Portales de ayudas públicas (BOE, autonómicos, municipales)",
+          "Apps de movilidad y transporte",
+          "APIs energéticas / consumo",
+          "OCR (Tesseract / Google Vision)",
+          "Email / SMS APIs"
+        ]
+      },
+      "business_logic": {
+        "problem": "Miles de incentivos económicos quedan sin reclamar o se infrautilizan debido a fricción operativa (formularios, validaciones, desconocimiento). La mayoría de usuarios no optimiza ni repite estos procesos.",
+        "solution": "Un sistema que centraliza la detección de incentivos, evalúa elegibilidad automáticamente y ejecuta o asiste el proceso de activación y uso, maximizando el beneficio mediante repetición, optimización y agregación.",
+        "monetization": [
+          "Captura directa de incentivos (uso propio o estructuras replicables)",
+          "Optimización del uso (maximizar beneficios por incentivo activo)",
+          "Revenue share pasivo con usuarios opt-in (sin venta directa activa)",
+          "Agrupación de incentivos para generar flujos recurrentes"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Incentive Discovery",
+          "details": "Ingesta continua desde el Opportunity Layer de programas activos de incentivos."
+        },
+        {
+          "step": 2,
+          "task": "Eligibility Scoring",
+          "details": "Evaluación automática de requisitos basada en reglas (ubicación, actividad, consumo, perfil)."
+        },
+        {
+          "step": 3,
+          "task": "Semi-Automated Activation",
+          "details": "Asistencia o automatización parcial del registro y validación (formularios, documentación)."
+        },
+        {
+          "step": 4,
+          "task": "Usage Optimization",
+          "details": "Optimización del comportamiento requerido (ej. rutas, consumo, actividad) para maximizar recompensas."
+        },
+        {
+          "step": 5,
+          "task": "Payout Tracking",
+          "details": "Seguimiento de incentivos activados, pagos recibidos y rendimiento por fuente."
+        }
+      ],
+      "data_schema_preview": {
+        "incentive_id": "String",
+        "source": "String",
+        "type": "Enum ['movilidad', 'energia', 'consumo', 'reciclaje', 'otros']",
+        "estimated_value": "Number",
+        "eligibility_score": "Number",
+        "activation_status": "Enum ['detected', 'eligible', 'pending', 'active', 'collected']",
+        "recurrence": "Boolean"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */6 * * *",
+        "auto_detect": true,
+        "auto_optimize": true,
+        "auto_claim": false
+      },
+      "internal_score": 0,
+      "categories": [
+        "Fintech",
+        "GovTech",
+        "Arbitraje",
+        "Automation"
+      ]
+    },
+    {
+      "id": "orphan-value-engine-024",
+      "title": "Orphan Value Engine: Motor de Captura de Valor Abandonado",
+      "slug": "orphan-value-capture-engine",
+      "status": "Prototipo",
+      "priority": "critical",
+      "description": "Sistema unificado de detección, evaluación y explotación automática de activos digitales, tráfico y capital abandonado (dominios expirados, enlaces rotos, recursos CDN huérfanos, derechos financieros no reclamados) para su monetización sin interacción comercial.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 8,
+        "resource_intensity": 4,
+        "time_to_mvp": 7,
+        "roi_potential": 10,
+        "scalability": 10
+      },
+      "technical_stack": {
+        "framework": "Node.js / Python (Scraping & Automation)",
+        "database": "PostgreSQL + Redis (scoring en tiempo real)",
+        "infrastructure": "Cloudflare Workers / Serverless Functions",
+        "apis_required": [
+          "Whois / Domain Registrar APIs",
+          "YouTube Data API",
+          "Common Crawl",
+          "HTTP Status Checkers",
+          "Affiliate Networks (Amazon, CPA)",
+          "Ad Networks APIs",
+          "DNS & Passive DNS APIs"
+        ]
+      },
+      "business_logic": {
+        "core_thesis": "Internet y los sistemas administrativos están llenos de valor abandonado que sigue generando flujo (tráfico, dinero o derechos) pero no tiene propietario activo. Este sistema detecta esos fallos y los captura automáticamente.",
+        "problem": "Los activos abandonados (dominios expirados, enlaces 404 en contenido viral, recursos CDN caídos, derechos económicos no reclamados) siguen generando demanda pero no están siendo explotados debido a fallos técnicos o abandono humano.",
+        "solution": "Un motor autónomo que escanea múltiples fuentes en busca de señales de valor huérfano, evalúa automáticamente su potencial económico y ejecuta acciones de captura (registro de dominio, redirección, reclamación o reactivación del recurso) sin intervención humana.",
+        "monetization": [
+          "Afiliación (Amazon, CPA) mediante redirección de tráfico capturado",
+          "Publicidad programática sobre activos reactivados",
+          "Reventa de dominios con tráfico residual (SEO/branding)",
+          "Captura de leads desde tráfico huérfano",
+          "Arbitraje de datos y telemetría"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Global Signal Scanning",
+          "details": "Scraping masivo de fuentes (YouTube, Common Crawl, DNS, logs web) para detectar señales de abandono: errores 404, dominios expirados, endpoints caídos o activos sin mantenimiento."
+        },
+        {
+          "step": 2,
+          "task": "Opportunity Scoring Engine",
+          "details": "Evaluación automática del valor del activo basada en tráfico estimado, intención de usuario, facilidad de captura y potencial de monetización."
+        },
+        {
+          "step": 3,
+          "task": "Automated Capture",
+          "details": "Ejecución automática de acciones: registro de dominio, despliegue de endpoint, restauración de recurso o redirección inteligente del tráfico."
+        },
+        {
+          "step": 4,
+          "task": "Monetization Layer",
+          "details": "Aplicación dinámica de estrategias de monetización (afiliación, anuncios, CPA) según el contexto del tráfico y origen."
+        },
+        {
+          "step": 5,
+          "task": "Feedback Loop Optimization",
+          "details": "Reentrenamiento del sistema de scoring basado en conversiones reales para mejorar la detección de oportunidades futuras."
+        }
+      ],
+      "data_schema_preview": {
+        "asset_id": "String",
+        "asset_type": "Enum ['domain', 'link', 'cdn', 'financial', 'account']",
+        "source": "String",
+        "traffic_estimate": "Number",
+        "capture_cost": "Number",
+        "monetization_type": "Enum ['affiliate', 'ads', 'resale', 'leads']",
+        "status": "Enum ['detected', 'scored', 'captured', 'monetized']",
+        "roi_estimate": "Number"
+      },
+      "automation_config": {
+        "cron_schedule": "Continuous / Real-time scanning",
+        "auto_notify_telegram": true,
+        "auto_execute_capture": true,
+        "auto_optimize_routing": true
+      },
+      "internal_score": 0,
+      "categories": [
+        "Arbitraje",
+        "AdTech",
+        "SEO",
+        "Automation",
+        "Digital Assets"
+      ],
+      "strategic_insight": "No compite en mercados existentes, sino que explota ineficiencias estructurales causadas por abandono, errores humanos o falta de mantenimiento, creando una ventaja asimétrica difícil de replicar."
+    },
+    {
+      "id": "behavioral-privacy-infra-024",
+      "title": "Behavioral Privacy Infrastructure: Anti-Fingerprinting Engine",
+      "slug": "behavioral-privacy-normalization-engine",
+      "status": "Prototipo",
+      "priority": "high",
+      "description": "Motor de normalización de comportamiento digital que reduce la identificabilidad de usuarios frente a técnicas avanzadas de fingerprinting mediante variabilidad controlada en patrones de interacción.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 8,
+        "resource_intensity": 4,
+        "time_to_mvp": 7,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Node.js / Rust (core engine)",
+        "delivery": "Browser Extension / SDK embebido",
+        "database": "Redis (configuración en tiempo real)",
+        "apis_required": [
+          "Browser APIs (WebExtensions)",
+          "Cloudflare Workers (edge delivery)",
+          "Telemetry APIs (opcional para tuning)",
+          "Stripe API (licensing)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Las técnicas modernas de tracking (fingerprinting, behavioral biometrics, session correlation) permiten identificar usuarios sin cookies, generando riesgos de privacidad, discriminación de precios y problemas de cumplimiento con GDPR.",
+        "solution": "Un motor que introduce variabilidad natural en el comportamiento digital del usuario (timing, interacción, patrones de navegación) sin falsificar identidad ni generar tráfico fraudulento. El objetivo es evitar que un usuario sea identificable de forma única por sus patrones.",
+        "monetization": [
+          "Licensing B2B: Integración como SDK en herramientas de privacidad, navegadores o soluciones de ciberseguridad.",
+          "OEM Partnerships: Venta del motor a proveedores de infraestructura (VPNs, browsers, antivirus).",
+          "Compliance Layer: Producto para empresas que necesitan cumplir GDPR evitando fingerprinting excesivo.",
+          "API Usage: Cobro por uso del motor en apps que quieran proteger a sus usuarios."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Behavior Modeling",
+          "details": "Análisis de patrones humanos reales para generar modelos de interacción no deterministas pero coherentes."
+        },
+        {
+          "step": 2,
+          "task": "Normalization Engine",
+          "details": "Desarrollo de un motor que introduce micro-variaciones en eventos como clicks, scroll, typing y navegación."
+        },
+        {
+          "step": 3,
+          "task": "Integration Layer",
+          "details": "Implementación como extensión de navegador o SDK embebido para aplicaciones web y móviles."
+        },
+        {
+          "step": 4,
+          "task": "Adaptive Tuning",
+          "details": "Ajuste dinámico de patrones según contexto para evitar anomalías detectables por sistemas antifraude."
+        }
+      ],
+      "data_schema_preview": {
+        "session_id": "String",
+        "interaction_variance_score": "Float",
+        "fingerprint_risk_reduction": "Percentage",
+        "behavior_profile_type": "Enum ['neutral', 'high_variance', 'enterprise_safe']",
+        "latency_impact_ms": "Number"
+      },
+      "automation_config": {
+        "cron_schedule": "Real-time adaptive engine",
+        "auto_notify_telegram": false,
+        "auto_publish_to_marketplace": true
+      },
+      "internal_score": 0,
+      "categories": [
+        "PrivacyTech",
+        "Cybersecurity",
+        "AI Infrastructure"
+      ]
+    },
+    {
+      "id": "ip-carrier-index-025",
+      "title": "Carrier Index Engine: Inteligencia de Activos IPv4 Infrautilizados",
+      "slug": "ipv4-asset-intelligence-engine",
+      "status": "Prototipo",
+      "priority": "high",
+      "description": "Sistema de análisis y detección de bloques IPv4 infrautilizados o potencialmente transferibles mediante cruce de datos de BGP, registros RIR y estado corporativo de entidades propietarias.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 8,
+        "resource_intensity": 5,
+        "time_to_mvp": 7,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Python / Go (data pipelines)",
+        "database": "ClickHouse / PostgreSQL (ASN & IP intelligence)",
+        "processing": "BGPStream / RIPEstat APIs",
+        "apis_required": [
+          "RIPE NCC API",
+          "ARIN WHOIS API",
+          "BGP routing feeds",
+          "OpenCorporates API",
+          "Registry insolvency datasets"
+        ]
+      },
+      "business_logic": {
+        "problem": "El espacio IPv4 es un recurso finito y altamente valioso. Muchos bloques asignados históricamente a empresas han quedado infrautilizados debido a cierres, fusiones o reorganizaciones corporativas. Sin embargo, estos activos siguen estando legalmente registrados y fragmentados en múltiples jurisdicciones y registros.",
+        "solution": "Un motor de inteligencia que analiza el uso real de bloques IPv4 mediante datos de enrutamiento (BGP), cruza esa información con registros de propiedad en RIRs y estados corporativos de las entidades asociadas, y detecta oportunidades de transferencia, consolidación o valorización de activos IP de forma completamente legal y estructurada.",
+        "monetization": [
+          "SaaS de inteligencia de mercado IPv4 para brokers y fondos de infraestructura.",
+          "Suscripción a feed de bloques infrautilizados con scoring de valor estimado.",
+          "Licencias enterprise para operadores cloud y telcos.",
+          "Consultoría automatizada de optimización de inventario IP para empresas con ASN propios."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "BGP Data Ingestion",
+          "details": "Captura continua de anuncios de rutas BGP para mapear bloques IPv4 activos e inactivos."
+        },
+        {
+          "step": 2,
+          "task": "Utilization Scoring",
+          "details": "Cálculo de métricas de uso real de IPs basado en tráfico, routing stability y presencia en servicios públicos."
+        },
+        {
+          "step": 3,
+          "task": "Ownership Correlation",
+          "details": "Cruce de datos RIR (RIPE/ARIN) con registros corporativos para identificar entidades propietarias y su estado legal."
+        },
+        {
+          "step": 4,
+          "task": "Opportunity Detection",
+          "details": "Identificación de bloques con potencial de transferencia, reorganización o venta en mercados secundarios."
+        }
+      ],
+      "data_schema_preview": {
+        "asn": "String",
+        "ip_range": "String",
+        "bgp_announced": "Boolean",
+        "utilization_score": "Float",
+        "owner_entity": "String",
+        "legal_status": "Enum ['active', 'inactive', 'liquidation', 'unknown']",
+        "estimated_market_value_usd": "Number"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */3 * * *",
+        "real_time_bgp_listener": true,
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": true
+      },
+      "internal_score": 0,
+      "categories": [
+        "Infrastructure Intelligence",
+        "Network Analytics",
+        "Digital Asset Arbitrage"
+      ]
+    },
+    {
+      "id": "autonomous-data-work-executor-020",
+      "title": "Autonomous Data Work Executor: Participation Engine in Paid Data Economies",
+      "slug": "ai-data-task-fulfillment-engine",
+      "status": "Prototipo",
+      "priority": "high",
+      "description": "Sistema automatizado que detecta, ejecuta y envía tareas digitales ya remuneradas por plataformas de data labeling, AI evaluation, research studies y dataset marketplaces, actuando como un motor autónomo de cumplimiento de microtrabajos digitales.",
+      "viability_metrics": {
+        "implementation_ease": 6,
+        "success_probability": 8,
+        "resource_intensity": 4,
+        "time_to_mvp": 6,
+        "roi_potential": 8
+      },
+      "technical_stack": {
+        "framework": "Python / Node.js (automation layer)",
+        "execution_layer": "Playwright / Puppeteer / API integrations",
+        "database": "PostgreSQL (task registry + payout tracking)",
+        "ai_layer": "LLM (task interpretation + output generation)",
+        "apis_required": [
+          "Scale AI / Surge AI (evaluation workflows where accessible)",
+          "Toloka API",
+          "Prolific API",
+          "Hugging Face Datasets API",
+          "Kaggle API",
+          "Mechanical Turk API (where available)",
+          "SerpAPI / BrightData (data acquisition support)"
+        ]
+      },
+      "business_logic": {
+        "problem": "Existe una economía global de microtrabajos digitales (data labeling, AI evaluation, dataset cleaning, research participation) donde empresas como Scale AI, Appen o plataformas académicas pagan por la producción de datos estructurados y validaciones humanas. Estos flujos están fragmentados, manuales y no escalables individualmente por usuarios.",
+        "solution": "Un sistema autónomo que detecta oportunidades de trabajo digital remunerado en plataformas abiertas o semiabiertas, interpreta automáticamente las tareas, genera respuestas o transformaciones de datos mediante IA, y envía resultados estructurados cumpliendo los criterios de validación de cada plataforma.",
+        "monetization": [
+          "Automated Task Completion Revenue: ingresos directos por tareas aprobadas en plataformas de microtrabajo.",
+          "Dataset Contribution Rewards: recompensas por subir datasets estructurados a plataformas como Kaggle o Hugging Face.",
+          "AI Evaluation Arbitrage: ingresos por evaluación masiva de outputs de modelos en sistemas de RLHF.",
+          "Research Participation Scaling: participación automatizada en estudios pagos y encuestas de alta frecuencia."
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Opportunity Discovery",
+          "details": "Monitorización de plataformas de microtareas, datasets públicos y estudios remunerados para detectar nuevas tareas disponibles con payout definido."
+        },
+        {
+          "step": 2,
+          "task": "Task Interpretation Engine",
+          "details": "Uso de LLM para traducir instrucciones de tareas en estructuras operativas (inputs, outputs, constraints, formato requerido)."
+        },
+        {
+          "step": 3,
+          "task": "Automated Execution",
+          "details": "Generación automática de respuestas, etiquetado o limpieza de datos mediante pipelines de IA y scripts de transformación."
+        },
+        {
+          "step": 4,
+          "task": "Submission & Validation Loop",
+          "details": "Envío automatizado de resultados a plataformas objetivo y ajuste iterativo basado en feedback de aceptación/rechazo."
+        }
+      ],
+      "data_schema_preview": {
+        "task_id": "String",
+        "platform_source": "String",
+        "task_type": "Enum ['labeling', 'evaluation', 'survey', 'dataset_creation']",
+        "automation_confidence": "Float",
+        "acceptance_rate": "Float",
+        "payout_usd": "Number",
+        "execution_status": "Enum ['pending', 'submitted', 'approved', 'rejected']"
+      },
+      "automation_config": {
+        "cron_schedule": "Continuous task polling",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": true,
+        "human_in_the_loop": false
+      },
+      "internal_score": 0,
+      "categories": [
+        "AI Infrastructure",
+        "Data Economy",
+        "Automation Systems"
+      ]
+    },
+    {
+      "id": "seo-arbitrage-026",
+      "title": "SearchIntent Engine: Red Autónoma de Captura de Demanda",
+      "slug": "seo-intent-capture",
+      "status": "Prototipo",
+      "priority": "high",
+      "description": "Sistema automatizado de detección, generación y posicionamiento de contenido orientado a intención de compra en nichos de baja competencia.",
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 7,
+        "resource_intensity": 5,
+        "time_to_mvp": 4,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Node.js + Express",
+        "database": "PostgreSQL",
+        "apis_required": [
+          "Google Search Console API",
+          "OpenAI API",
+          "SerpAPI",
+          "WordPress REST API"
+        ]
+      },
+      "business_logic": {
+        "problem": "Millones de búsquedas con intención comercial clara no están bien cubiertas debido a la saturación de contenido genérico. Las empresas pequeñas no tienen capacidad de generar contenido optimizado a escala.",
+        "solution": "Sistema que detecta keywords long-tail con baja competencia, genera contenido optimizado estructuralmente y lo publica automáticamente. Incluye iteración basada en métricas reales de posicionamiento.",
+        "monetization": [
+          "Afiliación (Amazon, SaaS)",
+          "Generación de leads",
+          "Venta de propiedades SEO ya posicionadas",
+          "Ads en sitios con tráfico alto"
+        ]
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Scraping de Keywords",
+          "details": "Extracción automática de queries desde Google Trends, foros y SERPs para identificar oportunidades long-tail con intención de compra."
+        },
+        {
+          "step": 2,
+          "task": "Clasificación de Intención",
+          "details": "Clasificación semántica de keywords en informacional, transaccional o comparativa mediante NLP."
+        },
+        {
+          "step": 3,
+          "task": "Generación de Contenido",
+          "details": "Creación de artículos estructurados con tablas, comparativas y FAQs optimizados para SEO."
+        },
+        {
+          "step": 4,
+          "task": "Publicación y Tracking",
+          "details": "Publicación automática en WordPress y monitorización de rankings para reoptimización."
+        }
+      ],
+      "data_schema_preview": {
+        "keyword": "String",
+        "search_volume": "Number",
+        "competition_score": "Number",
+        "article_url": "String",
+        "ranking_position": "Number"
+      },
+      "automation_config": {
+        "cron_schedule": "0 */6 * * *",
+        "auto_notify_telegram": true,
+        "auto_publish_to_marketplace": false
+      },
+      "internal_score": 0,
+      "categories": [
+        "SEO",
+        "Afiliación",
+        "Content Automation"
+      ]
+    },
+    {
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 6,
+        "resource_intensity": 3,
+        "time_to_mvp": 7,
+        "roi_potential": 7
+      },
+      "technical_stack": {
+        "framework": "Next.js + Node.js (orchestración) + Python (scraping + scoring)",
+        "database": "MongoDB (signals + products + performance tracking)",
+        "automation_layer": "n8n (cron pipelines opcionales)",
+        "apis_required": [
+          "Keepa API (Amazon price + rank tracking)",
+          "Etsy public scraping (search + listing parsing)",
+          "Google Trends (keyword interest baseline)",
+          "OpenAI API (content generation + structuring)"
+        ],
+        "infrastructure": "Contabo VPS (5€/mes) + Puppeteer/Playwright headless scraping"
+      },
+      "business_logic": {
+        "problem": "Los marketplaces como Etsy y Amazon KDP no exponen datos claros de demanda real ni tendencias accionables. Los creadores individuales dependen de intuición o investigación manual lenta para decidir qué productos crear, lo que limita la velocidad de iteración y reduce la probabilidad de encontrar productos rentables antes de saturación.",
+        "solution": "Un sistema de ingeniería inversa de mercado que usa señales públicas (ventas visibles, reviews, rankings, densidad de listings y crecimiento de búsquedas) para inferir demanda real por categoría. El sistema no predice tendencias globales, sino que identifica patrones repetidos de venta en nichos específicos y genera automáticamente variantes de productos digitales optimizados para esos patrones.",
+        "monetization": [
+          "Venta directa en Etsy de printables optimizados (planners, templates, trackers)",
+          "Publicación en Amazon KDP de journals y low-content books derivados",
+          "Reutilización de assets en Gumroad como bundles digitales",
+          "Escalado por volumen (100–500 listings automatizados con iteración continua)",
+          "Reinversión de profits en nuevas categorías detectadas por el sistema"
+        ]
+      },
+      "core_engine_design": {
+        "architecture_type": "signal-driven product factory",
+        "data_flow": [
+          "Marketplace scraping (Etsy + Amazon)",
+          "Signal extraction (sales, reviews, density, freshness)",
+          "Scoring engine (demand vs competition vs velocity)",
+          "Product template selection",
+          "AI content generation (structured assets)",
+          "Listing export (Etsy/KDP-ready packages)"
+        ],
+        "key_principle": "No prediction, only inference from observable market artifacts"
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Marketplace Signal Scraping",
+          "details": "Scraping de búsquedas en Etsy y Amazon por keyword semilla. Extracción de: número de ventas visibles, número de reviews, fecha de últimas reviews, densidad de listings similares y presencia de etiquetas 'bestseller'.",
+          "output": "raw_market_signals.json"
+        },
+        {
+          "step": 2,
+          "task": "Signal Normalization",
+          "details": "Conversión de HTML y datos inconsistentes en estructura homogénea. Cálculo de métricas comparables entre productos dentro de la misma categoría.",
+          "output": "normalized_signals.json"
+        },
+        {
+          "step": 3,
+          "task": "Demand Scoring Engine",
+          "details": "Algoritmo que evalúa cada nicho usando: velocidad de ventas, saturación de competencia, crecimiento de reviews y estabilidad de demanda.",
+          "formula": "score = (sales_velocity * 0.4) + (review_growth * 0.3) + (low_competition * 0.2) + (trend_stability * 0.1)",
+          "output": "ranked_opportunities.json"
+        },
+        {
+          "step": 4,
+          "task": "Product Template Matching",
+          "details": "Selección automática del tipo de producto más rentable según patrón detectado (planner, journal, checklist, template, tracker).",
+          "output": "product_blueprint.json"
+        },
+        {
+          "step": 5,
+          "task": "AI Product Generation",
+          "details": "Generación de assets finales: PDFs estructurados, descripciones SEO, títulos optimizados y variantes del producto para test A/B.",
+          "output": "ready_to_publish_assets/"
+        },
+        {
+          "step": 6,
+          "task": "Marketplace Export",
+          "details": "Preparación automática de listings para Etsy y KDP (metadata, keywords, mockups, descripción y formato correcto).",
+          "output": "etsy_listing_package / kdp_upload_package"
+        }
+      ],
+      "data_schema": {
+        "market_signal": {
+          "keyword": "string",
+          "platform": "etsy | amazon",
+          "sales_estimate": "number",
+          "review_count": "number",
+          "review_velocity": "number",
+          "competition_density": "number",
+          "trend_score": "number"
+        },
+        "product_blueprint": {
+          "product_type": "planner | journal | template | checklist",
+          "target_niche": "string",
+          "structure": "json",
+          "seo_keywords": "array",
+          "estimated_demand_score": "number"
+        },
+        "generated_asset": {
+          "title": "string",
+          "format": "PDF | PNG bundle | KDP interior",
+          "pages": "number",
+          "tags": "array",
+          "platform_ready": "etsy | kdp | gumroad"
+        }
+      },
+      "limitations": {
+        "scraping_risk": "medium (Etsy/Amazon anti-bot measures requieren rotación y throttling)",
+        "data_accuracy": "estimated, no exact demand metrics available",
+        "automation_level": "70-85% (requires manual review before publishing batch)",
+        "scalability_ceiling": "depends on marketplace saturation per niche"
+      },
+      "internal_score": 0,
+      "id": "market-signal-product-factory-001",
+      "title": "Market Signal Product Factory",
+      "description": "Sistema de ingeniería inversa de marketplaces que convierte señales públicas de ventas en productos digitales listos para Etsy y Amazon KDP mediante scoring y generación automática de assets.",
+      "slug": "market-signal-product-factory-001"
+    },
+    {
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 6,
+        "resource_intensity": 3,
+        "time_to_mvp": 7,
+        "roi_potential": 7
+      },
+      "technical_stack": {
+        "framework": "Next.js + Node.js (orchestración) + Python (scraping + scoring)",
+        "database": "MongoDB (signals + products + performance tracking)",
+        "automation_layer": "n8n (cron pipelines opcionales)",
+        "apis_required": [
+          "Keepa API (Amazon price + rank tracking)",
+          "Etsy public scraping (search + listing parsing)",
+          "Google Trends (keyword interest baseline)",
+          "OpenAI API (content generation + structuring)"
+        ],
+        "infrastructure": "Contabo VPS (5€/mes) + Puppeteer/Playwright headless scraping"
+      },
+      "business_logic": {
+        "problem": "Los marketplaces como Etsy y Amazon KDP no exponen datos claros de demanda real ni tendencias accionables. Los creadores individuales dependen de intuición o investigación manual lenta para decidir qué productos crear, lo que limita la velocidad de iteración y reduce la probabilidad de encontrar productos rentables antes de saturación.",
+        "solution": "Un sistema de ingeniería inversa de mercado que usa señales públicas (ventas visibles, reviews, rankings, densidad de listings y crecimiento de búsquedas) para inferir demanda real por categoría. El sistema no predice tendencias globales, sino que identifica patrones repetidos de venta en nichos específicos y genera automáticamente variantes de productos digitales optimizados para esos patrones.",
+        "monetization": [
+          "Venta directa en Etsy de printables optimizados (planners, templates, trackers)",
+          "Publicación en Amazon KDP de journals y low-content books derivados",
+          "Reutilización de assets en Gumroad como bundles digitales",
+          "Escalado por volumen (100–500 listings automatizados con iteración continua)",
+          "Reinversión de profits en nuevas categorías detectadas por el sistema"
+        ]
+      },
+      "core_engine_design": {
+        "architecture_type": "signal-driven product factory",
+        "data_flow": [
+          "Marketplace scraping (Etsy + Amazon)",
+          "Signal extraction (sales, reviews, density, freshness)",
+          "Scoring engine (demand vs competition vs velocity)",
+          "Product template selection",
+          "AI content generation (structured assets)",
+          "Listing export (Etsy/KDP-ready packages)"
+        ],
+        "key_principle": "No prediction, only inference from observable market artifacts"
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Marketplace Signal Scraping",
+          "details": "Scraping de búsquedas en Etsy y Amazon por keyword semilla. Extracción de: número de ventas visibles, número de reviews, fecha de últimas reviews, densidad de listings similares y presencia de etiquetas 'bestseller'.",
+          "output": "raw_market_signals.json"
+        },
+        {
+          "step": 2,
+          "task": "Signal Normalization",
+          "details": "Conversión de HTML y datos inconsistentes en estructura homogénea. Cálculo de métricas comparables entre productos dentro de la misma categoría.",
+          "output": "normalized_signals.json"
+        },
+        {
+          "step": 3,
+          "task": "Demand Scoring Engine",
+          "details": "Algoritmo que evalúa cada nicho usando: velocidad de ventas, saturación de competencia, crecimiento de reviews y estabilidad de demanda.",
+          "formula": "score = (sales_velocity * 0.4) + (review_growth * 0.3) + (low_competition * 0.2) + (trend_stability * 0.1)",
+          "output": "ranked_opportunities.json"
+        },
+        {
+          "step": 4,
+          "task": "Product Template Matching",
+          "details": "Selección automática del tipo de producto más rentable según patrón detectado (planner, journal, checklist, template, tracker).",
+          "output": "product_blueprint.json"
+        },
+        {
+          "step": 5,
+          "task": "AI Product Generation",
+          "details": "Generación de assets finales: PDFs estructurados, descripciones SEO, títulos optimizados y variantes del producto para test A/B.",
+          "output": "ready_to_publish_assets/"
+        },
+        {
+          "step": 6,
+          "task": "Marketplace Export",
+          "details": "Preparación automática de listings para Etsy y KDP (metadata, keywords, mockups, descripción y formato correcto).",
+          "output": "etsy_listing_package / kdp_upload_package"
+        }
+      ],
+      "data_schema": {
+        "market_signal": {
+          "keyword": "string",
+          "platform": "etsy | amazon",
+          "sales_estimate": "number",
+          "review_count": "number",
+          "review_velocity": "number",
+          "competition_density": "number",
+          "trend_score": "number"
+        },
+        "product_blueprint": {
+          "product_type": "planner | journal | template | checklist",
+          "target_niche": "string",
+          "structure": "json",
+          "seo_keywords": "array",
+          "estimated_demand_score": "number"
+        },
+        "generated_asset": {
+          "title": "string",
+          "format": "PDF | PNG bundle | KDP interior",
+          "pages": "number",
+          "tags": "array",
+          "platform_ready": "etsy | kdp | gumroad"
+        }
+      },
+      "limitations": {
+        "scraping_risk": "medium (Etsy/Amazon anti-bot measures requieren rotación y throttling)",
+        "data_accuracy": "estimated, no exact demand metrics available",
+        "automation_level": "70-85% (requires manual review before publishing batch)",
+        "scalability_ceiling": "depends on marketplace saturation per niche"
+      },
+      "internal_score": 0,
+      "id": "market-signal-product-factory-001",
+      "title": "Market Signal Product Factory",
+      "description": "Sistema de ingeniería inversa de marketplaces que convierte señales públicas de ventas en productos digitales listos para Etsy y Amazon KDP mediante scoring y generación automática de assets.",
+      "slug": "market-signal-product-factory-001"
+    },
+    {
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 6,
+        "resource_intensity": 3,
+        "time_to_mvp": 7,
+        "roi_potential": 7
+      },
+      "technical_stack": {
+        "framework": "Next.js + Node.js (orchestración) + Python (scraping + scoring)",
+        "database": "MongoDB (signals + products + performance tracking)",
+        "automation_layer": "n8n (cron pipelines opcionales)",
+        "apis_required": [
+          "Keepa API (Amazon price + rank tracking)",
+          "Etsy public scraping (search + listing parsing)",
+          "Google Trends (keyword interest baseline)",
+          "OpenAI API (content generation + structuring)"
+        ],
+        "infrastructure": "Contabo VPS (5€/mes) + Puppeteer/Playwright headless scraping"
+      },
+      "business_logic": {
+        "problem": "Los marketplaces como Etsy y Amazon KDP no exponen datos claros de demanda real ni tendencias accionables. Los creadores individuales dependen de intuición o investigación manual lenta para decidir qué productos crear, lo que limita la velocidad de iteración y reduce la probabilidad de encontrar productos rentables antes de saturación.",
+        "solution": "Un sistema de ingeniería inversa de mercado que usa señales públicas (ventas visibles, reviews, rankings, densidad de listings y crecimiento de búsquedas) para inferir demanda real por categoría. El sistema no predice tendencias globales, sino que identifica patrones repetidos de venta en nichos específicos y genera automáticamente variantes de productos digitales optimizados para esos patrones.",
+        "monetization": [
+          "Venta directa en Etsy de printables optimizados (planners, templates, trackers)",
+          "Publicación en Amazon KDP de journals y low-content books derivados",
+          "Reutilización de assets en Gumroad como bundles digitales",
+          "Escalado por volumen (100–500 listings automatizados con iteración continua)",
+          "Reinversión de profits en nuevas categorías detectadas por el sistema"
+        ]
+      },
+      "core_engine_design": {
+        "architecture_type": "signal-driven product factory",
+        "data_flow": [
+          "Marketplace scraping (Etsy + Amazon)",
+          "Signal extraction (sales, reviews, density, freshness)",
+          "Scoring engine (demand vs competition vs velocity)",
+          "Product template selection",
+          "AI content generation (structured assets)",
+          "Listing export (Etsy/KDP-ready packages)"
+        ],
+        "key_principle": "No prediction, only inference from observable market artifacts"
+      },
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Marketplace Signal Scraping",
+          "details": "Scraping de búsquedas en Etsy y Amazon por keyword semilla. Extracción de: número de ventas visibles, número de reviews, fecha de últimas reviews, densidad de listings similares y presencia de etiquetas 'bestseller'.",
+          "output": "raw_market_signals.json"
+        },
+        {
+          "step": 2,
+          "task": "Signal Normalization",
+          "details": "Conversión de HTML y datos inconsistentes en estructura homogénea. Cálculo de métricas comparables entre productos dentro de la misma categoría.",
+          "output": "normalized_signals.json"
+        },
+        {
+          "step": 3,
+          "task": "Demand Scoring Engine",
+          "details": "Algoritmo que evalúa cada nicho usando: velocidad de ventas, saturación de competencia, crecimiento de reviews y estabilidad de demanda.",
+          "formula": "score = (sales_velocity * 0.4) + (review_growth * 0.3) + (low_competition * 0.2) + (trend_stability * 0.1)",
+          "output": "ranked_opportunities.json"
+        },
+        {
+          "step": 4,
+          "task": "Product Template Matching",
+          "details": "Selección automática del tipo de producto más rentable según patrón detectado (planner, journal, checklist, template, tracker).",
+          "output": "product_blueprint.json"
+        },
+        {
+          "step": 5,
+          "task": "AI Product Generation",
+          "details": "Generación de assets finales: PDFs estructurados, descripciones SEO, títulos optimizados y variantes del producto para test A/B.",
+          "output": "ready_to_publish_assets/"
+        },
+        {
+          "step": 6,
+          "task": "Marketplace Export",
+          "details": "Preparación automática de listings para Etsy y KDP (metadata, keywords, mockups, descripción y formato correcto).",
+          "output": "etsy_listing_package / kdp_upload_package"
+        }
+      ],
+      "data_schema": {
+        "market_signal": {
+          "keyword": "string",
+          "platform": "etsy | amazon",
+          "sales_estimate": "number",
+          "review_count": "number",
+          "review_velocity": "number",
+          "competition_density": "number",
+          "trend_score": "number"
+        },
+        "product_blueprint": {
+          "product_type": "planner | journal | template | checklist",
+          "target_niche": "string",
+          "structure": "json",
+          "seo_keywords": "array",
+          "estimated_demand_score": "number"
+        },
+        "generated_asset": {
+          "title": "string",
+          "format": "PDF | PNG bundle | KDP interior",
+          "pages": "number",
+          "tags": "array",
+          "platform_ready": "etsy | kdp | gumroad"
+        }
+      },
+      "limitations": {
+        "scraping_risk": "medium (Etsy/Amazon anti-bot measures requieren rotación y throttling)",
+        "data_accuracy": "estimated, no exact demand metrics available",
+        "automation_level": "70-85% (requires manual review before publishing batch)",
+        "scalability_ceiling": "depends on marketplace saturation per niche"
+      },
+      "internal_score": 0,
+      "id": "market-signal-product-factory-001",
+      "title": "Market Signal Product Factory",
+      "description": "Sistema de ingeniería inversa de marketplaces que convierte señales públicas de ventas en productos digitales listos para Etsy y Amazon KDP mediante scoring y generación automática de assets.",
+      "slug": "market-signal-product-factory-001"
+    },
+    {
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 6,
+        "resource_intensity": 3,
+        "time_to_mvp": 7,
+        "roi_potential": 7
+      },
+      "system_type": "signal_to_product_factory",
+      "technical_stack": {
+        "frontend": "Next.js dashboard (control + métricas + ejecución manual)",
+        "backend": "Node.js (orchestrator) + Python workers (scraping + scoring)",
+        "database": "MongoDB",
+        "automation": "n8n (cron jobs + fallback workflows)",
+        "scraping_layer": "Playwright (headless browsing + rotation)",
+        "ai_layer": "OpenAI API (GPT-4o mini / GPT-4o for generation)",
+        "hosting": "Contabo VPS (single node deployment)"
+      },
+      "data_sources": {
+        "etsy": {
+          "method": "public scraping",
+          "signals": [
+            "sales_count_visible",
+            "review_count",
+            "review_recency",
+            "bestseller_tag",
+            "search_result_density"
+          ]
+        },
+        "amazon_kdp": {
+          "method": "Keepa API + partial scraping",
+          "signals": [
+            "bsr_rank",
+            "review_velocity",
+            "category_saturation",
+            "listing_freshness"
+          ]
+        },
+        "google_trends": {
+          "method": "API",
+          "signals": [
+            "keyword_interest",
+            "growth_rate"
+          ]
+        }
+      },
+      "business_logic": {
+        "core_problem": "Los marketplaces no ofrecen datos de demanda accionables. Los creadores dependen de intuición, lo que limita la velocidad de iteración y reduce probabilidad de encontrar productos rentables antes de saturación.",
+        "core_solution": "Sistema que convierte señales públicas indirectas en estimaciones de demanda por nicho y automatiza la generación de productos digitales simples (printables, journals, templates) alineados con esos patrones.",
+        "constraint_assumptions": [
+          "No predicción de tendencias globales",
+          "No scraping a gran escala industrial",
+          "No dependencia de APIs oficiales completas",
+          "No necesidad de usuarios externos"
+        ]
+      },
+      "core_pipeline": [
+        {
+          "step": 1,
+          "name": "Market Signal Collection",
+          "description": "Scraping ligero de Etsy + extracción de datos básicos de Amazon KDP + keywords de Google Trends",
+          "output": "raw_signals"
+        },
+        {
+          "step": 2,
+          "name": "Normalization Layer",
+          "description": "Estandarización de métricas entre plataformas para comparabilidad",
+          "output": "normalized_signals"
+        },
+        {
+          "step": 3,
+          "name": "Demand Scoring Engine",
+          "description": "Algoritmo que combina ventas, competencia y crecimiento en un score único por nicho",
+          "formula": "(sales_velocity * 0.4) + (review_growth * 0.3) + (low_competition * 0.2) + (trend_growth * 0.1)",
+          "output": "ranked_niches"
+        },
+        {
+          "step": 4,
+          "name": "Product Mapping Engine",
+          "description": "Traduce nicho → tipo de producto óptimo (planner, checklist, journal, template)",
+          "output": "product_blueprints"
+        },
+        {
+          "step": 5,
+          "name": "Asset Generation",
+          "description": "Generación automática de PDFs, descripciones, títulos y variantes mediante LLM",
+          "output": "digital_products"
+        },
+        {
+          "step": 6,
+          "name": "Export Layer",
+          "description": "Preparación de paquetes listos para subir manualmente a Etsy / KDP / Gumroad",
+          "output": "marketplace_packages"
+        }
+      ],
+      "execution_model": {
+        "mode": "batch_pipeline",
+        "trigger": "cron_daily_or_manual_dashboard",
+        "human_in_loop": true,
+        "automation_level": "70_percent",
+        "manual_steps_required": [
+          "review_before_publish",
+          "upload_to_marketplace (optional manual or semi-auto)"
+        ]
+      },
+      "data_schema": {
+        "signal": {
+          "keyword": "string",
+          "platform": "etsy | amazon | trends",
+          "score_components": {
+            "sales_velocity": "number",
+            "competition": "number",
+            "growth": "number"
+          },
+          "final_score": "number"
+        },
+        "product": {
+          "type": "planner | journal | template | checklist",
+          "niche": "string",
+          "title": "string",
+          "seo_tags": "array",
+          "format": "pdf | png_bundle",
+          "status": "generated | reviewed | published"
+        }
+      },
+      "limitations": {
+        "scraping_risk": "medium (anti-bot systems en Etsy/Amazon)",
+        "data_precision": "approximate (no exact sales data available)",
+        "automation_limit": "no full autopublishing reliable sin riesgo de bans",
+        "market_saturation_risk": "medium-high en nichos low-content"
+      },
+      "cost_estimate_monthly": {
+        "vps": 5,
+        "apis": 20,
+        "llm_usage": 30,
+        "total_estimated": 55
+      },
+      "internal_score": 0,
+      "id": "market-signal-factory-v2",
+      "title": "Market Signal Product Factory (Realistic Implementation)",
+      "slug": "market-signal-factory-v2"
+    },
+    {
+      "viability_metrics": {
+        "implementation_ease": 7,
+        "success_probability": 8,
+        "resource_intensity": 3,
+        "time_to_mvp": 7,
+        "roi_potential": 9
+      },
+      "technical_stack": {
+        "framework": "Next.js",
+        "database": "MongoDB",
+        "apis_required": [
+          "BOE API / Scraper oficial",
+          "BDNS (Base de Datos Nacional de Subvenciones)",
+          "Sede Electrónica AEAT (datos fiscales agregados si disponibles)",
+          "INE API (datos empresariales agregados)",
+          "Registro Mercantil (CNAE + cuentas depositadas)"
+        ]
+      },
+      "business_logic": {
+        "problem": "La mayoría de ayudas públicas, subvenciones regionales y programas europeos tienen baja adopción por parte de empresas pequeñas y medianas debido a la fragmentación de la información, la complejidad del lenguaje administrativo y la falta de sistemas de alerta personalizados. Esto provoca que millones de euros en financiación pública se asignen tarde o se infrautilicen en sectores donde sí existe elegibilidad real pero desconocimiento total.",
+        "solution": "Un sistema de inteligencia administrativa que monitoriza en tiempo real nuevas convocatorias públicas (BOE, BDNS, comunidades autónomas) y las transforma en oportunidades estructuradas por perfil empresarial. El sistema clasifica automáticamente las ayudas, extrae requisitos técnicos, los normaliza y los cruza con perfiles empresariales agregados (CNAE, tamaño, sector, ubicación). Genera un ranking de elegibilidad y un dossier automático listo para presentación o derivación a gestoría.",
+        "monetization": [
+          "Fee por lead cualificado (venta de empresas 100% elegibles a gestorías o consultoras)",
+          "SaaS de alertas premium para asesorías fiscales y despachos",
+          "Pago por generación de dossier de subvención pre-rellenado",
+          "Licencia de uso del motor de matching a consultoras B2B",
+          "Revenue share sobre subvenciones tramitadas correctamente"
+        ]
+      },
+      "internal_score": 0,
+      "_id": "auto_generated_001",
+      "id": "public-funding-intelligence-003",
+      "title": "Public Funding Intelligence Engine",
+      "slug": "eu-spain-grant-matching-system",
+      "status": "Prototipo",
+      "priority": "low",
+      "categories": [
+        "GovTech",
+        "LegalTech",
+        "Data Intelligence"
+      ],
+      "description": "Sistema de análisis automatizado de subvenciones públicas que cruza convocatorias oficiales con perfiles empresariales para detectar elegibilidad y generar oportunidades de financiación estructuradas.",
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Ingesta de Convocatorias Públicas",
+          "details": "Scraping y parsing de BOE, BDNS y boletines autonómicos para extraer nuevas ayudas, subvenciones y programas de financiación.",
+          "_id": "step_001"
+        },
+        {
+          "step": 2,
+          "task": "Estructuración Semántica",
+          "details": "Conversión de texto legal en estructura normalizada: requisitos, CNAE válidos, importes, plazos y restricciones.",
+          "_id": "step_002"
+        },
+        {
+          "step": 3,
+          "task": "Normalización de Empresas",
+          "details": "Construcción de base de datos de perfiles empresariales usando CNAE, tamaño, facturación estimada y ubicación geográfica.",
+          "_id": "step_003"
+        },
+        {
+          "step": 4,
+          "task": "Motor de Matching",
+          "details": "Algoritmo de compatibilidad entre requisitos de subvención y perfiles empresariales para calcular elegibilidad y probabilidad de éxito.",
+          "_id": "step_004"
+        },
+        {
+          "step": 5,
+          "task": "Generación de Dossier",
+          "details": "Creación automática de documento estructurado con resumen de ayuda, requisitos cumplidos y pasos de solicitud.",
+          "_id": "step_005"
+        },
+        {
+          "step": 6,
+          "task": "Distribución de Oportunidades",
+          "details": "Envío de leads cualificados a gestorías, consultoras o usuarios finales mediante panel o API.",
+          "_id": "step_006"
+        }
+      ],
+      "data_schema_preview": {
+        "grant_id": "String",
+        "company_cnae": "String",
+        "eligibility_score": "Number (0-100)",
+        "grant_amount": "Number",
+        "application_deadline": "Date",
+        "status": "Enum ['detected', 'matched', 'sent', 'converted']"
+      },
+      "__v": 0,
+      "createdAt": "2026-05-11T00:00:00.000Z",
+      "updatedAt": "2026-05-11T00:00:00.000Z"
+    },
+    {
+      "viability_metrics": {
+        "implementation_ease": 8,
+        "success_probability": 7,
+        "resource_intensity": 2,
+        "time_to_mvp": 8,
+        "roi_potential": 8
+      },
+      "technical_stack": {
+        "framework": "Next.js + Node.js",
+        "database": "MongoDB",
+        "apis_required": [
+          "Etsy Search Scraper",
+          "Creative Market Scraper",
+          "Canva Automation / Puppeteer",
+          "OpenAI API / Ollama"
+        ]
+      },
+      "business_logic": {
+        "problem": "Miles de profesionales pequeños (terapeutas, agentes inmobiliarios, profesores, coaches, hosts de Airbnb, freelancers) necesitan constantemente documentos repetitivos, formularios y sistemas organizativos. La mayoría termina comprando packs digitales baratos en marketplaces porque crear todo desde cero consume demasiado tiempo. Sin embargo, gran parte de la oferta actual es genérica, poco especializada y hecha manualmente.",
+        "solution": "Una fábrica automatizada de bundles digitales que detecta nichos con demanda activa en marketplaces como Etsy o Creative Market y genera packs completos de documentos listos para usar. El sistema analiza búsquedas, reviews y productos más vendidos para detectar carencias específicas. Después genera automáticamente formularios, checklists, planners, hojas de cálculo, contratos básicos y assets organizativos adaptados a micro nichos concretos.",
+        "monetization": [
+          "Venta directa de bundles digitales en Etsy",
+          "Venta de packs premium en Gumroad",
+          "Distribución de templates en Creative Market",
+          "Licenciamiento de bundles a pequeñas agencias",
+          "Creación automatizada de múltiples variantes por nicho"
+        ]
+      },
+      "internal_score": 0,
+      "_id": "69fcfactorytemplate001",
+      "id": "template-bundle-factory-031",
+      "title": "Template Bundle Factory",
+      "slug": "automated-template-bundle-engine",
+      "status": "Prototipo",
+      "priority": "medium",
+      "categories": [
+        "Digital Assets",
+        "Automation",
+        "Marketplace Arbitrage"
+      ],
+      "description": "Sistema automatizado de generación de packs digitales especializados para marketplaces con demanda ya validada.",
+      "execution_pipeline": [
+        {
+          "step": 1,
+          "task": "Marketplace Demand Discovery",
+          "details": "Scraping de Etsy y Creative Market para detectar keywords con ventas altas, baja calidad media o reviews negativas repetidas.",
+          "_id": "step_001"
+        },
+        {
+          "step": 2,
+          "task": "Micro-Niche Detection",
+          "details": "Clasificación automática de nichos específicos con intención de compra clara y baja especialización de oferta.",
+          "_id": "step_002"
+        },
+        {
+          "step": 3,
+          "task": "Template Generation",
+          "details": "Generación automática de formularios, planners, checklists, hojas de cálculo y documentos mediante IA.",
+          "_id": "step_003"
+        },
+        {
+          "step": 4,
+          "task": "Bundle Packaging",
+          "details": "Agrupación automática de assets relacionados en packs coherentes y listos para marketplaces.",
+          "_id": "step_004"
+        },
+        {
+          "step": 5,
+          "task": "SEO Listing Optimization",
+          "details": "Generación de títulos, tags, thumbnails y descripciones optimizadas para Etsy y Creative Market.",
+          "_id": "step_005"
+        },
+        {
+          "step": 6,
+          "task": "Marketplace Publishing",
+          "details": "Publicación automatizada y tracking de ventas, favoritos y CTR de cada bundle.",
+          "_id": "step_006"
+        }
+      ],
+      "data_schema_preview": {
+        "bundle_name": "String",
+        "target_niche": "String",
+        "asset_count": "Number",
+        "marketplace": "String",
+        "sales_estimate": "Number",
+        "conversion_score": "Number (0-100)",
+        "status": "Enum ['generated', 'published', 'selling', 'inactive']"
+      },
+      "__v": 0,
+      "createdAt": "2026-05-12T00:00:00.000Z",
+      "updatedAt": "2026-05-12T00:00:00.000Z"
     }
   ]
 }

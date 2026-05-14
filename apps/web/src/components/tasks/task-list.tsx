@@ -1,13 +1,34 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useTransition } from "react";
 import Link from "next/link";
 import { Task } from "@/lib/tasks";
-import { Search, Filter, ArrowUpDown, LayoutGrid, List, Rocket, TrendingUp } from "lucide-react";
+import {
+    Search,
+    Filter,
+    ArrowUpDown,
+    LayoutGrid,
+    List,
+    Rocket,
+    TrendingUp,
+    FlaskConical,
+    Clock,
+    Construction,
+    CheckCircle2,
+    XOctagon,
+    Trash2,
+    Edit3,
+    AlertTriangle,
+    Download,
+    Sparkles
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AddTaskModal } from "./add-task-modal";
+import { deleteTask } from "@/app/actions/tasks";
+import { toast } from "sonner";
 
 interface TaskListProps {
     initialTasks: Task[];
@@ -20,6 +41,8 @@ export function TaskList({ initialTasks }: TaskListProps) {
     const [priorityFilter, setPriorityFilter] = useState("all");
     const [sortBy, setSortBy] = useState("default");
     const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+
+    const [isPending, startTransition] = useTransition();
 
     const categories = useMemo(() => {
         const allCats = initialTasks.flatMap((t) => t.categories || []);
@@ -44,10 +67,26 @@ export function TaskList({ initialTasks }: TaskListProps) {
             result.sort((a, b) => (b.viability_metrics?.roi_potential || 0) - (a.viability_metrics?.roi_potential || 0));
         } else if (sortBy === "difficulty") {
             result.sort((a, b) => (a.viability_metrics?.implementation_ease || 10) - (b.viability_metrics?.implementation_ease || 10));
+        } else if (sortBy === "score") {
+            result.sort((a, b) => (b.internal_score || 0) - (a.internal_score || 0));
         }
 
         return result;
     }, [initialTasks, search, statusFilter, priorityFilter, sortBy, categoryFilter]);
+
+    const handleDownloadJSON = () => {
+        const dataStr = JSON.stringify(filteredAndSortedTasks, null, 2);
+        const dataBlob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(dataBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `emi-tasks-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success("Listado exportado correctamente");
+    };
 
     return (
         <div className="space-y-8">
@@ -64,19 +103,31 @@ export function TaskList({ initialTasks }: TaskListProps) {
                         />
                     </div>
 
-                    <div className="flex items-center gap-2 bg-secondary/50 rounded-2xl p-1 border border-white/5 self-end lg:self-auto">
-                        <button
-                            onClick={() => setViewMode("grid")}
-                            className={`p-2 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-neutral-500 hover:text-neutral-300'}`}
+                    <div className="flex items-center gap-2 self-end lg:self-auto">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleDownloadJSON}
+                            className="h-9 px-4 rounded-xl border-white/5 hover:bg-white/5 text-neutral-400 hover:text-white flex items-center gap-2 text-[10px] font-black uppercase tracking-widest"
                         >
-                            <LayoutGrid size={18} />
-                        </button>
-                        <button
-                            onClick={() => setViewMode("list")}
-                            className={`p-2 rounded-xl transition-all ${viewMode === 'list' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-neutral-500 hover:text-neutral-300'}`}
-                        >
-                            <List size={18} />
-                        </button>
+                            <Download size={14} />
+                            Exportar JSON
+                        </Button>
+
+                        <div className="hidden sm:flex items-center gap-2 bg-secondary/50 rounded-2xl p-1 border border-white/5">
+                            <button
+                                onClick={() => setViewMode("grid")}
+                                className={`p-2 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-neutral-500 hover:text-neutral-300'}`}
+                            >
+                                <LayoutGrid size={18} />
+                            </button>
+                            <button
+                                onClick={() => setViewMode("list")}
+                                className={`p-2 rounded-xl transition-all ${viewMode === 'list' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-neutral-500 hover:text-neutral-300'}`}
+                            >
+                                <List size={18} />
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -87,8 +138,11 @@ export function TaskList({ initialTasks }: TaskListProps) {
                         onChange={(e) => setStatusFilter(e.target.value)}
                     >
                         <option value="all">TODOS LOS STATUS</option>
-                        <option value="active">ACTIVE</option>
-                        <option value="paused">PAUSED</option>
+                        <option value="Prototipo">PROTOTIPO</option>
+                        <option value="En estudio">EN ESTUDIO</option>
+                        <option value="En desarrollo">EN DESARROLLO</option>
+                        <option value="Activa">ACTIVA</option>
+                        <option value="Descartada">DESCARTADA</option>
                     </select>
 
                     <select
@@ -111,74 +165,103 @@ export function TaskList({ initialTasks }: TaskListProps) {
                         <option value="priority">PRIORIDAD</option>
                         <option value="roi">MEJOR ROI</option>
                         <option value="difficulty">MÁS FÁCIL</option>
+                        <option value="score">MEJOR SCORE</option>
                     </select>
                 </div>
             </div>
 
-            {/* Tasks Feed */}
             <section className={viewMode === 'grid' ? "grid gap-6 md:grid-cols-2" : "flex flex-col gap-4"}>
                 {filteredAndSortedTasks.map((t) => (
-                    <Link key={t.id} href={`/tareas/${t.slug}`} className="block group">
-                        <Card variant="outline" className="relative overflow-hidden p-6 hover:border-white/20 transition-all duration-500 bg-white/[0.02] border-white/5 shadow-2xl shadow-black/40">
-                            {/* Card Glow Effect */}
-                            <div className="absolute -right-20 -top-20 w-64 h-64 bg-primary/5 opacity-0 group-hover:opacity-100 blur-[80px] transition-opacity duration-700 pointer-events-none" />
+                    <div key={t.id} className="relative group">
+                        <Link href={`/tareas/${t.slug}`} className="block">
+                            <Card variant="outline" className="relative overflow-hidden p-4 sm:p-6 hover:border-white/20 transition-all duration-500 bg-white/[0.03] border-white/12 shadow-2xl shadow-black/40">
+                                {/* Card Glow Effect */}
+                                <div className="absolute -right-20 -top-20 w-64 h-64 bg-primary/5 opacity-0 group-hover:opacity-100 blur-[80px] transition-opacity duration-700 pointer-events-none" />
 
-                            <div className={`relative flex flex-col gap-6 ${viewMode === 'list' ? 'lg:flex-row lg:items-center lg:justify-between' : ''}`}>
-                                {/* Main Info */}
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-start justify-between gap-4">
-                                        <div className="space-y-1">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <Badge variant={t.priority === 'critical' ? 'error' : (t.priority === 'high' ? 'warning' : 'neutral')} className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded-sm">
-                                                    {t.priority}
-                                                </Badge>
-                                                <span className="text-[7px] sm:text-[8px] font-black uppercase text-neutral-500 tracking-[0.2em]">{t.status}</span>
+                                <div className={`relative flex flex-col gap-2 md:gap-6 ${viewMode === 'list' ? 'lg:flex-row lg:items-center lg:justify-between' : ''}`}>
+                                    {/* Main Info */}
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <Badge variant={t.priority === 'critical' ? 'error' : (t.priority === 'high' ? 'warning' : 'neutral')} className="text-[7px] sm:text-[8px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded-sm">
+                                                        {t.priority}
+                                                    </Badge>
+                                                    <div className={`flex items-center gap-1 text-[7px] sm:text-[8px] font-black uppercase tracking-[0.2em] ${t.status === 'Prototipo' ? 'text-purple-400' :
+                                                        t.status === 'En estudio' ? 'text-blue-400' :
+                                                            t.status === 'En desarrollo' ? 'text-amber-400' :
+                                                                t.status === 'Activa' ? 'text-emerald-400' :
+                                                                    'text-neutral-500'
+                                                        }`}>
+                                                        {t.status === 'Prototipo' && <FlaskConical size={10} />}
+                                                        {t.status === 'En estudio' && <Clock size={10} />}
+                                                        {t.status === 'En desarrollo' && <Construction size={10} />}
+                                                        {t.status === 'Activa' && <CheckCircle2 size={10} />}
+                                                        {t.status === 'Descartada' && <XOctagon size={10} />}
+                                                        {t.status}
+                                                    </div>
+                                                </div>
+                                                <h3 className="text-lg sm:text-xl font-bold text-white group-hover:text-primary transition-colors line-clamp-2 leading-tight pr-20">
+                                                    {t.title}
+                                                </h3>
+                                                {t.business_logic?.solution && (
+                                                    <p className="mt-1 sm:mt-1.5 text-[10px] sm:text-xs text-neutral-400 font-medium line-clamp-4 sm:line-clamp-3 leading-relaxed">
+                                                        {t.business_logic.solution}
+                                                    </p>
+                                                )}
                                             </div>
-                                            <h3 className="text-lg sm:text-xl font-bold text-white group-hover:text-primary transition-colors line-clamp-2 leading-tight">
-                                                {t.title}
-                                            </h3>
+                                            <div className="w-10 h-10 rounded-2xl bg-secondary/50 border border-white/5 flex items-center justify-center text-primary group-hover:scale-110 transition-transform duration-500 shrink-0">
+                                                <Rocket size={20} />
+                                            </div>
                                         </div>
-                                        <div className="w-10 h-10 rounded-2xl bg-secondary/50 border border-white/5 flex items-center justify-center text-primary group-hover:scale-110 transition-transform duration-500 shrink-0">
-                                            <Rocket size={20} />
+
+                                        <div className="flex flex-wrap gap-1.5 mt-3 sm:mt-2">
+                                            {(t.categories || []).map(cat => (
+                                                <Badge key={cat} variant="neutral" className="text-[8px] font-black uppercase tracking-[0.15em] px-2.5 py-1 bg-gradient-to-r from-white/10 to-transparent border border-white/10 text-neutral-300 shadow-sm backdrop-blur-md rounded-full flex items-center gap-1.5 group-hover:border-primary/30 group-hover:from-primary/10 transition-all duration-500">
+                                                    <div className="w-1 h-1 rounded-full bg-primary/70 shadow-[0_0_8px_rgba(var(--primary),0.8)]" />
+                                                    {cat}
+                                                </Badge>
+                                            ))}
                                         </div>
                                     </div>
 
-                                    <div className="flex flex-wrap gap-1.5 mt-4">
-                                        {(t.categories || []).map(cat => (
-                                            <Badge key={cat} variant="neutral" className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 bg-white/5 border-white/5 transition-colors group-hover:border-white/10 group-hover:bg-white/10">
-                                                {cat}
-                                            </Badge>
-                                        ))}
+                                    {/* Metrics - Forced Single Line on Mobile */}
+                                    <div className={`grid grid-cols-4 gap-2 sm:flex sm:items-center sm:gap-x-8 border-white/5 ${viewMode === 'list' ? 'lg:border-l lg:pl-8' : 'border-t pt-4'}`}>
+                                        <div className="flex flex-col items-start px-2 sm:px-0">
+                                            <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">ROI</span>
+                                            <div className="flex items-center gap-1.5 sm:gap-2">
+                                                <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]" />
+                                                <span className="text-sm sm:text-lg font-black text-white tabular-nums italic tracking-tighter">{t.viability_metrics?.roi_potential}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col items-start px-2 sm:px-0 border-x border-white/5 sm:border-none">
+                                            <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">Éxito</span>
+                                            <div className="flex items-center gap-1.5 sm:gap-2">
+                                                <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-primary shadow-[0_0_10px_rgba(25,113,255,0.4)]" />
+                                                <span className="text-sm sm:text-lg font-black text-white tabular-nums italic tracking-tighter">{t.viability_metrics?.success_probability}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col items-start px-2 sm:px-0">
+                                            <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">Dificultad</span>
+                                            <div className="flex items-center gap-1.5 sm:gap-2">
+                                                <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.4)]" />
+                                                <span className="text-sm sm:text-lg font-black text-white tabular-nums italic tracking-tighter">{10 - (t.viability_metrics?.implementation_ease || 0)}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col items-start px-2 sm:px-0 sm:ml-auto sm:items-end">
+                                            <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">Score</span>
+                                            <div className="flex items-center gap-1.5 sm:gap-2">
+                                                <Sparkles size={14} className="text-amber-500" />
+                                                <span className="text-sm sm:text-lg font-black italic tabular-nums bg-gradient-to-br from-amber-300 to-yellow-500 bg-clip-text text-transparent tracking-tighter">
+                                                    {(t.internal_score || 0)}/5
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-
-                                {/* Metrics - Improved Mobile Responsiveness */}
-                                <div className={`flex flex-wrap items-center gap-x-8 gap-y-4 border-white/5 ${viewMode === 'list' ? 'lg:border-l lg:pl-8' : 'mt-6 border-t pt-6'}`}>
-                                    <div className="flex flex-col items-start min-w-[70px]">
-                                        <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">ROI</span>
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]" />
-                                            <span className="text-sm sm:text-lg font-black text-white tabular-nums italic tracking-tighter">{t.viability_metrics?.roi_potential}</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-col items-start min-w-[70px]">
-                                        <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">Éxito</span>
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_10px_rgba(25,113,255,0.4)]" />
-                                            <span className="text-sm sm:text-lg font-black text-white tabular-nums italic tracking-tighter">{t.viability_metrics?.success_probability}</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-col items-start min-w-[70px]">
-                                        <span className="text-[7px] sm:text-[8px] uppercase text-neutral-500 font-extrabold tracking-[0.2em] leading-none mb-1.5 whitespace-nowrap">Dificultad</span>
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.4)]" />
-                                            <span className="text-sm sm:text-lg font-black text-white tabular-nums italic tracking-tighter">{10 - (t.viability_metrics?.implementation_ease || 0)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </Card>
-                    </Link>
+                            </Card>
+                        </Link>
+                    </div>
                 ))}
 
                 {filteredAndSortedTasks.length === 0 && (

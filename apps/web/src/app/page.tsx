@@ -11,16 +11,26 @@ import {
   LayoutGrid,
   TrendingUp,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  FlaskConical,
+  Clock,
+  Construction,
+  CheckCircle2,
+  XOctagon,
+  Activity,
+  Target,
+  Star
 } from "lucide-react";
+import { FinanceSummaryClient } from "@/components/finance/finance-summary-client";
 
-export default function Home() {
-  const tasks = getTasks();
+export default async function Home() {
+  const tasks = await getTasks();
 
   const highPriority = tasks.filter(t => t.priority === "high" || t.priority === "critical").length;
   const categoriesCount = Array.from(new Set(tasks.flatMap(t => t.categories || []))).length;
-  const activeTasks = tasks.filter(t => t.status === "active").length;
-  const avgROI = tasks.reduce((acc, t) => acc + (t.viability_metrics?.roi_potential || 0), 0) / tasks.length;
+  const activeTasks = tasks.filter(t => t.status === "Activa").length;
+  const avgROI = tasks.reduce((acc, t) => acc + (t.viability_metrics?.roi_potential || 0), 0) / tasks.length || 0;
+  const avgScore = tasks.reduce((acc, t) => acc + (t.internal_score || 0), 0) / tasks.length || 0;
 
   // Aggregate Data for Charts
   const tasksByCategory = Array.from(new Set(tasks.flatMap(t => t.categories || []))).map(cat => ({
@@ -30,13 +40,29 @@ export default function Home() {
       tasks.filter(t => (t.categories || []).includes(cat)).length || 0
   })).sort((a, b) => b.count - a.count);
 
-  const techEcosystem = Array.from(new Set(tasks.map(t => t.technical_stack.framework))).map(tech => ({
-    name: tech,
-    count: tasks.filter(t => t.technical_stack.framework === tech).length
-  })).sort((a, b) => b.count - a.count);
+  const priorityDistribution = [
+    { name: "Crítica", count: tasks.filter(t => t.priority === "critical").length, color: "from-rose-600 to-rose-400" },
+    { name: "Alta", count: tasks.filter(t => t.priority === "high").length, color: "from-amber-600 to-amber-400" },
+    { name: "Media", count: tasks.filter(t => t.priority === "medium").length, color: "from-blue-600 to-blue-400" },
+    { name: "Baja", count: tasks.filter(t => t.priority === "low").length, color: "from-emerald-600 to-emerald-400" }
+  ];
+
+  const statusDistribution = [
+    { name: "Prototipo", count: tasks.filter(t => t.status === "Prototipo").length, color: "text-purple-400", icon: <FlaskConical size={14} /> },
+    { name: "En estudio", count: tasks.filter(t => t.status === "En estudio").length, color: "text-blue-400", icon: <Clock size={14} /> },
+    { name: "En desarrollo", count: tasks.filter(t => t.status === "En desarrollo").length, color: "text-amber-400", icon: <Construction size={14} /> },
+    { name: "Activa", count: tasks.filter(t => t.status === "Activa").length, color: "text-emerald-400", icon: <CheckCircle2 size={14} /> },
+    { name: "Descartada", count: tasks.filter(t => t.status === "Descartada").length, color: "text-rose-400", icon: <XOctagon size={14} /> },
+  ];
+
+  const scoreDistribution = [5, 4, 3, 2, 1].map(s => ({
+    name: `${s} Estrellas`,
+    count: tasks.filter(t => t.internal_score === s).length,
+    percentage: (tasks.filter(t => t.internal_score === s).length / (tasks.length || 1)) * 100
+  }));
 
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
+    <div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
       {/* Welcome Header */}
       <header className="flex flex-col gap-2">
         <div className="flex items-center gap-2 text-primary">
@@ -52,7 +78,7 @@ export default function Home() {
       </header>
 
       {/* Quick Stats Grid */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={<Rocket size={20} />}
           label="Motores Totales"
@@ -89,6 +115,50 @@ export default function Home() {
             <Card variant="glass" className="p-6 h-[400px] flex flex-col gap-6 border-white/5 bg-white/[0.01]">
               <div className="flex items-center justify-between">
                 <div>
+                  <h3 className="font-bold text-sm">Estado del Pipeline</h3>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Ciclo de vida de inversión</p>
+                </div>
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <Activity size={16} />
+                </div>
+              </div>
+
+              <div className="flex-1 flex flex-col justify-center gap-4">
+                {statusDistribution.map((status) => {
+                  const total = tasks.length || 1;
+                  const percentage = (status.count / total) * 100;
+                  return (
+                    <div key={status.name} className="space-y-2">
+                      <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
+                        <div className="flex items-center gap-2">
+                          <span className={status.color}>{status.icon}</span>
+                          <span className="text-neutral-400">{status.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white">{status.count}</span>
+                          <span className="text-neutral-600">{percentage.toFixed(0)}%</span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full bg-gradient-to-r transition-all duration-1000 ${status.name === "Prototipo" ? "from-purple-600 to-purple-400" :
+                            status.name === "En estudio" ? "from-blue-600 to-blue-400" :
+                              status.name === "En desarrollo" ? "from-amber-600 to-amber-400" :
+                                status.name === "Activa" ? "from-emerald-600 to-emerald-400" :
+                                  "from-rose-600 to-rose-400"
+                            }`}
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            <Card variant="glass" className="p-6 h-[400px] flex flex-col gap-6 border-white/5 bg-white/[0.01]">
+              <div className="flex items-center justify-between">
+                <div>
                   <h3 className="font-bold text-sm">Distribución por Categoría</h3>
                   <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Motores cargados</p>
                 </div>
@@ -102,27 +172,106 @@ export default function Home() {
             <Card variant="glass" className="p-6 h-[400px] flex flex-col gap-6 border-white/5 bg-white/[0.01]">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-bold text-sm">Análisis de Alpha (ROI)</h3>
-                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Probabilidad de retorno</p>
+                  <h3 className="font-bold text-sm">Distribución por Prioridad</h3>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Criticidad operativa</p>
                 </div>
-                <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
-                  <TrendingUp size={16} />
+                <div className="p-2 rounded-lg bg-orange-500/10 text-orange-400">
+                  <Target size={16} />
                 </div>
               </div>
-              <AreaChart data={tasksByCategory} />
+              <PriorityChart data={priorityDistribution} totalTasks={tasks.length || 1} />
             </Card>
+          </div>
+        </section>
 
-            <Card variant="glass" className="p-6 h-[400px] flex flex-col gap-6 border-white/5 bg-white/[0.01]">
+        {/* Finance Snapshot */}
+        <section className="lg:col-span-12 flex flex-col gap-6">
+          <h2 className="text-xl font-bold tracking-tight">Finanzas</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-12">
+              <FinanceSummaryClient />
+            </div>
+          </div>
+        </section>
+
+        {/* Quality Evaluation Section */}
+        <section className="lg:col-span-12 flex flex-col gap-6">
+          <h2 className="text-xl font-bold tracking-tight">Evaluación de Calidad</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <Card variant="glass" className="lg:col-span-4 p-6 h-[400px] flex flex-col justify-between border-amber-500/10 bg-amber-500/[0.02]">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-bold text-sm">Ecosistema Tecnológico</h3>
-                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Frameworks predominantes</p>
+                  <h3 className="font-bold text-sm">Calificación Media</h3>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Nivel de confianza interno</p>
                 </div>
-                <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
-                  <Cpu size={16} />
+                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500">
+                  <Star size={16} />
                 </div>
               </div>
-              <TechChart data={techEcosystem} />
+
+              <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                <div className="text-6xl font-black italic tracking-tighter bg-gradient-to-br from-amber-400 to-yellow-600 bg-clip-text text-transparent">
+                  {avgScore.toFixed(1)}
+                </div>
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <Sparkles
+                      key={s}
+                      size={20}
+                      className={avgScore >= s ? "text-amber-500" : "text-neutral-800"}
+                      fill={avgScore >= s ? "currentColor" : "none"}
+                    />
+                  ))}
+                </div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-500 mt-2 text-center max-w-[150px]">
+                  Calidad general de los motores activos
+                </p>
+              </div>
+
+              <div className="pt-4 border-t border-white/5">
+                <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-neutral-500">
+                  <span>Score Alpha</span>
+                  <span className="text-amber-500">{(avgScore * 20).toFixed(0)}%</span>
+                </div>
+              </div>
+            </Card>
+
+            <Card variant="glass" className="lg:col-span-8 p-6 h-[400px] flex flex-col gap-6 border-white/5 bg-white/[0.01]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-sm">Distribución de Internal Score</h3>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-1">Evaluación de Calidad</p>
+                </div>
+                <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500">
+                  <Sparkles size={16} />
+                </div>
+              </div>
+              <div className="flex-1 flex flex-col justify-center gap-4">
+                {scoreDistribution.map((score, i) => (
+                  <div key={score.name} className="space-y-2">
+                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-0.5">
+                          {Array.from({ length: 5 - i }).map((_, idx) => (
+                            <Sparkles key={idx} size={8} className="text-amber-500" fill="currentColor" />
+                          ))}
+                        </div>
+                        <span className="text-neutral-400">{score.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white">{score.count}</span>
+                        <span className="text-neutral-600">{score.percentage.toFixed(0)}%</span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full transition-all duration-1000"
+                        style={{ width: `${score.percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </Card>
           </div>
         </section>
@@ -166,25 +315,29 @@ function BarChart({ data }: { data: any[] }) {
   );
 }
 
-function TechChart({ data }: { data: any[] }) {
-  const max = Math.max(...data.map(d => d.count), 1);
-
+function PriorityChart({ data, totalTasks }: { data: any[], totalTasks: number }) {
   return (
-    <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
-      {data.map((d, i) => (
-        <div key={d.name} className="space-y-2 group">
-          <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
-            <span className="text-neutral-400 group-hover:text-white transition-colors">{d.name}</span>
-            <span className="text-primary italic">{d.count}</span>
+    <div className="flex-1 flex flex-col justify-center gap-6">
+      {data.map((d, i) => {
+        const percentage = (d.count / totalTasks) * 100;
+        return (
+          <div key={d.name} className="space-y-2 group">
+            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+              <span className="text-neutral-400 group-hover:text-white transition-colors">{d.name}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-white">{d.count}</span>
+                <span className="text-neutral-600">{percentage.toFixed(0)}%</span>
+              </div>
+            </div>
+            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+              <div
+                className={`h-full bg-gradient-to-r ${d.color} rounded-full transition-all duration-1000`}
+                style={{ width: `${percentage}%`, animation: `fade-in 1s ease-out ${i * 0.1}s forwards` }}
+              />
+            </div>
           </div>
-          <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-purple-600 to-blue-500 rounded-full transition-all duration-1000"
-              style={{ width: `${(d.count / max) * 100}%`, animation: `fade-in 1s ease-out ${i * 0.1}s forwards` }}
-            />
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -275,7 +428,7 @@ function StatCard({ icon, label, value, trend, gradient }: {
   gradient: string
 }) {
   return (
-    <Card variant="outline" className="relative group overflow-hidden p-6 hover:border-white/20 transition-all duration-500 bg-white/[0.02] border-white/5">
+    <Card variant="outline" className="relative group overflow-hidden p-4 sm:p-6 hover:border-white/20 transition-all duration-500 bg-white/[0.02] border-white/5">
       {/* Background Glow */}
       <div className={`absolute -right-10 -top-10 w-32 h-32 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-10 blur-3xl transition-opacity duration-500`} />
 
@@ -286,11 +439,11 @@ function StatCard({ icon, label, value, trend, gradient }: {
         <div>
           <p className="text-[10px] font-black text-neutral-500 uppercase tracking-[0.2em]">{label}</p>
           <div className="flex items-baseline gap-2 mt-1">
-            <p className={`text-4xl font-black tracking-tighter bg-gradient-to-br ${gradient} bg-clip-text text-transparent italic tabular-nums`}>
+            <p className={`text-2xl sm:text-4xl font-black tracking-tighter bg-gradient-to-br ${gradient} bg-clip-text text-transparent italic tabular-nums`}>
               {value}
             </p>
             {trend && (
-              <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-neutral-400 uppercase tracking-tighter`}>
+              <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-neutral-400 uppercase tracking-tighter hidden sm:inline-block`}>
                 {trend}
               </span>
             )}
