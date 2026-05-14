@@ -238,7 +238,7 @@ export function KdpFactoryApp() {
                     </div>
                     <div className="space-y-1 text-xl font-black italic tracking-tighter text-white flex flex-col">
                         <span>Mandala Art</span>
-                        <span className="text-[9px] uppercase font-black text-purple-400 tracking-widest">+45% Demand</span>
+                        <span className="text-[11px] uppercase font-black text-purple-400 tracking-widest">+45% Demand</span>
                     </div>
                 </Card>
             </div>
@@ -288,13 +288,13 @@ export function KdpFactoryApp() {
                                     <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
                                 </div>
                                 {/* Tooltip */}
-                                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-white text-[9px] font-black text-black px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100 pointer-events-none shadow-2xl z-20">
+                                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-white text-[10px] font-black text-black px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100 pointer-events-none shadow-2xl z-20">
                                     {height}€
                                 </div>
                             </div>
                         ))}
                     </div>
-                    <div className="flex justify-between px-2 text-[8px] font-black text-neutral-600 uppercase tracking-widest pt-3 border-t border-white/5">
+                    <div className="flex justify-between px-2 text-[10px] font-black text-neutral-600 uppercase tracking-widest pt-3 border-t border-white/5">
                         {chartPeriod === "month" && (
                             <>
                                 <span>Semana 1</span>
@@ -329,9 +329,6 @@ export function KdpFactoryApp() {
                 </Card>
 
                 <Card variant="glass" className="p-8 border-white/5 bg-white/[0.01] space-y-8 flex flex-col justify-between relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-4 opacity-[0.03] rotate-12">
-                        <PieChart size={120} />
-                    </div>
                     <div className="space-y-6 relative">
                         <div className="space-y-1">
                             <h3 className="text-sm font-black text-white italic tracking-widest uppercase">Platform Split</h3>
@@ -361,7 +358,7 @@ export function KdpFactoryApp() {
 
                     <div className="p-5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 space-y-3 relative group/alert">
                         <div className="absolute inset-0 bg-indigo-500/5 opacity-0 group-hover/alert:opacity-100 transition-opacity duration-500" />
-                        <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                        <p className="text-[11px] font-black text-indigo-400 uppercase tracking-[0.05em] flex items-center gap-2">
                             <Lightbulb size={10} /> Smart Insight
                         </p>
                         <p className="text-[11px] text-neutral-400 leading-relaxed italic relative">
@@ -378,7 +375,7 @@ export function KdpFactoryApp() {
             {/* Catalog Filters Refined */}
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 px-2">
                 <div className="flex-1 w-full md:w-auto space-y-2">
-                    <label className="text-[8px] font-black uppercase tracking-widest text-neutral-500 ml-1">Filtrar por Categoría</label>
+                    <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1">Filtrar por Categoría</label>
                     <div className="relative group">
                         <div className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500 group-hover:text-indigo-400 transition-colors">
                             <Filter size={14} />
@@ -400,7 +397,7 @@ export function KdpFactoryApp() {
                 </div>
 
                 <div className="w-full md:w-auto space-y-2">
-                    <label className="text-[8px] font-black uppercase tracking-widest text-neutral-500 ml-1">Búsqueda rápida</label>
+                    <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1">Búsqueda rápida</label>
                     <div className="relative group">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-600 group-focus-within:text-white transition-colors" size={14} />
                         <input
@@ -433,7 +430,7 @@ export function KdpFactoryApp() {
                                     <div className="flex items-start justify-between">
                                         <div className="space-y-1">
                                             <div className="flex items-center gap-2">
-                                                <Badge variant="neutral" className="bg-indigo-500/10 border-indigo-500/20 text-indigo-400 text-[8px] font-black uppercase tracking-widest px-2.5">
+                                                <Badge variant="neutral" className="bg-indigo-500/10 border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-[0.05em] px-2.5">
                                                     {product.type}
                                                 </Badge>
                                                 <span className="text-[10px] font-medium text-neutral-700 font-mono">#{product.id.slice(-6)}</span>
@@ -455,7 +452,7 @@ export function KdpFactoryApp() {
                                     <div className="flex flex-wrap gap-2 pt-2">
                                         {product.platforms.map((plat) => (
                                             <div key={plat.name} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-white/10 transition-all group/plat cursor-default">
-                                                <span className="text-[9px] font-black uppercase text-neutral-600 group-hover/plat:text-neutral-400 tracking-tighter transition-colors">{plat.name}</span>
+                                                <span className="text-[10px] font-black uppercase text-neutral-600 group-hover/plat:text-neutral-400 tracking-tighter transition-colors">{plat.name}</span>
                                                 <div className="w-px h-2.5 bg-white/10" />
                                                 <span className="text-[11px] font-black italic tracking-tighter text-emerald-400 tabular-nums">
                                                     {plat.earnings.toFixed(2)}€
@@ -467,10 +464,10 @@ export function KdpFactoryApp() {
 
                                 <div className="flex md:flex-col justify-between items-end md:items-end gap-4 md:gap-6 md:w-48 md:border-l border-white/5 md:pl-8 pt-5 md:pt-0 border-t md:border-t-0">
                                     <div className="text-right space-y-0.5">
-                                        <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600 block">Total Profit</span>
+                                        <span className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-600 block">Total Profit</span>
                                         <span className="text-2xl md:text-3xl font-black italic tracking-tighter text-white tabular-nums">{product.totalEarnings.toFixed(2)}€</span>
                                     </div>
-                                    <Button variant="outline" className="h-9 md:h-10 px-4 md:w-full rounded-xl border-white/10 text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all shadow-xl shadow-white/5">
+                                    <Button variant="outline" className="h-9 md:h-10 px-4 md:w-full rounded-xl border-white/10 text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all shadow-xl shadow-white/5">
                                         Informe
                                     </Button>
                                 </div>
@@ -486,9 +483,6 @@ export function KdpFactoryApp() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <div className="lg:col-span-12">
                 <Card variant="glass" className="p-6 md:p-14 border-primary/20 bg-primary/5 space-y-10 shadow-[0_0_100px_rgba(25,113,255,0.08)] relative overflow-hidden rounded-[24px] md:rounded-[48px]">
-                    <div className="absolute -top-20 -right-20 p-10 opacity-5 pointer-events-none">
-                        <Wand2 size={400} />
-                    </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-start relative z-10">
                         <div className="space-y-10 order-2 md:order-1">
@@ -499,7 +493,7 @@ export function KdpFactoryApp() {
                                     </div>
                                     <div>
                                         <h2 className="text-3xl font-black italic tracking-tighter text-white uppercase leading-none">Generador Maestro</h2>
-                                        <p className="text-[9px] font-black tracking-widest text-primary uppercase mt-1 italic">Industrial Quality Engine v2.0</p>
+                                        <p className="text-[11px] font-black tracking-widest text-primary uppercase mt-1 italic">Industrial Quality Engine v2.0</p>
                                     </div>
                                 </div>
                                 <p className="text-sm text-neutral-400 font-medium leading-relaxed max-w-sm">
@@ -543,7 +537,7 @@ export function KdpFactoryApp() {
                             <div className="absolute -inset-1 bg-gradient-to-br from-primary/10 via-transparent to-indigo-500/10 blur-xl opacity-30" />
                             <div className="space-y-8 relative">
                                 <div className="space-y-4">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Tipo de Activo Digital</label>
+                                    <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1">Tipo de Activo Digital</label>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {PRODUCT_TYPES.map((type) => (
                                             <button
@@ -557,14 +551,14 @@ export function KdpFactoryApp() {
                                                 <div className={`p-3 rounded-xl ${type.bg} ${type.color} shadow-inner`}>
                                                     {type.icon}
                                                 </div>
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-left leading-none">{type.name}</span>
+                                                <span className="text-[11px] font-black uppercase tracking-[0.05em] text-left leading-none">{type.name}</span>
                                             </button>
                                         ))}
                                     </div>
                                 </div>
 
                                 <div className="space-y-3">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1 block mb-1">Proyecto Master Title</label>
+                                    <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1 block mb-1">Proyecto Master Title</label>
                                     <input
                                         type="text"
                                         value={newTitle}
@@ -575,7 +569,7 @@ export function KdpFactoryApp() {
                                 </div>
 
                                 <div className="space-y-3">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1 block mb-1">Descripción de Lanzamiento</label>
+                                    <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1 block mb-1">Descripción de Lanzamiento</label>
                                     <textarea
                                         value={newDesc}
                                         onChange={(e) => setNewDesc(e.target.value)}
