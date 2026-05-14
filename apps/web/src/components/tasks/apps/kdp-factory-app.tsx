@@ -79,20 +79,29 @@ const PRODUCT_TYPES = [
 const AI_MODELS = [
     // Mantener los modelos originales (algunos pueden estar más rate-limited / con licencias no-OSS).
     { id: "flux-schnell", name: "FLUX.1 [schnell]", provider: "Hugging Face", type: "Ultra High Quality", modelId: "black-forest-labs/FLUX.1-schnell" },
+    { id: "flux-dev", name: "FLUX.1 [dev]", provider: "Hugging Face", type: "Higher fidelity (may be gated)", modelId: "black-forest-labs/FLUX.1-dev" },
     { id: "sd-3.5", name: "Stable Diffusion 3.5", provider: "Hugging Face", type: "Versatile", modelId: "stabilityai/stable-diffusion-3.5-large-turbo" },
     { id: "openjourney-v4", name: "OpenJourney v4", provider: "Hugging Face", type: "Artistic/MJ Style", modelId: "prompthero/openjourney" },
-    { id: "google-imagen", name: "Google Imagen 3", provider: "Google", type: "Photorealistic", modelId: "google/imagen-3" },
+    { id: "google-gemini-2-5", name: "Google Gemini 2.5 Flash Image", provider: "Google", type: "Fast image gen", modelId: "gemini-2.5-flash-image" },
+    { id: "leonardo", name: "Leonardo (API)", provider: "Leonardo", type: "External API", modelId: "" },
 
     // Modelos con pesos públicos / licencias abiertas en Hugging Face (mejor base OSS).
     { id: "sdxl-base", name: "Stable Diffusion XL Base 1.0", provider: "Hugging Face", type: "General (OSS weights)", modelId: "stabilityai/stable-diffusion-xl-base-1.0" },
     { id: "sdxl-turbo", name: "SDXL Turbo", provider: "Hugging Face", type: "Fast (OSS weights)", modelId: "stabilityai/sdxl-turbo" },
     { id: "sd-1.5", name: "Stable Diffusion 1.5", provider: "Hugging Face", type: "Classic (OSS weights)", modelId: "runwayml/stable-diffusion-v1-5" },
     { id: "kandinsky-2.2", name: "Kandinsky 2.2", provider: "Hugging Face", type: "Creative", modelId: "ai-forever/Kandinsky-2.2" }
+    ,
+    // Coloring-book LoRA (SDXL) - puede requerir pipeline con LoRA; si HF Inference no lo soporta, caerá al fallback.
+    { id: "coloringbook-redmond", name: "ColoringBook.Redmond (LoRA)", provider: "Hugging Face", type: "Coloring Book (clean lines)", modelId: "artificialguybr/ColoringBookRedmond" },
+    { id: "coloringbook-redmond-v2", name: "ColoringBook.Redmond V2 (LoRA)", provider: "Hugging Face", type: "Coloring Book (clean lines)", modelId: "artificialguybr/ColoringBookRedmond-V2" }
 ];
 
 const AI_DIMENSIONS = [
     { id: "sq", name: "Square", ratio: "1:1", width: 1024, height: 1024 },
     { id: "pt", name: "Portrait", ratio: "4:5", width: 896, height: 1152 },
+    { id: "p23", name: "Portrait", ratio: "2:3", width: 832, height: 1248 },
+    { id: "p34", name: "Portrait", ratio: "3:4", width: 864, height: 1152 },
+    { id: "p79", name: "Portrait", ratio: "7:9", width: 896, height: 1152 },
     { id: "v", name: "Vertical", ratio: "9:16", width: 832, height: 1472 },
     { id: "ls", name: "Landscape", ratio: "16:9", width: 1152, height: 648 }
     ,
@@ -223,6 +232,9 @@ export function KdpFactoryApp() {
     const [bookFileName, setBookFileName] = useState("libro-kdp");
     const [isBuildingPdf, setIsBuildingPdf] = useState(false);
     const [isUpscaling, setIsUpscaling] = useState(false);
+    const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+    const [initImageDataUrl, setInitImageDataUrl] = useState<string | null>(null);
+    const [initImageStrength, setInitImageStrength] = useState(0.6);
 
     const downloadFile = (url: string, filename: string) => {
         const a = document.createElement("a");
@@ -252,6 +264,21 @@ export function KdpFactoryApp() {
         setIsImageLoading(true);
         setGeneratedImage(url);
         toast.success("Imagen cargada");
+    };
+
+    const setInitImageFromFile = async (file: File) => {
+        if (!file.type.startsWith("image/")) {
+            toast.error("Solo se aceptan imágenes");
+            return;
+        }
+        const reader = new FileReader();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+            reader.onerror = () => reject(new Error("read failed"));
+            reader.onload = () => resolve(String(reader.result));
+            reader.readAsDataURL(file);
+        });
+        setInitImageDataUrl(dataUrl);
+        toast.success("Imagen de referencia añadida");
     };
 
     const upscaleImageMax = async (
@@ -477,7 +504,13 @@ export function KdpFactoryApp() {
                     modelId: model?.modelId,
                     provider: model?.provider,
                     width: dimensions?.width,
-                    height: dimensions?.height
+                    height: dimensions?.height,
+                    initImage: initImageDataUrl
+                        ? {
+                            dataUrl: initImageDataUrl,
+                            strength: initImageStrength,
+                        }
+                        : undefined,
                 })
             });
 
@@ -951,27 +984,32 @@ export function KdpFactoryApp() {
                     <div className="space-y-6 relative z-10">
                         {/* Model & Dim Selectors Wrapper */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-3">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Modelo I.A.</label>
-                                <div className="relative group/select">
-                                    <select
-                                        value={selectedModel}
-                                        onChange={(e) => setSelectedModel(e.target.value)}
-                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl pl-4 pr-10 text-[10px] font-black uppercase text-white appearance-none cursor-pointer focus:border-amber-500/40 outline-none hover:bg-white/10 transition-all"
-                                    >
-                                        {AI_MODELS.map(m => (
-                                            <option key={m.id} value={m.id} className="bg-[#0a0a0a]">{m.name}</option>
-                                        ))}
-                                    </select>
-                                    <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
-                                </div>
-                            </div>
+	                            <div className="space-y-3">
+	                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Modelo I.A.</label>
+	                                <div className="relative group/select">
+	                                    <select
+	                                        value={selectedModel}
+	                                        onChange={(e) => setSelectedModel(e.target.value)}
+	                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl pl-4 pr-10 text-[10px] font-black uppercase text-white appearance-none cursor-pointer focus:border-amber-500/40 outline-none hover:bg-white/10 transition-all"
+	                                    >
+	                                        {AI_MODELS.map(m => (
+	                                            <option key={m.id} value={m.id} className="bg-[#0a0a0a]">
+	                                                {m.name} — {m.type}
+	                                            </option>
+	                                        ))}
+	                                    </select>
+	                                    <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
+	                                </div>
+	                                <div className="text-[10px] text-neutral-500 font-medium italic">
+	                                    {AI_MODELS.find(m => m.id === selectedModel)?.provider} • {AI_MODELS.find(m => m.id === selectedModel)?.type}
+	                                </div>
+	                            </div>
 
 	                            <div className="space-y-3">
 	                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Dimensiones</label>
 	                                {/* Quick presets (avoid overflow on mobile/tablet) */}
 	                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-	                                    {AI_DIMENSIONS.filter((d) => ["sq", "pt", "v", "ls"].includes(d.id)).map((d) => (
+	                                    {AI_DIMENSIONS.filter((d) => ["sq", "pt", "p23", "p34"].includes(d.id)).map((d) => (
 	                                        <button
 	                                            key={d.id}
 	                                            onClick={() => setSelectedDim(d.id)}
@@ -1001,8 +1039,8 @@ export function KdpFactoryApp() {
 	                            </div>
                         </div>
 
-                        <div className="space-y-3">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1 block">Prompt del Activo</label>
+	                        <div className="space-y-3">
+	                            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1 block">Prompt del Activo</label>
                             <textarea
                                 value={imagePrompt}
                                 onChange={(e) => setImagePrompt(e.target.value)}
@@ -1440,6 +1478,80 @@ export function KdpFactoryApp() {
 	                                <X size={18} />
 	                            </button>
 	                        </div>
+
+                            {/* Advanced options */}
+                            <div className="space-y-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAdvancedOptions((v) => !v)}
+                                    className="w-full h-11 rounded-2xl bg-white/5 border border-white/10 text-neutral-300 hover:bg-white/10 transition-all text-[10px] font-black uppercase tracking-widest"
+                                >
+                                    {showAdvancedOptions ? "Ocultar opciones avanzadas" : "Opciones avanzadas (imagen de referencia)"}
+                                </button>
+
+                                {showAdvancedOptions && (
+                                    <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
+                                        <div className="text-[10px] text-neutral-500 font-medium italic">
+                                            Pega una imagen (Ctrl/⌘+V) o arrástrala. Se enviará junto al prompt (Gemini/Leonardo).
+                                        </div>
+
+                                        <div
+                                            className="rounded-2xl border border-dashed border-white/15 bg-black/20 p-4 min-h-[120px] flex items-center justify-center text-center focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                                            tabIndex={0}
+                                            onDragOver={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                            }}
+                                            onDrop={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                const file = e.dataTransfer.files?.[0];
+                                                if (file) void setInitImageFromFile(file);
+                                            }}
+                                            onPaste={(e) => {
+                                                const items = Array.from(e.clipboardData?.items || []);
+                                                const imageItem = items.find((it) => it.kind === "file" && it.type.startsWith("image/"));
+                                                const file = imageItem?.getAsFile() || null;
+                                                if (file) void setInitImageFromFile(file);
+                                            }}
+                                        >
+                                            {initImageDataUrl ? (
+                                                <div className="w-full space-y-3">
+                                                    <img src={initImageDataUrl} alt="Referencia" className="max-h-48 mx-auto rounded-2xl object-contain" />
+                                                    <div className="flex gap-2">
+                                                        <Button
+                                                            onClick={() => setInitImageDataUrl(null)}
+                                                            variant="outline"
+                                                            className="flex-1 h-11 rounded-2xl border-white/10 bg-white/5 backdrop-blur-md text-[10px] font-black uppercase tracking-widest text-white hover:bg-white/10"
+                                                        >
+                                                            Quitar
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-1">
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-300">Imagen de referencia</p>
+                                                    <p className="text-[10px] text-neutral-600 font-medium italic">Arrastra o pega aquí</p>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Fuerza (Leonardo)</label>
+                                            <input
+                                                type="range"
+                                                min={0.1}
+                                                max={0.9}
+                                                step={0.05}
+                                                value={initImageStrength}
+                                                onChange={(e) => setInitImageStrength(Number(e.target.value))}
+                                                className="w-full"
+                                            />
+                                            <div className="text-[10px] text-neutral-500 font-medium italic">{initImageStrength.toFixed(2)}</div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                     </div>
                 </div>
             )}

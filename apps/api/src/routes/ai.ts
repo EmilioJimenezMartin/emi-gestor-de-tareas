@@ -24,9 +24,27 @@ function getRetryAfterSecondsFromError(err: any, fallbackSeconds: number) {
   return fallbackSeconds;
 }
 
+function gcd(a: number, b: number) {
+  let x = Math.abs(a);
+  let y = Math.abs(b);
+  while (y) {
+    const t = y;
+    y = x % y;
+    x = t;
+  }
+  return x || 1;
+}
+
+function ratioFromDims(width?: number, height?: number) {
+  const w = typeof width === "number" && width > 0 ? width : 1024;
+  const h = typeof height === "number" && height > 0 ? height : 1024;
+  const g = gcd(w, h);
+  return `${Math.round(w / g)}:${Math.round(h / g)}`;
+}
+
 export async function registerAIRoutes(app: FastifyInstance) {
     app.post("/ai/generate-image", async (request: any, reply) => {
-        const { prompt, modelId, provider, width, height } = request.body;
+        const { prompt, modelId, provider, width, height, initImage } = request.body;
 
         app.log.info(`API Proxy: Generating image with ${provider} (${modelId})`);
 
@@ -59,6 +77,215 @@ export async function registerAIRoutes(app: FastifyInstance) {
                 if (!apiKey && getMongoStatus() === "connected") {
                     const googleSetting = await Settings.findOne({ key: "GOOGLE_API_KEY" });
                     apiKey = googleSetting?.value || "";
+                }
+            } else if (provider === "Leonardo") {
+                apiKey = process.env.LEONARDO_API_KEY || "";
+                if (!apiKey && getMongoStatus() === "connected") {
+                    const leonardoSetting = await Settings.findOne({ key: "LEONARDO_API_KEY" });
+                    apiKey = leonardoSetting?.value || "";
+                }
+            }
+
+            // --- GOOGLE (GEMINI IMAGE) ---
+            if (provider === "Google" && apiKey) {
+                try {
+                    const geminiModel =
+                        typeof modelId === "string" && modelId.trim().startsWith("gemini-")
+                            ? modelId.trim()
+                            : "gemini-2.5-flash-image";
+                    const aspectRatio = ratioFromDims(width, height);
+
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent`;
+                    let parts: any[] = [{ text: prompt }];
+
+                    if (initImage?.dataUrl && typeof initImage.dataUrl === "string" && initImage.dataUrl.startsWith("data:")) {
+                        const match = initImage.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+                        if (match) {
+                            const mimeType = match[1];
+                            const b64 = match[2];
+                            parts = [
+                                { inlineData: { mimeType, data: b64 } },
+                                { text: prompt },
+                            ];
+                        }
+                    }
+
+                    const response = await axios({
+                        url,
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "x-goog-api-key": apiKey.trim(),
+                        },
+                        data: {
+                            contents: [
+                                {
+                                    parts,
+                                },
+                            ],
+                            generationConfig: {
+                                responseModalities: ["IMAGE"],
+                                responseFormat: {
+                                    image: { aspectRatio },
+                                },
+                            },
+                        },
+                        timeout: 45000,
+                    });
+
+                    const respParts =
+                        response.data?.candidates?.[0]?.content?.parts ||
+                        response.data?.candidates?.[0]?.content?.Parts ||
+                        [];
+
+                    const inline =
+                        respParts.find((p: any) => p?.inlineData?.data) ||
+                        respParts.find((p: any) => p?.inline_data?.data) ||
+                        null;
+
+                    const dataB64 = inline?.inlineData?.data || inline?.inline_data?.data;
+                    const mimeType =
+                        inline?.inlineData?.mimeType || inline?.inline_data?.mime_type || "image/png";
+
+                    if (typeof dataB64 === "string" && dataB64.length > 0) {
+                        const buf = Buffer.from(dataB64, "base64");
+                        return reply.type(mimeType).send(buf);
+                    }
+                    // If no image returned, fall through to fallback
+                    app.log.warn({ geminiModel }, "AI image: Gemini returned no image, trying fallback");
+                } catch (googleErr: any) {
+                    const status = googleErr?.response?.status;
+                    app.log.warn({ err: googleErr, status }, "AI image: Google Gemini failed, trying fallback");
+                }
+            }
+
+            // --- LEONARDO.AI ---
+            if (provider === "Leonardo" && apiKey) {
+                try {
+                    let initImageId: string | null = null;
+                    let initStrength: number | undefined = undefined;
+
+                    if (initImage?.dataUrl && typeof initImage.dataUrl === "string" && initImage.dataUrl.startsWith("data:")) {
+                        const match = initImage.dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+                        if (match) {
+                            const mimeType = match[1];
+                            const b64 = match[2];
+                            const buffer = Buffer.from(b64, "base64");
+                            const ext =
+                                mimeType === "image/png"
+                                    ? "png"
+                                    : mimeType === "image/webp"
+                                        ? "webp"
+                                        : mimeType === "image/jpeg" || mimeType === "image/jpg"
+                                            ? "jpg"
+                                            : "png";
+
+                            initStrength =
+                                typeof initImage?.strength === "number"
+                                    ? Math.min(0.9, Math.max(0.1, initImage.strength))
+                                    : 0.6;
+
+                            // 1) Request presigned upload
+                            const prep = await axios({
+                                url: "https://cloud.leonardo.ai/api/rest/v1/init-image",
+                                method: "POST",
+                                headers: {
+                                    accept: "application/json",
+                                    authorization: `Bearer ${apiKey.trim()}`,
+                                    "content-type": "application/json",
+                                },
+                                data: { extension: ext },
+                                timeout: 30000,
+                            });
+
+                            const uploadInitImage =
+                                prep.data?.uploadInitImage ||
+                                prep.data?.data?.uploadInitImage ||
+                                prep.data?.initImage ||
+                                prep.data;
+
+                            const uploadUrl = uploadInitImage?.url || uploadInitImage?.uploadUrl || uploadInitImage?.fields?.url;
+                            const fields = uploadInitImage?.fields || uploadInitImage?.uploadFields;
+                            const id = uploadInitImage?.id || uploadInitImage?.imageId;
+
+                            if (typeof uploadUrl === "string" && fields && id) {
+                                const form = new FormData();
+                                for (const [k, v] of Object.entries(fields)) {
+                                    if (typeof v === "string") form.append(k, v);
+                                }
+                                form.append("file", new Blob([buffer], { type: mimeType }), `init.${ext}`);
+
+                                const upRes = await fetch(uploadUrl, { method: "POST", body: form as any });
+                                if (!upRes.ok) throw new Error(`Leonardo init-image upload failed: ${upRes.status}`);
+
+                                initImageId = String(id);
+                            }
+                        }
+                    }
+
+                    const createResp = await axios({
+                        url: "https://cloud.leonardo.ai/api/rest/v1/generations",
+                        method: "POST",
+                        headers: {
+                            accept: "application/json",
+                            authorization: `Bearer ${apiKey.trim()}`,
+                            "content-type": "application/json",
+                        },
+                        data: {
+                            prompt,
+                            width: typeof width === "number" ? width : 1024,
+                            height: typeof height === "number" ? height : 1024,
+                            num_images: 1,
+                            ...(typeof modelId === "string" && modelId.trim().length > 0 ? { modelId: modelId.trim() } : {}),
+                            ...(initImageId ? { init_image_id: initImageId, init_strength: initStrength } : {}),
+                        },
+                        timeout: 45000,
+                    });
+
+                    const generationId =
+                        createResp.data?.sdGenerationJob?.generationId ||
+                        createResp.data?.generationId ||
+                        createResp.data?.data?.generationId;
+
+                    if (!generationId) throw new Error("Leonardo: no generationId returned");
+
+                    const startedAt = Date.now();
+                    const timeoutMs = 90000;
+                    let imageUrl: string | null = null;
+
+                    while (Date.now() - startedAt < timeoutMs) {
+                        const statusResp = await axios({
+                            url: `https://cloud.leonardo.ai/api/rest/v1/generations/${encodeURIComponent(String(generationId))}`,
+                            method: "GET",
+                            headers: {
+                                accept: "application/json",
+                                authorization: `Bearer ${apiKey.trim()}`,
+                            },
+                            timeout: 20000,
+                        });
+
+                        const imgs = statusResp.data?.generations_by_pk?.generated_images;
+                        const urlCandidate = imgs?.[0]?.url;
+                        if (typeof urlCandidate === "string" && urlCandidate.length > 0) {
+                            imageUrl = urlCandidate;
+                            break;
+                        }
+                        await new Promise((r) => setTimeout(r, 2000));
+                    }
+
+                    if (!imageUrl) throw new Error("Leonardo: generation timed out");
+
+                    const imgResp = await axios({
+                        url: imageUrl,
+                        method: "GET",
+                        responseType: "arraybuffer",
+                        timeout: 30000,
+                    });
+
+                    return reply.type("image/png").send(Buffer.from(imgResp.data));
+                } catch (leoErr: any) {
+                    const status = leoErr?.response?.status;
+                    app.log.warn({ err: leoErr, status }, "AI image: Leonardo failed, trying fallback");
                 }
             }
 
