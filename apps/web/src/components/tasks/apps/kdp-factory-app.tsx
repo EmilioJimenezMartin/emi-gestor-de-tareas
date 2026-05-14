@@ -212,10 +212,12 @@ export function KdpFactoryApp() {
     const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [vaultImages, setVaultImages] = useState<{ url: string, model: string, dim: string }[]>([]);
     const generatedImageObjectUrlRef = useRef<string | null>(null);
+    const previewImageObjectUrlRef = useRef<string | null>(null);
     const [bookEditorOpen, setBookEditorOpen] = useState(false);
     const [bookFooterText, setBookFooterText] = useState("");
     const [bookFileName, setBookFileName] = useState("libro-kdp");
     const [isBuildingPdf, setIsBuildingPdf] = useState(false);
+    const [isUpscaling, setIsUpscaling] = useState(false);
 
     const downloadFile = (url: string, filename: string) => {
         const a = document.createElement("a");
@@ -245,6 +247,100 @@ export function KdpFactoryApp() {
         setIsImageLoading(true);
         setGeneratedImage(url);
         toast.success("Imagen cargada");
+    };
+
+    const upscaleImageMax = async (
+        url: string,
+        opts?: { setAsGenerated?: boolean; setAsPreview?: boolean }
+    ) => {
+        setIsUpscaling(true);
+        try {
+            const res = await fetch(url);
+            const blob = await res.blob();
+            if (!blob.type.startsWith("image/")) {
+                toast.error("La fuente no es una imagen válida");
+                return;
+            }
+
+            const srcUrl = URL.createObjectURL(blob);
+            try {
+                const img = new Image();
+                img.decoding = "async";
+                img.src = srcUrl;
+                await new Promise<void>((resolve, reject) => {
+                    img.onload = () => resolve();
+                    img.onerror = () => reject(new Error("No se pudo cargar la imagen"));
+                });
+
+                const srcW = img.naturalWidth || img.width;
+                const srcH = img.naturalHeight || img.height;
+                if (!srcW || !srcH) {
+                    toast.error("No se pudo leer el tamaño de la imagen");
+                    return;
+                }
+
+                const maxSide = Math.max(srcW, srcH);
+                const maxDim = 4096; // límite razonable para navegador/memoria
+                const maxFactorByDim = Math.max(1, Math.floor(maxDim / maxSide));
+                const factor = Math.min(4, maxFactorByDim);
+
+                if (factor <= 1) {
+                    toast.info("La imagen ya está al máximo razonable");
+                    return;
+                }
+
+                const outW = Math.round(srcW * factor);
+                const outH = Math.round(srcH * factor);
+
+                const canvas = document.createElement("canvas");
+                canvas.width = outW;
+                canvas.height = outH;
+                const ctx = canvas.getContext("2d");
+                if (!ctx) {
+                    toast.error("No se pudo inicializar el canvas");
+                    return;
+                }
+                ctx.imageSmoothingEnabled = true;
+                // @ts-expect-error - non-standard but supported in most browsers
+                if ("imageSmoothingQuality" in ctx) ctx.imageSmoothingQuality = "high";
+                ctx.drawImage(img, 0, 0, outW, outH);
+
+                const outBlob: Blob | null = await new Promise((resolve) =>
+                    canvas.toBlob((b) => resolve(b), "image/png", 1)
+                );
+                if (!outBlob) {
+                    toast.error("No se pudo exportar la imagen");
+                    return;
+                }
+
+                const outUrl = URL.createObjectURL(outBlob);
+                if (opts?.setAsGenerated) {
+                    if (generatedImageObjectUrlRef.current) {
+                        URL.revokeObjectURL(generatedImageObjectUrlRef.current);
+                        generatedImageObjectUrlRef.current = null;
+                    }
+                    generatedImageObjectUrlRef.current = outUrl;
+                    setIsImageLoading(true);
+                    setGeneratedImage(outUrl);
+                }
+                if (opts?.setAsPreview) {
+                    if (previewImageObjectUrlRef.current) {
+                        URL.revokeObjectURL(previewImageObjectUrlRef.current);
+                        previewImageObjectUrlRef.current = null;
+                    }
+                    previewImageObjectUrlRef.current = outUrl;
+                    setPreviewImage(outUrl);
+                }
+                toast.success(`Upscale x${factor} aplicado`);
+            } finally {
+                URL.revokeObjectURL(srcUrl);
+            }
+        } catch (e) {
+            console.error(e);
+            toast.error("No se pudo mejorar la calidad");
+        } finally {
+            setIsUpscaling(false);
+        }
     };
 
     const ensureObjectUrl = async (url: string) => {
@@ -340,6 +436,10 @@ export function KdpFactoryApp() {
             if (generatedImageObjectUrlRef.current) {
                 URL.revokeObjectURL(generatedImageObjectUrlRef.current);
                 generatedImageObjectUrlRef.current = null;
+            }
+            if (previewImageObjectUrlRef.current) {
+                URL.revokeObjectURL(previewImageObjectUrlRef.current);
+                previewImageObjectUrlRef.current = null;
             }
         };
     }, []);
@@ -964,28 +1064,37 @@ export function KdpFactoryApp() {
                                                 {AI_MODELS.find(m => m.id === selectedModel)?.name} • {AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio}
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={() => {
-                                                    const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
-                                                    const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
-                                                    downloadPng(generatedImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
-                                                }}
-                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
-                                                aria-label="Descargar imagen"
-                                                title="Descargar"
-                                            >
-                                                <Download size={18} />
-                                            </button>
-                                            <button
-                                                onClick={() => setGeneratedImage(null)}
-                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
-                                                aria-label="Cerrar"
-                                                title="Cerrar"
-                                            >
-                                                <X size={18} />
-                                            </button>
-                                        </div>
+	                                        <div className="flex items-center gap-2">
+	                                            <button
+	                                                onClick={() => {
+	                                                    const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
+	                                                    const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
+	                                                    downloadPng(generatedImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
+	                                                }}
+	                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
+	                                                aria-label="Descargar imagen"
+	                                                title="Descargar"
+	                                            >
+	                                                <Download size={18} />
+	                                            </button>
+	                                            <button
+	                                                onClick={() => upscaleImageMax(generatedImage, { setAsGenerated: true })}
+	                                                disabled={isUpscaling}
+	                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+	                                                aria-label="Mejorar calidad (Upscale)"
+	                                                title="Mejorar calidad"
+	                                            >
+	                                                <Sparkles size={18} />
+	                                            </button>
+	                                            <button
+	                                                onClick={() => setGeneratedImage(null)}
+	                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
+	                                                aria-label="Cerrar"
+	                                                title="Cerrar"
+	                                            >
+	                                                <X size={18} />
+	                                            </button>
+	                                        </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <Button
@@ -1049,12 +1158,12 @@ export function KdpFactoryApp() {
                                 <p className="text-[10px] text-neutral-600 font-medium italic">Sesión actual: {vaultImages.length} activos conservados</p>
                             </div>
                         </div>
-                        <Button
-                            onClick={() => setBookEditorOpen(true)}
-                            className="h-10 rounded-2xl bg-white/10 border border-white/10 text-white hover:bg-white hover:text-black transition-all text-[10px] font-black uppercase tracking-widest"
-                        >
-                            Crear Libro PDF
-                        </Button>
+	                        <Button
+	                            onClick={() => setBookEditorOpen(true)}
+	                            className="h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-100 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest shadow-[0_10px_30px_rgba(245,158,11,0.12)]"
+	                        >
+	                            Crear Libro PDF
+	                        </Button>
                     </div>
 
                     <div className="flex gap-5 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
@@ -1278,28 +1387,37 @@ export function KdpFactoryApp() {
                                 className="block max-w-full max-h-[85vh] w-auto h-auto object-contain bg-black rounded-2xl"
                             />
                         </div>
-                        <div className="absolute top-4 right-4 flex gap-2">
-                            <button
-                                onClick={() => {
-                                    const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
-                                    const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
-                                    downloadPng(previewImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
-                                }}
-                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
-                                aria-label="Descargar imagen"
-                                title="Descargar"
-                            >
-                                <Download size={18} />
-                            </button>
-                            <button
-                                onClick={() => setPreviewImage(null)}
-                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
-                                aria-label="Cerrar vista previa"
-                                title="Cerrar"
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
+	                        <div className="absolute top-4 right-4 flex gap-2">
+	                            <button
+	                                onClick={() => {
+	                                    const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
+	                                    const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
+	                                    downloadPng(previewImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
+	                                }}
+	                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
+	                                aria-label="Descargar imagen"
+	                                title="Descargar"
+	                            >
+	                                <Download size={18} />
+	                            </button>
+	                            <button
+	                                onClick={() => upscaleImageMax(previewImage, { setAsPreview: true })}
+	                                disabled={isUpscaling}
+	                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+	                                aria-label="Mejorar calidad (Upscale)"
+	                                title="Mejorar calidad"
+	                            >
+	                                <Sparkles size={18} />
+	                            </button>
+	                            <button
+	                                onClick={() => setPreviewImage(null)}
+	                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
+	                                aria-label="Cerrar vista previa"
+	                                title="Cerrar"
+	                            >
+	                                <X size={18} />
+	                            </button>
+	                        </div>
                     </div>
                 </div>
             )}
@@ -1313,7 +1431,7 @@ export function KdpFactoryApp() {
                     aria-modal="true"
                 >
                     <div
-                        className="relative w-full max-w-6xl rounded-3xl border border-white/10 bg-[#0a0a0a]/80 overflow-hidden"
+                        className="relative w-full max-w-6xl max-h-[90vh] rounded-3xl border border-white/10 bg-[#0a0a0a]/80 overflow-hidden flex flex-col"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="p-6 md:p-8 border-b border-white/10 flex items-center justify-between gap-4">
@@ -1340,7 +1458,7 @@ export function KdpFactoryApp() {
                             </div>
                         </div>
 
-                        <div className="p-6 md:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        <div className="p-4 md:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 overflow-y-auto">
                             <div className="lg:col-span-4 space-y-5">
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Nombre del archivo</label>
