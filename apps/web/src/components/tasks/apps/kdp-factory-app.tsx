@@ -95,6 +95,11 @@ const AI_DIMENSIONS = [
     { id: "pt", name: "Portrait", ratio: "4:5", width: 896, height: 1152 },
     { id: "v", name: "Vertical", ratio: "9:16", width: 832, height: 1472 },
     { id: "ls", name: "Landscape", ratio: "16:9", width: 1152, height: 648 }
+    ,
+    // A4 portrait presets (good fit for the PDF export; no deformation, maintains aspect ratio)
+    { id: "a4-150", name: "A4 (150 DPI)", ratio: "A4", width: 1240, height: 1754 },
+    { id: "a4-200", name: "A4 (200 DPI)", ratio: "A4", width: 1654, height: 2339 },
+    { id: "a4-300", name: "A4 (300 DPI)", ratio: "A4", width: 2480, height: 3508 }
 ];
 
 const PLATFORMS = ["Amazon KDP", "Etsy", "Printify", "Creative Fabrica"];
@@ -962,21 +967,38 @@ export function KdpFactoryApp() {
                                 </div>
                             </div>
 
-                            <div className="space-y-3">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Dimensiones</label>
-                                <div className="flex gap-2">
-                                    {AI_DIMENSIONS.map(d => (
-                                        <button
-                                            key={d.id}
-                                            onClick={() => setSelectedDim(d.id)}
-                                            className={`flex-1 h-12 rounded-xl border flex items-center justify-center gap-2 transition-all ${selectedDim === d.id ? "bg-white text-black border-white" : "bg-white/5 border-white/10 text-neutral-500 hover:bg-white/10"}`}
-                                        >
-                                            {d.id === "sq" ? <Monitor size={14} /> : d.id === "ls" ? <Maximize size={14} className="rotate-90" /> : <Maximize size={14} />}
-                                            <span className="text-[9px] font-black uppercase">{d.ratio}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
+	                            <div className="space-y-3">
+	                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Dimensiones</label>
+	                                {/* Quick presets (avoid overflow on mobile/tablet) */}
+	                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+	                                    {AI_DIMENSIONS.filter((d) => ["sq", "pt", "v", "ls"].includes(d.id)).map((d) => (
+	                                        <button
+	                                            key={d.id}
+	                                            onClick={() => setSelectedDim(d.id)}
+	                                            className={`h-12 rounded-xl border flex items-center justify-center gap-2 transition-all ${selectedDim === d.id ? "bg-white text-black border-white" : "bg-white/5 border-white/10 text-neutral-500 hover:bg-white/10"}`}
+	                                        >
+	                                            {d.id === "sq" ? <Monitor size={14} /> : d.id === "ls" ? <Maximize size={14} className="rotate-90" /> : <Maximize size={14} />}
+	                                            <span className="text-[9px] font-black uppercase">{d.ratio}</span>
+	                                        </button>
+	                                    ))}
+	                                </div>
+
+	                                {/* Full list selector (includes A4 presets) */}
+	                                <div className="relative group/select">
+	                                    <select
+	                                        value={selectedDim}
+	                                        onChange={(e) => setSelectedDim(e.target.value)}
+	                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl pl-4 pr-10 text-[10px] font-black uppercase text-white appearance-none cursor-pointer focus:border-amber-500/40 outline-none hover:bg-white/10 transition-all"
+	                                    >
+	                                        {AI_DIMENSIONS.map((d) => (
+	                                            <option key={d.id} value={d.id} className="bg-[#0a0a0a]">
+	                                                {d.name} ({d.width}×{d.height})
+	                                            </option>
+	                                        ))}
+	                                    </select>
+	                                    <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
+	                                </div>
+	                            </div>
                         </div>
 
                         <div className="space-y-3">
