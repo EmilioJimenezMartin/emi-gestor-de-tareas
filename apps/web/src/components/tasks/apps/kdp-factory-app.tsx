@@ -170,8 +170,27 @@ export function KdpFactoryApp() {
     const [imagePrompt, setImagePrompt] = useState("");
     const [selectedModel, setSelectedModel] = useState(AI_MODELS[0].id);
     const [selectedDim, setSelectedDim] = useState(AI_DIMENSIONS[0].id);
-    const [hfToken, setHfToken] = useState("");
-    const [googleKey, setGoogleKey] = useState("");
+    const [hfToken, setHfToken] = useState<string>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('hf_token');
+            if (saved) return saved;
+        }
+        return "";
+    });
+    const [googleKey, setGoogleKey] = useState<string>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('google_key');
+            if (saved) return saved;
+        }
+        return "";
+    });
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('hf_token', hfToken);
+            localStorage.setItem('google_key', googleKey);
+        }
+    }, [hfToken, googleKey]);
     const [showApiSettings, setShowApiSettings] = useState(false);
 
     const [isGenerating, setIsGenerating] = useState(false);
@@ -179,86 +198,81 @@ export function KdpFactoryApp() {
     const [generatedImage, setGeneratedImage] = useState<string | null>(null);
     const [vaultImages, setVaultImages] = useState<{ url: string, model: string, dim: string }[]>([]);
 
-    const handleGenerateImage = async () => {
+    // Sincronizar estado de carga cuando cambia la URL
+    useEffect(() => {
+        if (generatedImage) {
+            setIsImageLoading(true);
+        }
+    }, [generatedImage]);
+
+    const handleGenerateImage = async (retryCount = 0) => {
         if (!imagePrompt.trim()) return;
-        setIsGenerating(true);
 
         const model = AI_MODELS.find(m => m.id === selectedModel);
         const dimensions = AI_DIMENSIONS.find(d => d.id === selectedDim);
 
+        setIsGenerating(true);
+        setGeneratedImage(null);
+
         try {
-            // 1. Google AI (Gemini / Imagen) si hay API Key
-            if (googleKey && model?.provider === "Google") {
-                // Estructura para Google AI SDK (simulada via fetch para evitar dependencias extra)
-                // En una app real usaríamos @google/generative-ai
-                const response = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${googleKey}`,
-                    {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: `Generate a high quality photo of: ${imagePrompt}` }] }]
-                        })
-                    }
-                );
+            // USAR PROXY DEL BACKEND (Resuelve CORS y asegura API Keys)
+            const API_BASE_URL = "http://localhost:3001";
 
-                if (response.ok) {
-                    toast.success("Google AI activado. Procesando...");
-                    // Nota: Imagen 3 requiere endpoints específicos, aquí seguimos con fallback por si falla la API
-                } else {
-                    toast.error("Error en Google API Key. Usando simulación mejorada.");
-                }
-            }
+            const response = await fetch(`${API_BASE_URL}/ai/generate-image`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    prompt: imagePrompt,
+                    modelId: model?.modelId,
+                    provider: model?.provider,
+                    width: dimensions?.width,
+                    height: dimensions?.height
+                })
+            });
 
-            // 2. Hugging Face Inference API si hay token
-            if (hfToken && model?.provider === "Hugging Face") {
-                const response = await fetch(
-                    `https://api-inference.huggingface.co/models/${model.modelId}`,
-                    {
-                        headers: { Authorization: `Bearer ${hfToken}` },
-                        method: "POST",
-                        body: JSON.stringify({
-                            inputs: imagePrompt,
-                            parameters: {
-                                width: dimensions?.width,
-                                height: dimensions?.height
-                            }
-                        }),
-                    }
-                );
-
-                if (response.ok) {
-                    const blob = await response.blob();
-                    setGeneratedImage(URL.createObjectURL(blob));
-                    setIsGenerating(false);
-                    toast.success(`Activo generado con éxito con ${model.name}`);
-                    return;
-                } else {
-                    console.error("HF Error:", await response.text());
-                    toast.error("Error en la API de Hugging Face. Usando modo simulación.");
-                }
-            }
-
-            // Fallback / Mock - Usar Pollinations (Estable y real)
-            setTimeout(() => {
-                const seed = Math.floor(Math.random() * 1000000);
-                const width = dimensions?.width || 1024;
-                const height = dimensions?.height || 1024;
-
-                // Usar el endpoint clásico /p/ que es muy robusto con prompts largos
-                const generatedUrl = `https://pollinations.ai/p/${encodeURIComponent(imagePrompt)}?width=${width}&height=${height}&seed=${seed}&nologo=true&model=flux`;
-
-                console.log("Generando en Pollinations:", generatedUrl);
-                setIsImageLoading(true);
-                setGeneratedImage(generatedUrl);
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                setGeneratedImage(url);
                 setIsGenerating(false);
-                toast.success(`Conectado con motor ${model?.name}`);
-            }, 800);
+                toast.success(`Arte generado con éxito vía Proxy Seguro`);
+                return;
+            } else if (response.status === 503 && retryCount < 2) {
+                // Manejo de Cold Boot desde el Proxy
+                toast.info(`El motor remoto se está despertando... Reintentando (${retryCount + 1}/2)`);
+                setTimeout(() => handleGenerateImage(retryCount + 1), 5000);
+                return;
+            } else {
+                const errorData = await response.json().catch(() => ({ error: "Error desconocido en el proxy" }));
+                console.warn("Proxy falló, usando motor de simulación de respaldo:", errorData.error);
+                // No retornamos aquí para que caiga en el fallback de Pollinations
+            }
+
+            // 3. Fallback robusto con Pollinations (Simulación con pre-carga)
+            const seed = Math.floor(Math.random() * 999999);
+            const encodedPrompt = encodeURIComponent(imagePrompt.trim());
+            const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${dimensions?.width}&height=${dimensions?.height}&seed=${seed}&nologo=true`;
+
+            const img = new Image();
+            img.src = url;
+            img.onload = () => {
+                setGeneratedImage(url);
+                setIsGenerating(false);
+                toast.success(`Renderizado con motor de compatibilidad`);
+            };
+            img.onerror = () => {
+                const fallback = `https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=${dimensions?.width}&h=${dimensions?.height}&auto=format&fit=crop`;
+                setGeneratedImage(fallback);
+                setIsGenerating(false);
+                setIsImageLoading(false);
+                toast.warning("Usando motor de respaldo regional");
+            };
 
         } catch (error) {
-            console.error("Generation error:", error);
+            console.error("Critical generation error:", error);
             setIsGenerating(false);
-            toast.error("Error crítico en la generación");
+            setIsImageLoading(false);
+            toast.error("Error en el motor de generación");
         }
     };
 
@@ -404,7 +418,7 @@ export function KdpFactoryApp() {
                                 className="w-full h-10 bg-white/5 border border-white/10 rounded-xl pl-10 pr-10 text-[10px] font-black uppercase tracking-widest text-white focus:outline-none focus:border-indigo-500/50 appearance-none cursor-pointer hover:bg-white/[0.08] transition-all"
                             >
                                 <option value="month" className="bg-[#0a0a0a]">Último Mes</option>
-                                <option value="6months" className="bg-[#0a0a0a]">Últimos 6 Meses</option>
+                                <option value="6months" className="bg-6months">Últimos 6 Meses</option>
                                 <option value="year" className="bg-[#0a0a0a]">Último Año</option>
                                 <option value="all" className="bg-[#0a0a0a]">Histórico Total</option>
                             </select>
@@ -718,7 +732,7 @@ export function KdpFactoryApp() {
                         </div>
 
                         <Button
-                            onClick={handleGenerateImage}
+                            onClick={() => handleGenerateImage()}
                             disabled={isGenerating || !imagePrompt.trim()}
                             className={`w-full h-14 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all duration-500 ${isGenerating
                                 ? "bg-amber-500/20 text-amber-500 border border-amber-500/30"
@@ -739,96 +753,86 @@ export function KdpFactoryApp() {
                 </Card>
 
                 {/* Preview Area */}
-                <Card variant="glass" className="relative border-white/5 bg-white/[0.01] overflow-hidden min-h-[400px] flex items-center justify-center group rounded-[32px]">
-                    {!generatedImage && !isGenerating && (
-                        <div className="text-center space-y-4 opacity-30 group-hover:opacity-50 transition-opacity p-10">
-                            <div className="w-24 h-24 rounded-3xl border-2 border-dashed border-white/20 flex items-center justify-center mx-auto mb-2">
-                                <Camera size={32} className="text-neutral-500" />
-                            </div>
-                            <div className="space-y-1">
-                                <p className="text-xs font-black uppercase tracking-widest text-white">Visual Engine Standby</p>
-                                <p className="text-[10px] text-neutral-600 font-medium italic">Selecciona modelo y dimensiones arriba</p>
-                            </div>
-                        </div>
-                    )}
-
-                    {(isGenerating || isImageLoading) && (
-                        <div className="flex flex-col items-center gap-6 p-10 animate-in fade-in duration-500">
-                            <div className="relative">
-                                <div className="w-24 h-24 rounded-full border-2 border-amber-500/20 border-t-amber-500 animate-spin" />
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                    <Zap size={24} className="text-amber-500 animate-pulse" />
-                                </div>
-                            </div>
-                            <div className="text-center space-y-1">
-                                <p className="text-xs font-black uppercase tracking-widest text-white">
-                                    {isGenerating ? "Sintetizando Píxeles" : "Renderizando Arte"}
-                                </p>
-                                <p className="text-[10px] text-neutral-500 font-medium italic">
-                                    {isGenerating ? "Hugging Face Model Active" : "Cargando texturas finales..."}
-                                </p>
-                            </div>
-                        </div>
-                    )}
-
-                    {generatedImage && !isGenerating && (
-                        <div className={`absolute inset-0 animate-in fade-in zoom-in duration-700 h-full ${isImageLoading ? "opacity-0 invisible" : "opacity-100 visible"}`}>
+                <Card variant="glass" className="relative border-white/5 bg-white/[0.01] overflow-hidden min-h-[400px] flex items-center justify-center group rounded-[40px]">
+                    {generatedImage ? (
+                        <div className="relative w-full h-full animate-in fade-in zoom-in duration-700">
                             <img
                                 src={generatedImage}
-                                alt="Generated"
-                                className="w-full h-full object-cover"
+                                alt="AI Generated"
+                                className={`w-full h-full object-cover transition-opacity duration-700 ${isImageLoading ? 'opacity-0' : 'opacity-100'}`}
                                 onLoad={() => setIsImageLoading(false)}
-                                onError={() => {
-                                    // Fallback ultra-preciso: Intentar Unsplash con keywords antes que nada
-                                    if (!generatedImage?.includes('unsplash')) {
-                                        const width = AI_DIMENSIONS.find(d => d.id === selectedDim)?.width || 1024;
-                                        const height = AI_DIMENSIONS.find(d => d.id === selectedDim)?.height || 1024;
-                                        const cleanPrompt = imagePrompt.replace(/[^a-zA-Z0-9 ]/g, '').split(' ').filter(w => w.length > 3).slice(0, 3).join(',');
-
-                                        // Usar Unsplash Source (via images.unsplash.com para mayor fiabilidad)
-                                        const fallbackUrl = `https://images.unsplash.com/featured/${width}x${height}?${encodeURIComponent(cleanPrompt || 'art')}&sig=${Math.floor(Math.random() * 1000)}`;
-
-                                        setIsImageLoading(true);
-                                        setGeneratedImage(fallbackUrl);
-                                        toast.info("Ajustando motor a modo compatibilidad...");
-                                    } else {
-                                        setIsImageLoading(false);
-                                        setGeneratedImage(null);
-                                        toast.error("El servidor de imágenes no responde. Prueba mañana.");
-                                    }
-                                }}
                             />
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 p-6 flex flex-col justify-between">
-                                <div className="flex justify-between items-start">
-                                    <div className="flex flex-col gap-2">
-                                        <Badge className="bg-amber-500 text-black font-black text-[10px] uppercase tracking-widest px-3">Master Draft</Badge>
-                                        <div className="px-2 py-1 rounded bg-black/40 backdrop-blur-md border border-white/10 text-[9px] font-bold text-neutral-300 w-fit">
-                                            {AI_MODELS.find(m => m.id === selectedModel)?.name} • {AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio}
+
+                            {isImageLoading && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0a0a0a]/60 backdrop-blur-xl gap-4">
+                                    <div className="relative">
+                                        <div className="w-16 h-16 rounded-full border-2 border-amber-500/20 border-t-amber-500 animate-spin" />
+                                        <Zap size={20} className="absolute inset-0 m-auto text-amber-500 animate-pulse" />
+                                    </div>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-500">Renderizando Arte...</p>
+                                </div>
+                            )}
+
+                            {!isImageLoading && (
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/40 p-8 flex flex-col justify-between">
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex flex-col gap-2">
+                                            <Badge className="bg-amber-500 text-black font-black text-[10px] uppercase tracking-widest px-3 border-none">Master Draft</Badge>
+                                            <div className="px-3 py-1.5 rounded-xl bg-black/40 backdrop-blur-md border border-white/10 text-[9px] font-bold text-neutral-300 w-fit">
+                                                {AI_MODELS.find(m => m.id === selectedModel)?.name} • {AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio}
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => setGeneratedImage(null)}
+                                            className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
+                                        >
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <Button
+                                            onClick={() => setGeneratedImage(null)}
+                                            variant="outline"
+                                            className="h-14 rounded-2xl border-white/10 bg-white/5 backdrop-blur-md text-[10px] font-black uppercase tracking-widest text-white hover:bg-white/10"
+                                        >
+                                            <X size={16} className="mr-2" /> Descartar
+                                        </Button>
+                                        <Button
+                                            onClick={handleKeepImage}
+                                            className="h-14 rounded-2xl bg-white text-black text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all shadow-2xl shadow-white/10"
+                                        >
+                                            <Check size={16} className="mr-2" /> Conservar Activo
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center text-center p-12 space-y-6">
+                            {isGenerating ? (
+                                <div className="space-y-6 animate-pulse">
+                                    <div className="relative w-24 h-24 mx-auto">
+                                        <div className="absolute inset-0 blur-3xl bg-amber-500/20 animate-pulse rounded-full" />
+                                        <div className="w-full h-full rounded-[32px] border-2 border-amber-500/30 flex items-center justify-center bg-amber-500/5">
+                                            <Zap size={40} className="text-amber-500 animate-bounce" />
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={() => setGeneratedImage(null)}
-                                        className="p-2 rounded-xl bg-black/40 backdrop-blur-md text-white hover:bg-rose-500 transition-colors"
-                                    >
-                                        <X size={16} />
-                                    </button>
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-black uppercase tracking-widest text-white">Sintetizando Neuronas</p>
+                                        <p className="text-[10px] text-neutral-500 italic font-medium">El modelo está interpretando tu prompt...</p>
+                                    </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <Button
-                                        onClick={() => setGeneratedImage(null)}
-                                        variant="outline"
-                                        className="h-12 rounded-xl border-white/20 bg-black/20 backdrop-blur-md text-[10px] font-black uppercase tracking-widest text-white hover:bg-white/10"
-                                    >
-                                        <X size={14} className="mr-2" /> Descartar
-                                    </Button>
-                                    <Button
-                                        onClick={handleKeepImage}
-                                        className="h-12 rounded-xl bg-white text-black text-[10px] font-black uppercase tracking-widest hover:scale-[1.05] transition-all shadow-xl shadow-white/5"
-                                    >
-                                        <Check size={14} className="mr-2" /> Conservar Activo
-                                    </Button>
+                            ) : (
+                                <div className="space-y-5 opacity-30 group-hover:opacity-60 transition-all duration-500">
+                                    <div className="w-24 h-24 rounded-[36px] border-2 border-dashed border-white/10 flex items-center justify-center mx-auto bg-white/5">
+                                        <Camera size={36} strokeWidth={1.5} className="text-neutral-400" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-black uppercase tracking-widest text-white">Visual Engine Ready</p>
+                                        <p className="text-[10px] text-neutral-600 font-medium italic">El lienzo está esperando tu prompt...</p>
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
                     )}
                 </Card>

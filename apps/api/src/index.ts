@@ -13,6 +13,7 @@ import { registerTaskRoutes } from "./routes/tasks.js";
 import { registerExtractorRoutes } from "./routes/extractor.js";
 import { registerSettingsRoutes } from "./routes/settings.js";
 import { registerFinanceRoutes } from "./routes/finance.js";
+import { registerAIRoutes } from "./routes/ai.js";
 import { Settings } from "./models/settings.js";
 
 const env = loadEnv(process.env);
@@ -35,6 +36,7 @@ await registerTaskRoutes(app, deps);
 await registerExtractorRoutes(app, deps);
 await registerSettingsRoutes(app);
 await registerFinanceRoutes(app, { io });
+await registerAIRoutes(app);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {
