@@ -42,7 +42,8 @@ import {
     Maximize,
     ChevronRight,
     Activity,
-    Lightbulb
+    Lightbulb,
+    Download
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -88,6 +89,7 @@ const AI_MODELS = [
 const AI_DIMENSIONS = [
     { id: "sq", name: "Square", ratio: "1:1", width: 1024, height: 1024 },
     { id: "pt", name: "Portrait", ratio: "4:5", width: 896, height: 1152 },
+    { id: "v", name: "Vertical", ratio: "9:16", width: 832, height: 1472 },
     { id: "ls", name: "Landscape", ratio: "16:9", width: 1152, height: 648 }
 ];
 
@@ -203,7 +205,17 @@ export function KdpFactoryApp() {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isImageLoading, setIsImageLoading] = useState(false);
     const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
     const [vaultImages, setVaultImages] = useState<{ url: string, model: string, dim: string }[]>([]);
+
+    const downloadImage = (url: string, filenameBase: string) => {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${filenameBase}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    };
 
     // Sincronizar estado de carga cuando cambia la URL
     useEffect(() => {
@@ -300,7 +312,6 @@ export function KdpFactoryApp() {
                 dim: dimName
             }, ...vaultImages]);
             setGeneratedImage(null);
-            setImagePrompt("");
         }
     };
 
@@ -772,8 +783,11 @@ export function KdpFactoryApp() {
                             <img
                                 src={generatedImage}
                                 alt="AI Generated"
-                                className={`w-full h-full object-cover transition-opacity duration-700 ${isImageLoading ? 'opacity-0' : 'opacity-100'}`}
+                                className={`w-full h-full object-cover transition-opacity duration-700 ${isImageLoading ? 'opacity-0' : 'opacity-100'} ${!isImageLoading ? 'cursor-zoom-in' : ''}`}
                                 onLoad={() => setIsImageLoading(false)}
+                                onClick={() => {
+                                    if (!isImageLoading) setPreviewImage(generatedImage);
+                                }}
                             />
 
                             {isImageLoading && (
@@ -795,12 +809,28 @@ export function KdpFactoryApp() {
                                                 {AI_MODELS.find(m => m.id === selectedModel)?.name} • {AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio}
                                             </div>
                                         </div>
-                                        <button
-                                            onClick={() => setGeneratedImage(null)}
-                                            className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
-                                        >
-                                            <X size={18} />
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
+                                                    const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
+                                                    downloadImage(generatedImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
+                                                }}
+                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
+                                                aria-label="Descargar imagen"
+                                                title="Descargar"
+                                            >
+                                                <Download size={18} />
+                                            </button>
+                                            <button
+                                                onClick={() => setGeneratedImage(null)}
+                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
+                                                aria-label="Cerrar"
+                                                title="Cerrar"
+                                            >
+                                                <X size={18} />
+                                            </button>
+                                        </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <Button
@@ -870,7 +900,12 @@ export function KdpFactoryApp() {
                         {vaultImages.map((img, i) => (
                             <div key={i} className="relative group shrink-0">
                                 <div className="w-56 h-64 md:w-64 md:h-80 rounded-[32px] overflow-hidden border border-white/10 group-hover:border-amber-500/50 transition-all shadow-2xl relative bg-neutral-900">
-                                    <img src={img.url} alt={`Vault ${i}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 opacity-80 group-hover:opacity-100" />
+                                    <img
+                                        src={img.url}
+                                        alt={`Vault ${i}`}
+                                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 opacity-80 group-hover:opacity-100 cursor-zoom-in"
+                                        onClick={() => setPreviewImage(img.url)}
+                                    />
                                     <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-5 flex flex-col justify-end gap-3 translate-y-4 group-hover:translate-y-0 transition-transform duration-500">
                                         <div className="space-y-1">
                                             <p className="text-[11px] font-black text-white uppercase tracking-widest flex items-center gap-2">
@@ -883,9 +918,21 @@ export function KdpFactoryApp() {
                                         </div>
                                         <div className="flex gap-2">
                                             <button
+                                                onClick={() => setPreviewImage(img.url)}
                                                 className="flex-1 h-9 rounded-xl bg-white/10 backdrop-blur-md text-white text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all"
                                             >
                                                 Detalle
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    const safeName = `vault-${vaultImages.length - i}`.replaceAll(" ", "_");
+                                                    downloadImage(img.url, safeName);
+                                                }}
+                                                className="w-9 h-9 rounded-xl bg-white/10 backdrop-blur-md text-white border border-white/10 hover:bg-white hover:text-black transition-all flex items-center justify-center shrink-0"
+                                                aria-label="Descargar imagen"
+                                                title="Descargar"
+                                            >
+                                                <Download size={14} />
                                             </button>
                                             <button
                                                 onClick={() => handleDeleteVaultImage(i)}
@@ -1050,6 +1097,51 @@ export function KdpFactoryApp() {
                 {activeTab === "catalog" && renderCatalog()}
                 {activeTab === "creation" && renderCreation()}
             </div>
+
+            {/* Image Preview Modal */}
+            {previewImage && (
+                <div
+                    className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
+                    onClick={() => setPreviewImage(null)}
+                    role="dialog"
+                    aria-modal="true"
+                >
+                    <div
+                        className="relative w-full max-w-6xl rounded-3xl border border-white/10 bg-black/40"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-center p-4">
+                            <img
+                                src={previewImage}
+                                alt="Vista previa"
+                                className="block max-w-full max-h-[85vh] w-auto h-auto object-contain bg-black rounded-2xl"
+                            />
+                        </div>
+                        <div className="absolute top-4 right-4 flex gap-2">
+                            <button
+                                onClick={() => {
+                                    const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
+                                    const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
+                                    downloadImage(previewImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
+                                }}
+                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
+                                aria-label="Descargar imagen"
+                                title="Descargar"
+                            >
+                                <Download size={18} />
+                            </button>
+                            <button
+                                onClick={() => setPreviewImage(null)}
+                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
+                                aria-label="Cerrar vista previa"
+                                title="Cerrar"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

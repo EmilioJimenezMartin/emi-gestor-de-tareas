@@ -5,6 +5,12 @@ import { getMongoStatus } from "../lib/mongo.js";
 
 const nextAllowedAtByKey = new Map<string, number>();
 
+// 1x1 transparent PNG (so the client always receives a valid image payload)
+const TRANSPARENT_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6Xc7e0AAAAASUVORK5CYII=",
+  "base64"
+);
+
 function getCooldownKey(provider: string | undefined, modelId: string | undefined) {
   return `${provider || "unknown"}::${(modelId || "unknown").trim()}`;
 }
@@ -63,7 +69,7 @@ export async function registerAIRoutes(app: FastifyInstance) {
                     // Formato robusto de URL para Inference API
                     const hfUrl = `https://api-inference.huggingface.co/models/${modelId.trim()}`;
 
-                    const attempts = 2;
+                    const attempts = 3;
                     let lastErr: any = null;
 
                     for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -75,6 +81,7 @@ export async function registerAIRoutes(app: FastifyInstance) {
                                     Authorization: `Bearer ${apiKey.trim()}`,
                                     "Content-Type": "application/json",
                                     Accept: "image/png",
+                                    "x-use-cache": "false",
                                 },
                                 data: {
                                     inputs: prompt,
@@ -96,6 +103,11 @@ export async function registerAIRoutes(app: FastifyInstance) {
                             lastErr = e;
                             const status = e?.response?.status;
                             app.log.warn({ err: e, attempt, status }, "AI image: Hugging Face attempt failed");
+                            // 503 suele ser "Loading model" => espera 5s y reintenta
+                            if (status === 503) {
+                                await new Promise((r) => setTimeout(r, 5000));
+                                continue;
+                            }
                             if (status === 429) {
                                 const retryAfterSeconds = getRetryAfterSecondsFromError(e, 15);
                                 nextAllowedAtByKey.set(cooldownKey, Date.now() + retryAfterSeconds * 1000);
@@ -109,6 +121,9 @@ export async function registerAIRoutes(app: FastifyInstance) {
                     if (lastStatus === 429) {
                         // No devolvemos aquí: seguimos al fallback (Pollinations) para intentar servir algo.
                         app.log.warn("AI image: Hugging Face rate limited, trying fallback");
+                    } else if (lastStatus === 401 || lastStatus === 403) {
+                        // Token inválido / sin permisos => fallback silencioso
+                        app.log.warn("AI image: Hugging Face auth failed, trying fallback");
                     } else {
                         app.log.warn({ err: lastErr }, "AI image: Hugging Face failed, trying fallback");
                     }
@@ -169,18 +184,21 @@ export async function registerAIRoutes(app: FastifyInstance) {
                     details: lastErr?.message || "Pollinations failed",
                 });
             } catch (pollError: any) {
-                return reply.status(503).send({
-                    error: "Servicio de generación de imágenes no disponible",
-                    details: pollError?.message || "Fallback failed",
-                });
+                // Último recurso: devolvemos un PNG válido para que el usuario no vea error
+                app.log.error({ err: pollError }, "AI image: fallback failed, returning transparent PNG");
+                return reply
+                    .header("X-AI-Fallback", "transparent-png")
+                    .type("image/png")
+                    .send(TRANSPARENT_PNG);
             }
 
         } catch (error: any) {
             app.log.error({ err: error }, "AI image: critical proxy error");
-            return reply.status(500).send({
-                error: "Error en el servidor de I.A.",
-                details: error.message
-            });
+            // Último recurso: devolvemos un PNG válido para que el usuario no vea error
+            return reply
+                .header("X-AI-Fallback", "transparent-png")
+                .type("image/png")
+                .send(TRANSPARENT_PNG);
         }
     });
 }
