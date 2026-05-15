@@ -152,7 +152,19 @@ interface IACatalogFE {
     totalImages: number;
     images: CatalogImageFE[];
     status: "pending" | "running" | "completed" | "failed" | "cancelled";
+    lastError?: string;
+    skippedImages?: number;
     createdAt: string;
+}
+
+interface QueuedCatalog {
+    queueId: string;
+    name: string;
+    prompt: string;
+    promptParts: { theme: string; specs: string; details: string; particulars: string };
+    model: typeof AI_MODELS[number];
+    dim: typeof AI_DIMENSIONS[number];
+    totalImages: number;
 }
 
 export function KdpFactoryApp() {
@@ -247,6 +259,8 @@ export function KdpFactoryApp() {
         return p;
     })();
     const [selectedModel, setSelectedModel] = useState(AI_MODELS[0].id);
+    const [showModelPicker, setShowModelPicker] = useState(false);
+    const [showDimPicker, setShowDimPicker] = useState(false);
     const [selectedDim, setSelectedDim] = useState(AI_DIMENSIONS[0].id);
     const [cloudinaryImages, setCloudinaryImages] = useState<{ publicId: string; url: string; width: number; height: number; bytes: number; createdAt: string }[]>([]);
     const [isLoadingCloudinary, setIsLoadingCloudinary] = useState(false);
@@ -269,7 +283,12 @@ export function KdpFactoryApp() {
     const [previewContext, setPreviewContext] = useState<{ urls: string[]; index: number } | null>(null);
     const [confirmDeleteVaultIndex, setConfirmDeleteVaultIndex] = useState<number | null>(null);
     const [confirmDeleteCloudinaryId, setConfirmDeleteCloudinaryId] = useState<string | null>(null);
+    const [catalogQueue, setCatalogQueue] = useState<QueuedCatalog[]>([]);
+    const catalogQueueRef = useRef<QueuedCatalog[]>([]);
     const catalogSocketRef = useRef<ReturnType<typeof createApiSocket> | null>(null);
+
+    // Keep queue ref in sync so socket handlers always see the latest queue
+    useEffect(() => { catalogQueueRef.current = catalogQueue; }, [catalogQueue]);
 
     const fetchCatalogs = async () => {
         setIsLoadingCatalogs(true);
@@ -350,6 +369,58 @@ export function KdpFactoryApp() {
         } finally {
             setIsCreatingCatalog(false);
         }
+    };
+
+    const launchQueuedCatalog = async (item: QueuedCatalog) => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/catalogs`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: item.name || undefined,
+                    prompt: item.prompt,
+                    promptParts: item.promptParts,
+                    aiModel: { id: item.model.id, name: item.model.name, provider: item.model.provider, modelId: item.model.modelId },
+                    width: item.dim.width,
+                    height: item.dim.height,
+                    totalImages: item.totalImages,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Error");
+            setIaCatalogs((prev) => [data.catalog, ...prev]);
+            toast.success(`Catálogo "${item.name || "de cola"}" iniciado`);
+        } catch (e: any) {
+            toast.error(`Error al iniciar catálogo en cola: ${e.message}`);
+        }
+    };
+
+    const processQueue = () => {
+        if (catalogQueueRef.current.length === 0) return;
+        const [next, ...rest] = catalogQueueRef.current;
+        catalogQueueRef.current = rest;
+        setCatalogQueue(rest);
+        void launchQueuedCatalog(next);
+    };
+
+    const addToQueue = () => {
+        if (!promptTheme.trim()) { toast.error("Escribe la temática primero"); return; }
+        if (!catalogFormCount || catalogFormCount < 1) { toast.error("Indica cuántas imágenes (mínimo 1)"); return; }
+        const model = AI_MODELS.find((m) => m.id === selectedModel);
+        const dim = AI_DIMENSIONS.find((d) => d.id === selectedDim);
+        if (!model || !dim) return;
+        const item: QueuedCatalog = {
+            queueId: `q-${Date.now()}`,
+            name: catalogFormName.trim(),
+            prompt: imagePrompt.trim(),
+            promptParts: { theme: promptTheme.trim(), specs: promptSpecs.trim(), details: promptDetails.trim(), particulars: promptParticulars.trim() },
+            model,
+            dim,
+            totalImages: catalogFormCount,
+        };
+        setCatalogQueue((prev) => [...prev, item]);
+        setCatalogFormName("");
+        toast.success("Catálogo añadido a la cola");
     };
 
     const deleteCatalogImageConfirmed = async (catalogId: string, publicId: string) => {
@@ -736,11 +807,16 @@ export function KdpFactoryApp() {
         const socket = createApiSocket(API_BASE_URL);
         catalogSocketRef.current = socket;
 
-        socket.on("catalog:progress", (data: { catalogId: string; status: string; current: number; total: number; image?: CatalogImageFE }) => {
+        socket.on("catalog:progress", (data: { catalogId: string; status: string; current: number; total: number; image?: CatalogImageFE; lastError?: string; skipped?: number }) => {
             setIaCatalogs((prev) =>
                 prev.map((c) => {
                     if (c._id !== data.catalogId) return c;
-                    const updated: IACatalogFE = { ...c, status: data.status as IACatalogFE["status"] };
+                    const updated: IACatalogFE = {
+                        ...c,
+                        status: data.status as IACatalogFE["status"],
+                        lastError: data.lastError !== undefined ? data.lastError : c.lastError,
+                        skippedImages: data.skipped !== undefined ? data.skipped : c.skippedImages,
+                    };
                     if (data.image) {
                         const alreadyExists = updated.images.some((img) => img.publicId === data.image!.publicId);
                         if (!alreadyExists) updated.images = [...updated.images, data.image];
@@ -752,16 +828,18 @@ export function KdpFactoryApp() {
 
         socket.on("catalog:completed", (data: { catalogId: string }) => {
             setIaCatalogs((prev) =>
-                prev.map((c) => (c._id === data.catalogId ? { ...c, status: "completed" } : c))
+                prev.map((c) => (c._id === data.catalogId ? { ...c, status: "completed", lastError: "" } : c))
             );
             toast.success("Catálogo completado");
+            processQueue();
         });
 
         socket.on("catalog:error", (data: { catalogId: string; error: string }) => {
             setIaCatalogs((prev) =>
-                prev.map((c) => (c._id === data.catalogId ? { ...c, status: "failed" } : c))
+                prev.map((c) => (c._id === data.catalogId ? { ...c, status: "failed", lastError: data.error } : c))
             );
             toast.error(`Error en catálogo: ${data.error}`);
+            processQueue();
         });
 
         return () => {
@@ -1257,57 +1335,98 @@ export function KdpFactoryApp() {
                     <div className="space-y-6 relative z-10">
                         {/* Model & Dim Selectors Wrapper */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Model picker */}
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Modelo I.A.</label>
-                                <div className="relative group/select">
-                                    <select
-                                        value={selectedModel}
-                                        onChange={(e) => setSelectedModel(e.target.value)}
-                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl pl-4 pr-10 text-[10px] font-black uppercase text-white appearance-none cursor-pointer focus:border-amber-500/40 outline-none hover:bg-white/10 transition-all"
+                                <div className="relative">
+                                    {showModelPicker && (
+                                        <div className="fixed inset-0 z-40" onClick={() => setShowModelPicker(false)} />
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => { setShowModelPicker(v => !v); setShowDimPicker(false); }}
+                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 flex items-center justify-between gap-3 hover:bg-white/10 transition-all focus:outline-none focus:border-amber-500/40"
                                     >
-                                        {AI_MODELS.map(m => (
-                                            <option key={m.id} value={m.id} className="bg-[#0a0a0a]">
-                                                {m.name} — {m.type}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
-                                </div>
-                                <div className="text-[10px] text-neutral-500 font-medium italic">
-                                    {AI_MODELS.find(m => m.id === selectedModel)?.provider} • {AI_MODELS.find(m => m.id === selectedModel)?.type}
+                                        <div className="flex-1 min-w-0 text-left">
+                                            <p className="text-sm font-bold text-white truncate leading-tight">{AI_MODELS.find(m => m.id === selectedModel)?.name}</p>
+                                            <p className="text-[10px] text-neutral-500 truncate leading-tight">{AI_MODELS.find(m => m.id === selectedModel)?.provider} · {AI_MODELS.find(m => m.id === selectedModel)?.type}</p>
+                                        </div>
+                                        <ChevronDown size={16} className={`text-neutral-500 shrink-0 transition-transform duration-200 ${showModelPicker ? "rotate-180" : ""}`} />
+                                    </button>
+                                    {showModelPicker && (
+                                        <div className="absolute top-full mt-1.5 left-0 right-0 z-50 bg-[#111]/98 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden shadow-2xl max-h-72 overflow-y-auto">
+                                            {AI_MODELS.map(m => (
+                                                <button
+                                                    key={m.id}
+                                                    type="button"
+                                                    onClick={() => { setSelectedModel(m.id); setShowModelPicker(false); }}
+                                                    className={`w-full px-4 py-3.5 flex items-center gap-3 transition-all text-left border-b border-white/5 last:border-0 ${selectedModel === m.id ? "bg-white/8" : "hover:bg-white/5"}`}
+                                                >
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-bold text-white leading-tight">{m.name}</p>
+                                                        <p className="text-[11px] text-neutral-500 leading-tight mt-0.5">{m.provider} · {m.type}</p>
+                                                    </div>
+                                                    {selectedModel === m.id && <Check size={16} className="text-emerald-400 shrink-0" />}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
+                            {/* Dimension picker */}
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Dimensiones</label>
-                                {/* Quick presets (avoid overflow on mobile/tablet) */}
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                {/* Quick presets */}
+                                <div className="grid grid-cols-4 gap-2">
                                     {AI_DIMENSIONS.filter((d) => ["sq", "pt", "p23", "p34"].includes(d.id)).map((d) => (
                                         <button
                                             key={d.id}
+                                            type="button"
                                             onClick={() => setSelectedDim(d.id)}
-                                            className={`h-12 rounded-xl border flex items-center justify-center gap-2 transition-all ${selectedDim === d.id ? "bg-white text-black border-white" : "bg-white/5 border-white/10 text-neutral-500 hover:bg-white/10"}`}
+                                            className={`h-12 rounded-xl border flex flex-col items-center justify-center gap-0.5 transition-all ${selectedDim === d.id ? "bg-white text-black border-white" : "bg-white/5 border-white/10 text-neutral-500 hover:bg-white/10"}`}
                                         >
-                                            {d.id === "sq" ? <Monitor size={14} /> : d.id === "ls" ? <Maximize size={14} className="rotate-90" /> : <Maximize size={14} />}
+                                            {d.id === "sq" ? <Monitor size={13} /> : <Maximize size={13} />}
                                             <span className="text-[9px] font-black uppercase">{d.ratio}</span>
                                         </button>
                                     ))}
                                 </div>
-
-                                {/* Full list selector (includes A4 presets) */}
-                                <div className="relative group/select">
-                                    <select
-                                        value={selectedDim}
-                                        onChange={(e) => setSelectedDim(e.target.value)}
-                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl pl-4 pr-10 text-[10px] font-black uppercase text-white appearance-none cursor-pointer focus:border-amber-500/40 outline-none hover:bg-white/10 transition-all"
+                                {/* Full list — custom dropdown */}
+                                <div className="relative">
+                                    {showDimPicker && (
+                                        <div className="fixed inset-0 z-40" onClick={() => setShowDimPicker(false)} />
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => { setShowDimPicker(v => !v); setShowModelPicker(false); }}
+                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 flex items-center justify-between gap-3 hover:bg-white/10 transition-all focus:outline-none focus:border-amber-500/40"
                                     >
-                                        {AI_DIMENSIONS.map((d) => (
-                                            <option key={d.id} value={d.id} className="bg-[#0a0a0a]">
-                                                {d.name} ({d.width}×{d.height})
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
+                                        {(() => { const d = AI_DIMENSIONS.find(d => d.id === selectedDim); return (
+                                            <div className="flex-1 min-w-0 text-left">
+                                                <p className="text-sm font-bold text-white truncate leading-tight">{d?.name} <span className="font-normal text-neutral-400">({d?.ratio})</span></p>
+                                                <p className="text-[10px] text-neutral-500 leading-tight">{d?.width}×{d?.height} px</p>
+                                            </div>
+                                        ); })()}
+                                        <ChevronDown size={16} className={`text-neutral-500 shrink-0 transition-transform duration-200 ${showDimPicker ? "rotate-180" : ""}`} />
+                                    </button>
+                                    {showDimPicker && (
+                                        <div className="absolute top-full mt-1.5 left-0 right-0 z-50 bg-[#111]/98 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden shadow-2xl max-h-64 overflow-y-auto">
+                                            {AI_DIMENSIONS.map(d => (
+                                                <button
+                                                    key={d.id}
+                                                    type="button"
+                                                    onClick={() => { setSelectedDim(d.id); setShowDimPicker(false); }}
+                                                    className={`w-full px-4 py-3.5 flex items-center gap-3 transition-all text-left border-b border-white/5 last:border-0 ${selectedDim === d.id ? "bg-white/8" : "hover:bg-white/5"}`}
+                                                >
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-bold text-white leading-tight">{d.name} <span className="font-normal text-neutral-400">({d.ratio})</span></p>
+                                                        <p className="text-[11px] text-neutral-500 leading-tight mt-0.5">{d.width}×{d.height} px</p>
+                                                    </div>
+                                                    {selectedDim === d.id && <Check size={16} className="text-emerald-400 shrink-0" />}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1494,23 +1613,47 @@ export function KdpFactoryApp() {
                                     />
                                     {(() => {
                                         const catalogBusy = iaCatalogs.some(c => c.status === "running" || c.status === "pending");
-                                        return (
+                                        return catalogBusy ? (
+                                            <button
+                                                onClick={addToQueue}
+                                                disabled={isCreatingCatalog || !promptTheme.trim()}
+                                                className="flex-1 sm:flex-none h-10 px-5 bg-amber-600/80 hover:bg-amber-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                title="Añadir a la cola — se lanzará cuando el actual termine"
+                                            >
+                                                {isCreatingCatalog ? <Loader2 size={13} className="animate-spin" /> : <><Plus size={13} />Añadir a cola</>}
+                                            </button>
+                                        ) : (
                                             <button
                                                 onClick={() => void createCatalogFromStudio()}
-                                                disabled={isCreatingCatalog || !promptTheme.trim() || catalogBusy}
+                                                disabled={isCreatingCatalog || !promptTheme.trim()}
                                                 className="flex-1 sm:flex-none h-10 px-5 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                                                title={catalogBusy ? "Espera a que el catálogo actual termine" : undefined}
                                             >
-                                                {isCreatingCatalog ? <Loader2 size={13} className="animate-spin" /> : <><Layers size={13} />{catalogBusy ? "En proceso..." : "Lanzar"}</>}
+                                                {isCreatingCatalog ? <Loader2 size={13} className="animate-spin" /> : <><Layers size={13} />Lanzar</>}
                                             </button>
                                         );
                                     })()}
                                 </div>
                             </div>
+                            {/* Queue list */}
+                            {catalogQueue.length > 0 && (
+                                <div className="space-y-1.5">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/70 flex items-center gap-1.5">
+                                        <Layers size={9} /> Cola de catálogos ({catalogQueue.length})
+                                    </p>
+                                    {catalogQueue.map((item, idx) => (
+                                        <div key={item.queueId} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/5 border border-amber-500/15">
+                                            <span className="text-[9px] font-black text-amber-400/60 w-4 shrink-0">#{idx + 1}</span>
+                                            <span className="text-[10px] text-neutral-400 flex-1 truncate">{item.name || item.promptParts.theme || "Sin nombre"}</span>
+                                            <span className="text-[9px] text-neutral-600 font-mono shrink-0">{item.totalImages} imgs · {item.dim.ratio}</span>
+                                            <button onClick={() => setCatalogQueue(prev => prev.filter(q => q.queueId !== item.queueId))} className="p-1 rounded-md text-neutral-600 hover:text-rose-400 transition-all shrink-0"><X size={10} /></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                             {iaCatalogs.some(c => c.status === "running" || c.status === "pending") && (
                                 <p className="text-[10px] text-amber-500/70 italic flex items-center gap-1.5">
                                     <Loader2 size={9} className="animate-spin" />
-                                    Catálogo en progreso — espera a que termine para lanzar otro
+                                    Catálogo en progreso{catalogQueue.length > 0 ? ` · ${catalogQueue.length} en cola` : " · puedes añadir más a la cola"}
                                 </p>
                             )}
                             <p className="text-[10px] text-neutral-600 italic">
@@ -1849,7 +1992,12 @@ export function KdpFactoryApp() {
                                                 {isActive && <Loader2 size={11} className="text-blue-400 animate-spin shrink-0" />}
                                             </div>
                                             <p className="text-[10px] text-neutral-500 truncate">{catalog.prompt}</p>
-                                            <p className="text-[10px] text-neutral-600 font-mono">{catalog.aiModel?.name} · {catalog.images.length}/{catalog.totalImages} imgs · {new Date(catalog.createdAt).toLocaleDateString("es-ES")}</p>
+                                            <p className="text-[10px] text-neutral-600 font-mono">{catalog.aiModel?.name} · {catalog.width}×{catalog.height} · {catalog.images.length}/{catalog.totalImages} imgs{(catalog.skippedImages ?? 0) > 0 ? ` · ${catalog.skippedImages} omitidas` : ""} · {new Date(catalog.createdAt).toLocaleDateString("es-ES")}</p>
+                                            {catalog.lastError && (
+                                                <p className="text-[9px] text-red-400/80 font-mono break-all leading-relaxed mt-0.5" title={catalog.lastError}>
+                                                    ⚠ {catalog.lastError.length > 120 ? catalog.lastError.slice(0, 120) + "…" : catalog.lastError}
+                                                </p>
+                                            )}
                                         </div>
                                         <div className="flex items-center gap-2 shrink-0">
                                             <button
@@ -1865,9 +2013,15 @@ export function KdpFactoryApp() {
                                                         setPromptDetails("");
                                                         setPromptParticulars("");
                                                     }
-                                                    toast.success("Prompt cargado en los campos");
+                                                    // Restore model
+                                                    const matchModel = AI_MODELS.find(m => m.id === catalog.aiModel?.id);
+                                                    if (matchModel) setSelectedModel(matchModel.id);
+                                                    // Restore dimension
+                                                    const matchDim = AI_DIMENSIONS.find(d => d.width === catalog.width && d.height === catalog.height);
+                                                    if (matchDim) setSelectedDim(matchDim.id);
+                                                    toast.success("Prompt, modelo y resolución cargados");
                                                 }}
-                                                title="Cargar prompt en los campos"
+                                                title="Cargar prompt, modelo y resolución"
                                                 className="p-2 rounded-xl bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-white transition-all border border-white/10"
                                             >
                                                 <Copy size={13} />
@@ -2088,19 +2242,19 @@ export function KdpFactoryApp() {
                 <div className="pointer-events-auto flex p-1.5 bg-[#111111]/90 backdrop-blur-xl border border-white/10 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.6)] max-w-full overflow-x-auto no-scrollbar">
                     {[
                         { id: "insights", name: "Insights", icon: <BarChart3 size={15} /> },
-                        { id: "catalog", name: "Catálogo", icon: <Box size={15} /> },
-                        { id: "creation", name: "Productos", icon: <Plus size={15} /> }
+                        { id: "catalog", name: "Productos", icon: <Box size={15} /> },
+                        { id: "creation", name: "Generador", icon: <Plus size={15} /> }
                     ].map((tab) => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as TabID)}
-                            className={`flex items-center gap-3 px-8 py-3.5 rounded-[24px] text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-500 whitespace-nowrap min-w-[130px] justify-center ${activeTab === tab.id
+                            className={`flex items-center gap-2 md:gap-3 px-4 md:px-8 py-3.5 rounded-[24px] text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-500 whitespace-nowrap justify-center ${activeTab === tab.id
                                 ? "bg-white text-black shadow-lg scale-[1.05] z-10"
                                 : "text-neutral-500 hover:text-white hover:bg-white/5"
                                 }`}
                         >
                             {tab.icon}
-                            <span>{tab.name}</span>
+                            <span className="hidden md:inline">{tab.name}</span>
                         </button>
                     ))}
                 </div>

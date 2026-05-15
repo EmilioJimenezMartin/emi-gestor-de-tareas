@@ -3,34 +3,41 @@ import axios from "axios";
 import { Catalog } from "../models/catalog.js";
 import { getCloudinaryConfig, initCloudinary } from "../routes/cloudinary.js";
 
+const JOB_NAME = "generate-catalog-image";
+const LOCK_LIFETIME_MS = 5 * 60 * 1000; // 5 min per job execution
+
 export function defineCatalogJob(agenda: Agenda, io: any) {
-    agenda.define("generate-catalog-image", async (job: Job) => {
-        const { catalogId, retryCount = 0 } = (job.attrs.data ?? {}) as { catalogId: string; retryCount?: number };
+    const handler = async (job: Job) => {
+        const { catalogId } = (job.attrs.data ?? {}) as { catalogId: string };
+        const tag = `[catalog-job][${catalogId}]`;
 
         if (!catalogId) {
-            console.error("[catalog-job] No catalogId provided");
+            console.error(`${tag} No catalogId provided`);
             return;
         }
 
         const catalog = await Catalog.findById(catalogId);
         if (!catalog) {
-            console.error(`[catalog-job] Catalog ${catalogId} not found`);
+            console.error(`${tag} Catalog not found`);
             return;
         }
 
         if (catalog.status === "cancelled") {
-            console.log(`[catalog-job] Catalog ${catalogId} cancelled, skipping`);
+            console.log(`${tag} Cancelled — skipping`);
             return;
         }
 
-        const imageIndex = catalog.images.length;
+        const attemptedSoFar = catalog.images.length + (catalog.skippedImages ?? 0);
 
-        if (imageIndex >= catalog.totalImages) {
+        if (attemptedSoFar >= catalog.totalImages) {
             catalog.status = "completed";
             await catalog.save();
             io.emit("catalog:completed", { catalogId });
             return;
         }
+
+        const imageSlot = attemptedSoFar + 1;
+        console.log(`${tag} Generating image slot ${imageSlot}/${catalog.totalImages} (${catalog.images.length} ok, ${catalog.skippedImages ?? 0} skipped)`);
 
         catalog.status = "running";
         await catalog.save();
@@ -38,25 +45,27 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
         io.emit("catalog:progress", {
             catalogId,
             status: "running",
-            current: imageIndex,
+            current: catalog.images.length,
             total: catalog.totalImages,
+            skipped: catalog.skippedImages ?? 0,
         });
 
         try {
-            // Build varied prompt using structured sentence format
+            // Build prompt
             let finalPrompt = catalog.prompt;
             if (catalog.promptParts?.theme) {
                 let particulars = catalog.promptParts.particulars ?? "";
                 if (particulars) {
                     try {
                         const { varyTextWithLLM } = await import("../lib/ai.js");
-                        // 15s timeout so a hanging LLM call never blocks the job
                         const timeout = new Promise<string>((_, reject) =>
-                            setTimeout(() => reject(new Error("LLM timeout")), 15000)
+                            setTimeout(() => reject(new Error("LLM timeout after 15s")), 15000)
                         );
                         particulars = await Promise.race([varyTextWithLLM(particulars), timeout]);
-                    } catch {
-                        // keep original particulars on LLM failure / timeout
+                        console.log(`${tag} LLM variation OK`);
+                    } catch (llmErr: any) {
+                        console.warn(`${tag} LLM variation failed (kept original): ${llmErr?.message ?? llmErr}`);
+                        // Continue with original particulars — LLM failure must not stop the job
                     }
                 }
                 finalPrompt = `Genera una imagen con la siguiente temática: ${catalog.promptParts.theme}`;
@@ -65,16 +74,34 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 if (particulars) finalPrompt += `, y las siguientes particularidades: ${particulars}`;
             }
 
+            console.log(`${tag} Prompt (${finalPrompt.length} chars): ${finalPrompt.slice(0, 100)}...`);
+
+            // Generate image
             let imageBuffer: Buffer;
 
             if (catalog.aiModel.provider === "Pollinations") {
                 const seed = Math.floor(Math.random() * 999999);
                 const modelParam = catalog.aiModel.modelId?.trim() || "flux";
                 const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=${catalog.width}&height=${catalog.height}&seed=${seed}&model=${encodeURIComponent(modelParam)}&nologo=true&enhance=false`;
-                const response = await axios.get(pollinationsUrl, { responseType: "arraybuffer", timeout: 120000 });
+                console.log(`${tag} Calling Pollinations model=${modelParam}`);
+                const response = await axios.get(pollinationsUrl, {
+                    responseType: "arraybuffer",
+                    timeout: 120000,
+                    validateStatus: (s) => s < 500,
+                });
+                if (response.status !== 200) {
+                    throw new Error(`Pollinations HTTP ${response.status}`);
+                }
+                const contentType = (response.headers["content-type"] ?? "") as string;
+                if (!contentType.startsWith("image/")) {
+                    const preview = Buffer.from(response.data).toString("utf8").slice(0, 300);
+                    throw new Error(`Pollinations devolvió ${contentType} en lugar de imagen: ${preview}`);
+                }
                 imageBuffer = Buffer.from(response.data);
+                console.log(`${tag} Pollinations OK — ${imageBuffer.length} bytes`);
             } else {
                 const port = process.env.PORT || 3001;
+                console.log(`${tag} Calling proxy: provider=${catalog.aiModel.provider} model=${catalog.aiModel.modelId}`);
                 const response = await axios.post(
                     `http://localhost:${port}/ai/generate-image`,
                     {
@@ -86,21 +113,32 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                     },
                     { responseType: "arraybuffer", timeout: 120000 }
                 );
+                if (response.status !== 200) {
+                    throw new Error(`Proxy HTTP ${response.status}`);
+                }
+                const contentType = (response.headers["content-type"] ?? "") as string;
+                if (!contentType.startsWith("image/")) {
+                    const preview = Buffer.from(response.data).toString("utf8").slice(0, 300);
+                    throw new Error(`Proxy devolvió ${contentType} en lugar de imagen: ${preview}`);
+                }
                 imageBuffer = Buffer.from(response.data);
+                console.log(`${tag} Proxy OK — ${imageBuffer.length} bytes`);
             }
 
-            const base64 = imageBuffer.toString("base64");
-            const dataUrl = `data:image/png;base64,${base64}`;
-
+            // Upload to Cloudinary
+            console.log(`${tag} Uploading to Cloudinary...`);
             const config = await getCloudinaryConfig();
             if (!config) throw new Error("Cloudinary no configurado");
 
+            const base64 = imageBuffer.toString("base64");
+            const dataUrl = `data:image/png;base64,${base64}`;
             const cld = await initCloudinary(config);
             const uploadResult = await cld.uploader.upload(dataUrl, {
                 folder: `emi-kdp-catalogs/${catalogId}`,
                 resource_type: "image",
                 timeout: 120000,
             });
+            console.log(`${tag} Cloudinary OK: ${uploadResult.public_id}`);
 
             const newImage = {
                 publicId: uploadResult.public_id,
@@ -113,75 +151,101 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
 
             // Re-fetch to avoid race conditions
             const freshCatalog = await Catalog.findById(catalogId);
-            if (!freshCatalog || freshCatalog.status === "cancelled") return;
+            if (!freshCatalog || freshCatalog.status === "cancelled") {
+                console.log(`${tag} Cancelled after generation — discarding image`);
+                return;
+            }
 
             freshCatalog.images.push(newImage);
+            freshCatalog.lastError = "";
             const newCount = freshCatalog.images.length;
-            const isComplete = newCount >= freshCatalog.totalImages;
+            const newAttempted = newCount + (freshCatalog.skippedImages ?? 0);
+            const isComplete = newAttempted >= freshCatalog.totalImages;
             freshCatalog.status = isComplete ? "completed" : "running";
             await freshCatalog.save();
+
+            console.log(`${tag} Saved image ${newCount} (attempted ${newAttempted}/${freshCatalog.totalImages}) — complete=${isComplete}`);
 
             io.emit("catalog:progress", {
                 catalogId,
                 status: isComplete ? "completed" : "running",
                 current: newCount,
                 total: freshCatalog.totalImages,
+                skipped: freshCatalog.skippedImages ?? 0,
                 image: newImage,
             });
 
             if (isComplete) {
                 io.emit("catalog:completed", { catalogId });
             } else {
-                const delaySeconds = 90 + Math.floor(Math.random() * 31);
+                // Short delay between images: 20-35s
+                const delaySeconds = 20 + Math.floor(Math.random() * 16);
+                console.log(`${tag} Scheduling next image in ${delaySeconds}s`);
                 try {
-                    await agenda.schedule(`in ${delaySeconds} seconds`, "generate-catalog-image", { catalogId, retryCount: 0 });
+                    await agenda.schedule(`in ${delaySeconds} seconds`, JOB_NAME, { catalogId });
                 } catch (schedErr: any) {
-                    console.error(`[catalog-job] Failed to schedule next job for ${catalogId}:`, schedErr.message);
-                    // Retry scheduling once after 10s
+                    console.error(`${tag} Schedule failed: ${schedErr?.message} — retrying in 10s`);
                     setTimeout(async () => {
                         try {
-                            await agenda.schedule("in 10 seconds", "generate-catalog-image", { catalogId, retryCount: 0 });
-                        } catch {
+                            await agenda.schedule("in 10 seconds", JOB_NAME, { catalogId });
+                        } catch (schedErr2: any) {
+                            const msg = `Error al programar siguiente imagen: ${schedErr2?.message ?? schedErr2}`;
+                            console.error(`${tag} ${msg}`);
                             const fc = await Catalog.findById(catalogId);
-                            if (fc && fc.status !== "cancelled") { fc.status = "failed"; await fc.save(); }
-                            io.emit("catalog:error", { catalogId, error: "Error al programar siguiente imagen", current: newCount, total: freshCatalog.totalImages });
+                            if (fc && fc.status !== "cancelled") {
+                                fc.status = "failed";
+                                fc.lastError = msg;
+                                await fc.save();
+                            }
+                            io.emit("catalog:error", { catalogId, error: msg, current: newCount, total: freshCatalog.totalImages });
                         }
                     }, 10000);
                 }
             }
         } catch (e: any) {
-            console.error(`[catalog-job] Error (retry ${retryCount}) for catalog ${catalogId}:`, e.message);
+            const errMsg = e?.message ?? String(e);
+            console.error(`${tag} Image generation failed — skipping slot: ${errMsg}`);
 
             const freshCatalog = await Catalog.findById(catalogId);
             if (!freshCatalog || freshCatalog.status === "cancelled") return;
 
-            if (retryCount < 2) {
-                // Retry the same image after a short delay instead of failing immediately
-                const retryDelay = 30 + retryCount * 30;
-                console.log(`[catalog-job] Scheduling retry ${retryCount + 1}/2 in ${retryDelay}s`);
-                try {
-                    await agenda.schedule(`in ${retryDelay} seconds`, "generate-catalog-image", { catalogId, retryCount: retryCount + 1 });
-                    // Keep status as running during retry
-                } catch {
-                    freshCatalog.status = "failed";
-                    await freshCatalog.save();
-                    io.emit("catalog:error", {
-                        catalogId,
-                        error: e.message,
-                        current: freshCatalog.images.length,
-                        total: freshCatalog.totalImages,
-                    });
-                }
+            // Skip this image slot: increment skippedImages, do NOT retry
+            freshCatalog.skippedImages = (freshCatalog.skippedImages ?? 0) + 1;
+            freshCatalog.lastError = errMsg;
+
+            const newAttempted = freshCatalog.images.length + freshCatalog.skippedImages;
+            const isComplete = newAttempted >= freshCatalog.totalImages;
+            freshCatalog.status = isComplete ? "completed" : "running";
+            await freshCatalog.save();
+
+            console.log(`${tag} Skipped slot ${freshCatalog.skippedImages} (attempted ${newAttempted}/${freshCatalog.totalImages}) — complete=${isComplete}`);
+
+            io.emit("catalog:progress", {
+                catalogId,
+                status: isComplete ? "completed" : "running",
+                current: freshCatalog.images.length,
+                total: freshCatalog.totalImages,
+                skipped: freshCatalog.skippedImages,
+                lastError: errMsg,
+            });
+
+            if (isComplete) {
+                io.emit("catalog:completed", { catalogId });
             } else {
-                freshCatalog.status = "failed";
-                await freshCatalog.save();
-                io.emit("catalog:error", {
-                    catalogId,
-                    error: e.message,
-                    current: freshCatalog.images.length,
-                    total: freshCatalog.totalImages,
-                });
+                // Wait 2 minutes before trying the next image slot
+                console.log(`${tag} Scheduling next slot in 2 minutes`);
+                try {
+                    await agenda.schedule("in 2 minutes", JOB_NAME, { catalogId });
+                } catch (schedErr: any) {
+                    const msg = `Error al programar siguiente slot: ${schedErr?.message ?? schedErr}`;
+                    console.error(`${tag} ${msg}`);
+                    freshCatalog.status = "failed";
+                    freshCatalog.lastError = msg;
+                    await freshCatalog.save();
+                    io.emit("catalog:error", { catalogId, error: msg, current: freshCatalog.images.length, total: freshCatalog.totalImages });
+                }
             }
         }
-    });
+    };
+    agenda.define(JOB_NAME, handler, { lockLifetime: LOCK_LIFETIME_MS });
 }

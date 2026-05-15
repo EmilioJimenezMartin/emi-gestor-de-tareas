@@ -29,6 +29,8 @@ export interface ICatalog extends Document {
     totalImages: number;
     images: CatalogImage[];
     status: "pending" | "running" | "completed" | "failed" | "cancelled";
+    lastError?: string;
+    skippedImages: number;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -70,6 +72,8 @@ const CatalogSchema = new Schema<ICatalog>(
             enum: ["pending", "running", "completed", "failed", "cancelled"],
             default: "pending",
         },
+        lastError: { type: String, default: "" },
+        skippedImages: { type: Number, default: 0 },
     },
     { timestamps: true }
 );
