@@ -1,28 +1,24 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import {
-    Cpu,
     Sparkles,
     Wand2,
     Zap,
     TrendingUp,
     Layers,
-    Target,
-    Globe,
     Search,
     BookOpen,
-    BarChart3,
     CheckCircle2,
-    AlertCircle,
     Settings,
+    Globe,
+    BarChart,
+    Activity,
     Plus,
     Trash2,
     DollarSign,
     Box,
-    ShoppingCart,
-    Palette,
     FileText,
     Image as ImageIcon,
     Shirt,
@@ -30,10 +26,7 @@ import {
     ArrowUpRight,
     ArrowDownRight,
     Filter,
-    BarChart,
-    PieChart,
     ChevronDown,
-    Calendar,
     Loader2,
     Camera,
     X,
@@ -44,17 +37,23 @@ import {
     Maximize,
     ChevronRight,
     ChevronLeft,
-    Activity,
     Lightbulb,
     Download,
     Store,
     RefreshCw,
     StopCircle,
-    PlayCircle,
     ImagePlus,
     Copy,
     BookMarked,
-    ChevronUp
+    ChevronUp,
+    Type,
+    Tag,
+    ListOrdered,
+    BookText,
+    Star,
+    Send,
+    ArrowRight,
+    Newspaper,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -130,7 +129,7 @@ const AI_DIMENSIONS = [
 
 const PLATFORMS = ["Amazon KDP", "Etsy", "Printify", "Creative Fabrica"];
 
-type TabID = "insights" | "catalog" | "creation";
+type TabID = "insights" | "catalog" | "creation" | "studio";
 type PeriodID = "month" | "6months" | "year" | "all";
 
 interface CatalogImageFE {
@@ -168,6 +167,43 @@ interface SavedPromptFE {
 
 const DEFAULT_PROMPT_CATEGORIES = ["General", "Anime", "Mandala", "Acuarela", "Ilustración", "Arte Digital", "Coloring Book", "Fotografía", "Retrato", "Paisaje", "Abstracto", "Cómic"];
 
+function KdpSelect({ value, onChange, options, accent = "white" }: {
+    value: string;
+    onChange: (v: string) => void;
+    options: { value: string; label: string }[];
+    accent?: "white" | "violet" | "amber";
+}) {
+    const [open, setOpen] = React.useState(false);
+    const ref = React.useRef<HTMLDivElement>(null);
+    React.useEffect(() => {
+        const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, []);
+    const current = options.find(o => o.value === value);
+    const ringCls = accent === "violet" ? "border-violet-500/50 bg-violet-500/5" : accent === "amber" ? "border-amber-500/50 bg-amber-500/5" : "border-white/20 bg-white/5";
+    const activeCls = accent === "violet" ? "text-violet-300 bg-violet-500/10" : accent === "amber" ? "text-amber-300 bg-amber-500/10" : "text-white bg-white/10";
+    return (
+        <div ref={ref} className="relative">
+            <button type="button" onClick={() => setOpen(o => !o)}
+                className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border text-[11px] font-bold text-white transition-all bg-white/[0.03] border-white/8 hover:${ringCls} ${open ? ringCls : ""}`}>
+                <span>{current?.label ?? value}</span>
+                <ChevronDown size={12} className={`text-neutral-500 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+            </button>
+            {open && (
+                <div className="absolute z-50 top-full mt-1.5 left-0 right-0 bg-[#141414] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
+                    {options.map(opt => (
+                        <button key={opt.value} type="button" onClick={() => { onChange(opt.value); setOpen(false); }}
+                            className={`w-full text-left px-3 py-2 text-[11px] font-medium transition-colors hover:bg-white/5 ${opt.value === value ? activeCls : "text-neutral-300"}`}>
+                            {opt.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 interface QueuedCatalog {
     queueId: string;
     name: string;
@@ -181,19 +217,14 @@ interface QueuedCatalog {
 export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>("insights");
     const [chartPeriod, setChartPeriod] = useState<PeriodID>("month");
-
-    // State for mock chart data
     const [chartData, setChartData] = useState<number[]>([]);
 
     useEffect(() => {
-        // Generate mock data based on period
         let dataLength = 14;
         if (chartPeriod === "6months") dataLength = 24;
         if (chartPeriod === "year") dataLength = 12;
         if (chartPeriod === "all") dataLength = 20;
-
-        const newData = Array.from({ length: dataLength }, () => Math.floor(Math.random() * 150) + 20);
-        setChartData(newData);
+        setChartData(Array.from({ length: dataLength }, () => Math.floor(Math.random() * 150) + 20));
     }, [chartPeriod]);
 
     const [products, setProducts] = useState<DigitalProduct[]>([
@@ -305,6 +336,22 @@ export function KdpFactoryApp() {
     const [promptCategoryFilter, setPromptCategoryFilter] = useState("all");
     const [isSavingPrompt, setIsSavingPrompt] = useState(false);
     const catalogSocketRef = useRef<ReturnType<typeof createApiSocket> | null>(null);
+
+    // --- Content generator state ---
+    const [contentNiche, setContentNiche] = useState("");
+    const [contentProductType, setContentProductType] = useState("Coloring Book");
+    const [contentExtras, setContentExtras] = useState("");
+    const [contentLanguage, setContentLanguage] = useState<"es" | "en">("en");
+    const [contentType, setContentType] = useState<"full-listing" | "titles" | "description" | "keywords" | "back-cover" | "series">("full-listing");
+    const [contentResult, setContentResult] = useState<any | null>(null);
+    const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+
+    // --- Trends state ---
+    const [trendsPlatform, setTrendsPlatform] = useState<"all" | "kdp" | "etsy" | "printify">("all");
+    const [trendsCategory, setTrendsCategory] = useState("all");
+    const [trendsData, setTrendsData] = useState<any | null>(null);
+    const [isLoadingTrends, setIsLoadingTrends] = useState(false);
+    const [selectedTrend, setSelectedTrend] = useState<any | null>(null);
 
     // Keep queue ref in sync so socket handlers always see the latest queue
     useEffect(() => { catalogQueueRef.current = catalogQueue; }, [catalogQueue]);
@@ -1149,189 +1196,80 @@ export function KdpFactoryApp() {
 
     const renderInsights = () => (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            {/* Stats Overview */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-indigo-500/30 transition-all duration-500 group relative overflow-hidden">
+                <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-indigo-500/30 hover:shadow-[0_0_30px_rgba(99,102,241,0.12)] transition-all duration-500 group relative overflow-hidden">
                     <div className="absolute -right-4 -top-4 w-16 h-16 bg-indigo-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
                     <div className="flex items-center justify-between relative">
                         <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Ganancias Totales</span>
-                        <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
-                            <TrendingUp size={16} />
-                        </div>
+                        <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400"><TrendingUp size={16} /></div>
                     </div>
                     <div className="space-y-1 relative">
-                        <p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">
-                            {stats.total.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€
-                        </p>
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400">
-                            <ArrowUpRight size={12} />
-                            <span>+12.5% vs mes anterior</span>
-                        </div>
+                        <p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.total.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p>
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400"><ArrowUpRight size={12} /><span>+12.5% vs mes anterior</span></div>
                     </div>
                 </Card>
-
-                <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-blue-500/30 transition-all duration-500 group relative overflow-hidden">
-                    <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Promedio / Asset</span>
-                        <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400">
-                            <BarChart size={16} />
-                        </div>
-                    </div>
-                    <div className="space-y-1">
-                        <p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">
-                            {stats.avg.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€
-                        </p>
-                        <div className="text-[10px] font-bold text-blue-400 italic">Rendimiento Saludable</div>
-                    </div>
+                <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.12)] transition-all duration-500 group relative overflow-hidden">
+                    <div className="absolute -right-4 -top-4 w-16 h-16 bg-blue-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
+                    <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Promedio / Asset</span><div className="p-2 rounded-xl bg-blue-500/10 text-blue-400"><BarChart size={16} /></div></div>
+                    <div className="space-y-1"><p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.avg.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p><div className="text-[10px] font-bold text-blue-400 italic">Rendimiento Saludable</div></div>
                 </Card>
-
-                <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-emerald-500/30 transition-all duration-500 group relative overflow-hidden">
-                    <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Market Reach</span>
-                        <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
-                            <Globe size={16} />
-                        </div>
-                    </div>
-                    <div className="space-y-1 text-3xl font-black italic tracking-tighter text-white">
-                        4/4 <span className="text-xs uppercase text-neutral-500 tracking-widest not-italic ml-2">Platforms</span>
-                    </div>
+                <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.12)] transition-all duration-500 group relative overflow-hidden">
+                    <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
+                    <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Market Reach</span><div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400"><Globe size={16} /></div></div>
+                    <div className="space-y-1 text-3xl font-black italic tracking-tighter text-white">4/4 <span className="text-xs uppercase text-neutral-500 tracking-widest not-italic ml-2">Platforms</span></div>
                 </Card>
-
-                <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-purple-500/30 transition-all duration-500 group relative overflow-hidden">
-                    <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Top Nicho</span>
-                        <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400">
-                            <Activity size={16} />
-                        </div>
-                    </div>
-                    <div className="space-y-1 text-xl font-black italic tracking-tighter text-white flex flex-col">
-                        <span>Mandala Art</span>
-                        <span className="text-[11px] uppercase font-black text-purple-400 tracking-widest">+45% Demand</span>
-                    </div>
+                <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-purple-500/30 hover:shadow-[0_0_30px_rgba(168,85,247,0.12)] transition-all duration-500 group relative overflow-hidden">
+                    <div className="absolute -right-4 -top-4 w-16 h-16 bg-purple-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
+                    <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Top Nicho</span><div className="p-2 rounded-xl bg-purple-500/10 text-purple-400"><Activity size={16} /></div></div>
+                    <div className="space-y-1 text-xl font-black italic tracking-tighter text-white flex flex-col"><span>Mandala Art</span><span className="text-[11px] uppercase font-black text-purple-400 tracking-widest">+45% Demand</span></div>
                 </Card>
             </div>
-
-            {/* Charts Section */}
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <Card variant="glass" className="lg:col-span-2 p-8 border-white/5 bg-white/[0.01] space-y-8 relative overflow-hidden">
+                <Card variant="glass" className="lg:col-span-2 p-8 border-white/5 bg-white/[0.01] space-y-8 relative overflow-hidden hover:shadow-[0_0_40px_rgba(99,102,241,0.08)] transition-all duration-500">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="space-y-1">
-                            <h3 className="text-sm font-black text-white italic tracking-widest uppercase flex items-center gap-2">
-                                <Activity size={14} className="text-indigo-400" />
-                                Evolución de Tendencias
-                            </h3>
+                            <h3 className="text-sm font-black text-white italic tracking-widest uppercase flex items-center gap-2"><Activity size={14} className="text-indigo-400" />Evolución de Tendencias</h3>
                             <p className="text-[10px] text-neutral-500 font-medium tracking-tight">Análisis predictivo basado en volumen de ventas</p>
                         </div>
-
-                        {/* Period Filter Dropdown */}
-                        <div className="relative inline-block w-full md:w-48">
-                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500">
-                                <Calendar size={12} />
-                            </div>
-                            <select
-                                value={chartPeriod}
-                                onChange={(e) => setChartPeriod(e.target.value as PeriodID)}
-                                className="w-full h-10 bg-white/5 border border-white/10 rounded-xl pl-10 pr-10 text-[10px] font-black uppercase tracking-widest text-white focus:outline-none focus:border-indigo-500/50 appearance-none cursor-pointer hover:bg-white/[0.08] transition-all"
-                            >
-                                <option value="month" className="bg-[#0a0a0a]">Último Mes</option>
-                                <option value="6months" className="bg-6months">Últimos 6 Meses</option>
-                                <option value="year" className="bg-[#0a0a0a]">Último Año</option>
-                                <option value="all" className="bg-[#0a0a0a]">Histórico Total</option>
-                            </select>
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none">
-                                <ChevronDown size={14} />
-                            </div>
+                        <div className="w-full md:w-48">
+                            <KdpSelect value={chartPeriod} onChange={v => setChartPeriod(v as PeriodID)}
+                                options={[{value:"month",label:"Último Mes"},{value:"6months",label:"Últimos 6 Meses"},{value:"year",label:"Último Año"},{value:"all",label:"Histórico Total"}]} />
                         </div>
                     </div>
-
-                    {/* Mock Chart Area with Dynamic Data */}
                     <div className="h-[250px] w-full flex items-end justify-between gap-1 sm:gap-2 pt-14 mt-4">
                         {chartData.map((height, i) => (
-                            <div key={i} className="flex-1 group relative h-full flex items-end">
-                                <div
-                                    className="w-full bg-gradient-to-t from-indigo-500/10 via-indigo-500/30 to-indigo-500/50 rounded-t-sm sm:rounded-t-lg group-hover:from-indigo-500/30 group-hover:to-indigo-400 transition-all duration-700 relative overflow-hidden"
-                                    style={{ height: `${height}%` }}
-                                >
+                            <div key={i} className="flex-1 group/bar relative h-full flex items-end">
+                                <div className="w-full bg-gradient-to-t from-indigo-500/10 via-indigo-500/30 to-indigo-500/50 rounded-t-sm sm:rounded-t-lg group-hover/bar:from-indigo-500/30 group-hover/bar:to-indigo-400 transition-all duration-700 relative overflow-hidden" style={{ height: `${height}%` }}>
                                     <div className="absolute inset-x-0 top-0 h-0.5 bg-white/40 blur-[1px]" />
-                                    <div className="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
+                                    <div className="absolute inset-0 bg-white/10 translate-y-full group-hover/bar:translate-y-0 transition-transform duration-500" />
                                 </div>
-                                {/* Tooltip */}
-                                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-white text-[10px] font-black text-black px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100 pointer-events-none shadow-2xl z-20">
-                                    {height}€
-                                </div>
+                                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-white text-[10px] font-black text-black px-2 py-1 rounded-lg opacity-0 group-hover/bar:opacity-100 transition-all scale-75 group-hover/bar:scale-100 pointer-events-none shadow-2xl z-20">{height}€</div>
                             </div>
                         ))}
                     </div>
                     <div className="flex justify-between px-2 text-[10px] font-black text-neutral-600 uppercase tracking-widest pt-3 border-t border-white/5">
-                        {chartPeriod === "month" && (
-                            <>
-                                <span>Semana 1</span>
-                                <span>Semana 2</span>
-                                <span>Semana 3</span>
-                                <span>Semana 4</span>
-                            </>
-                        )}
-                        {chartPeriod === "6months" && (
-                            <>
-                                <span>Mes 1</span>
-                                <span>Mes 3</span>
-                                <span>Mes 6</span>
-                            </>
-                        )}
-                        {chartPeriod === "year" && (
-                            <>
-                                <span>Trimestre 1</span>
-                                <span>Trimestre 2</span>
-                                <span>Trimestre 3</span>
-                                <span>Trimestre 4</span>
-                            </>
-                        )}
-                        {chartPeriod === "all" && (
-                            <>
-                                <span>2024</span>
-                                <span>2025</span>
-                                <span>2026</span>
-                            </>
-                        )}
+                        {chartPeriod === "month" && <><span>Semana 1</span><span>Semana 2</span><span>Semana 3</span><span>Semana 4</span></>}
+                        {chartPeriod === "6months" && <><span>Mes 1</span><span>Mes 3</span><span>Mes 6</span></>}
+                        {chartPeriod === "year" && <><span>Q1</span><span>Q2</span><span>Q3</span><span>Q4</span></>}
+                        {chartPeriod === "all" && <><span>2024</span><span>2025</span><span>2026</span></>}
                     </div>
                 </Card>
-
-                <Card variant="glass" className="p-8 border-white/5 bg-white/[0.01] space-y-8 flex flex-col justify-between relative overflow-hidden">
+                <Card variant="glass" className="p-8 border-white/5 bg-white/[0.01] space-y-8 flex flex-col justify-between relative overflow-hidden hover:shadow-[0_0_40px_rgba(99,102,241,0.08)] transition-all duration-500">
                     <div className="space-y-6 relative">
-                        <div className="space-y-1">
-                            <h3 className="text-sm font-black text-white italic tracking-widest uppercase">Platform Split</h3>
-                            <p className="text-[10px] text-neutral-500 font-medium tracking-tight">Distribución por canales de venta</p>
-                        </div>
-
+                        <div className="space-y-1"><h3 className="text-sm font-black text-white italic tracking-widest uppercase">Platform Split</h3><p className="text-[10px] text-neutral-500 font-medium tracking-tight">Distribución por canales de venta</p></div>
                         <div className="space-y-5">
-                            {[
-                                { name: "Amazon KDP", percent: 65, color: "bg-orange-500" },
-                                { name: "Etsy", percent: 25, color: "bg-indigo-500" },
-                                { name: "Creative Fabrica", percent: 10, color: "bg-blue-500" }
-                            ].map((plat: { name: string, percent: number, color: string, earnings?: number }) => (
+                            {[{name:"Amazon KDP",percent:65,color:"bg-orange-500"},{name:"Etsy",percent:25,color:"bg-indigo-500"},{name:"Creative Fabrica",percent:10,color:"bg-blue-500"}].map(plat => (
                                 <div key={plat.name} className="space-y-2.5">
-                                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
-                                        <span className="text-neutral-400">{plat.name}</span>
-                                        <span className="text-white italic tabular-nums">{(plat.earnings || plat.percent)}%</span>
-                                    </div>
-                                    <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden p-[2px]">
-                                        <div className={`h-full ${plat.color} rounded-full flex items-center justify-end px-1`} style={{ width: `${plat.percent}%` }}>
-                                            <div className="w-1 h-1 bg-white/40 rounded-full blur-[1px]" />
-                                        </div>
-                                    </div>
+                                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest"><span className="text-neutral-400">{plat.name}</span><span className="text-white italic tabular-nums">{plat.percent}%</span></div>
+                                    <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden p-[2px]"><div className={`h-full ${plat.color} rounded-full flex items-center justify-end px-1`} style={{ width: `${plat.percent}%` }}><div className="w-1 h-1 bg-white/40 rounded-full blur-[1px]" /></div></div>
                                 </div>
                             ))}
                         </div>
                     </div>
-
-                    <div className="p-5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 space-y-3 relative group/alert">
-                        <div className="absolute inset-0 bg-indigo-500/5 opacity-0 group-hover/alert:opacity-100 transition-opacity duration-500" />
-                        <p className="text-[11px] font-black text-indigo-400 uppercase tracking-[0.05em] flex items-center gap-2">
-                            <Lightbulb size={10} /> Smart Insight
-                        </p>
-                        <p className="text-[11px] text-neutral-400 leading-relaxed italic relative">
-                            "Los posters digitales de la serie 'Cyberpunk' están rindiendo un 25% mejor en Etsy que en otras plataformas este mes."
-                        </p>
+                    <div className="p-5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 space-y-3 relative group/alert hover:shadow-[0_0_20px_rgba(99,102,241,0.15)] transition-all duration-500">
+                        <div className="absolute inset-0 bg-indigo-500/5 opacity-0 group-hover/alert:opacity-100 transition-opacity duration-500 rounded-2xl" />
+                        <p className="text-[11px] font-black text-indigo-400 uppercase tracking-[0.05em] flex items-center gap-2"><Lightbulb size={10} /> Smart Insight</p>
+                        <p className="text-[11px] text-neutral-400 leading-relaxed italic relative">"Los posters digitales de la serie 'Cyberpunk' están rindiendo un 25% mejor en Etsy que en otras plataformas este mes."</p>
                     </div>
                 </Card>
             </section>
@@ -1344,24 +1282,8 @@ export function KdpFactoryApp() {
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 px-2">
                 <div className="flex-1 w-full md:w-auto space-y-2">
                     <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1">Filtrar por Categoría</label>
-                    <div className="relative group">
-                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500 group-hover:text-indigo-400 transition-colors">
-                            <Filter size={14} />
-                        </div>
-                        <select
-                            value={catalogFilter}
-                            onChange={(e) => setCatalogFilter(e.target.value)}
-                            className="w-full md:w-64 h-12 bg-white/5 border border-white/10 rounded-2xl pl-12 pr-10 text-[10px] font-black uppercase tracking-widest text-white focus:outline-none focus:border-indigo-500/40 appearance-none cursor-pointer hover:bg-white/[0.08] transition-all"
-                        >
-                            <option value="all" className="bg-[#0a0a0a]">Todos los Activos</option>
-                            {PRODUCT_TYPES.map(type => (
-                                <option key={type.id} value={type.id} className="bg-[#0a0a0a]">{type.name}</option>
-                            ))}
-                        </select>
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none">
-                            <ChevronDown size={16} />
-                        </div>
-                    </div>
+                    <KdpSelect value={catalogFilter} onChange={setCatalogFilter}
+                        options={[{ value: "all", label: "Todos los Activos" }, ...PRODUCT_TYPES.map(t => ({ value: t.id, label: t.name }))]} />
                 </div>
 
                 <div className="w-full md:w-auto space-y-2">
@@ -1470,10 +1392,8 @@ export function KdpFactoryApp() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Generation Control */}
-                <Card variant="glass" className="p-6 md:p-8 border-white/5 bg-white/[0.01] space-y-8 relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-8 opacity-5 -mr-10 -mt-10 group-hover:scale-110 transition-transform duration-700">
-                        <ImageIcon size={200} />
-                    </div>
+                <Card variant="glass" className="p-6 md:p-8 border-white/5 bg-white/[0.01] space-y-8 relative overflow-hidden group hover:shadow-[0_0_40px_rgba(245,158,11,0.08)] transition-all duration-500">
+                    <div className="absolute -inset-1 bg-gradient-to-br from-amber-500/5 via-transparent to-transparent blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
 
                     <div className="space-y-6 relative z-10">
                         {/* Model & Dim Selectors Wrapper */}
@@ -1792,14 +1712,8 @@ export function KdpFactoryApp() {
                                         {prov === "Ideogram" && (
                                             <div className="space-y-1.5">
                                                 <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Estilo</label>
-                                                <div className="relative">
-                                                    <select value={ideogramStyle} onChange={e => setIdeogramStyle(e.target.value)} className="w-full h-9 bg-white/5 border border-white/10 rounded-xl px-3 pr-8 text-sm text-white outline-none focus:border-amber-500/30 transition-all appearance-none">
-                                                        {["AUTO", "REALISTIC", "DESIGN", "RENDER_3D", "ANIME"].map(s => (
-                                                            <option key={s} value={s} className="bg-[#0f0f0f]">{s}</option>
-                                                        ))}
-                                                    </select>
-                                                    <ChevronDown size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
-                                                </div>
+                                                <KdpSelect accent="amber" value={ideogramStyle} onChange={setIdeogramStyle}
+                                                    options={["AUTO", "REALISTIC", "DESIGN", "RENDER_3D", "ANIME"].map(s => ({ value: s, label: s }))} />
                                             </div>
                                         )}
                                     </div>
@@ -2352,117 +2266,8 @@ export function KdpFactoryApp() {
     );
 
     const renderCreation = () => (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="lg:col-span-12 space-y-8">
-                <Card variant="glass" className="p-6 md:p-14 border-primary/20 bg-primary/5 space-y-10 shadow-[0_0_100px_rgba(25,113,255,0.08)] relative overflow-hidden rounded-[24px] md:rounded-[48px]">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-16 items-start relative z-10">
-                        <div className="space-y-10 order-2 md:order-1">
-                            <div className="space-y-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 rounded-[20px] bg-primary/10 flex items-center justify-center text-primary shadow-lg shadow-primary/20">
-                                        <Wand2 size={24} />
-                                    </div>
-                                    <div>
-                                        <h2 className="text-3xl font-black italic tracking-tighter text-white uppercase leading-none">Generador Maestro</h2>
-                                        <p className="text-[11px] font-black tracking-widest text-primary uppercase mt-1 italic">Industrial Quality Engine v2.0</p>
-                                    </div>
-                                </div>
-                                <p className="text-sm text-neutral-400 font-medium leading-relaxed max-w-sm">
-                                    Nuestro motor de IA generará automáticamente el esquema, los metadatos y la estrategia de lanzamiento para tu activo.
-                                </p>
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-5">
-                                {[
-                                    { step: "01", text: "Definición del Nicho Maestro", done: true, desc: "Segmentación algorítmica de audiencia." },
-                                    { step: "02", text: "Título Estratégico SEO", done: newTitle.length > 5, desc: "Keywords de alta conversión integradas." },
-                                    { step: "03", text: "Carga de Parámetros I.A.", done: newDesc.length > 10, desc: "Configuración del motor de generación." }
-                                ].map((s) => (
-                                    <div key={s.step} className="flex items-start gap-4 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
-                                        <div className={`w-10 h-10 shrink-0 rounded-2xl flex items-center justify-center text-xs font-black ${s.done ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/20" : "bg-white/5 text-neutral-600 border border-white/5"}`}>
-                                            {s.done ? <CheckCircle2 size={18} /> : s.step}
-                                        </div>
-                                        <div className="space-y-0.5">
-                                            <p className={`text-[11px] font-black uppercase tracking-tight ${s.done ? "text-neutral-200" : "text-neutral-600"}`}>{s.text}</p>
-                                            <p className="text-[10px] text-neutral-600 font-medium italic">{s.desc}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            <div className="p-6 rounded-[32px] bg-indigo-500/10 border border-indigo-500/20 flex gap-5 relative overflow-hidden group">
-                                <div className="absolute right-0 top-0 w-24 h-24 bg-indigo-500/10 blur-2xl group-hover:bg-indigo-400/20 transition-all" />
-                                <div className="p-4 rounded-2xl bg-indigo-500/20 text-indigo-400 h-fit">
-                                    <Lightbulb size={24} />
-                                </div>
-                                <div className="space-y-1.5 relative">
-                                    <p className="text-[11px] font-black uppercase tracking-widest text-indigo-400 italic">Smart Context Tip</p>
-                                    <p className="text-xs text-neutral-400 leading-relaxed italic font-medium">
-                                        "Los mercados europeos (DE/FR/ES) muestran una saturación baja en la categoría 'Cuadros Imprimibles'. Ideal para lanzamientos flash."
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="space-y-8 p-6 md:p-10 rounded-[32px] md:rounded-[48px] bg-white/[0.04] border border-white/10 shadow-3xl backdrop-blur-3xl relative order-1 md:order-2 overflow-hidden">
-                            <div className="absolute -inset-1 bg-gradient-to-br from-primary/10 via-transparent to-indigo-500/10 blur-xl opacity-30" />
-                            <div className="space-y-8 relative">
-                                <div className="space-y-4">
-                                    <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1">Tipo de Activo Digital</label>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        {PRODUCT_TYPES.map((type) => (
-                                            <button
-                                                key={type.id}
-                                                onClick={() => setSelectedType(type.id)}
-                                                className={`flex items-center gap-4 p-5 rounded-2xl border transition-all duration-300 ${selectedType === type.id
-                                                    ? "bg-white/10 border-white/20 shadow-xl scale-[1.02] ring-1 ring-primary/30"
-                                                    : "bg-white/[0.02] border-white/5 opacity-50 hover:opacity-100 hover:bg-white/[0.05]"
-                                                    }`}
-                                            >
-                                                <div className={`p-3 rounded-xl ${type.bg} ${type.color} shadow-inner`}>
-                                                    {type.icon}
-                                                </div>
-                                                <span className="text-[11px] font-black uppercase tracking-[0.05em] text-left leading-none">{type.name}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1 block mb-1">Proyecto Master Title</label>
-                                    <input
-                                        type="text"
-                                        value={newTitle}
-                                        onChange={(e) => setNewTitle(e.target.value)}
-                                        placeholder="Ej: Minimalist Japanese Art Set"
-                                        className="w-full h-12 md:h-14 bg-white/5 border border-white/10 rounded-2xl px-6 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-primary/50 focus:bg-white/[0.08] transition-all font-medium"
-                                    />
-                                </div>
-
-                                <div className="space-y-3">
-                                    <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1 block mb-1">Descripción de Lanzamiento</label>
-                                    <textarea
-                                        value={newDesc}
-                                        onChange={(e) => setNewDesc(e.target.value)}
-                                        placeholder="Define el concepto central y el nicho demográfico..."
-                                        rows={2}
-                                        className="w-full bg-white/5 border border-white/10 rounded-2xl p-6 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-primary/50 focus:bg-white/[0.08] transition-all resize-none font-medium leading-relaxed"
-                                    />
-                                </div>
-
-                                <Button
-                                    onClick={handleAddProduct}
-                                    className="w-full h-16 bg-white text-black font-black uppercase tracking-widest text-[11px] rounded-2xl hover:bg-neutral-100 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_15px_40px_rgba(255,255,255,0.15)]"
-                                >
-                                    <Sparkles size={18} className="mr-3" /> Lanzar Generación Maestro
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                </Card>
-
-                {renderAIStudio()}
-            </div>
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {renderAIStudio()}
         </div>
     );
 
@@ -2478,15 +2283,327 @@ export function KdpFactoryApp() {
         return <Badge variant="neutral" className={`text-[9px] font-black uppercase ${cls}`}>{label}</Badge>;
     };
 
+    // ─── STUDIO (Tendencias + Contenido) ─────────────────────────────────────
+    const generateContent = async () => {
+        if (!contentNiche.trim()) { toast.error("Escribe un nicho o tema"); return; }
+        setIsGeneratingContent(true);
+        setContentResult(null);
+        try {
+            const res = await fetch(`${API_BASE_URL}/ai/generate-text`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ type: contentType, niche: contentNiche, productType: contentProductType, extras: contentExtras, language: contentLanguage }),
+            });
+            const data = await res.json();
+            if (!res.ok) { toast.error(data.error ?? "Error generando contenido"); return; }
+            setContentResult(data.result);
+        } catch { toast.error("Error conectando con la API"); }
+        finally { setIsGeneratingContent(false); }
+    };
+
+    const copyText = (text: string) => { navigator.clipboard.writeText(text); toast.success("Copiado"); };
+
+    const fetchTrends = async () => {
+        setIsLoadingTrends(true);
+        setTrendsData(null);
+        setSelectedTrend(null);
+        try {
+            const res = await fetch(`${API_BASE_URL}/ai/trends`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ platform: trendsPlatform, category: trendsCategory }),
+            });
+            const data = await res.json();
+            if (!res.ok) { toast.error(data.error ?? "Error obteniendo tendencias"); return; }
+            setTrendsData(data);
+        } catch { toast.error("Error conectando con la API"); }
+        finally { setIsLoadingTrends(false); }
+    };
+
+    const CONTENT_PRODUCT_TYPES = ["Coloring Book", "Activity Book", "Journal", "Planner", "Wall Art", "Sticker Sheet", "Template Pack", "Workbook", "Puzzle Book", "Notebook", "Low Content Book", "Printable Set"];
+    const CONTENT_TYPES = [
+        { id: "full-listing", label: "Listing Completo", icon: <ListOrdered size={13} /> },
+        { id: "titles", label: "Títulos", icon: <Type size={13} /> },
+        { id: "description", label: "Descripción", icon: <FileText size={13} /> },
+        { id: "keywords", label: "Keywords", icon: <Tag size={13} /> },
+        { id: "back-cover", label: "Contraportada", icon: <BookText size={13} /> },
+        { id: "series", label: "Serie", icon: <Layers size={13} /> },
+    ] as const;
+    const TREND_CATEGORIES = ["all", "Coloring Books", "Journals", "Planners", "Wall Art", "Stickers", "Activity Books", "Templates", "Notebooks", "Puzzle Books"];
+    const COMPETITION_COLORS: Record<string, string> = { low: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20", medium: "text-amber-400 bg-amber-500/10 border-amber-500/20", high: "text-rose-400 bg-rose-500/10 border-rose-500/20" };
+    const DEMAND_ICONS: Record<string, React.ReactElement> = { rising: <ArrowUpRight size={12} className="text-emerald-400" />, stable: <ArrowRight size={12} className="text-amber-400" />, declining: <ArrowDownRight size={12} className="text-rose-400" /> };
+
+    const renderStudio = () => (
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="grid grid-cols-1 xl:grid-cols-2 divide-y xl:divide-y-0 xl:divide-x divide-white/5">
+
+                {/* ── LEFT: TENDENCIAS ─────────────────────────────── */}
+                <div className="p-4 md:p-6 space-y-4">
+                    <div className="space-y-0.5">
+                        <h2 className="text-base font-black bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent flex items-center gap-2">
+                            <TrendingUp size={16} className="text-amber-400" /> Radar de Nichos
+                        </h2>
+                        <p className="text-[10px] text-neutral-600">Tendencias de mercado analizadas con IA para KDP, Etsy y Printify.</p>
+                    </div>
+                    <div className="flex gap-2">
+                        <div className="flex-1">
+                            <KdpSelect accent="amber" value={trendsPlatform} onChange={v => setTrendsPlatform(v as any)}
+                                options={[{value:"all",label:"Todas las plataformas"},{value:"kdp",label:"Amazon KDP"},{value:"etsy",label:"Etsy"},{value:"printify",label:"Printify"}]} />
+                        </div>
+                        <div className="flex-1">
+                            <KdpSelect accent="amber" value={trendsCategory} onChange={v => setTrendsCategory(v)}
+                                options={TREND_CATEGORIES.map(c => ({ value: c, label: c === "all" ? "Todas las categorías" : c }))} />
+                        </div>
+                        <button onClick={fetchTrends} disabled={isLoadingTrends}
+                            className="h-[38px] px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-black text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity shrink-0">
+                            {isLoadingTrends ? <Loader2 size={12} className="animate-spin" /> : <TrendingUp size={12} />}
+                            {isLoadingTrends ? "..." : "Analizar"}
+                        </button>
+                    </div>
+                    {isLoadingTrends && (
+                        <div className="flex flex-col items-center justify-center py-16 space-y-3">
+                            <Loader2 size={28} className="animate-spin text-amber-400" />
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Analizando mercado con IA...</p>
+                        </div>
+                    )}
+                    {!isLoadingTrends && !trendsData && (
+                        <div className="flex flex-col items-center justify-center py-16 text-center space-y-2 opacity-25">
+                            <TrendingUp size={32} strokeWidth={1.5} className="text-neutral-600" />
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Pulsa Analizar para ver tendencias</p>
+                        </div>
+                    )}
+                    {trendsData && !isLoadingTrends && (
+                        <div className="space-y-3">
+                            {trendsData.summary && (
+                                <div className="flex items-start gap-2.5 p-3 bg-amber-500/5 border border-amber-500/15 rounded-xl">
+                                    <Newspaper size={13} className="text-amber-400 shrink-0 mt-0.5" />
+                                    <p className="text-[10px] text-neutral-400 leading-relaxed">{trendsData.summary}</p>
+                                </div>
+                            )}
+                            <div className="space-y-1.5 max-h-[600px] overflow-y-auto pr-1">
+                                {(trendsData.trends ?? []).map((t: any) => {
+                                    const isHot = trendsData.hot_picks?.includes(t.id);
+                                    const isSelected = selectedTrend?.id === t.id;
+                                    return (
+                                        <button key={t.id} onClick={() => setSelectedTrend(isSelected ? null : t)}
+                                            className={`w-full text-left p-3 rounded-xl border transition-all ${isSelected ? "border-amber-500/40 bg-amber-500/8" : "border-white/5 bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.03]"}`}>
+                                            <div className="flex items-start gap-2">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <span className="text-[12px] font-bold text-white">{t.niche}</span>
+                                                        {isHot && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-black uppercase border border-amber-500/30 shrink-0">🔥 Hot</span>}
+                                                        <span className={`text-[8px] px-1.5 py-0.5 rounded-full border font-black uppercase shrink-0 ${COMPETITION_COLORS[t.competition] ?? "text-neutral-400 bg-white/5 border-white/10"}`}>{t.competition}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 mt-0.5">
+                                                        <span className="text-[9px] text-neutral-600">{t.category}</span>
+                                                        {DEMAND_ICONS[t.demand_trend] && <span className="flex items-center gap-0.5 ml-1">{DEMAND_ICONS[t.demand_trend]}<span className="text-[9px] text-neutral-600">{t.demand_trend}</span></span>}
+                                                    </div>
+                                                </div>
+                                                <div className="text-right shrink-0">
+                                                    <div className="flex items-center gap-0.5 justify-end">
+                                                        <Star size={9} className="text-amber-400" />
+                                                        <span className="text-[11px] font-black text-amber-400">{t.trend_score}</span>
+                                                    </div>
+                                                    <p className="text-[8px] text-neutral-600">${t.avg_price_usd}</p>
+                                                </div>
+                                            </div>
+                                            {isSelected && (
+                                                <div className="mt-2.5 pt-2.5 border-t border-white/5 space-y-2" onClick={e => e.stopPropagation()}>
+                                                    {t.angle && <p className="text-[10px] text-neutral-400 italic">{t.angle}</p>}
+                                                    {Array.isArray(t.product_ideas) && (
+                                                        <ul className="space-y-0.5">
+                                                            {t.product_ideas.map((idea: string, i: number) => (
+                                                                <li key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-amber-400 shrink-0">▸</span>{idea}</li>
+                                                            ))}
+                                                        </ul>
+                                                    )}
+                                                    {Array.isArray(t.keywords) && (
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {t.keywords.map((k: string, i: number) => (
+                                                                <span key={i} className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 border border-white/8 text-neutral-500">{k}</span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    <div className="flex gap-1.5 pt-0.5">
+                                                        <button onClick={() => { setContentNiche(t.niche); toast.success("Nicho cargado en Contenido →"); }}
+                                                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[9px] font-black uppercase hover:bg-violet-500/20 transition-colors">
+                                                            <Send size={9} /> Usar en Contenido →
+                                                        </button>
+                                                        <button onClick={() => { setPromptTheme(t.niche); setActiveTab("creation"); toast.success("Cargado en Imágenes"); }}
+                                                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[9px] font-black uppercase hover:bg-amber-500/20 transition-colors">
+                                                            <ImageIcon size={9} /> Imágenes
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* ── RIGHT: CONTENIDO ─────────────────────────────── */}
+                <div className="p-4 md:p-6 space-y-4">
+                    <div className="space-y-0.5">
+                        <h2 className="text-base font-black bg-gradient-to-r from-violet-400 to-pink-400 bg-clip-text text-transparent flex items-center gap-2">
+                            <Type size={16} className="text-violet-400" /> Generador de Contenido
+                        </h2>
+                        <p className="text-[10px] text-neutral-600">Títulos, descripciones, keywords y listings para KDP y Etsy.</p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                        {CONTENT_TYPES.map(ct => (
+                            <button key={ct.id} onClick={() => setContentType(ct.id as any)}
+                                className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border transition-all ${contentType === ct.id ? "border-violet-500/50 bg-violet-500/10 text-violet-300" : "border-white/5 bg-white/[0.02] text-neutral-500 hover:border-white/10 hover:text-neutral-300"}`}>
+                                {ct.icon}
+                                <span className="text-[9px] font-bold">{ct.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                    <input value={contentNiche} onChange={e => setContentNiche(e.target.value)}
+                        placeholder="Nicho / Tema — ej: zen mandalas, cats for beginners..."
+                        onKeyDown={e => { if (e.key === "Enter") generateContent(); }}
+                        className="w-full bg-white/[0.03] border border-white/8 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40" />
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1.5">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Tipo de producto</p>
+                            <KdpSelect accent="violet" value={contentProductType} onChange={setContentProductType}
+                                options={CONTENT_PRODUCT_TYPES.map(pt => ({ value: pt, label: pt }))} />
+                        </div>
+                        <div className="space-y-1.5">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Idioma</p>
+                            <div className="flex p-1 bg-white/[0.03] border border-white/8 rounded-xl h-[38px]">
+                                {(["en", "es"] as const).map(lang => (
+                                    <button key={lang} onClick={() => setContentLanguage(lang)}
+                                        className={`flex-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                        {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                    <textarea value={contentExtras} onChange={e => setContentExtras(e.target.value)} rows={2}
+                        placeholder="Contexto adicional: estilo, audiencia, ocasión... (opcional)"
+                        className="w-full bg-white/[0.03] border border-white/8 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none" />
+                    <button onClick={generateContent} disabled={isGeneratingContent || !contentNiche.trim()}
+                        className="w-full h-10 rounded-xl bg-gradient-to-r from-violet-600 to-pink-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed">
+                        {isGeneratingContent ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><Sparkles size={13} /> Generar con IA</>}
+                    </button>
+                    {isGeneratingContent && (
+                        <div className="flex items-center justify-center py-10 gap-3">
+                            <Loader2 size={20} className="animate-spin text-violet-400" />
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Generando...</p>
+                        </div>
+                    )}
+                    {!contentResult && !isGeneratingContent && (
+                        <div className="flex flex-col items-center justify-center py-10 text-center space-y-2 opacity-20">
+                            <Wand2 size={24} strokeWidth={1.5} className="text-neutral-600" />
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">El resultado aparecerá aquí</p>
+                        </div>
+                    )}
+                    {contentResult && !isGeneratingContent && (
+                        <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+                            {contentType === "full-listing" && typeof contentResult === "object" && (
+                                <>
+                                    {contentResult.title && (
+                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
+                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Título</p><button onClick={() => copyText(contentResult.title)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
+                                            <p className="text-sm text-white font-medium">{contentResult.title}</p>
+                                            {contentResult.subtitle && <p className="text-[10px] text-neutral-500">{contentResult.subtitle}</p>}
+                                        </div>
+                                    )}
+                                    {contentResult.description && (
+                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
+                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
+                                            <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
+                                        </div>
+                                    )}
+                                    {Array.isArray(contentResult.bullets) && contentResult.bullets.length > 0 && (
+                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Bullets</p>
+                                            <ul className="space-y-0.5">{contentResult.bullets.map((b: string, i: number) => <li key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-violet-400 shrink-0">▸</span>{b}</li>)}</ul>
+                                        </div>
+                                    )}
+                                    {Array.isArray(contentResult.keywords) && (
+                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
+                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Keywords ({contentResult.keywords.length})</p><button onClick={() => copyText(contentResult.keywords.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button></div>
+                                            <div className="flex flex-wrap gap-1">{contentResult.keywords.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[8px] px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 hover:bg-violet-500/20 transition-colors">{k}</button>)}</div>
+                                        </div>
+                                    )}
+                                    {contentResult.price_suggestion_usd && (
+                                        <div className="flex items-center gap-3 px-3 py-2 bg-emerald-500/5 border border-emerald-500/15 rounded-xl">
+                                            <DollarSign size={13} className="text-emerald-400 shrink-0" />
+                                            <div><p className="text-[8px] text-neutral-600 uppercase">Precio sugerido</p><p className="text-sm font-black text-emerald-400">${contentResult.price_suggestion_usd}</p></div>
+                                            {contentResult.series_name && <div className="ml-auto"><p className="text-[8px] text-neutral-600 uppercase">Serie</p><p className="text-[10px] text-neutral-300">{contentResult.series_name}</p></div>}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                            {contentType === "titles" && Array.isArray(contentResult) && (
+                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Títulos ({contentResult.length})</p>
+                                    {contentResult.map((t: string, i: number) => (
+                                        <div key={i} className="flex items-center gap-2 py-1.5 border-b border-white/5 last:border-0">
+                                            <span className="text-[9px] text-neutral-700 w-4">{i + 1}.</span>
+                                            <p className="text-[11px] text-neutral-200 flex-1">{t}</p>
+                                            <button onClick={() => copyText(t)} className="p-1 rounded text-neutral-600 hover:text-white shrink-0"><Copy size={10} /></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {contentType === "description" && typeof contentResult === "object" && (
+                                <>
+                                    {contentResult.description && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div><p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p></div>}
+                                    {Array.isArray(contentResult.bullets) && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Bullets</p>{contentResult.bullets.map((b: string, i: number) => <p key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-violet-400 shrink-0">▸</span>{b}</p>)}</div>}
+                                </>
+                            )}
+                            {contentType === "keywords" && Array.isArray(contentResult) && (
+                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-2">
+                                    <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Keywords ({contentResult.length})</p><button onClick={() => copyText(contentResult.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px]"><Copy size={9} /> Copiar todos</button></div>
+                                    <div className="flex flex-wrap gap-1.5">{contentResult.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[9px] px-2 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 hover:bg-violet-500/20 transition-colors">{k}</button>)}</div>
+                                </div>
+                            )}
+                            {contentType === "back-cover" && typeof contentResult === "object" && contentResult.back_cover && (
+                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
+                                    <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Contraportada</p><button onClick={() => copyText(contentResult.back_cover)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
+                                    <p className="text-[11px] text-neutral-200 leading-relaxed whitespace-pre-line">{contentResult.back_cover}</p>
+                                </div>
+                            )}
+                            {contentType === "series" && typeof contentResult === "object" && contentResult.series_name && (
+                                <div className="space-y-2">
+                                    <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Serie</p><p className="text-base font-black text-white mt-0.5">{contentResult.series_name}</p>{contentResult.concept && <p className="text-[10px] text-neutral-400 mt-0.5">{contentResult.concept}</p>}</div>
+                                    {Array.isArray(contentResult.volumes) && contentResult.volumes.map((v: any, i: number) => (
+                                        <div key={i} className="bg-white/[0.02] border border-white/5 rounded-xl p-2.5 flex gap-2">
+                                            <span className="text-[9px] font-black text-violet-400 w-4 shrink-0 mt-0.5">{i + 1}</span>
+                                            <div><p className="text-[11px] font-bold text-white">{v.title}</p><p className="text-[9px] text-neutral-500">{v.theme} — {v.angle}</p></div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {typeof contentResult === "string" && (
+                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3">
+                                    <div className="flex justify-end mb-1"><button onClick={() => copyText(contentResult)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
+                                    <p className="text-[10px] text-neutral-300 whitespace-pre-wrap">{contentResult}</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+
     return (
         <div className="space-y-12 pb-24">
             {/* Sub-Navigation Tabs - Floating Style */}
             <div className="sticky top-[90px] z-[50] w-full flex justify-center pointer-events-none px-4">
                 <div className="pointer-events-auto flex p-1.5 bg-[#111111]/90 backdrop-blur-xl border border-white/10 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.6)] max-w-full overflow-x-auto no-scrollbar">
                     {[
-                        { id: "insights", name: "Insights", icon: <BarChart3 size={15} /> },
+                        { id: "insights", name: "Insights", icon: <Activity size={15} /> },
                         { id: "catalog", name: "Productos", icon: <Box size={15} /> },
-                        { id: "creation", name: "Generador", icon: <Plus size={15} /> }
+                        { id: "creation", name: "Imágenes", icon: <ImageIcon size={15} /> },
+                        { id: "studio", name: "Studio IA", icon: <Sparkles size={15} /> },
                     ].map((tab) => (
                         <button
                             key={tab.id}
@@ -2508,6 +2625,7 @@ export function KdpFactoryApp() {
                 {activeTab === "insights" && renderInsights()}
                 {activeTab === "catalog" && renderCatalog()}
                 {activeTab === "creation" && renderCreation()}
+                {activeTab === "studio" && renderStudio()}
             </div>
 
             {/* Image Preview Modal */}
@@ -3013,19 +3131,13 @@ export function KdpFactoryApp() {
 
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Categoría</label>
-                                <div className="relative">
-                                    <select
-                                        value={savePromptCategory === "__new__" ? "__new__" : savePromptCategory}
-                                        onChange={e => setSavePromptCategory(e.target.value)}
-                                        className="w-full h-11 rounded-2xl bg-white/5 border border-white/10 px-4 pr-10 text-sm text-white outline-none focus:border-violet-500/40 transition-all appearance-none cursor-pointer"
-                                    >
-                                        {Array.from(new Set([...DEFAULT_PROMPT_CATEGORIES, ...savedPrompts.map(p => p.category)])).map(cat => (
-                                            <option key={cat} value={cat} className="bg-[#0f0f0f]">{cat}</option>
-                                        ))}
-                                        <option value="__new__" className="bg-[#0f0f0f]">+ Nueva categoría...</option>
-                                    </select>
-                                    <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
-                                </div>
+                                <KdpSelect accent="violet"
+                                    value={savePromptCategory}
+                                    onChange={setSavePromptCategory}
+                                    options={[
+                                        ...Array.from(new Set([...DEFAULT_PROMPT_CATEGORIES, ...savedPrompts.map(p => p.category)])).map(cat => ({ value: cat, label: cat })),
+                                        { value: "__new__", label: "+ Nueva categoría..." },
+                                    ]} />
                                 {savePromptCategory === "__new__" && (
                                     <div className="flex gap-2">
                                         <input

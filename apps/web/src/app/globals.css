@@ -60,6 +60,14 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+button,
+[role="button"],
+[role="tab"],
+label[for],
+a {
+  cursor: pointer;
+}
+
 @layer utilities {
   .glass {
     background: rgba(10, 10, 10, 0.4);

@@ -535,4 +535,171 @@ export async function registerAIRoutes(app: FastifyInstance) {
                 .send(TRANSPARENT_PNG);
         }
     });
+
+    // ── TEXT GENERATION ──────────────────────────────────────────────────────
+    app.post("/ai/generate-text", async (request: any, reply) => {
+        const { type, niche, productType, extras, language = "es" } = request.body as {
+            type: "titles" | "description" | "keywords" | "full-listing" | "back-cover" | "series";
+            niche: string;
+            productType: string;
+            extras?: string;
+            language?: string;
+        };
+
+        if (!niche?.trim()) return reply.status(400).send({ error: "niche required" });
+
+        const { varyTextWithLLM: _, ...rest } = await import("../lib/ai.js").then(m => m);
+        const config = await (async () => {
+            const { Settings: S } = await import("../models/settings.js");
+            let provider = "google";
+            let model = "gemini-1.5-flash";
+            let googleKey = process.env.GOOGLE_API_KEY ?? "";
+            try {
+                const rows = await S.find({ key: { $in: ["DEFAULT_LLM_PROVIDER", "DEFAULT_LLM_MODEL", "GOOGLE_API_KEY"] } });
+                const map = new Map(rows.map((r: any) => [r.key, r.value]));
+                if (map.has("DEFAULT_LLM_PROVIDER")) provider = map.get("DEFAULT_LLM_PROVIDER") as string;
+                if (map.has("DEFAULT_LLM_MODEL")) model = map.get("DEFAULT_LLM_MODEL") as string;
+                if (map.has("GOOGLE_API_KEY") && map.get("GOOGLE_API_KEY")) googleKey = map.get("GOOGLE_API_KEY") as string;
+            } catch {}
+            return { provider, model, googleKey };
+        })();
+
+        const langInstruction = language === "en" ? "Respond in English." : "Responde en español.";
+
+        const prompts: Record<string, string> = {
+            titles: `${langInstruction} Generate 8 compelling titles for a "${productType}" KDP/Etsy product about "${niche}". ${extras ? `Additional context: ${extras}` : ""}
+Return ONLY a JSON array of strings: ["Title 1", "Title 2", ...]`,
+
+            description: `${langInstruction} Write a persuasive Amazon KDP / Etsy product description for a "${productType}" about "${niche}". ${extras ? `Context: ${extras}` : ""}
+Include: hook sentence, 3 bullet points of benefits, call to action. Max 400 words.
+Return ONLY a JSON object: {"description": "...", "bullets": ["...", "...", "..."]}`,
+
+            keywords: `${langInstruction} Generate the best 30 SEO keywords/tags for a "${productType}" about "${niche}" on Amazon KDP and Etsy. ${extras ? `Context: ${extras}` : ""}
+Include long-tail and short-tail. Return ONLY a JSON array of strings.`,
+
+            "full-listing": `${langInstruction} Create a complete Amazon KDP + Etsy listing for a "${productType}" about "${niche}". ${extras ? `Context: ${extras}` : ""}
+Return ONLY a JSON object with:
+{
+  "title": "main title (max 200 chars)",
+  "subtitle": "subtitle (max 100 chars)",
+  "description": "full description (max 500 words)",
+  "bullets": ["benefit 1", "benefit 2", "benefit 3", "benefit 4", "benefit 5"],
+  "keywords": ["kw1", "kw2", ...30 keywords],
+  "categories": ["category1", "category2"],
+  "price_suggestion_usd": 9.99,
+  "series_name": "optional series name"
+}`,
+
+            "back-cover": `${langInstruction} Write a back cover text for a "${productType}" about "${niche}". ${extras ? `Context: ${extras}` : ""}
+Style: engaging, professional, inviting. Max 200 words.
+Return ONLY a JSON object: {"back_cover": "..."}`,
+
+            series: `${langInstruction} Suggest a profitable KDP/Etsy product series around the niche "${niche}" for "${productType}" products. ${extras ? `Context: ${extras}` : ""}
+Return ONLY a JSON object:
+{
+  "series_name": "...",
+  "concept": "brief description",
+  "volumes": [{"title": "Vol 1 - ...", "theme": "...", "angle": "..."}, ...8 volumes]
+}`
+        };
+
+        const prompt = prompts[type] || prompts["full-listing"];
+
+        try {
+            if (config.googleKey) {
+                const { GoogleGenerativeAI } = await import("@google/generative-ai");
+                const genAI = new GoogleGenerativeAI(config.googleKey);
+                const geminiModel = genAI.getGenerativeModel({ model: config.model || "gemini-1.5-flash" });
+                const result = await geminiModel.generateContent(prompt);
+                const text = result.response.text().trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+                try {
+                    const parsed = JSON.parse(text);
+                    return reply.send({ result: parsed });
+                } catch {
+                    return reply.send({ result: text });
+                }
+            }
+            return reply.status(503).send({ error: "No LLM API key configured. Add GOOGLE_API_KEY in Settings." });
+        } catch (e: any) {
+            app.log.error({ err: e }, "AI text generation failed");
+            return reply.status(500).send({ error: e?.message ?? "LLM error" });
+        }
+    });
+
+    // ── TRENDS ───────────────────────────────────────────────────────────────
+    app.post("/ai/trends", async (request: any, reply) => {
+        const { platform = "all", category = "all", refresh = false } = request.body as {
+            platform?: "all" | "kdp" | "etsy" | "printify";
+            category?: string;
+            refresh?: boolean;
+        };
+
+        const config = await (async () => {
+            const { Settings: S } = await import("../models/settings.js");
+            let model = "gemini-1.5-flash";
+            let googleKey = process.env.GOOGLE_API_KEY ?? "";
+            try {
+                const rows = await S.find({ key: { $in: ["DEFAULT_LLM_MODEL", "GOOGLE_API_KEY"] } });
+                const map = new Map(rows.map((r: any) => [r.key, r.value]));
+                if (map.has("DEFAULT_LLM_MODEL")) model = map.get("DEFAULT_LLM_MODEL") as string;
+                if (map.has("GOOGLE_API_KEY") && map.get("GOOGLE_API_KEY")) googleKey = map.get("GOOGLE_API_KEY") as string;
+            } catch {}
+            return { model, googleKey };
+        })();
+
+        const platformFilter = platform === "all" ? "Amazon KDP, Etsy, and Printify" : platform === "kdp" ? "Amazon KDP" : platform === "etsy" ? "Etsy" : "Printify";
+        const categoryFilter = category === "all" ? "all niches" : `the "${category}" niche`;
+        const currentMonth = new Date().toLocaleString("en", { month: "long", year: "numeric" });
+
+        const prompt = `You are a KDP and Etsy market research expert. It is ${currentMonth}.
+Analyze current market trends for ${platformFilter} in ${categoryFilter} for digital printable products (coloring books, activity books, journals, planners, wall art, printable stickers, templates, etc.).
+
+Return ONLY a JSON object with this exact structure:
+{
+  "updated_at": "${new Date().toISOString()}",
+  "platform": "${platform}",
+  "trends": [
+    {
+      "id": "unique-slug",
+      "niche": "Niche Name",
+      "category": "Category (e.g. Coloring Books, Journals, Planners, Wall Art, Stickers, Activity Books, Templates)",
+      "platform": "kdp|etsy|both",
+      "trend_score": 85,
+      "competition": "low|medium|high",
+      "estimated_monthly_sales": "50-200",
+      "avg_price_usd": 7.99,
+      "demand_trend": "rising|stable|declining",
+      "seasonality": "year-round|seasonal: Q4|seasonal: summer",
+      "tags": ["tag1", "tag2", "tag3"],
+      "angle": "What makes this niche profitable right now",
+      "product_ideas": ["Specific product idea 1", "Specific product idea 2", "Specific product idea 3"],
+      "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"]
+    }
+  ],
+  "hot_picks": ["niche-slug-1", "niche-slug-2", "niche-slug-3"],
+  "summary": "2-sentence market overview for ${currentMonth}"
+}
+
+Generate exactly 15 diverse, actionable trends. Focus on currently profitable and rising niches. Be specific and practical.`;
+
+        try {
+            if (config.googleKey) {
+                const { GoogleGenerativeAI } = await import("@google/generative-ai");
+                const genAI = new GoogleGenerativeAI(config.googleKey);
+                const geminiModel = genAI.getGenerativeModel({ model: config.model || "gemini-1.5-flash" });
+                const result = await geminiModel.generateContent(prompt);
+                const text = result.response.text().trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+                try {
+                    const parsed = JSON.parse(text);
+                    return reply.send(parsed);
+                } catch {
+                    return reply.status(500).send({ error: "LLM returned invalid JSON", raw: text.slice(0, 500) });
+                }
+            }
+            return reply.status(503).send({ error: "No GOOGLE_API_KEY configured. Add it in Settings." });
+        } catch (e: any) {
+            app.log.error({ err: e }, "AI trends failed");
+            return reply.status(500).send({ error: e?.message ?? "LLM error" });
+        }
+    });
 }
