@@ -40,7 +40,7 @@ export async function registerCatalogRoutes(app: FastifyInstance) {
     app.post("/catalogs", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const { name, prompt, model, aiModel, width, height, totalImages } = request.body || {};
+            const { name, prompt, model, aiModel, width, height, totalImages, promptParts } = request.body || {};
             const modelData = aiModel ?? model;
             if (!prompt || !modelData || !totalImages) {
                 return reply.status(400).send({ error: "prompt, model y totalImages son requeridos" });
@@ -49,6 +49,7 @@ export async function registerCatalogRoutes(app: FastifyInstance) {
             const catalog = await Catalog.create({
                 name: (name?.trim() || `Catálogo ${new Date().toLocaleDateString("es-ES")}`),
                 prompt: prompt.trim(),
+                promptParts: promptParts ?? undefined,
                 aiModel: modelData,
                 width: width || 1024,
                 height: height || 1024,

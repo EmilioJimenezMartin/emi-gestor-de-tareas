@@ -43,6 +43,7 @@ import {
     Monitor,
     Maximize,
     ChevronRight,
+    ChevronLeft,
     Activity,
     Lightbulb,
     Download,
@@ -50,7 +51,9 @@ import {
     RefreshCw,
     StopCircle,
     PlayCircle,
-    ImagePlus
+    ImagePlus,
+    Copy,
+    BookMarked
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -142,6 +145,7 @@ interface IACatalogFE {
     _id: string;
     name: string;
     prompt: string;
+    promptParts?: { theme: string; specs: string; details: string; particulars: string };
     aiModel: { id: string; name: string; provider: string; modelId: string };
     width: number;
     height: number;
@@ -228,8 +232,20 @@ export function KdpFactoryApp() {
 
     const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
-    // AI Studio State
-    const [imagePrompt, setImagePrompt] = useState("");
+    // AI Studio State — 4-field prompt
+    const [promptTheme, setPromptTheme] = useState("");
+    const [promptSpecs, setPromptSpecs] = useState("");
+    const [promptDetails, setPromptDetails] = useState("");
+    const [promptParticulars, setPromptParticulars] = useState("");
+    const imagePrompt = (() => {
+        const theme = promptTheme.trim();
+        if (!theme) return "";
+        let p = `Genera una imagen con la siguiente temática: ${theme}`;
+        if (promptSpecs.trim()) p += `, que tenga las siguientes especificaciones: ${promptSpecs.trim()}`;
+        if (promptDetails.trim()) p += `, con los siguientes detalles: ${promptDetails.trim()}`;
+        if (promptParticulars.trim()) p += `, y las siguientes particularidades: ${promptParticulars.trim()}`;
+        return p;
+    })();
     const [selectedModel, setSelectedModel] = useState(AI_MODELS[0].id);
     const [selectedDim, setSelectedDim] = useState(AI_DIMENSIONS[0].id);
     const [cloudinaryImages, setCloudinaryImages] = useState<{ publicId: string; url: string; width: number; height: number; bytes: number; createdAt: string }[]>([]);
@@ -246,7 +262,13 @@ export function KdpFactoryApp() {
     const [catalogFormCount, setCatalogFormCount] = useState(5);
     const [isCreatingCatalog, setIsCreatingCatalog] = useState(false);
     const [deletingCatalogId, setDeletingCatalogId] = useState<string | null>(null);
-    const [buildingPdfCatalogId, setBuildingPdfCatalogId] = useState<string | null>(null);
+    const [confirmDeleteCatalogId, setConfirmDeleteCatalogId] = useState<string | null>(null);
+    const [confirmDeleteImageInfo, setConfirmDeleteImageInfo] = useState<{ catalogId: string; publicId: string } | null>(null);
+    const [bookPdfMode, setBookPdfMode] = useState<"colored" | "full">("colored");
+    const [bookEditorImages, setBookEditorImages] = useState<{ url: string; label?: string; scale: number }[]>([]);
+    const [previewContext, setPreviewContext] = useState<{ urls: string[]; index: number } | null>(null);
+    const [confirmDeleteVaultIndex, setConfirmDeleteVaultIndex] = useState<number | null>(null);
+    const [confirmDeleteCloudinaryId, setConfirmDeleteCloudinaryId] = useState<string | null>(null);
     const catalogSocketRef = useRef<ReturnType<typeof createApiSocket> | null>(null);
 
     const fetchCatalogs = async () => {
@@ -263,7 +285,8 @@ export function KdpFactoryApp() {
         }
     };
 
-    const deleteCatalog = async (id: string) => {
+    const deleteCatalogConfirmed = async (id: string) => {
+        setConfirmDeleteCatalogId(null);
         setDeletingCatalogId(id);
         try {
             const res = await fetch(`${API_BASE_URL}/catalogs/${id}`, { method: "DELETE" });
@@ -290,8 +313,12 @@ export function KdpFactoryApp() {
     };
 
     const createCatalogFromStudio = async () => {
-        if (!imagePrompt.trim()) {
-            toast.error("Escribe un prompt primero en el campo de arriba");
+        if (!promptTheme.trim()) {
+            toast.error("Escribe la temática del catálogo primero");
+            return;
+        }
+        if (!catalogFormCount || catalogFormCount < 1) {
+            toast.error("Indica cuántas imágenes generar (mínimo 1)");
             return;
         }
         const model = AI_MODELS.find((m) => m.id === selectedModel);
@@ -305,6 +332,7 @@ export function KdpFactoryApp() {
                 body: JSON.stringify({
                     name: catalogFormName.trim() || undefined,
                     prompt: imagePrompt.trim(),
+                    promptParts: { theme: promptTheme.trim(), specs: promptSpecs.trim(), details: promptDetails.trim(), particulars: promptParticulars.trim() },
                     aiModel: { id: model.id, name: model.name, provider: model.provider, modelId: model.modelId },
                     width: dim?.width ?? 1024,
                     height: dim?.height ?? 1024,
@@ -324,7 +352,8 @@ export function KdpFactoryApp() {
         }
     };
 
-    const deleteCatalogImage = async (catalogId: string, publicId: string) => {
+    const deleteCatalogImageConfirmed = async (catalogId: string, publicId: string) => {
+        setConfirmDeleteImageInfo(null);
         try {
             const res = await fetch(`${API_BASE_URL}/catalogs/${catalogId}/delete-image`, {
                 method: "POST",
@@ -351,64 +380,24 @@ export function KdpFactoryApp() {
         toast.success("Imagen añadida al vault");
     };
 
-    const buildCatalogPdf = async (catalog: IACatalogFE) => {
-        if (catalog.images.length === 0) return;
-        setBuildingPdfCatalogId(catalog._id);
-        try {
-            const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
-            const pdf = await PDFDocument.create();
-            const pageWidth = 595.28;
-            const pageHeight = 841.89;
-            const margin = 48;
-
-            const totalPages = 1 + catalog.images.length * 2;
-            const pages = Array.from({ length: totalPages }, () => pdf.addPage([pageWidth, pageHeight]));
-
-            const font = await pdf.embedFont(StandardFonts.Helvetica);
-            pages[0].drawText(catalog.name, {
-                x: margin,
-                y: margin,
-                size: 12,
-                font,
-                color: rgb(0.2, 0.2, 0.2),
-            });
-
-            for (let i = 0; i < catalog.images.length; i++) {
-                const targetPageIndex = 2 + i * 2;
-                const page = pages[targetPageIndex];
-                const objectUrl = await ensureObjectUrl(catalog.images[i].url);
-                const res = await fetch(objectUrl);
-                const bytes = new Uint8Array(await res.arrayBuffer());
-
-                let embedded: any = null;
-                try { embedded = await pdf.embedPng(bytes); } catch { embedded = await pdf.embedJpg(bytes); }
-
-                const imgW = embedded.width;
-                const imgH = embedded.height;
-                const maxW = pageWidth - margin * 2;
-                const maxH = pageHeight - margin * 2;
-                const scale = Math.min(maxW / imgW, maxH / imgH);
-                page.drawImage(embedded, {
-                    x: (pageWidth - imgW * scale) / 2,
-                    y: (pageHeight - imgH * scale) / 2,
-                    width: imgW * scale,
-                    height: imgH * scale,
-                });
-            }
-
-            const pdfBytes = await pdf.save();
-            const blob = new Blob([pdfBytes as Uint8Array<ArrayBuffer>], { type: "application/pdf" });
-            const url = URL.createObjectURL(blob);
-            downloadFile(url, `${catalog.name.replace(/\s+/g, "-")}.pdf`);
-            setTimeout(() => URL.revokeObjectURL(url), 30_000);
-            toast.success("PDF generado");
-        } catch (e) {
-            console.error(e);
-            toast.error("No se pudo generar el PDF");
-        } finally {
-            setBuildingPdfCatalogId(null);
-        }
+    const openCatalogImagePreview = (images: CatalogImageFE[], index: number) => {
+        setPreviewImage(images[index].url);
+        setPreviewContext({ urls: images.map((i) => i.url), index });
     };
+
+    const closePreview = () => {
+        setPreviewImage(null);
+        setPreviewContext(null);
+    };
+
+    const navigatePreview = (dir: -1 | 1) => {
+        if (!previewContext) return;
+        const next = previewContext.index + dir;
+        if (next < 0 || next >= previewContext.urls.length) return;
+        setPreviewImage(previewContext.urls[next]);
+        setPreviewContext({ ...previewContext, index: next });
+    };
+
 
     const blobUrlToDataUrl = async (url: string): Promise<string> => {
         const res = await fetch(url);
@@ -483,6 +472,7 @@ export function KdpFactoryApp() {
     const [vaultImages, setVaultImages] = useState<{ url: string, model: string, dim: string }[]>([]);
     const generatedImageObjectUrlRef = useRef<string | null>(null);
     const previewImageObjectUrlRef = useRef<string | null>(null);
+
     const [bookEditorOpen, setBookEditorOpen] = useState(false);
     const [bookFooterText, setBookFooterText] = useState("");
     const [bookFileName, setBookFileName] = useState("libro-kdp");
@@ -639,69 +629,68 @@ export function KdpFactoryApp() {
     };
 
     const buildBookPdf = async () => {
-        if (vaultImages.length === 0) return;
+        if (bookEditorImages.length === 0) return;
 
         setIsBuildingPdf(true);
         try {
             const pdf = await PDFDocument.create();
-            const pageWidth = 595.28; // A4 portrait in points
+            const pageWidth = 595.28;
             const pageHeight = 841.89;
             const margin = 48;
+            const font = await pdf.embedFont(StandardFonts.Helvetica);
 
-            const totalPages = 1 + vaultImages.length * 2;
-            const pages = Array.from({ length: totalPages }, () => pdf.addPage([pageWidth, pageHeight]));
-
-            // Page 1: blank + footer text bottom-right
-            if (bookFooterText.trim()) {
-                const font = await pdf.embedFont(StandardFonts.Helvetica);
-                const fontSize = 12;
-                const text = bookFooterText.trim();
-                const textWidth = font.widthOfTextAtSize(text, fontSize);
-                pages[0].drawText(text, {
-                    x: Math.max(margin, pageWidth - margin - textWidth),
-                    y: margin,
-                    size: fontSize,
-                    font,
-                    color: rgb(0.2, 0.2, 0.2),
-                });
-            }
-
-            // Images centered on odd pages: 3,5,7... (index 2,4,6...)
-            for (let i = 0; i < vaultImages.length; i++) {
-                const targetPageIndex = 2 + i * 2;
-                const page = pages[targetPageIndex];
-                const url = vaultImages[i].url;
-
+            const embedImage = async (url: string) => {
                 let bytes: Uint8Array;
                 try {
                     const res = await fetch(url);
-                    const buf = await res.arrayBuffer();
-                    bytes = new Uint8Array(buf);
+                    bytes = new Uint8Array(await res.arrayBuffer());
                 } catch {
-                    // If URL is not fetchable (CORS), try converting to an object URL first
                     const objectUrl = await ensureObjectUrl(url);
                     const res = await fetch(objectUrl);
                     bytes = new Uint8Array(await res.arrayBuffer());
                 }
+                try { return await pdf.embedPng(bytes); } catch { return await pdf.embedJpg(bytes); }
+            };
 
-                let embedded: any = null;
-                try {
-                    embedded = await pdf.embedPng(bytes);
-                } catch {
-                    embedded = await pdf.embedJpg(bytes);
+            const drawImageCentered = (page: any, embedded: any, zoom: number = 1) => {
+                const effectiveMargin = margin / Math.max(zoom, 0.1);
+                const maxW = pageWidth - effectiveMargin * 2;
+                const maxH = pageHeight - effectiveMargin * 2;
+                const imgScale = Math.min(maxW / embedded.width, maxH / embedded.height);
+                page.drawImage(embedded, {
+                    x: (pageWidth - embedded.width * imgScale) / 2,
+                    y: (pageHeight - embedded.height * imgScale) / 2,
+                    width: embedded.width * imgScale,
+                    height: embedded.height * imgScale,
+                });
+            };
+
+            if (bookPdfMode === "colored") {
+                // Page 1 (blank + text), then blank + image alternating
+                const totalPages = 1 + bookEditorImages.length * 2;
+                const pages = Array.from({ length: totalPages }, () => pdf.addPage([pageWidth, pageHeight]));
+                if (bookFooterText.trim()) {
+                    const text = bookFooterText.trim();
+                    const textWidth = font.widthOfTextAtSize(text, 12);
+                    pages[0].drawText(text, { x: Math.max(margin, pageWidth - margin - textWidth), y: margin, size: 12, font, color: rgb(0.2, 0.2, 0.2) });
                 }
-
-                const imgW = embedded.width;
-                const imgH = embedded.height;
-                const maxW = pageWidth - margin * 2;
-                const maxH = pageHeight - margin * 2;
-                const scale = Math.min(maxW / imgW, maxH / imgH);
-                const drawW = imgW * scale;
-                const drawH = imgH * scale;
-                const x = (pageWidth - drawW) / 2;
-                const y = (pageHeight - drawH) / 2;
-
-                page.drawImage(embedded, { x, y, width: drawW, height: drawH });
+                for (let i = 0; i < bookEditorImages.length; i++) {
+                    const embedded = await embedImage(bookEditorImages[i].url);
+                    drawImageCentered(pages[2 + i * 2], embedded, bookEditorImages[i].scale ?? 1);
+                }
+            } else {
+                // Full: page 1 text only, then one image per page
+                const totalPages = 1 + bookEditorImages.length;
+                const pages = Array.from({ length: totalPages }, () => pdf.addPage([pageWidth, pageHeight]));
+                if (bookFooterText.trim()) {
+                    const text = bookFooterText.trim();
+                    const textWidth = font.widthOfTextAtSize(text, 12);
+                    pages[0].drawText(text, { x: Math.max(margin, pageWidth - margin - textWidth), y: margin, size: 12, font, color: rgb(0.2, 0.2, 0.2) });
+                }
+                for (let i = 0; i < bookEditorImages.length; i++) {
+                    const embedded = await embedImage(bookEditorImages[i].url);
+                    drawImageCentered(pages[1 + i], embedded, bookEditorImages[i].scale ?? 1);
+                }
             }
 
             const pdfBytes = await pdf.save();
@@ -898,7 +887,7 @@ export function KdpFactoryApp() {
     };
 
     const handleDeleteVaultImage = (index: number) => {
-        setVaultImages(vaultImages.filter((_, i) => i !== index));
+        setConfirmDeleteVaultIndex(index);
     };
 
     const handleAddProduct = () => {
@@ -1323,14 +1312,53 @@ export function KdpFactoryApp() {
                             </div>
                         </div>
 
+                        {/* Multi-field prompt */}
                         <div className="space-y-3">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1 block">Prompt del Activo</label>
-                            <textarea
-                                value={imagePrompt}
-                                onChange={(e) => setImagePrompt(e.target.value)}
-                                placeholder="Describe el activo visual que necesitas... (Ej: Vintage botanical illustration of a lavender field in watercolor style)"
-                                className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 focus:bg-white/[0.08] transition-all resize-none font-medium h-24"
-                            />
+                            <div className="flex items-center gap-2 mb-1">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Prompt del Activo</span>
+                                {imagePrompt && (
+                                    <button
+                                        type="button"
+                                        onClick={() => navigator.clipboard.writeText(imagePrompt).then(() => toast.success("Prompt copiado"))}
+                                        className="p-1 rounded-lg bg-white/5 text-neutral-600 hover:text-white hover:bg-white/10 transition-all border border-white/5"
+                                        title="Copiar prompt completo"
+                                    >
+                                        <Copy size={10} />
+                                    </button>
+                                )}
+                            </div>
+                            <div className="grid grid-cols-1 gap-2">
+                                <input
+                                    value={promptTheme}
+                                    onChange={(e) => setPromptTheme(e.target.value)}
+                                    placeholder="Temática · Ej: Vintage botanical illustration"
+                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 transition-all font-medium"
+                                />
+                                <input
+                                    value={promptSpecs}
+                                    onChange={(e) => setPromptSpecs(e.target.value)}
+                                    placeholder="Especificaciones · Ej: watercolor style, high detail"
+                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 transition-all font-medium"
+                                />
+                                <input
+                                    value={promptDetails}
+                                    onChange={(e) => setPromptDetails(e.target.value)}
+                                    placeholder="Detalles · Ej: lavender field, soft pastel palette"
+                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 transition-all font-medium"
+                                />
+                                <div className="relative">
+                                    <input
+                                        value={promptParticulars}
+                                        onChange={(e) => setPromptParticulars(e.target.value)}
+                                        placeholder="Particularidades · editable por IA en catálogo"
+                                        className="w-full h-10 bg-violet-500/5 border border-violet-500/20 rounded-xl px-4 pr-24 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all font-medium"
+                                    />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black uppercase tracking-widest text-violet-500/60 pointer-events-none">IA varies</span>
+                                </div>
+                            </div>
+                            {imagePrompt && (
+                                <p className="text-[9px] text-neutral-600 font-mono truncate px-1" title={imagePrompt}>{imagePrompt}</p>
+                            )}
                         </div>
 
                         {/* Advanced options */}
@@ -1414,24 +1442,29 @@ export function KdpFactoryApp() {
                             )}
                         </div>
 
-                        <Button
-                            onClick={() => handleGenerateImage()}
-                            disabled={isGenerating || !imagePrompt.trim()}
-                            className={`w-full h-14 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all duration-500 ${isGenerating
-                                ? "bg-amber-500/20 text-amber-500 border border-amber-500/30"
-                                : "bg-amber-500 text-black hover:bg-amber-400 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_30px_rgba(245,158,11,0.2)]"
-                                }`}
-                        >
-                            {isGenerating ? (
-                                <>
-                                    <Loader2 size={18} className="mr-3 animate-spin" /> Procesando Activo Visual...
-                                </>
-                            ) : (
-                                <>
-                                    <Zap size={18} className="mr-3 fill-current" /> Lanzar Generación I.A.
-                                </>
-                            )}
-                        </Button>
+                        {(() => {
+                            const isCatalogActive = iaCatalogs.some(c => c.status === "running" || c.status === "pending");
+                            return (
+                                <Button
+                                    onClick={() => handleGenerateImage()}
+                                    disabled={isGenerating || !imagePrompt.trim() || isCatalogActive}
+                                    className={`w-full h-14 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all duration-500 ${isGenerating
+                                        ? "bg-amber-500/20 text-amber-500 border border-amber-500/30"
+                                        : isCatalogActive
+                                            ? "bg-white/5 text-neutral-500 border border-white/10 cursor-not-allowed"
+                                            : "bg-amber-500 text-black hover:bg-amber-400 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_30px_rgba(245,158,11,0.2)]"
+                                        }`}
+                                >
+                                    {isGenerating ? (
+                                        <><Loader2 size={18} className="mr-3 animate-spin" /> Procesando Activo Visual...</>
+                                    ) : isCatalogActive ? (
+                                        <><Layers size={18} className="mr-3" /> Catálogo en progreso...</>
+                                    ) : (
+                                        <><Zap size={18} className="mr-3 fill-current" /> Lanzar Generación I.A.</>
+                                    )}
+                                </Button>
+                            );
+                        })()}
 
                         {/* Catalog launch — reuses studio model/dim/prompt */}
                         <div className="border-t border-white/5 pt-5 space-y-3">
@@ -1439,27 +1472,47 @@ export function KdpFactoryApp() {
                                 <Layers size={12} />
                                 <span className="text-[10px] font-black uppercase tracking-widest">Generar catálogo con estos ajustes</span>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                                 <input
                                     value={catalogFormName}
                                     onChange={(e) => setCatalogFormName(e.target.value)}
                                     placeholder="Nombre del catálogo (opcional)"
-                                    className="flex-1 h-10 bg-white/5 border border-white/10 rounded-xl px-3 text-sm text-white outline-none focus:border-violet-500/40 transition-all placeholder:text-neutral-700"
+                                    className="flex-1 min-w-0 h-10 bg-white/5 border border-white/10 rounded-xl px-3 text-sm text-white outline-none focus:border-violet-500/40 transition-all placeholder:text-neutral-700"
                                 />
-                                <input
-                                    type="number" min={1} max={50}
-                                    value={catalogFormCount}
-                                    onChange={(e) => setCatalogFormCount(Math.min(50, Math.max(1, Number(e.target.value))))}
-                                    className="w-16 h-10 bg-white/5 border border-white/10 rounded-xl px-2 text-sm font-bold text-white outline-none focus:border-violet-500/40 transition-all text-center"
-                                />
-                                <button
-                                    onClick={() => void createCatalogFromStudio()}
-                                    disabled={isCreatingCatalog || !imagePrompt.trim()}
-                                    className="h-10 px-5 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center gap-2 disabled:opacity-40"
-                                >
-                                    {isCreatingCatalog ? <Loader2 size={13} className="animate-spin" /> : <><Layers size={13} />Lanzar</>}
-                                </button>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        pattern="[0-9]*"
+                                        placeholder="5"
+                                        value={catalogFormCount === 0 ? "" : String(catalogFormCount)}
+                                        onChange={(e) => {
+                                            const raw = e.target.value.replace(/\D/g, "");
+                                            setCatalogFormCount(raw === "" ? 0 : Math.min(50, Number(raw)));
+                                        }}
+                                        className="w-16 h-10 bg-white/5 border border-white/10 rounded-xl px-2 text-sm font-bold text-white outline-none focus:border-violet-500/40 transition-all text-center"
+                                    />
+                                    {(() => {
+                                        const catalogBusy = iaCatalogs.some(c => c.status === "running" || c.status === "pending");
+                                        return (
+                                            <button
+                                                onClick={() => void createCatalogFromStudio()}
+                                                disabled={isCreatingCatalog || !promptTheme.trim() || catalogBusy}
+                                                className="flex-1 sm:flex-none h-10 px-5 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                                                title={catalogBusy ? "Espera a que el catálogo actual termine" : undefined}
+                                            >
+                                                {isCreatingCatalog ? <Loader2 size={13} className="animate-spin" /> : <><Layers size={13} />{catalogBusy ? "En proceso..." : "Lanzar"}</>}
+                                            </button>
+                                        );
+                                    })()}
+                                </div>
                             </div>
+                            {iaCatalogs.some(c => c.status === "running" || c.status === "pending") && (
+                                <p className="text-[10px] text-amber-500/70 italic flex items-center gap-1.5">
+                                    <Loader2 size={9} className="animate-spin" />
+                                    Catálogo en progreso — espera a que termine para lanzar otro
+                                </p>
+                            )}
                             <p className="text-[10px] text-neutral-600 italic">
                                 ~{Math.ceil(catalogFormCount * 1.5)} min · {catalogFormCount} imágenes · {AI_MODELS.find(m => m.id === selectedModel)?.name} · {AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio}
                             </p>
@@ -1602,29 +1655,37 @@ export function KdpFactoryApp() {
                 </Card>
             </div>
 
-            {/* Asset Vault / Carousel */}
-            {vaultImages.length > 0 && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-left-8 duration-700 pb-4">
-                    <div className="flex items-center justify-between px-2">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/5">
-                                <Box size={16} />
-                            </div>
-                            <div>
-                                <h4 className="text-[11px] font-black uppercase tracking-widest text-neutral-400">Vault de Activos Digitales</h4>
-                                <p className="text-[10px] text-neutral-600 font-medium italic">Sesión actual: {vaultImages.length} activos conservados</p>
-                            </div>
+            {/* Asset Vault / Carousel — always visible */}
+            <div className="space-y-6 animate-in fade-in slide-in-from-left-8 duration-700 pb-4">
+                <div className="flex items-center justify-between px-2">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/5">
+                            <Box size={16} />
                         </div>
-                        <Button
-                            onClick={() => setBookEditorOpen(true)}
-                            className="h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-100 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest shadow-[0_10px_30px_rgba(245,158,11,0.12)]"
-                        >
-                            Crear Libro PDF
-                        </Button>
+                        <div>
+                            <h4 className="text-[11px] font-black uppercase tracking-widest text-neutral-400">Vault de Activos Digitales</h4>
+                            <p className="text-[10px] text-neutral-600 font-medium italic">Sesión actual: {vaultImages.length} activos conservados</p>
+                        </div>
                     </div>
+                    <Button
+                        onClick={() => { setBookEditorImages(vaultImages.map(v => ({ url: v.url, label: v.model, scale: 1 }))); setBookEditorOpen(true); }}
+                        disabled={vaultImages.length === 0}
+                        className="h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-100 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest shadow-[0_10px_30px_rgba(245,158,11,0.12)] disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-amber-500/20 disabled:hover:text-amber-100"
+                    >
+                        Crear Libro PDF
+                    </Button>
+                </div>
 
-                    <div className="flex gap-5 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
-                        {vaultImages.map((img, i) => (
+                {vaultImages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-center space-y-3 opacity-40">
+                        <Box size={32} className="text-neutral-600" strokeWidth={1.5} />
+                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">
+                            Vault vacío · Genera y conserva imágenes para crear libros PDF
+                        </p>
+                    </div>
+                ) : (
+                <div className="flex gap-5 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
+                    {vaultImages.map((img, i) => (
                             <div key={i} className="relative group shrink-0">
                                 <div className="w-56 h-64 md:w-64 md:h-80 rounded-[32px] overflow-hidden border border-white/10 group-hover:border-amber-500/50 transition-all shadow-2xl relative bg-neutral-900">
                                     <img
@@ -1671,7 +1732,7 @@ export function KdpFactoryApp() {
                                                 <Download size={14} />
                                             </button>
                                             <button
-                                                onClick={() => handleDeleteVaultImage(i)}
+                                                onClick={() => setConfirmDeleteVaultIndex(i)}
                                                 className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-500 border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all flex items-center justify-center shrink-0"
                                             >
                                                 <Trash2 size={14} />
@@ -1682,8 +1743,8 @@ export function KdpFactoryApp() {
                             </div>
                         ))}
                     </div>
-                </div>
-            )}
+                )}
+            </div>
 
             {/* Cloudinary Persistent Gallery */}
             <div className="space-y-6 pb-4">
@@ -1744,7 +1805,7 @@ export function KdpFactoryApp() {
                                                 <Plus size={12} />
                                             </button>
                                             <button
-                                                onClick={() => void deleteFromCloudinary(img.publicId)}
+                                                onClick={() => setConfirmDeleteCloudinaryId(img.publicId)}
                                                 disabled={deletingFromCloud === img.publicId}
                                                 className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-500 border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all flex items-center justify-center shrink-0 disabled:opacity-50"
                                                 title="Eliminar de Cloudinary"
@@ -1791,42 +1852,80 @@ export function KdpFactoryApp() {
                                             <p className="text-[10px] text-neutral-600 font-mono">{catalog.aiModel?.name} · {catalog.images.length}/{catalog.totalImages} imgs · {new Date(catalog.createdAt).toLocaleDateString("es-ES")}</p>
                                         </div>
                                         <div className="flex items-center gap-2 shrink-0">
+                                            <button
+                                                onClick={() => {
+                                                    if (catalog.promptParts?.theme) {
+                                                        setPromptTheme(catalog.promptParts.theme);
+                                                        setPromptSpecs(catalog.promptParts.specs ?? "");
+                                                        setPromptDetails(catalog.promptParts.details ?? "");
+                                                        setPromptParticulars(catalog.promptParts.particulars ?? "");
+                                                    } else {
+                                                        setPromptTheme(catalog.prompt);
+                                                        setPromptSpecs("");
+                                                        setPromptDetails("");
+                                                        setPromptParticulars("");
+                                                    }
+                                                    toast.success("Prompt cargado en los campos");
+                                                }}
+                                                title="Cargar prompt en los campos"
+                                                className="p-2 rounded-xl bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-white transition-all border border-white/10"
+                                            >
+                                                <Copy size={13} />
+                                            </button>
                                             {catalog.images.length > 0 && (
-                                                <button onClick={() => void buildCatalogPdf(catalog)} disabled={buildingPdfCatalogId === catalog._id} title="PDF" className="p-2 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 disabled:opacity-50">
-                                                    {buildingPdfCatalogId === catalog._id ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+                                                <button
+                                                    onClick={() => {
+                                                        setBookEditorImages(catalog.images.map((img, i) => ({ url: img.url, label: `${catalog.name} #${i + 1}`, scale: 1 })));
+                                                        setBookEditorOpen(true);
+                                                    }}
+                                                    title="Editar PDF"
+                                                    className="p-2 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20"
+                                                >
+                                                    <FileText size={13} />
                                                 </button>
                                             )}
-                                            {isActive && (
-                                                <button onClick={() => void cancelCatalog(catalog._id)} title="Cancelar" className="p-2 rounded-xl bg-neutral-500/10 text-neutral-400 hover:bg-red-500/10 hover:text-red-400 transition-all border border-white/10">
-                                                    <StopCircle size={13} />
-                                                </button>
-                                            )}
-                                            <button onClick={() => void deleteCatalog(catalog._id)} disabled={deletingCatalogId === catalog._id} title="Eliminar" className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 disabled:opacity-50">
+                                            <button onClick={() => setConfirmDeleteCatalogId(catalog._id)} disabled={deletingCatalogId === catalog._id} title="Eliminar" className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 disabled:opacity-50">
                                                 {deletingCatalogId === catalog._id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                                             </button>
                                         </div>
                                     </div>
                                     {isActive && (
-                                        <div className="px-4 pt-3 pb-2 space-y-1">
-                                            <div className="flex justify-between text-[10px] font-black text-neutral-600 uppercase tracking-widest">
-                                                <span>Progreso</span><span>{catalog.images.length}/{catalog.totalImages}</span>
-                                            </div>
-                                            <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                                                <div className="h-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
+                                        <div className="px-4 pt-3 pb-3 space-y-2.5 border-b border-white/5">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="flex-1 space-y-1.5">
+                                                    <div className="flex justify-between text-[10px] font-black text-neutral-600 uppercase tracking-widest">
+                                                        <span className="flex items-center gap-1.5">
+                                                            <Loader2 size={9} className="animate-spin text-blue-400" />
+                                                            {catalog.status === "pending" ? "En cola..." : "Generando"}
+                                                        </span>
+                                                        <span>{catalog.images.length}/{catalog.totalImages}</span>
+                                                    </div>
+                                                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => void cancelCatalog(catalog._id)}
+                                                    className="shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all text-[9px] font-black uppercase tracking-widest"
+                                                    title="Detener generación"
+                                                >
+                                                    <StopCircle size={12} />
+                                                    Detener
+                                                </button>
                                             </div>
                                         </div>
                                     )}
                                     {catalog.images.length > 0 && (
                                         <div className="p-4 pt-2">
                                             <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
-                                                {catalog.images.map((img) => (
+                                                {catalog.images.map((img, imgIdx) => (
                                                     <div key={img.publicId} className="group relative aspect-square rounded-lg overflow-hidden bg-white/5 border border-white/5">
                                                         <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
                                                         <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center gap-1">
                                                             <button onClick={() => addCatalogImageToVault(img)} title="Vault" className="p-1 rounded-md bg-emerald-500/80 text-white hover:bg-emerald-500"><ImagePlus size={10} /></button>
-                                                            <button onClick={() => setPreviewImage(img.url)} title="Ver" className="p-1 rounded-md bg-white/20 text-white hover:bg-white/30"><Maximize size={10} /></button>
+                                                            <button onClick={() => openCatalogImagePreview(catalog.images, imgIdx)} title="Ver" className="p-1 rounded-md bg-white/20 text-white hover:bg-white/30"><Maximize size={10} /></button>
                                                             <button onClick={() => downloadPng(img.url, `catalog-${img.publicId.split("/").pop()}`)} title="Descargar" className="p-1 rounded-md bg-white/20 text-white hover:bg-white/30"><Download size={10} /></button>
-                                                            <button onClick={() => void deleteCatalogImage(catalog._id, img.publicId)} title="Eliminar" className="p-1 rounded-md bg-red-500/80 text-white hover:bg-red-500"><Trash2 size={10} /></button>
+                                                            <button onClick={() => setConfirmDeleteImageInfo({ catalogId: catalog._id, publicId: img.publicId })} title="Eliminar" className="p-1 rounded-md bg-red-500/80 text-white hover:bg-red-500"><Trash2 size={10} /></button>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -1990,7 +2089,7 @@ export function KdpFactoryApp() {
                     {[
                         { id: "insights", name: "Insights", icon: <BarChart3 size={15} /> },
                         { id: "catalog", name: "Catálogo", icon: <Box size={15} /> },
-                        { id: "creation", name: "Creación", icon: <Plus size={15} /> }
+                        { id: "creation", name: "Productos", icon: <Plus size={15} /> }
                     ].map((tab) => (
                         <button
                             key={tab.id}
@@ -2017,54 +2116,93 @@ export function KdpFactoryApp() {
             {/* Image Preview Modal */}
             {previewImage && (
                 <div
-                    className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
-                    onClick={() => setPreviewImage(null)}
+                    className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 gap-4"
+                    onClick={closePreview}
                     role="dialog"
                     aria-modal="true"
                 >
+                    {/* Toolbar */}
                     <div
-                        className="relative w-full max-w-6xl rounded-3xl border border-white/10 bg-black/40"
+                        className="flex items-center gap-2 flex-wrap justify-center"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="flex items-center justify-center p-4">
-                            <img
-                                src={previewImage}
-                                alt="Vista previa"
-                                className="block max-w-full max-h-[85vh] w-auto h-auto object-contain bg-black rounded-2xl"
-                            />
-                        </div>
-                        <div className="absolute top-4 right-4 flex gap-2">
-                            <button
-                                onClick={() => {
-                                    const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
-                                    const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
-                                    downloadPng(previewImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
-                                }}
-                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
-                                aria-label="Descargar imagen"
-                                title="Descargar"
-                            >
-                                <Download size={18} />
-                            </button>
-                            <button
-                                onClick={() => upscaleImageMax(previewImage, { setAsPreview: true })}
-                                disabled={isUpscaling}
-                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                                aria-label="Mejorar calidad (Upscale)"
-                                title="Mejorar calidad"
-                            >
-                                <Sparkles size={18} />
-                            </button>
-                            <button
-                                onClick={() => setPreviewImage(null)}
-                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
-                                aria-label="Cerrar vista previa"
-                                title="Cerrar"
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
+                        {previewContext && (
+                            <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest px-2">
+                                {previewContext.index + 1} / {previewContext.urls.length}
+                            </span>
+                        )}
+                        {/* Download */}
+                        <button
+                            onClick={() => {
+                                const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
+                                const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
+                                downloadPng(previewImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
+                            }}
+                            className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
+                            title="Descargar"
+                        >
+                            <Download size={16} />
+                        </button>
 
+                        {/* Upscale */}
+                        <button
+                            onClick={() => upscaleImageMax(previewImage, { setAsPreview: true })}
+                            disabled={isUpscaling}
+                            className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+                            title="Mejorar calidad"
+                        >
+                            <Sparkles size={16} />
+                        </button>
+
+                        {/* Close */}
+                        <button
+                            onClick={closePreview}
+                            className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
+                            title="Cerrar"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+
+                    {/* Image + nav arrows */}
+                    <div
+                        className="relative flex items-center justify-center w-full max-w-6xl gap-4"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Prev arrow */}
+                        {previewContext && previewContext.index > 0 && (
+                            <button
+                                onClick={() => navigatePreview(-1)}
+                                className="shrink-0 w-12 h-12 rounded-2xl bg-black/60 backdrop-blur-md text-white border border-white/10 hover:bg-white/10 transition-all flex items-center justify-center"
+                                title="Anterior"
+                            >
+                                <ChevronLeft size={22} />
+                            </button>
+                        )}
+                        {previewContext && previewContext.index === 0 && (
+                            <div className="shrink-0 w-12" />
+                        )}
+
+                        <img
+                            key={previewImage}
+                            src={previewImage}
+                            alt="Vista previa"
+                            className="block max-w-full max-h-[80vh] w-auto h-auto object-contain rounded-2xl bg-black flex-1 min-w-0"
+                        />
+
+                        {/* Next arrow */}
+                        {previewContext && previewContext.index < previewContext.urls.length - 1 && (
+                            <button
+                                onClick={() => navigatePreview(1)}
+                                className="shrink-0 w-12 h-12 rounded-2xl bg-black/60 backdrop-blur-md text-white border border-white/10 hover:bg-white/10 transition-all flex items-center justify-center"
+                                title="Siguiente"
+                            >
+                                <ChevronRight size={22} />
+                            </button>
+                        )}
+                        {previewContext && previewContext.index === previewContext.urls.length - 1 && (
+                            <div className="shrink-0 w-12" />
+                        )}
                     </div>
                 </div>
             )}
@@ -2072,88 +2210,279 @@ export function KdpFactoryApp() {
             {/* Book Editor Modal */}
             {bookEditorOpen && (
                 <div
-                    className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6"
+                    className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 md:p-6"
                     onClick={() => setBookEditorOpen(false)}
                     role="dialog"
                     aria-modal="true"
                 >
                     <div
-                        className="relative w-full max-w-6xl max-h-[90vh] rounded-3xl border border-white/10 bg-[#0a0a0a]/80 overflow-hidden flex flex-col"
+                        className="relative w-full max-w-6xl max-h-[95vh] rounded-3xl border border-white/10 bg-[#0a0a0a]/95 overflow-hidden flex flex-col"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="p-6 md:p-8 border-b border-white/10 flex items-center justify-between gap-4">
-                            <div className="space-y-1">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Editor de Libro</p>
-                                <p className="text-sm text-neutral-300 font-medium italic">Pág. 1 en blanco + texto; imágenes centradas en páginas impares.</p>
+                        {/* Header */}
+                        <div className="p-4 md:p-6 border-b border-white/10 flex flex-wrap items-center justify-between gap-3">
+                            <div className="space-y-0.5">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Editor de Libro PDF</p>
+                                <p className="text-xs text-neutral-500 font-medium">{bookEditorImages.length} imágenes · {bookPdfMode === "colored" ? `${1 + bookEditorImages.length * 2} páginas (doble hoja)` : `${1 + bookEditorImages.length} páginas (una por imagen)`}</p>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                {/* Mode toggle */}
+                                <div className="flex rounded-xl border border-white/10 overflow-hidden">
+                                    <button
+                                        onClick={() => setBookPdfMode("colored")}
+                                        className={`px-3 h-9 text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${bookPdfMode === "colored" ? "bg-amber-500 text-black" : "bg-white/5 text-neutral-500 hover:text-white"}`}
+                                    >
+                                        <BookMarked size={11} /> Colored
+                                    </button>
+                                    <button
+                                        onClick={() => setBookPdfMode("full")}
+                                        className={`px-3 h-9 text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${bookPdfMode === "full" ? "bg-amber-500 text-black" : "bg-white/5 text-neutral-500 hover:text-white"}`}
+                                    >
+                                        <ImageIcon size={11} /> Full
+                                    </button>
+                                </div>
                                 <Button
                                     onClick={buildBookPdf}
-                                    disabled={isBuildingPdf || vaultImages.length === 0}
-                                    className="h-11 rounded-2xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest"
+                                    disabled={isBuildingPdf || bookEditorImages.length === 0}
+                                    className="h-9 rounded-2xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest"
                                 >
-                                    {isBuildingPdf ? "Generando..." : "Descargar PDF"}
+                                    {isBuildingPdf ? <><Loader2 size={13} className="animate-spin mr-2" />Generando...</> : "Descargar PDF"}
                                 </Button>
                                 <button
                                     onClick={() => setBookEditorOpen(false)}
-                                    className="p-3 rounded-2xl bg-white/5 text-white hover:bg-rose-500 transition-all border border-white/10"
-                                    aria-label="Cerrar editor"
-                                    title="Cerrar"
+                                    className="p-2.5 rounded-2xl bg-white/5 text-white hover:bg-rose-500 transition-all border border-white/10"
                                 >
-                                    <X size={18} />
+                                    <X size={16} />
                                 </button>
                             </div>
                         </div>
 
-                        <div className="p-4 md:p-8 grid grid-cols-1 lg:grid-cols-12 gap-8 overflow-y-auto">
-                            <div className="lg:col-span-4 space-y-5">
+                        <div className="flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden" style={{ maxHeight: "calc(95vh - 80px)" }}>
+                            {/* Left panel: settings + vault images to add */}
+                            <div className="lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-white/10 p-4 space-y-4 overflow-y-auto">
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Nombre del archivo</label>
                                     <input
                                         value={bookFileName}
                                         onChange={(e) => setBookFileName(e.target.value)}
-                                        className="w-full h-11 rounded-2xl bg-white/5 border border-white/10 px-4 text-sm text-white outline-none focus:border-amber-500/40"
+                                        className="w-full h-9 rounded-xl bg-white/5 border border-white/10 px-3 text-sm text-white outline-none focus:border-amber-500/40"
                                         placeholder="libro-kdp"
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Texto (página 1, abajo derecha)</label>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Texto página 1</label>
                                     <textarea
                                         value={bookFooterText}
                                         onChange={(e) => setBookFooterText(e.target.value)}
-                                        className="w-full min-h-[120px] rounded-2xl bg-white/5 border border-white/10 p-4 text-sm text-white outline-none focus:border-amber-500/40 resize-none"
+                                        className="w-full min-h-[80px] rounded-xl bg-white/5 border border-white/10 p-3 text-sm text-white outline-none focus:border-amber-500/40 resize-none"
                                         placeholder="Ej: © 2026 Tu Marca"
                                     />
                                 </div>
-                                <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 text-[10px] text-neutral-400 font-medium">
-                                    Total páginas: {1 + vaultImages.length * 2} (las pares quedan en blanco).
-                                </div>
-                            </div>
 
-                            <div className="lg:col-span-8 space-y-4">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Previsualización</p>
-                                <div className="max-h-[60vh] overflow-auto pr-1 space-y-4">
-                                    {Array.from({ length: 1 + vaultImages.length }).map((_, spreadIndex) => {
-                                        // spreadIndex 0 => (página 0 izq en blanco) + (página 1 der con texto)
-                                        // spreadIndex n>0 => (página 2n izq en blanco) + (página 2n+1 der con imagen n-1)
-                                        const img = spreadIndex === 0 ? null : vaultImages[spreadIndex - 1];
-                                        return (
-                                            <div key={spreadIndex} className="grid grid-cols-2 gap-4">
-                                                <div className="aspect-[1/1.414] rounded-2xl bg-white/[0.02] border border-white/10" />
-                                                <div className="aspect-[1/1.414] rounded-2xl bg-white/[0.02] border border-white/10 relative overflow-hidden flex items-center justify-center">
-                                                    {spreadIndex === 0 ? (
-                                                        <div className="absolute bottom-3 right-3 text-[9px] font-bold text-neutral-400">
-                                                            {bookFooterText.trim() || " "}
-                                                        </div>
-                                                    ) : img ? (
-                                                        <img src={img.url} alt="Preview" className="max-w-[90%] max-h-[90%] object-contain" />
-                                                    ) : null}
+                                {/* Vault images to add */}
+                                {vaultImages.length > 0 && (
+                                    <div className="space-y-2">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-2"><Box size={10} />Añadir del Vault</p>
+                                        <div className="grid grid-cols-3 gap-1.5">
+                                            {vaultImages.map((vi, idx) => {
+                                                const alreadyAdded = bookEditorImages.some(b => b.url === vi.url);
+                                                return (
+                                                    <button
+                                                        key={idx}
+                                                        onClick={() => !alreadyAdded && setBookEditorImages(prev => [...prev, { url: vi.url, label: vi.model, scale: 1 }])}
+                                                        disabled={alreadyAdded}
+                                                        className={`aspect-square rounded-lg overflow-hidden border transition-all relative ${alreadyAdded ? "border-emerald-500/40 opacity-50" : "border-white/10 hover:border-amber-500/50"}`}
+                                                        title={alreadyAdded ? "Ya añadida" : "Añadir al editor"}
+                                                    >
+                                                        <img src={vi.url} alt="" className="w-full h-full object-cover" />
+                                                        {alreadyAdded && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><Check size={12} className="text-emerald-400" /></div>}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Catalog images to add */}
+                                {iaCatalogs.filter(c => c.images.length > 0).length > 0 && (
+                                    <div className="space-y-2">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-2"><Layers size={10} />Añadir de Catálogos</p>
+                                        {iaCatalogs.filter(c => c.images.length > 0).map(cat => (
+                                            <div key={cat._id} className="space-y-1.5">
+                                                <p className="text-[9px] text-neutral-600 truncate pl-0.5">{cat.name}</p>
+                                                <div className="grid grid-cols-3 gap-1.5">
+                                                    {cat.images.map((ci) => {
+                                                        const alreadyAdded = bookEditorImages.some(b => b.url === ci.url);
+                                                        return (
+                                                            <button
+                                                                key={ci.publicId}
+                                                                onClick={() => !alreadyAdded && setBookEditorImages(prev => [...prev, { url: ci.url, label: `${cat.name}`, scale: 1 }])}
+                                                                disabled={alreadyAdded}
+                                                                className={`aspect-square rounded-lg overflow-hidden border transition-all relative ${alreadyAdded ? "border-emerald-500/40 opacity-50" : "border-white/10 hover:border-amber-500/50"}`}
+                                                                title={alreadyAdded ? "Ya añadida" : "Añadir al editor"}
+                                                            >
+                                                                <img src={ci.url} alt="" className="w-full h-full object-cover" />
+                                                                {alreadyAdded && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><Check size={12} className="text-emerald-400" /></div>}
+                                                            </button>
+                                                        );
+                                                    })}
                                                 </div>
                                             </div>
-                                        );
-                                    })}
-                                </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Editor image list with remove + scale */}
+                                {bookEditorImages.length > 0 && (
+                                    <div className="space-y-2">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-2"><Layers size={10} />Imágenes en PDF</p>
+                                        <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                                            {bookEditorImages.map((bi, idx) => (
+                                                <div key={idx} className="rounded-lg bg-white/[0.02] border border-white/5 p-1.5 space-y-1.5">
+                                                    <div className="flex items-center gap-2">
+                                                        <img src={bi.url} alt="" className="w-8 h-8 rounded-md object-cover shrink-0" />
+                                                        <span className="text-[9px] text-neutral-500 flex-1 truncate">{bi.label || `#${idx + 1}`}</span>
+                                                        <button
+                                                            onClick={() => setBookEditorImages(prev => prev.filter((_, i) => i !== idx))}
+                                                            className="p-1 rounded-md text-neutral-600 hover:text-rose-400 transition-all"
+                                                        >
+                                                            <X size={10} />
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 px-0.5">
+                                                        <span className="text-[8px] text-neutral-600 shrink-0 w-6">Zoom</span>
+                                                        <input
+                                                            type="range"
+                                                            min={1}
+                                                            max={2}
+                                                            step={0.05}
+                                                            value={bi.scale ?? 1}
+                                                            onChange={(e) => setBookEditorImages(prev => prev.map((img, i) => i === idx ? { ...img, scale: Number(e.target.value) } : img))}
+                                                            className="flex-1 accent-amber-500 h-1"
+                                                        />
+                                                        <span className="text-[8px] font-mono text-amber-400 w-8 text-right">{Math.round((bi.scale ?? 1) * 100)}%</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
+
+                            {/* Right panel: preview */}
+                            <div className="flex-1 p-4 space-y-3 overflow-y-auto">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Previsualización · modo {bookPdfMode === "colored" ? "Colored Book" : "Full"}</p>
+                                {bookEditorImages.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-16 text-center space-y-2 opacity-30">
+                                        <FileText size={32} className="text-neutral-600" strokeWidth={1.5} />
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Sin imágenes · añade desde catálogos o vault</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {bookPdfMode === "colored" ? (
+                                            Array.from({ length: 1 + bookEditorImages.length }).map((_, spreadIndex) => {
+                                                const img = spreadIndex === 0 ? null : bookEditorImages[spreadIndex - 1];
+                                                const zoom = img?.scale ?? 1;
+                                                const pct = Math.min(98, Math.round(90 * zoom));
+                                                return (
+                                                    <div key={spreadIndex} className="grid grid-cols-2 gap-2">
+                                                        <div className="aspect-[1/1.414] rounded-xl bg-white/[0.02] border border-white/10" />
+                                                        <div className="aspect-[1/1.414] rounded-xl bg-white/[0.02] border border-white/10 relative overflow-hidden flex items-center justify-center">
+                                                            {spreadIndex === 0 ? (
+                                                                <div className="absolute bottom-2 right-2 text-[8px] font-bold text-neutral-500">{bookFooterText.trim() || "Pág. 1"}</div>
+                                                            ) : img ? (
+                                                                <img src={img.url} alt="" style={{ maxWidth: `${pct}%`, maxHeight: `${pct}%` }} className="object-contain" />
+                                                            ) : null}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        ) : (
+                                            [null, ...bookEditorImages].map((img, pageIdx) => {
+                                                const zoom = img?.scale ?? 1;
+                                                const pct = Math.min(98, Math.round(90 * zoom));
+                                                return (
+                                                    <div key={pageIdx} className="aspect-[1/1.414] rounded-xl bg-white/[0.02] border border-white/10 relative overflow-hidden flex items-center justify-center max-w-xs mx-auto">
+                                                        {pageIdx === 0 ? (
+                                                            <div className="absolute bottom-2 right-2 text-[8px] font-bold text-neutral-500">{bookFooterText.trim() || "Pág. 1"}</div>
+                                                        ) : img ? (
+                                                            <img src={img.url} alt="" style={{ maxWidth: `${pct}%`, maxHeight: `${pct}%` }} className="object-contain" />
+                                                        ) : null}
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Confirm Delete Catalog Dialog */}
+            {confirmDeleteCatalogId && (
+                <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
+                    <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
+                        <div className="space-y-2 text-center">
+                            <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto"><Trash2 size={24} className="text-red-400" /></div>
+                            <p className="text-base font-black text-white">¿Eliminar catálogo?</p>
+                            <p className="text-sm text-neutral-500">Se eliminarán todas las imágenes de Cloudinary. Esta acción no se puede deshacer.</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={() => setConfirmDeleteCatalogId(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
+                            <button onClick={() => void deleteCatalogConfirmed(confirmDeleteCatalogId)} className="flex-1 h-11 rounded-2xl bg-red-500 text-white text-sm font-black hover:bg-red-400 transition-all">Eliminar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Confirm Delete Image Dialog */}
+            {confirmDeleteImageInfo && (
+                <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
+                    <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
+                        <div className="space-y-2 text-center">
+                            <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto"><ImageIcon size={24} className="text-red-400" /></div>
+                            <p className="text-base font-black text-white">¿Eliminar imagen?</p>
+                            <p className="text-sm text-neutral-500">Se eliminará de Cloudinary y del catálogo.</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={() => setConfirmDeleteImageInfo(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
+                            <button onClick={() => void deleteCatalogImageConfirmed(confirmDeleteImageInfo.catalogId, confirmDeleteImageInfo.publicId)} className="flex-1 h-11 rounded-2xl bg-red-500 text-white text-sm font-black hover:bg-red-400 transition-all">Eliminar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Confirm Delete Vault Image Dialog */}
+            {confirmDeleteVaultIndex !== null && (
+                <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
+                    <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
+                        <div className="space-y-2 text-center">
+                            <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto"><Trash2 size={24} className="text-red-400" /></div>
+                            <p className="text-base font-black text-white">¿Eliminar del vault?</p>
+                            <p className="text-sm text-neutral-500">La imagen se eliminará de la sesión actual.</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={() => setConfirmDeleteVaultIndex(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
+                            <button onClick={() => { setVaultImages(prev => prev.filter((_, i) => i !== confirmDeleteVaultIndex)); setConfirmDeleteVaultIndex(null); }} className="flex-1 h-11 rounded-2xl bg-red-500 text-white text-sm font-black hover:bg-red-400 transition-all">Eliminar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Confirm Delete Cloudinary Image Dialog */}
+            {confirmDeleteCloudinaryId && (
+                <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
+                    <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
+                        <div className="space-y-2 text-center">
+                            <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto"><Cloud size={24} className="text-red-400" /></div>
+                            <p className="text-base font-black text-white">¿Eliminar de Cloudinary?</p>
+                            <p className="text-sm text-neutral-500">La imagen se eliminará permanentemente del almacén en la nube.</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={() => setConfirmDeleteCloudinaryId(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
+                            <button onClick={() => { void deleteFromCloudinary(confirmDeleteCloudinaryId); setConfirmDeleteCloudinaryId(null); }} className="flex-1 h-11 rounded-2xl bg-red-500 text-white text-sm font-black hover:bg-red-400 transition-all">Eliminar</button>
                         </div>
                     </div>
                 </div>

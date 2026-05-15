@@ -100,3 +100,30 @@ ${rawText.substring(0, 4000)}`;
         raw: rawText.substring(0, 500)
     }];
 }
+
+export async function varyTextWithLLM(text: string): Promise<string> {
+    const config = await getConfig();
+    const prompt = `Slightly rephrase the following text to make it unique while preserving its core meaning. Keep it concise, in the same language, and return ONLY the rephrased text without quotes or explanations.\n\nText: ${text}`;
+
+    if (config.provider === "google" && config.googleKey) {
+        const { GoogleGenerativeAI } = await import("@google/generative-ai");
+        const genAI = new GoogleGenerativeAI(config.googleKey);
+        const model = genAI.getGenerativeModel({ model: config.model });
+        const result = await model.generateContent(prompt);
+        return result.response.text().trim() || text;
+    }
+
+    if (config.provider === "huggingface" && config.hfKey) {
+        const { HfInference } = await import("@huggingface/inference");
+        const hf = new HfInference(config.hfKey);
+        const response = await hf.textGeneration({
+            model: config.model,
+            inputs: prompt,
+            parameters: { max_new_tokens: 200, temperature: 0.8 }
+        });
+        const result = (response.generated_text ?? "").replace(prompt, "").trim();
+        return result || text;
+    }
+
+    return text;
+}

@@ -12,6 +12,12 @@ export interface CatalogImage {
 export interface ICatalog extends Document {
     name: string;
     prompt: string;
+    promptParts?: {
+        theme: string;
+        specs: string;
+        details: string;
+        particulars: string;
+    };
     aiModel: {
         id: string;
         name: string;
@@ -43,6 +49,12 @@ const CatalogSchema = new Schema<ICatalog>(
     {
         name: { type: String, required: true },
         prompt: { type: String, required: true },
+        promptParts: {
+            theme: { type: String, default: "" },
+            specs: { type: String, default: "" },
+            details: { type: String, default: "" },
+            particulars: { type: String, default: "" },
+        },
         aiModel: {
             id: String,
             name: String,
