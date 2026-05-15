@@ -12,7 +12,7 @@ export interface CatalogImage {
 export interface ICatalog extends Document {
     name: string;
     prompt: string;
-    model: {
+    aiModel: {
         id: string;
         name: string;
         provider: string;
@@ -43,7 +43,7 @@ const CatalogSchema = new Schema<ICatalog>(
     {
         name: { type: String, required: true },
         prompt: { type: String, required: true },
-        model: {
+        aiModel: {
             id: String,
             name: String,
             provider: String,

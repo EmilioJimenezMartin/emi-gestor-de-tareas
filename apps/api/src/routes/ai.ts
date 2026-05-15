@@ -459,7 +459,7 @@ export async function registerAIRoutes(app: FastifyInstance) {
                 let lastErr: any = null;
 
                 for (let attempt = 1; attempt <= attempts; attempt++) {
-                    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width || 1024}&height=${height || 1024}&seed=${Math.floor(Math.random() * 1000000)}&nologo=true`;
+                    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width || 1024}&height=${height || 1024}&seed=${Math.floor(Math.random() * 1000000)}&nologo=true&enhance=false`;
                     try {
                         app.log.info({ attempt }, "AI image: trying Pollinations fallback");
                         const response = await axios({

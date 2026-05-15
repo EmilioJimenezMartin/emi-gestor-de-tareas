@@ -4,7 +4,7 @@ import { Catalog } from "../models/catalog.js";
 import { getCloudinaryConfig, initCloudinary } from "../routes/cloudinary.js";
 
 export function defineCatalogJob(agenda: Agenda, io: any) {
-    agenda.define("generate-catalog-image", { concurrency: 1 }, async (job: Job) => {
+    agenda.define("generate-catalog-image", async (job: Job) => {
         const { catalogId } = (job.attrs.data ?? {}) as { catalogId: string };
 
         if (!catalogId) {
@@ -37,26 +37,36 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
 
         io.emit("catalog:progress", {
             catalogId,
-            status: "generating",
+            status: "running",
             current: imageIndex,
             total: catalog.totalImages,
         });
 
         try {
-            const port = process.env.PORT || 3001;
-            const response = await axios.post(
-                `http://localhost:${port}/ai/generate-image`,
-                {
-                    prompt: catalog.prompt,
-                    modelId: catalog.model.modelId,
-                    provider: catalog.model.provider,
-                    width: catalog.width,
-                    height: catalog.height,
-                },
-                { responseType: "arraybuffer", timeout: 90000 }
-            );
+            let imageBuffer: Buffer;
 
-            const imageBuffer = Buffer.from(response.data);
+            if (catalog.aiModel.provider === "Pollinations") {
+                // Pollinations: URL directa, sin pasar por el proxy interno
+                const seed = Math.floor(Math.random() * 999999);
+                const modelParam = catalog.aiModel.modelId?.trim() || "flux";
+                const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(catalog.prompt)}?width=${catalog.width}&height=${catalog.height}&seed=${seed}&model=${encodeURIComponent(modelParam)}&nologo=true&enhance=false`;
+                const response = await axios.get(pollinationsUrl, { responseType: "arraybuffer", timeout: 60000 });
+                imageBuffer = Buffer.from(response.data);
+            } else {
+                const port = process.env.PORT || 3001;
+                const response = await axios.post(
+                    `http://localhost:${port}/ai/generate-image`,
+                    {
+                        prompt: catalog.prompt,
+                        modelId: catalog.aiModel.modelId,
+                        provider: catalog.aiModel.provider,
+                        width: catalog.width,
+                        height: catalog.height,
+                    },
+                    { responseType: "arraybuffer", timeout: 90000 }
+                );
+                imageBuffer = Buffer.from(response.data);
+            }
             const base64 = imageBuffer.toString("base64");
             const dataUrl = `data:image/png;base64,${base64}`;
 

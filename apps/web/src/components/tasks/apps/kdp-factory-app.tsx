@@ -126,7 +126,7 @@ const AI_DIMENSIONS = [
 
 const PLATFORMS = ["Amazon KDP", "Etsy", "Printify", "Creative Fabrica"];
 
-type TabID = "insights" | "catalog" | "creation" | "catalogos";
+type TabID = "insights" | "catalog" | "creation";
 type PeriodID = "month" | "6months" | "year" | "all";
 
 interface CatalogImageFE {
@@ -142,7 +142,7 @@ interface IACatalogFE {
     _id: string;
     name: string;
     prompt: string;
-    model: { id: string; name: string; provider: string; modelId: string };
+    aiModel: { id: string; name: string; provider: string; modelId: string };
     width: number;
     height: number;
     totalImages: number;
@@ -243,9 +243,6 @@ export function KdpFactoryApp() {
     const [iaCatalogs, setIaCatalogs] = useState<IACatalogFE[]>([]);
     const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(false);
     const [catalogFormName, setCatalogFormName] = useState("");
-    const [catalogFormPrompt, setCatalogFormPrompt] = useState("");
-    const [catalogFormModel, setCatalogFormModel] = useState("pollinations-flux");
-    const [catalogFormDim, setCatalogFormDim] = useState("sq");
     const [catalogFormCount, setCatalogFormCount] = useState(5);
     const [isCreatingCatalog, setIsCreatingCatalog] = useState(false);
     const [deletingCatalogId, setDeletingCatalogId] = useState<string | null>(null);
@@ -263,43 +260,6 @@ export function KdpFactoryApp() {
             // silently ignore if API unavailable
         } finally {
             setIsLoadingCatalogs(false);
-        }
-    };
-
-    const createCatalog = async () => {
-        if (!catalogFormPrompt.trim()) {
-            toast.error("El prompt es obligatorio");
-            return;
-        }
-        const model = AI_MODELS.find((m) => m.id === catalogFormModel);
-        const dim = AI_DIMENSIONS.find((d) => d.id === catalogFormDim);
-        if (!model) return;
-
-        setIsCreatingCatalog(true);
-        try {
-            const res = await fetch(`${API_BASE_URL}/catalogs`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    name: catalogFormName.trim() || undefined,
-                    prompt: catalogFormPrompt.trim(),
-                    model: { id: model.id, name: model.name, provider: model.provider, modelId: model.modelId },
-                    width: dim?.width ?? 1024,
-                    height: dim?.height ?? 1024,
-                    totalImages: catalogFormCount,
-                }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Error al crear catálogo");
-            setIaCatalogs((prev) => [data.catalog, ...prev]);
-            setCatalogFormName("");
-            setCatalogFormPrompt("");
-            setCatalogFormCount(5);
-            toast.success(`Catálogo creado — generando ${catalogFormCount} imágenes en segundo plano`);
-        } catch (e: any) {
-            toast.error(e.message ?? "Error al crear catálogo");
-        } finally {
-            setIsCreatingCatalog(false);
         }
     };
 
@@ -326,6 +286,41 @@ export function KdpFactoryApp() {
             toast.info("Generación cancelada");
         } catch {
             toast.error("Error al cancelar");
+        }
+    };
+
+    const createCatalogFromStudio = async () => {
+        if (!imagePrompt.trim()) {
+            toast.error("Escribe un prompt primero en el campo de arriba");
+            return;
+        }
+        const model = AI_MODELS.find((m) => m.id === selectedModel);
+        const dim = AI_DIMENSIONS.find((d) => d.id === selectedDim);
+        if (!model) return;
+        setIsCreatingCatalog(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/catalogs`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: catalogFormName.trim() || undefined,
+                    prompt: imagePrompt.trim(),
+                    aiModel: { id: model.id, name: model.name, provider: model.provider, modelId: model.modelId },
+                    width: dim?.width ?? 1024,
+                    height: dim?.height ?? 1024,
+                    totalImages: catalogFormCount,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Error al crear catálogo");
+            setIaCatalogs((prev) => [data.catalog, ...prev]);
+            setCatalogFormName("");
+            setCatalogFormCount(5);
+            toast.success(`Catálogo iniciado — ${catalogFormCount} imágenes en segundo plano`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al crear catálogo");
+        } finally {
+            setIsCreatingCatalog(false);
         }
     };
 
@@ -744,9 +739,9 @@ export function KdpFactoryApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab]);
 
-    // Fetch catalogs + connect socket when entering the catalogos tab
+    // Fetch catalogs + connect socket when entering the creation tab
     useEffect(() => {
-        if (activeTab !== "catalogos") return;
+        if (activeTab !== "creation") return;
         void fetchCatalogs();
 
         const socket = createApiSocket(API_BASE_URL);
@@ -803,9 +798,26 @@ export function KdpFactoryApp() {
         setIsGenerating(true);
         setGeneratedImage(null);
 
-        try {
-            // USAR PROXY DEL BACKEND (Resuelve CORS y asegura API Keys)
+        // Pollinations: URL directa, sin pasar por el backend
+        if (model?.provider === "Pollinations") {
+            const seed = Math.floor(Math.random() * 999999);
+            const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt.trim())}?width=${dimensions?.width ?? 1024}&height=${dimensions?.height ?? 1024}&seed=${seed}&model=${encodeURIComponent(model.modelId || "flux")}&nologo=true&enhance=false`;
+            const img = new Image();
+            img.src = url;
+            img.onload = () => {
+                setGeneratedImage(url);
+                setIsGenerating(false);
+                toast.success("Imagen generada con Pollinations");
+            };
+            img.onerror = () => {
+                setIsGenerating(false);
+                setIsImageLoading(false);
+                toast.error("Error generando imagen con Pollinations");
+            };
+            return;
+        }
 
+        try {
             const response = await fetch(`${API_BASE_URL}/ai/generate-image`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -816,10 +828,7 @@ export function KdpFactoryApp() {
                     width: dimensions?.width,
                     height: dimensions?.height,
                     initImage: initImageDataUrl
-                        ? {
-                            dataUrl: initImageDataUrl,
-                            strength: initImageStrength,
-                        }
+                        ? { dataUrl: initImageDataUrl, strength: initImageStrength }
                         : undefined,
                 })
             });
@@ -829,7 +838,7 @@ export function KdpFactoryApp() {
                 const url = URL.createObjectURL(blob);
                 setGeneratedImage(url);
                 setIsGenerating(false);
-                toast.success(`Arte generado con éxito vía Proxy Seguro`);
+                toast.success("Arte generado con éxito");
                 return;
             } else if (response.status === 429 && retryCount < 2) {
                 const retryAfter = Number(response.headers.get("Retry-After") || "10");
@@ -838,38 +847,29 @@ export function KdpFactoryApp() {
                 setTimeout(() => handleGenerateImage(retryCount + 1), waitMs);
                 return;
             } else if (response.status === 503 && retryCount < 2) {
-                // Manejo de Cold Boot desde el Proxy
-                toast.info(`El motor remoto se está despertando... Reintentando (${retryCount + 1}/2)`);
+                toast.info(`El modelo se está cargando... Reintentando (${retryCount + 1}/2)`);
                 setTimeout(() => handleGenerateImage(retryCount + 1), 5000);
                 return;
-            } else {
-                const errorData = await response.json().catch(() => ({ error: "Error desconocido en el proxy" }));
-                console.warn("Proxy falló, usando motor de simulación de respaldo:", errorData.error);
-                // No retornamos aquí para que caiga en el fallback de Pollinations
             }
 
-            // 3. Fallback robusto con Pollinations (Simulación con pre-carga)
+            // Fallback: Pollinations sin modelo específico
             const seed = Math.floor(Math.random() * 999999);
-            const encodedPrompt = encodeURIComponent(imagePrompt.trim());
-            const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${dimensions?.width}&height=${dimensions?.height}&seed=${seed}&nologo=true`;
-
+            const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt.trim())}?width=${dimensions?.width ?? 1024}&height=${dimensions?.height ?? 1024}&seed=${seed}&nologo=true&enhance=false`;
             const img = new Image();
             img.src = url;
             img.onload = () => {
                 setGeneratedImage(url);
                 setIsGenerating(false);
-                toast.success(`Renderizado con motor de compatibilidad`);
+                toast.success("Generado con Pollinations (fallback)");
             };
             img.onerror = () => {
-                const fallback = `https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=${dimensions?.width}&h=${dimensions?.height}&auto=format&fit=crop`;
-                setGeneratedImage(fallback);
                 setIsGenerating(false);
                 setIsImageLoading(false);
-                toast.warning("Usando motor de respaldo regional");
+                toast.error("Error en la generación");
             };
 
         } catch (error) {
-            console.error("Critical generation error:", error);
+            console.error("Generation error:", error);
             setIsGenerating(false);
             setIsImageLoading(false);
             toast.error("Error en el motor de generación");
@@ -1432,6 +1432,38 @@ export function KdpFactoryApp() {
                                 </>
                             )}
                         </Button>
+
+                        {/* Catalog launch — reuses studio model/dim/prompt */}
+                        <div className="border-t border-white/5 pt-5 space-y-3">
+                            <div className="flex items-center gap-2 text-neutral-500">
+                                <Layers size={12} />
+                                <span className="text-[10px] font-black uppercase tracking-widest">Generar catálogo con estos ajustes</span>
+                            </div>
+                            <div className="flex gap-2">
+                                <input
+                                    value={catalogFormName}
+                                    onChange={(e) => setCatalogFormName(e.target.value)}
+                                    placeholder="Nombre del catálogo (opcional)"
+                                    className="flex-1 h-10 bg-white/5 border border-white/10 rounded-xl px-3 text-sm text-white outline-none focus:border-violet-500/40 transition-all placeholder:text-neutral-700"
+                                />
+                                <input
+                                    type="number" min={1} max={50}
+                                    value={catalogFormCount}
+                                    onChange={(e) => setCatalogFormCount(Math.min(50, Math.max(1, Number(e.target.value))))}
+                                    className="w-16 h-10 bg-white/5 border border-white/10 rounded-xl px-2 text-sm font-bold text-white outline-none focus:border-violet-500/40 transition-all text-center"
+                                />
+                                <button
+                                    onClick={() => void createCatalogFromStudio()}
+                                    disabled={isCreatingCatalog || !imagePrompt.trim()}
+                                    className="h-10 px-5 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center gap-2 disabled:opacity-40"
+                                >
+                                    {isCreatingCatalog ? <Loader2 size={13} className="animate-spin" /> : <><Layers size={13} />Lanzar</>}
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-neutral-600 italic">
+                                ~{Math.ceil(catalogFormCount * 1.5)} min · {catalogFormCount} imágenes · {AI_MODELS.find(m => m.id === selectedModel)?.name} · {AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio}
+                            </p>
+                        </div>
                     </div>
                 </Card>
 
@@ -1727,6 +1759,99 @@ export function KdpFactoryApp() {
                     </div>
                 )}
             </div>
+
+            {/* IA Catalog list */}
+            {iaCatalogs.length > 0 && (
+                <div className="space-y-4">
+                    <div className="flex items-center gap-4 px-2">
+                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                        <div className="flex items-center gap-3">
+                            <Layers size={14} className="text-violet-400" />
+                            <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Catálogos IA</h3>
+                        </div>
+                        <button onClick={() => void fetchCatalogs()} disabled={isLoadingCatalogs} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
+                            {isLoadingCatalogs ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                        </button>
+                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                    </div>
+                    <div className="space-y-3">
+                        {iaCatalogs.map((catalog) => {
+                            const progress = catalog.totalImages > 0 ? (catalog.images.length / catalog.totalImages) * 100 : 0;
+                            const isActive = catalog.status === "running" || catalog.status === "pending";
+                            return (
+                                <Card key={catalog._id} variant="outline" className="border-white/5 bg-white/[0.01] overflow-hidden">
+                                    <div className="p-4 flex items-start justify-between gap-4 border-b border-white/5">
+                                        <div className="space-y-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <h4 className="font-black text-white truncate text-sm">{catalog.name}</h4>
+                                                {statusBadge(catalog.status)}
+                                                {isActive && <Loader2 size={11} className="text-blue-400 animate-spin shrink-0" />}
+                                            </div>
+                                            <p className="text-[10px] text-neutral-500 truncate">{catalog.prompt}</p>
+                                            <p className="text-[10px] text-neutral-600 font-mono">{catalog.aiModel?.name} · {catalog.images.length}/{catalog.totalImages} imgs · {new Date(catalog.createdAt).toLocaleDateString("es-ES")}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            {catalog.images.length > 0 && (
+                                                <button onClick={() => void buildCatalogPdf(catalog)} disabled={buildingPdfCatalogId === catalog._id} title="PDF" className="p-2 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 disabled:opacity-50">
+                                                    {buildingPdfCatalogId === catalog._id ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+                                                </button>
+                                            )}
+                                            {isActive && (
+                                                <button onClick={() => void cancelCatalog(catalog._id)} title="Cancelar" className="p-2 rounded-xl bg-neutral-500/10 text-neutral-400 hover:bg-red-500/10 hover:text-red-400 transition-all border border-white/10">
+                                                    <StopCircle size={13} />
+                                                </button>
+                                            )}
+                                            <button onClick={() => void deleteCatalog(catalog._id)} disabled={deletingCatalogId === catalog._id} title="Eliminar" className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 disabled:opacity-50">
+                                                {deletingCatalogId === catalog._id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {isActive && (
+                                        <div className="px-4 pt-3 pb-2 space-y-1">
+                                            <div className="flex justify-between text-[10px] font-black text-neutral-600 uppercase tracking-widest">
+                                                <span>Progreso</span><span>{catalog.images.length}/{catalog.totalImages}</span>
+                                            </div>
+                                            <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                                                <div className="h-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
+                                            </div>
+                                        </div>
+                                    )}
+                                    {catalog.images.length > 0 && (
+                                        <div className="p-4 pt-2">
+                                            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
+                                                {catalog.images.map((img) => (
+                                                    <div key={img.publicId} className="group relative aspect-square rounded-lg overflow-hidden bg-white/5 border border-white/5">
+                                                        <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                                                        <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center gap-1">
+                                                            <button onClick={() => addCatalogImageToVault(img)} title="Vault" className="p-1 rounded-md bg-emerald-500/80 text-white hover:bg-emerald-500"><ImagePlus size={10} /></button>
+                                                            <button onClick={() => setPreviewImage(img.url)} title="Ver" className="p-1 rounded-md bg-white/20 text-white hover:bg-white/30"><Maximize size={10} /></button>
+                                                            <button onClick={() => downloadPng(img.url, `catalog-${img.publicId.split("/").pop()}`)} title="Descargar" className="p-1 rounded-md bg-white/20 text-white hover:bg-white/30"><Download size={10} /></button>
+                                                            <button onClick={() => void deleteCatalogImage(catalog._id, img.publicId)} title="Eliminar" className="p-1 rounded-md bg-red-500/80 text-white hover:bg-red-500"><Trash2 size={10} /></button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                {isActive && Array.from({ length: catalog.totalImages - catalog.images.length }).map((_, i) => (
+                                                    <div key={`ph-${i}`} className="aspect-square rounded-lg bg-white/[0.02] border border-dashed border-white/10 flex items-center justify-center">
+                                                        <Loader2 size={10} className="text-neutral-700 animate-spin" />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </Card>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {iaCatalogs.length === 0 && !isLoadingCatalogs && (
+                <div className="flex items-center gap-4 px-2 opacity-30">
+                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-600 flex items-center gap-2"><Layers size={12} />Sin catálogos aún</span>
+                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                </div>
+            )}
         </div>
     );
 
@@ -1853,265 +1978,9 @@ export function KdpFactoryApp() {
             failed:    { label: "Error",         cls: "bg-red-500/10 text-red-400 border-red-500/20" },
             cancelled: { label: "Cancelado",     cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
         };
-        const { label, cls } = map[status];
+        const { label, cls } = map[status] ?? { label: status, cls: "bg-white/5 text-neutral-400 border-white/10" };
         return <Badge variant="neutral" className={`text-[9px] font-black uppercase ${cls}`}>{label}</Badge>;
     };
-
-    const renderIACatalogs = () => (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            {/* Create form */}
-            <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
-                <div className="p-6 sm:p-8 space-y-6">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-violet-500/20">
-                            <Layers size={20} />
-                        </div>
-                        <div>
-                            <h3 className="font-black text-lg text-white">Crear Catálogo</h3>
-                            <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Generación en segundo plano · 1 imagen cada 90s</p>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Nombre (opcional)</label>
-                            <input
-                                type="text"
-                                value={catalogFormName}
-                                onChange={(e) => setCatalogFormName(e.target.value)}
-                                placeholder="ej: Mandalas Zen Vol.1"
-                                className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-sm text-white outline-none focus:border-violet-500/40 transition-all"
-                            />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Dimensiones</label>
-                                <select
-                                    value={catalogFormDim}
-                                    onChange={(e) => setCatalogFormDim(e.target.value)}
-                                    className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-3 text-xs font-bold text-white outline-none focus:border-violet-500/40 transition-all appearance-none"
-                                >
-                                    {AI_DIMENSIONS.map((d) => (
-                                        <option key={d.id} value={d.id}>{d.name} {d.ratio}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Nº imágenes</label>
-                                <input
-                                    type="number"
-                                    min={1}
-                                    max={50}
-                                    value={catalogFormCount}
-                                    onChange={(e) => setCatalogFormCount(Math.min(50, Math.max(1, Number(e.target.value))))}
-                                    className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-sm font-bold text-white outline-none focus:border-violet-500/40 transition-all"
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Modelo</label>
-                        <select
-                            value={catalogFormModel}
-                            onChange={(e) => setCatalogFormModel(e.target.value)}
-                            className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-bold text-white outline-none focus:border-violet-500/40 transition-all appearance-none"
-                        >
-                            {AI_MODELS.filter((m) => m.provider === "Pollinations").map((m) => (
-                                <option key={m.id} value={m.id}>{m.name} — {m.type}</option>
-                            ))}
-                            {AI_MODELS.filter((m) => m.provider === "Hugging Face").map((m) => (
-                                <option key={m.id} value={m.id}>{m.name} (HF)</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Prompt</label>
-                        <textarea
-                            value={catalogFormPrompt}
-                            onChange={(e) => setCatalogFormPrompt(e.target.value)}
-                            placeholder="ej: minimalist mandala with fine line art, black and white, coloring book style, white background"
-                            rows={3}
-                            className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white placeholder:text-neutral-700 outline-none focus:border-violet-500/40 transition-all resize-none"
-                        />
-                    </div>
-
-                    <div className="flex items-center justify-between gap-4 pt-2">
-                        <p className="text-[11px] text-neutral-600 italic">
-                            Tiempo estimado: ~{Math.ceil(catalogFormCount * 1.5)} min · Las imágenes se guardan en Cloudinary automáticamente
-                        </p>
-                        <Button
-                            onClick={createCatalog}
-                            disabled={isCreatingCatalog || !catalogFormPrompt.trim()}
-                            className="h-11 px-8 bg-violet-600 text-white hover:bg-violet-500 transition-all text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-violet-500/20 shrink-0"
-                        >
-                            {isCreatingCatalog ? <Loader2 size={16} className="animate-spin" /> : <><PlayCircle size={16} className="mr-2" />Lanzar</>}
-                        </Button>
-                    </div>
-                </div>
-            </Card>
-
-            {/* Catalog list */}
-            <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-xl font-black text-white italic tracking-tight">Mis Catálogos</h3>
-                    <button
-                        onClick={() => void fetchCatalogs()}
-                        disabled={isLoadingCatalogs}
-                        className="p-2 rounded-xl bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10 transition-all disabled:opacity-50"
-                        title="Recargar"
-                    >
-                        <RefreshCw size={14} className={isLoadingCatalogs ? "animate-spin" : ""} />
-                    </button>
-                </div>
-
-                {isLoadingCatalogs && iaCatalogs.length === 0 ? (
-                    <div className="flex items-center justify-center py-20 text-neutral-600">
-                        <Loader2 size={24} className="animate-spin" />
-                    </div>
-                ) : iaCatalogs.length === 0 ? (
-                    <Card variant="outline" className="p-16 border-dashed border-white/10 bg-white/[0.01] flex flex-col items-center gap-4 text-center">
-                        <div className="p-5 rounded-[28px] bg-white/5 text-neutral-700">
-                            <Layers size={40} strokeWidth={1.5} />
-                        </div>
-                        <div>
-                            <p className="text-lg font-black text-white italic">Sin catálogos</p>
-                            <p className="text-sm text-neutral-500 mt-1">Crea tu primer catálogo arriba</p>
-                        </div>
-                    </Card>
-                ) : (
-                    iaCatalogs.map((catalog) => {
-                        const progress = catalog.totalImages > 0 ? (catalog.images.length / catalog.totalImages) * 100 : 0;
-                        const isActive = catalog.status === "running" || catalog.status === "pending";
-
-                        return (
-                            <Card key={catalog._id} variant="outline" className="border-white/5 bg-white/[0.01] overflow-hidden">
-                                {/* Header */}
-                                <div className="p-5 flex items-start justify-between gap-4 border-b border-white/5">
-                                    <div className="space-y-1 min-w-0">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <h4 className="font-black text-white truncate">{catalog.name}</h4>
-                                            {statusBadge(catalog.status)}
-                                            {isActive && <Loader2 size={12} className="text-blue-400 animate-spin shrink-0" />}
-                                        </div>
-                                        <p className="text-xs text-neutral-500 truncate">{catalog.prompt}</p>
-                                        <p className="text-[10px] text-neutral-600 font-mono">
-                                            {catalog.model.name} · {catalog.images.length}/{catalog.totalImages} imágenes · {new Date(catalog.createdAt).toLocaleDateString("es-ES")}
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                        {catalog.images.length > 0 && (
-                                            <button
-                                                onClick={() => void buildCatalogPdf(catalog)}
-                                                disabled={buildingPdfCatalogId === catalog._id}
-                                                title="Generar PDF"
-                                                className="p-2 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 disabled:opacity-50"
-                                            >
-                                                {buildingPdfCatalogId === catalog._id
-                                                    ? <Loader2 size={14} className="animate-spin" />
-                                                    : <FileText size={14} />
-                                                }
-                                            </button>
-                                        )}
-                                        {isActive && (
-                                            <button
-                                                onClick={() => void cancelCatalog(catalog._id)}
-                                                title="Cancelar generación"
-                                                className="p-2 rounded-xl bg-neutral-500/10 text-neutral-400 hover:bg-red-500/10 hover:text-red-400 transition-all border border-white/10"
-                                            >
-                                                <StopCircle size={14} />
-                                            </button>
-                                        )}
-                                        <button
-                                            onClick={() => void deleteCatalog(catalog._id)}
-                                            disabled={deletingCatalogId === catalog._id}
-                                            title="Eliminar catálogo"
-                                            className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 disabled:opacity-50"
-                                        >
-                                            {deletingCatalogId === catalog._id
-                                                ? <Loader2 size={14} className="animate-spin" />
-                                                : <Trash2 size={14} />
-                                            }
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Progress bar */}
-                                {isActive && (
-                                    <div className="px-5 pt-4 pb-2 space-y-1.5">
-                                        <div className="flex justify-between text-[10px] font-black text-neutral-500 uppercase tracking-widest">
-                                            <span>Progreso</span>
-                                            <span>{catalog.images.length} / {catalog.totalImages}</span>
-                                        </div>
-                                        <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full transition-all duration-700"
-                                                style={{ width: `${progress}%` }}
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Image grid */}
-                                {catalog.images.length > 0 && (
-                                    <div className="p-5 pt-3">
-                                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
-                                            {catalog.images.map((img) => (
-                                                <div key={img.publicId} className="group relative aspect-square rounded-xl overflow-hidden bg-white/5 border border-white/5">
-                                                    <img
-                                                        src={img.url}
-                                                        alt="Imagen catálogo"
-                                                        className="w-full h-full object-cover"
-                                                        loading="lazy"
-                                                    />
-                                                    <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center gap-1.5">
-                                                        <button
-                                                            onClick={() => addCatalogImageToVault(img)}
-                                                            title="Añadir al vault"
-                                                            className="p-1.5 rounded-lg bg-emerald-500/80 text-white hover:bg-emerald-500 transition-all"
-                                                        >
-                                                            <ImagePlus size={12} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setPreviewImage(img.url)}
-                                                            title="Ver imagen"
-                                                            className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30 transition-all"
-                                                        >
-                                                            <Maximize size={12} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => downloadPng(img.url, `catalog-${catalog._id}-${img.publicId.split("/").pop()}`)}
-                                                            title="Descargar"
-                                                            className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30 transition-all"
-                                                        >
-                                                            <Download size={12} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => void deleteCatalogImage(catalog._id, img.publicId)}
-                                                            title="Eliminar"
-                                                            className="p-1.5 rounded-lg bg-red-500/80 text-white hover:bg-red-500 transition-all"
-                                                        >
-                                                            <Trash2 size={12} />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                            {isActive && Array.from({ length: catalog.totalImages - catalog.images.length }).map((_, i) => (
-                                                <div key={`placeholder-${i}`} className="aspect-square rounded-xl bg-white/[0.02] border border-dashed border-white/10 flex items-center justify-center">
-                                                    <Loader2 size={14} className="text-neutral-700 animate-spin" style={{ animationDelay: `${i * 0.1}s` }} />
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                            </Card>
-                        );
-                    })
-                )}
-            </div>
-        </div>
-    );
 
     return (
         <div className="space-y-12 pb-24">
@@ -2121,8 +1990,7 @@ export function KdpFactoryApp() {
                     {[
                         { id: "insights", name: "Insights", icon: <BarChart3 size={15} /> },
                         { id: "catalog", name: "Catálogo", icon: <Box size={15} /> },
-                        { id: "creation", name: "Creación", icon: <Plus size={15} /> },
-                        { id: "catalogos", name: "Catálogos IA", icon: <Layers size={15} /> }
+                        { id: "creation", name: "Creación", icon: <Plus size={15} /> }
                     ].map((tab) => (
                         <button
                             key={tab.id}
@@ -2144,7 +2012,6 @@ export function KdpFactoryApp() {
                 {activeTab === "insights" && renderInsights()}
                 {activeTab === "catalog" && renderCatalog()}
                 {activeTab === "creation" && renderCreation()}
-                {activeTab === "catalogos" && renderIACatalogs()}
             </div>
 
             {/* Image Preview Modal */}
