@@ -44,7 +44,12 @@ function ratioFromDims(width?: number, height?: number) {
 
 export async function registerAIRoutes(app: FastifyInstance) {
     app.post("/ai/generate-image", async (request: any, reply) => {
-        const { prompt, modelId, provider, width, height, initImage } = request.body;
+        const { prompt, modelId, provider, width, height, initImage, advancedParams } = request.body;
+        const negativePrompt: string = advancedParams?.negativePrompt?.trim() || "";
+        const steps: number | undefined = typeof advancedParams?.steps === "number" ? advancedParams.steps : undefined;
+        const guidanceScale: number | undefined = typeof advancedParams?.guidanceScale === "number" ? advancedParams.guidanceScale : undefined;
+        const fixedSeed: number | undefined = typeof advancedParams?.seed === "number" ? advancedParams.seed : undefined;
+        const ideogramStyle: string = advancedParams?.style || "AUTO";
 
         app.log.info(`API Proxy: Generating image with ${provider} (${modelId})`);
 
@@ -244,6 +249,8 @@ export async function registerAIRoutes(app: FastifyInstance) {
                             num_images: 1,
                             ...(typeof modelId === "string" && modelId.trim().length > 0 ? { modelId: modelId.trim() } : {}),
                             ...(initImageId ? { init_image_id: initImageId, init_strength: initStrength } : {}),
+                            ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
+                            ...(guidanceScale ? { guidance_scale: guidanceScale } : {}),
                         },
                         timeout: 45000,
                     });
@@ -318,7 +325,12 @@ export async function registerAIRoutes(app: FastifyInstance) {
                                 },
                                 data: {
                                     inputs: prompt,
-                                    parameters: { wait_for_model: true },
+                                    parameters: {
+                                        wait_for_model: true,
+                                        ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
+                                        ...(steps ? { num_inference_steps: steps } : {}),
+                                        ...(guidanceScale ? { guidance_scale: guidanceScale } : {}),
+                                    },
                                 },
                                 responseType: "arraybuffer",
                                 timeout: 30000, // 30s
@@ -370,8 +382,9 @@ export async function registerAIRoutes(app: FastifyInstance) {
             if (provider === "Pollinations") {
                 try {
                     const modelParam = typeof modelId === "string" && modelId.trim().length > 0 ? modelId.trim() : "flux";
-                    const seed = Math.floor(Math.random() * 1000000);
-                    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${encodeURIComponent(modelParam)}&width=${width || 1024}&height=${height || 1024}&seed=${seed}&nologo=true`;
+                    const seed = fixedSeed ?? Math.floor(Math.random() * 1000000);
+                    const negParam = negativePrompt ? `&negative=${encodeURIComponent(negativePrompt)}` : "";
+                    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${encodeURIComponent(modelParam)}&width=${width || 1024}&height=${height || 1024}&seed=${seed}&nologo=true${negParam}`;
                     app.log.info({ modelParam }, "AI image: using Pollinations direct");
                     const response = await axios({
                         url: pollinationsUrl,
@@ -425,6 +438,8 @@ export async function registerAIRoutes(app: FastifyInstance) {
                                 aspect_ratio,
                                 model: ideogramModelId,
                                 magic_prompt_option: "AUTO",
+                                ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
+                                ...(ideogramStyle && ideogramStyle !== "AUTO" ? { style_type: ideogramStyle } : {}),
                             },
                         },
                         timeout: 60000,

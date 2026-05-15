@@ -53,7 +53,8 @@ import {
     PlayCircle,
     ImagePlus,
     Copy,
-    BookMarked
+    BookMarked,
+    ChevronUp
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -271,7 +272,7 @@ export function KdpFactoryApp() {
     const [selectedModel, setSelectedModel] = useState(AI_MODELS[0].id);
     const [showModelPicker, setShowModelPicker] = useState(false);
     const [showDimPicker, setShowDimPicker] = useState(false);
-    const [selectedDim, setSelectedDim] = useState(AI_DIMENSIONS[0].id);
+    const [selectedDim, setSelectedDim] = useState("p34");
     const [cloudinaryImages, setCloudinaryImages] = useState<{ publicId: string; url: string; width: number; height: number; bytes: number; createdAt: string }[]>([]);
     const [isLoadingCloudinary, setIsLoadingCloudinary] = useState(false);
     const [uploadingToCloud, setUploadingToCloud] = useState<number | null>(null);
@@ -544,6 +545,16 @@ export function KdpFactoryApp() {
         setPreviewContext({ urls: cloudinaryImages.map(c => c.url), index, cloudinaryCtx: true });
     };
 
+    const moveBookImage = (idx: number, dir: -1 | 1) => {
+        setBookEditorImages(prev => {
+            const target = idx + dir;
+            if (target < 0 || target >= prev.length) return prev;
+            const next = [...prev];
+            [next[idx], next[target]] = [next[target], next[idx]];
+            return next;
+        });
+    };
+
     const openCatalogImagePreview = (images: CatalogImageFE[], index: number, catalogId?: string) => {
         setPreviewImage(images[index].url);
         setPreviewContext({
@@ -647,6 +658,12 @@ export function KdpFactoryApp() {
     const [isBuildingPdf, setIsBuildingPdf] = useState(false);
     const [isUpscaling, setIsUpscaling] = useState(false);
     const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+    const [showModelParams, setShowModelParams] = useState(false);
+    const [negativePrompt, setNegativePrompt] = useState("");
+    const [inferenceSteps, setInferenceSteps] = useState(28);
+    const [guidanceScale, setGuidanceScale] = useState(7.5);
+    const [fixedSeed, setFixedSeed] = useState("");
+    const [ideogramStyle, setIdeogramStyle] = useState("AUTO");
     const [initImageDataUrl, setInitImageDataUrl] = useState<string | null>(null);
     const [initImageStrength, setInitImageStrength] = useState(0.6);
 
@@ -985,8 +1002,9 @@ export function KdpFactoryApp() {
 
         // Pollinations: URL directa, sin pasar por el backend
         if (model?.provider === "Pollinations") {
-            const seed = Math.floor(Math.random() * 999999);
-            const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt.trim())}?width=${dimensions?.width ?? 1024}&height=${dimensions?.height ?? 1024}&seed=${seed}&model=${encodeURIComponent(model.modelId || "flux")}&nologo=true&enhance=false`;
+            const seed = fixedSeed ? Number(fixedSeed) : Math.floor(Math.random() * 999999);
+            const negParam = negativePrompt.trim() ? `&negative=${encodeURIComponent(negativePrompt.trim())}` : "";
+            const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt.trim())}?width=${dimensions?.width ?? 1024}&height=${dimensions?.height ?? 1024}&seed=${seed}&model=${encodeURIComponent(model.modelId || "flux")}&nologo=true&enhance=false${negParam}`;
             const img = new Image();
             img.src = url;
             img.onload = () => {
@@ -1015,6 +1033,13 @@ export function KdpFactoryApp() {
                     initImage: initImageDataUrl
                         ? { dataUrl: initImageDataUrl, strength: initImageStrength }
                         : undefined,
+                    advancedParams: {
+                        negativePrompt: negativePrompt.trim() || undefined,
+                        steps: (model?.provider === "Hugging Face" || model?.provider === "Leonardo") ? inferenceSteps : undefined,
+                        guidanceScale: (model?.provider === "Hugging Face" || model?.provider === "Leonardo") ? guidanceScale : undefined,
+                        seed: fixedSeed ? Number(fixedSeed) : undefined,
+                        style: model?.provider === "Ideogram" ? ideogramStyle : undefined,
+                    },
                 })
             });
 
@@ -1606,6 +1631,15 @@ export function KdpFactoryApp() {
                             {imagePrompt && (
                                 <p className="text-[9px] text-neutral-600 font-mono truncate px-1" title={imagePrompt}>{imagePrompt}</p>
                             )}
+                            {promptTheme.trim() && (
+                                <button
+                                    type="button"
+                                    onClick={() => { setSavePromptName(""); setSavePromptCategory("General"); setShowSavePromptDialog(true); }}
+                                    className="w-full h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[10px] font-black uppercase tracking-widest hover:bg-violet-500/20 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <BookMarked size={13} /> Guardar prompt en biblioteca
+                                </button>
+                            )}
                         </div>
 
                         {/* Advanced options */}
@@ -1687,6 +1721,90 @@ export function KdpFactoryApp() {
                                     </div>
                                 </div>
                             )}
+                        </div>
+
+                        {/* Model-specific advanced params */}
+                        <div className="space-y-3">
+                            <button
+                                type="button"
+                                onClick={() => setShowModelParams(v => !v)}
+                                className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-neutral-600 hover:text-neutral-300 transition-all"
+                            >
+                                <Settings size={11} />
+                                Parámetros del modelo
+                                <ChevronDown size={11} className={`transition-transform ${showModelParams ? "rotate-180" : ""}`} />
+                            </button>
+                            {showModelParams && (() => {
+                                const prov = AI_MODELS.find(m => m.id === selectedModel)?.provider;
+                                return (
+                                    <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-4">
+                                        {/* Negative prompt — all providers */}
+                                        <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Prompt negativo</label>
+                                            <input
+                                                value={negativePrompt}
+                                                onChange={e => setNegativePrompt(e.target.value)}
+                                                placeholder="Ej: ugly, deformed, blurry, watermark"
+                                                className="w-full h-9 bg-white/5 border border-white/10 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-rose-500/30 transition-all font-medium"
+                                            />
+                                        </div>
+
+                                        {/* Steps — HF + Leonardo */}
+                                        {(prov === "Hugging Face" || prov === "Leonardo") && (
+                                            <div className="space-y-1.5">
+                                                <div className="flex justify-between items-center">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Pasos de inferencia</label>
+                                                    <span className="text-[10px] font-mono text-amber-400">{inferenceSteps}</span>
+                                                </div>
+                                                <input type="range" min={10} max={50} step={1} value={inferenceSteps} onChange={e => setInferenceSteps(Number(e.target.value))} className="w-full accent-amber-500 h-1" />
+                                                <div className="flex justify-between text-[8px] text-neutral-700 font-mono"><span>10 rápido</span><span>50 calidad</span></div>
+                                            </div>
+                                        )}
+
+                                        {/* Guidance scale — HF + Leonardo */}
+                                        {(prov === "Hugging Face" || prov === "Leonardo") && (
+                                            <div className="space-y-1.5">
+                                                <div className="flex justify-between items-center">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Guidance Scale (CFG)</label>
+                                                    <span className="text-[10px] font-mono text-amber-400">{guidanceScale.toFixed(1)}</span>
+                                                </div>
+                                                <input type="range" min={1} max={20} step={0.5} value={guidanceScale} onChange={e => setGuidanceScale(Number(e.target.value))} className="w-full accent-amber-500 h-1" />
+                                                <div className="flex justify-between text-[8px] text-neutral-700 font-mono"><span>1 creativo</span><span>20 fiel al prompt</span></div>
+                                            </div>
+                                        )}
+
+                                        {/* Fixed seed — Pollinations */}
+                                        {prov === "Pollinations" && (
+                                            <div className="space-y-1.5">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Seed fijo (vacío = aleatorio)</label>
+                                                <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    value={fixedSeed}
+                                                    onChange={e => setFixedSeed(e.target.value.replace(/\D/g, ""))}
+                                                    placeholder="Ej: 42069"
+                                                    className="w-full h-9 bg-white/5 border border-white/10 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/30 transition-all font-mono"
+                                                />
+                                            </div>
+                                        )}
+
+                                        {/* Style — Ideogram */}
+                                        {prov === "Ideogram" && (
+                                            <div className="space-y-1.5">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Estilo</label>
+                                                <div className="relative">
+                                                    <select value={ideogramStyle} onChange={e => setIdeogramStyle(e.target.value)} className="w-full h-9 bg-white/5 border border-white/10 rounded-xl px-3 pr-8 text-sm text-white outline-none focus:border-amber-500/30 transition-all appearance-none">
+                                                        {["AUTO", "REALISTIC", "DESIGN", "RENDER_3D", "ANIME"].map(s => (
+                                                            <option key={s} value={s} className="bg-[#0f0f0f]">{s}</option>
+                                                        ))}
+                                                    </select>
+                                                    <ChevronDown size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
                         </div>
 
                         {(() => {
@@ -2450,13 +2568,6 @@ export function KdpFactoryApp() {
                                         {uploadingToCloud === vaultIdx ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
                                     </button>
                                     <button
-                                        onClick={() => downloadPng(vaultImg.url, `vault-${vaultImages.length - vaultIdx}`)}
-                                        className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
-                                        title="Descargar"
-                                    >
-                                        <Download size={16} />
-                                    </button>
-                                    <button
                                         onClick={() => setConfirmDeleteVaultIndex(vaultIdx)}
                                         className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20"
                                         title="Eliminar del vault"
@@ -2733,6 +2844,22 @@ export function KdpFactoryApp() {
                                                     <div className="flex items-center gap-2">
                                                         <img src={bi.url} alt="" className="w-8 h-8 rounded-md object-cover shrink-0" />
                                                         <span className="text-[9px] text-neutral-500 flex-1 truncate">{bi.label || `#${idx + 1}`}</span>
+                                                        <div className="flex flex-col gap-0.5">
+                                                            <button
+                                                                onClick={() => moveBookImage(idx, -1)}
+                                                                disabled={idx === 0}
+                                                                className="p-0.5 rounded text-neutral-600 hover:text-amber-400 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+                                                            >
+                                                                <ChevronUp size={10} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => moveBookImage(idx, 1)}
+                                                                disabled={idx === bookEditorImages.length - 1}
+                                                                className="p-0.5 rounded text-neutral-600 hover:text-amber-400 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+                                                            >
+                                                                <ChevronDown size={10} />
+                                                            </button>
+                                                        </div>
                                                         <button
                                                             onClick={() => setBookEditorImages(prev => prev.filter((_, i) => i !== idx))}
                                                             className="p-1 rounded-md text-neutral-600 hover:text-rose-400 transition-all"
@@ -2886,39 +3013,43 @@ export function KdpFactoryApp() {
 
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Categoría</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {Array.from(new Set([...DEFAULT_PROMPT_CATEGORIES, ...savedPrompts.map(p => p.category)])).map(cat => (
-                                        <button
-                                            key={cat}
-                                            type="button"
-                                            onClick={() => setSavePromptCategory(cat)}
-                                            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${savePromptCategory === cat ? "bg-violet-500/30 border-violet-500/50 text-violet-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
-                                        >
-                                            {cat}
-                                        </button>
-                                    ))}
-                                </div>
-                                <div className="flex gap-2 mt-1">
-                                    <input
-                                        value={newCategoryInput}
-                                        onChange={e => setNewCategoryInput(e.target.value)}
-                                        placeholder="Nueva categoría..."
-                                        className="flex-1 h-9 rounded-xl bg-white/5 border border-white/10 px-3 text-sm text-white outline-none focus:border-violet-500/40 transition-all placeholder:text-neutral-700"
-                                        onKeyDown={e => {
-                                            if (e.key === "Enter" && newCategoryInput.trim()) {
-                                                setSavePromptCategory(newCategoryInput.trim());
-                                                setNewCategoryInput("");
-                                            }
-                                        }}
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => { if (newCategoryInput.trim()) { setSavePromptCategory(newCategoryInput.trim()); setNewCategoryInput(""); } }}
-                                        className="h-9 px-3 rounded-xl bg-violet-500/20 border border-violet-500/30 text-violet-400 text-[9px] font-black uppercase hover:bg-violet-500/30 transition-all"
+                                <div className="relative">
+                                    <select
+                                        value={savePromptCategory === "__new__" ? "__new__" : savePromptCategory}
+                                        onChange={e => setSavePromptCategory(e.target.value)}
+                                        className="w-full h-11 rounded-2xl bg-white/5 border border-white/10 px-4 pr-10 text-sm text-white outline-none focus:border-violet-500/40 transition-all appearance-none cursor-pointer"
                                     >
-                                        Crear
-                                    </button>
+                                        {Array.from(new Set([...DEFAULT_PROMPT_CATEGORIES, ...savedPrompts.map(p => p.category)])).map(cat => (
+                                            <option key={cat} value={cat} className="bg-[#0f0f0f]">{cat}</option>
+                                        ))}
+                                        <option value="__new__" className="bg-[#0f0f0f]">+ Nueva categoría...</option>
+                                    </select>
+                                    <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
                                 </div>
+                                {savePromptCategory === "__new__" && (
+                                    <div className="flex gap-2">
+                                        <input
+                                            value={newCategoryInput}
+                                            onChange={e => setNewCategoryInput(e.target.value)}
+                                            placeholder="Nombre de la nueva categoría"
+                                            className="flex-1 h-9 rounded-xl bg-white/5 border border-white/10 px-3 text-sm text-white outline-none focus:border-violet-500/40 transition-all placeholder:text-neutral-700"
+                                            autoFocus
+                                            onKeyDown={e => {
+                                                if (e.key === "Enter" && newCategoryInput.trim()) {
+                                                    setSavePromptCategory(newCategoryInput.trim());
+                                                    setNewCategoryInput("");
+                                                }
+                                            }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => { if (newCategoryInput.trim()) { setSavePromptCategory(newCategoryInput.trim()); setNewCategoryInput(""); } }}
+                                            className="h-9 px-3 rounded-xl bg-violet-500/20 border border-violet-500/30 text-violet-400 text-[9px] font-black uppercase hover:bg-violet-500/30 transition-all"
+                                        >
+                                            Crear
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="rounded-2xl bg-white/[0.02] border border-white/5 p-3 space-y-1">
