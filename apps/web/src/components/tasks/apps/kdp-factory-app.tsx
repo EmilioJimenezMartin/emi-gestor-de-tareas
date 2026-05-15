@@ -157,6 +157,16 @@ interface IACatalogFE {
     createdAt: string;
 }
 
+interface SavedPromptFE {
+    _id: string;
+    name: string;
+    category: string;
+    promptParts: { theme: string; specs: string; details: string; particulars: string };
+    createdAt: string;
+}
+
+const DEFAULT_PROMPT_CATEGORIES = ["General", "Anime", "Mandala", "Acuarela", "Ilustración", "Arte Digital", "Coloring Book", "Fotografía", "Retrato", "Paisaje", "Abstracto", "Cómic"];
+
 interface QueuedCatalog {
     queueId: string;
     name: string;
@@ -280,11 +290,19 @@ export function KdpFactoryApp() {
     const [confirmDeleteImageInfo, setConfirmDeleteImageInfo] = useState<{ catalogId: string; publicId: string } | null>(null);
     const [bookPdfMode, setBookPdfMode] = useState<"colored" | "full">("colored");
     const [bookEditorImages, setBookEditorImages] = useState<{ url: string; label?: string; scale: number }[]>([]);
-    const [previewContext, setPreviewContext] = useState<{ urls: string[]; index: number } | null>(null);
+    const [previewContext, setPreviewContext] = useState<{ urls: string[]; index: number; catalogCtx?: { id: string; images: CatalogImageFE[] }; vaultCtx?: true; cloudinaryCtx?: true } | null>(null);
     const [confirmDeleteVaultIndex, setConfirmDeleteVaultIndex] = useState<number | null>(null);
     const [confirmDeleteCloudinaryId, setConfirmDeleteCloudinaryId] = useState<string | null>(null);
     const [catalogQueue, setCatalogQueue] = useState<QueuedCatalog[]>([]);
     const catalogQueueRef = useRef<QueuedCatalog[]>([]);
+    const [savedPrompts, setSavedPrompts] = useState<SavedPromptFE[]>([]);
+    const [isLoadingSavedPrompts, setIsLoadingSavedPrompts] = useState(false);
+    const [showSavePromptDialog, setShowSavePromptDialog] = useState(false);
+    const [savePromptName, setSavePromptName] = useState("");
+    const [savePromptCategory, setSavePromptCategory] = useState("General");
+    const [newCategoryInput, setNewCategoryInput] = useState("");
+    const [promptCategoryFilter, setPromptCategoryFilter] = useState("all");
+    const [isSavingPrompt, setIsSavingPrompt] = useState(false);
     const catalogSocketRef = useRef<ReturnType<typeof createApiSocket> | null>(null);
 
     // Keep queue ref in sync so socket handlers always see the latest queue
@@ -400,7 +418,63 @@ export function KdpFactoryApp() {
         const [next, ...rest] = catalogQueueRef.current;
         catalogQueueRef.current = rest;
         setCatalogQueue(rest);
-        void launchQueuedCatalog(next);
+        toast.info("Siguiente catálogo comenzará en 2 minutos...");
+        setTimeout(() => void launchQueuedCatalog(next), 2 * 60 * 1000);
+    };
+
+    const fetchSavedPrompts = async () => {
+        setIsLoadingSavedPrompts(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/saved-prompts`);
+            if (!res.ok) return;
+            const data = await res.json();
+            setSavedPrompts(data.prompts ?? []);
+        } catch { /* silently ignore */ } finally {
+            setIsLoadingSavedPrompts(false);
+        }
+    };
+
+    const saveCurrentPrompt = async () => {
+        if (!promptTheme.trim()) { toast.error("La temática está vacía"); return; }
+        if (!savePromptName.trim()) { toast.error("Dale un nombre al prompt"); return; }
+        setIsSavingPrompt(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/saved-prompts`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: savePromptName.trim(),
+                    category: savePromptCategory,
+                    promptParts: { theme: promptTheme.trim(), specs: promptSpecs.trim(), details: promptDetails.trim(), particulars: promptParticulars.trim() },
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Error");
+            setSavedPrompts(prev => [data.prompt, ...prev]);
+            setShowSavePromptDialog(false);
+            setSavePromptName("");
+            toast.success("Prompt guardado");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al guardar prompt");
+        } finally {
+            setIsSavingPrompt(false);
+        }
+    };
+
+    const deleteSavedPrompt = async (id: string) => {
+        try {
+            await fetch(`${API_BASE_URL}/saved-prompts/${id}`, { method: "DELETE" });
+            setSavedPrompts(prev => prev.filter(p => p._id !== id));
+            toast.success("Prompt eliminado");
+        } catch { toast.error("Error al eliminar prompt"); }
+    };
+
+    const loadSavedPrompt = (p: SavedPromptFE) => {
+        setPromptTheme(p.promptParts.theme);
+        setPromptSpecs(p.promptParts.specs);
+        setPromptDetails(p.promptParts.details);
+        setPromptParticulars(p.promptParts.particulars);
+        toast.success("Prompt cargado");
     };
 
     const addToQueue = () => {
@@ -446,14 +520,37 @@ export function KdpFactoryApp() {
         }
     };
 
+    const addImageFileToVault = (file: File) => {
+        if (!file.type.startsWith("image/")) { toast.error("Solo se aceptan imágenes"); return; }
+        const url = URL.createObjectURL(file);
+        const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "Importado";
+        const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "—";
+        setVaultImages(prev => [{ url, model: modelName, dim: dimName }, ...prev]);
+        toast.success("Imagen añadida al vault");
+    };
+
     const addCatalogImageToVault = (img: CatalogImageFE) => {
         setVaultImages((prev) => [{ url: img.url, model: "Catálogo IA", dim: `${img.width}x${img.height}` }, ...prev]);
         toast.success("Imagen añadida al vault");
     };
 
-    const openCatalogImagePreview = (images: CatalogImageFE[], index: number) => {
+    const openVaultImagePreview = (index: number) => {
+        setPreviewImage(vaultImages[index].url);
+        setPreviewContext({ urls: vaultImages.map(v => v.url), index, vaultCtx: true });
+    };
+
+    const openCloudinaryImagePreview = (index: number) => {
+        setPreviewImage(cloudinaryImages[index].url);
+        setPreviewContext({ urls: cloudinaryImages.map(c => c.url), index, cloudinaryCtx: true });
+    };
+
+    const openCatalogImagePreview = (images: CatalogImageFE[], index: number, catalogId?: string) => {
         setPreviewImage(images[index].url);
-        setPreviewContext({ urls: images.map((i) => i.url), index });
+        setPreviewContext({
+            urls: images.map((i) => i.url),
+            index,
+            catalogCtx: catalogId ? { id: catalogId, images } : undefined,
+        });
     };
 
     const closePreview = () => {
@@ -791,13 +888,34 @@ export function KdpFactoryApp() {
         };
     }, []);
 
-    // Fetch Cloudinary images when entering the creation tab
+    // Fetch Cloudinary images + saved prompts when entering the creation tab
     useEffect(() => {
         if (activeTab === "creation") {
             void fetchCloudinaryImages();
+            void fetchSavedPrompts();
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab]);
+
+    // Global paste listener: when in creation tab and no image is being shown/generated,
+    // paste goes directly to the vault (no need to click the card first)
+    const addImageFileToVaultRef = useRef(addImageFileToVault);
+    useEffect(() => { addImageFileToVaultRef.current = addImageFileToVault; });
+    useEffect(() => {
+        if (activeTab !== "creation") return;
+        const handleGlobalPaste = (e: ClipboardEvent) => {
+            if (generatedImage || isGenerating) return;
+            const target = e.target as HTMLElement;
+            if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
+            const items = Array.from(e.clipboardData?.items || []);
+            const imageItem = items.find(it => it.kind === "file" && it.type.startsWith("image/"));
+            const file = imageItem?.getAsFile();
+            if (file) addImageFileToVaultRef.current(file);
+        };
+        document.addEventListener("paste", handleGlobalPaste);
+        return () => document.removeEventListener("paste", handleGlobalPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab, generatedImage, isGenerating]);
 
     // Fetch catalogs + connect socket when entering the creation tab
     useEffect(() => {
@@ -1436,14 +1554,24 @@ export function KdpFactoryApp() {
                             <div className="flex items-center gap-2 mb-1">
                                 <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Prompt del Activo</span>
                                 {imagePrompt && (
-                                    <button
-                                        type="button"
-                                        onClick={() => navigator.clipboard.writeText(imagePrompt).then(() => toast.success("Prompt copiado"))}
-                                        className="p-1 rounded-lg bg-white/5 text-neutral-600 hover:text-white hover:bg-white/10 transition-all border border-white/5"
-                                        title="Copiar prompt completo"
-                                    >
-                                        <Copy size={10} />
-                                    </button>
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => navigator.clipboard.writeText(imagePrompt).then(() => toast.success("Prompt copiado"))}
+                                            className="p-1 rounded-lg bg-white/5 text-neutral-600 hover:text-white hover:bg-white/10 transition-all border border-white/5"
+                                            title="Copiar prompt completo"
+                                        >
+                                            <Copy size={10} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setSavePromptName(""); setSavePromptCategory("General"); setShowSavePromptDialog(true); }}
+                                            className="p-1 rounded-lg bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition-all border border-violet-500/20"
+                                            title="Guardar prompt en biblioteca"
+                                        >
+                                            <BookMarked size={10} />
+                                        </button>
+                                    </>
                                 )}
                             </div>
                             <div className="grid grid-cols-1 gap-2">
@@ -1677,13 +1805,17 @@ export function KdpFactoryApp() {
                         e.preventDefault();
                         e.stopPropagation();
                         const file = e.dataTransfer.files?.[0];
-                        if (file) setGeneratedImageFromFile(file);
+                        if (!file) return;
+                        if (generatedImage) setGeneratedImageFromFile(file);
+                        else addImageFileToVault(file);
                     }}
                     onPaste={(e) => {
                         const items = Array.from(e.clipboardData?.items || []);
                         const imageItem = items.find((it) => it.kind === "file" && it.type.startsWith("image/"));
                         const file = imageItem?.getAsFile() || null;
-                        if (file) setGeneratedImageFromFile(file);
+                        if (!file) return;
+                        if (generatedImage) setGeneratedImageFromFile(file);
+                        else addImageFileToVault(file);
                     }}
                 >
                     {generatedImage ? (
@@ -1787,9 +1919,10 @@ export function KdpFactoryApp() {
                                     <div className="w-24 h-24 rounded-[36px] border-2 border-dashed border-white/10 flex items-center justify-center mx-auto bg-white/5">
                                         <Camera size={36} strokeWidth={1.5} className="text-neutral-400" />
                                     </div>
-                                    <div className="space-y-1">
+                                    <div className="space-y-1.5">
                                         <p className="text-xs font-black uppercase tracking-widest text-white">Visual Engine Ready</p>
-                                        <p className="text-[10px] text-neutral-600 font-medium italic">Arrastra una imagen aquí o pégala (Ctrl/⌘+V).</p>
+                                        <p className="text-[10px] text-neutral-600 font-medium italic">Arrastra o pega (Ctrl/⌘+V) una imagen</p>
+                                        <p className="text-[10px] text-amber-500/50 font-black uppercase tracking-widest">→ va directo al vault</p>
                                     </div>
                                 </div>
                             )}
@@ -1829,62 +1962,18 @@ export function KdpFactoryApp() {
                 ) : (
                 <div className="flex gap-5 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
                     {vaultImages.map((img, i) => (
-                            <div key={i} className="relative group shrink-0">
-                                <div className="w-56 h-64 md:w-64 md:h-80 rounded-[32px] overflow-hidden border border-white/10 group-hover:border-amber-500/50 transition-all shadow-2xl relative bg-neutral-900">
-                                    <img
-                                        src={img.url}
-                                        alt={`Vault ${i}`}
-                                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 opacity-80 group-hover:opacity-100 cursor-zoom-in"
-                                        onClick={() => setPreviewImage(img.url)}
-                                    />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-5 flex flex-col justify-end gap-3 translate-y-4 group-hover:translate-y-0 transition-transform duration-500">
-                                        <div className="space-y-1">
-                                            <p className="text-[11px] font-black text-white uppercase tracking-widest flex items-center gap-2">
-                                                Asset Studio #{vaultImages.length - i}
-                                            </p>
-                                            <div className="flex flex-wrap gap-2">
-                                                <span className="text-[9px] font-bold text-amber-500/80 uppercase tracking-tighter bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">{img.model}</span>
-                                                <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-tighter bg-white/5 px-2 py-0.5 rounded border border-white/10">{img.dim}</span>
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={() => setPreviewImage(img.url)}
-                                                className="flex-1 h-9 rounded-xl bg-white/10 backdrop-blur-md text-white text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all"
-                                            >
-                                                Detalle
-                                            </button>
-                                            <button
-                                                onClick={() => void uploadToCloudinary(i)}
-                                                disabled={uploadingToCloud === i}
-                                                className="w-9 h-9 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500 hover:text-white transition-all flex items-center justify-center shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                aria-label="Guardar en Cloudinary"
-                                                title="Guardar en Cloudinary"
-                                            >
-                                                {uploadingToCloud === i ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    const safeName = `vault-${vaultImages.length - i}`.replaceAll(" ", "_");
-                                                    downloadPng(img.url, safeName);
-                                                }}
-                                                className="w-9 h-9 rounded-xl bg-white/10 backdrop-blur-md text-white border border-white/10 hover:bg-white hover:text-black transition-all flex items-center justify-center shrink-0"
-                                                aria-label="Descargar imagen"
-                                                title="Descargar"
-                                            >
-                                                <Download size={14} />
-                                            </button>
-                                            <button
-                                                onClick={() => setConfirmDeleteVaultIndex(i)}
-                                                className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-500 border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all flex items-center justify-center shrink-0"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
+                        <div
+                            key={i}
+                            className="shrink-0 w-56 h-64 md:w-64 md:h-80 rounded-[32px] overflow-hidden border border-white/10 hover:border-amber-500/50 transition-all shadow-2xl relative bg-neutral-900 cursor-zoom-in"
+                            onClick={() => openVaultImagePreview(i)}
+                        >
+                            <img
+                                src={img.url}
+                                alt={`Vault ${i}`}
+                                className="w-full h-full object-cover"
+                            />
+                        </div>
+                    ))}
                     </div>
                 )}
             </div>
@@ -1917,47 +2006,17 @@ export function KdpFactoryApp() {
                     </div>
                 ) : (
                     <div className="flex gap-4 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
-                        {cloudinaryImages.map((img) => (
-                            <div key={img.publicId} className="relative group shrink-0">
-                                <div className="w-44 h-52 md:w-52 md:h-64 rounded-[28px] overflow-hidden border border-white/10 group-hover:border-cyan-500/40 transition-all shadow-xl relative bg-neutral-900">
-                                    <img
-                                        src={img.url}
-                                        alt={img.publicId}
-                                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 opacity-80 group-hover:opacity-100 cursor-zoom-in"
-                                        onClick={() => setPreviewImage(img.url)}
-                                    />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-4 flex flex-col justify-end gap-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-500">
-                                        <p className="text-[9px] font-mono text-neutral-400 truncate">{img.publicId.split("/").pop()}</p>
-                                        <p className="text-[9px] text-neutral-500">{img.width}×{img.height} · {(img.bytes / 1024).toFixed(0)} KB</p>
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={() => setPreviewImage(img.url)}
-                                                className="flex-1 h-8 rounded-xl bg-white/10 backdrop-blur-md text-white text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all"
-                                            >
-                                                Ver
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    const ratio = img.width && img.height ? `${img.width}×${img.height}` : "1:1";
-                                                    setVaultImages((prev) => [{ url: img.url, model: "Cloudinary", dim: ratio }, ...prev]);
-                                                    toast.success("Añadida al vault");
-                                                }}
-                                                className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/20 hover:bg-amber-500 hover:text-black transition-all flex items-center justify-center shrink-0"
-                                                title="Añadir al Vault"
-                                            >
-                                                <Plus size={12} />
-                                            </button>
-                                            <button
-                                                onClick={() => setConfirmDeleteCloudinaryId(img.publicId)}
-                                                disabled={deletingFromCloud === img.publicId}
-                                                className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-500 border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all flex items-center justify-center shrink-0 disabled:opacity-50"
-                                                title="Eliminar de Cloudinary"
-                                            >
-                                                {deletingFromCloud === img.publicId ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
+                        {cloudinaryImages.map((img, cldIdx) => (
+                            <div
+                                key={img.publicId}
+                                className="shrink-0 w-44 h-52 md:w-52 md:h-64 rounded-[28px] overflow-hidden border border-white/10 hover:border-cyan-500/40 transition-all shadow-xl relative bg-neutral-900 cursor-zoom-in"
+                                onClick={() => openCloudinaryImagePreview(cldIdx)}
+                            >
+                                <img
+                                    src={img.url}
+                                    alt={img.publicId}
+                                    className="w-full h-full object-cover"
+                                />
                             </div>
                         ))}
                     </div>
@@ -2073,14 +2132,12 @@ export function KdpFactoryApp() {
                                         <div className="p-4 pt-2">
                                             <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
                                                 {catalog.images.map((img, imgIdx) => (
-                                                    <div key={img.publicId} className="group relative aspect-square rounded-lg overflow-hidden bg-white/5 border border-white/5">
+                                                    <div
+                                                        key={img.publicId}
+                                                        className="aspect-square rounded-lg overflow-hidden bg-white/5 border border-white/5 cursor-zoom-in hover:border-violet-500/40 transition-all"
+                                                        onClick={() => openCatalogImagePreview(catalog.images, imgIdx, catalog._id)}
+                                                    >
                                                         <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                                                        <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center gap-1">
-                                                            <button onClick={() => addCatalogImageToVault(img)} title="Vault" className="p-1 rounded-md bg-emerald-500/80 text-white hover:bg-emerald-500"><ImagePlus size={10} /></button>
-                                                            <button onClick={() => openCatalogImagePreview(catalog.images, imgIdx)} title="Ver" className="p-1 rounded-md bg-white/20 text-white hover:bg-white/30"><Maximize size={10} /></button>
-                                                            <button onClick={() => downloadPng(img.url, `catalog-${img.publicId.split("/").pop()}`)} title="Descargar" className="p-1 rounded-md bg-white/20 text-white hover:bg-white/30"><Download size={10} /></button>
-                                                            <button onClick={() => setConfirmDeleteImageInfo({ catalogId: catalog._id, publicId: img.publicId })} title="Eliminar" className="p-1 rounded-md bg-red-500/80 text-white hover:bg-red-500"><Trash2 size={10} /></button>
-                                                        </div>
                                                     </div>
                                                 ))}
                                                 {isActive && Array.from({ length: catalog.totalImages - catalog.images.length }).map((_, i) => (
@@ -2105,6 +2162,74 @@ export function KdpFactoryApp() {
                     <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                 </div>
             )}
+
+            {/* Saved Prompts Library */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-4 px-2">
+                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                    <div className="flex items-center gap-3">
+                        <BookMarked size={14} className="text-violet-400" />
+                        <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Biblioteca de Prompts</h3>
+                    </div>
+                    <button onClick={() => void fetchSavedPrompts()} disabled={isLoadingSavedPrompts} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
+                        {isLoadingSavedPrompts ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                    </button>
+                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                </div>
+
+                {savedPrompts.length > 0 && (
+                    <div className="flex gap-2 flex-wrap px-2">
+                        <button
+                            onClick={() => setPromptCategoryFilter("all")}
+                            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === "all" ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                        >
+                            Todos ({savedPrompts.length})
+                        </button>
+                        {Array.from(new Set(savedPrompts.map(p => p.category))).map(cat => (
+                            <button
+                                key={cat}
+                                onClick={() => setPromptCategoryFilter(cat)}
+                                className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === cat ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                            >
+                                {cat} ({savedPrompts.filter(p => p.category === cat).length})
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {savedPrompts.length === 0 && !isLoadingSavedPrompts ? (
+                    <div className="flex items-center gap-4 px-2 opacity-30">
+                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-600 flex items-center gap-2"><BookMarked size={12} />Sin prompts guardados aún</span>
+                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {savedPrompts
+                            .filter(p => promptCategoryFilter === "all" || p.category === promptCategoryFilter)
+                            .map(p => (
+                                <div key={p._id} className="rounded-2xl border border-white/5 bg-white/[0.02] p-4 space-y-3 hover:border-violet-500/20 transition-all group">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="space-y-1 min-w-0">
+                                            <p className="text-[11px] font-black text-white truncate">{p.name}</p>
+                                            <span className="inline-block px-2 py-0.5 rounded-lg bg-violet-500/10 border border-violet-500/20 text-[9px] font-black uppercase tracking-widest text-violet-400">{p.category}</span>
+                                        </div>
+                                        <button onClick={() => void deleteSavedPrompt(p._id)} className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all shrink-0 opacity-0 group-hover:opacity-100">
+                                            <Trash2 size={12} />
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] text-neutral-500 line-clamp-2 font-medium leading-relaxed">{p.promptParts.theme}</p>
+                                    <button
+                                        onClick={() => loadSavedPrompt(p)}
+                                        className="w-full h-8 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[9px] font-black uppercase tracking-widest hover:bg-violet-500/20 transition-all"
+                                    >
+                                        Cargar prompt
+                                    </button>
+                                </div>
+                            ))}
+                    </div>
+                )}
+            </div>
         </div>
     );
 
@@ -2308,6 +2433,94 @@ export function KdpFactoryApp() {
                             <Sparkles size={16} />
                         </button>
 
+                        {/* Vault-specific actions */}
+                        {(() => {
+                            if (!previewContext?.vaultCtx) return null;
+                            const vaultIdx = previewContext.index;
+                            const vaultImg = vaultImages[vaultIdx];
+                            if (!vaultImg) return null;
+                            return (
+                                <>
+                                    <button
+                                        onClick={() => void uploadToCloudinary(vaultIdx)}
+                                        disabled={uploadingToCloud === vaultIdx}
+                                        className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-cyan-400 hover:bg-cyan-500/20 transition-all border border-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        title="Guardar en Cloudinary"
+                                    >
+                                        {uploadingToCloud === vaultIdx ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
+                                    </button>
+                                    <button
+                                        onClick={() => downloadPng(vaultImg.url, `vault-${vaultImages.length - vaultIdx}`)}
+                                        className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
+                                        title="Descargar"
+                                    >
+                                        <Download size={16} />
+                                    </button>
+                                    <button
+                                        onClick={() => setConfirmDeleteVaultIndex(vaultIdx)}
+                                        className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20"
+                                        title="Eliminar del vault"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </>
+                            );
+                        })()}
+
+                        {/* Cloudinary-specific actions */}
+                        {(() => {
+                            if (!previewContext?.cloudinaryCtx) return null;
+                            const cldImg = cloudinaryImages[previewContext.index];
+                            if (!cldImg) return null;
+                            return (
+                                <>
+                                    <button
+                                        onClick={() => {
+                                            const ratio = cldImg.width && cldImg.height ? `${cldImg.width}×${cldImg.height}` : "1:1";
+                                            setVaultImages(prev => [{ url: cldImg.url, model: "Cloudinary", dim: ratio }, ...prev]);
+                                            toast.success("Añadida al vault");
+                                        }}
+                                        className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20"
+                                        title="Añadir al Vault"
+                                    >
+                                        <Plus size={16} />
+                                    </button>
+                                    <button
+                                        onClick={() => setConfirmDeleteCloudinaryId(cldImg.publicId)}
+                                        disabled={deletingFromCloud === cldImg.publicId}
+                                        className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20 disabled:opacity-40"
+                                        title="Eliminar de Cloudinary"
+                                    >
+                                        {deletingFromCloud === cldImg.publicId ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                    </button>
+                                </>
+                            );
+                        })()}
+
+                        {/* Catalog-specific actions */}
+                        {(() => {
+                            const catalogImg = previewContext?.catalogCtx?.images[previewContext.index];
+                            if (!catalogImg) return null;
+                            return (
+                                <>
+                                    <button
+                                        onClick={() => addCatalogImageToVault(catalogImg)}
+                                        className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-emerald-400 hover:bg-emerald-500/20 transition-all border border-emerald-500/20"
+                                        title="Añadir al Vault"
+                                    >
+                                        <ImagePlus size={16} />
+                                    </button>
+                                    <button
+                                        onClick={() => setConfirmDeleteImageInfo({ catalogId: previewContext!.catalogCtx!.id, publicId: catalogImg.publicId })}
+                                        className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20"
+                                        title="Eliminar imagen del catálogo"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </>
+                            );
+                        })()}
+
                         {/* Close */}
                         <button
                             onClick={closePreview}
@@ -2486,6 +2699,30 @@ export function KdpFactoryApp() {
                                     </div>
                                 )}
 
+                                {/* Cloudinary images to add */}
+                                {cloudinaryImages.length > 0 && (
+                                    <div className="space-y-2">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-2"><Cloud size={10} />Añadir de Cloudinary</p>
+                                        <div className="grid grid-cols-3 gap-1.5">
+                                            {cloudinaryImages.map((ci) => {
+                                                const alreadyAdded = bookEditorImages.some(b => b.url === ci.url);
+                                                return (
+                                                    <button
+                                                        key={ci.publicId}
+                                                        onClick={() => !alreadyAdded && setBookEditorImages(prev => [...prev, { url: ci.url, label: ci.publicId.split("/").pop() ?? "Cloudinary", scale: 1 }])}
+                                                        disabled={alreadyAdded}
+                                                        className={`aspect-square rounded-lg overflow-hidden border transition-all relative ${alreadyAdded ? "border-emerald-500/40 opacity-50" : "border-white/10 hover:border-cyan-500/50"}`}
+                                                        title={alreadyAdded ? "Ya añadida" : "Añadir al editor"}
+                                                    >
+                                                        <img src={ci.url} alt="" className="w-full h-full object-cover" />
+                                                        {alreadyAdded && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><Check size={12} className="text-emerald-400" /></div>}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Editor image list with remove + scale */}
                                 {bookEditorImages.length > 0 && (
                                     <div className="space-y-2">
@@ -2619,7 +2856,87 @@ export function KdpFactoryApp() {
                         </div>
                         <div className="flex gap-3">
                             <button onClick={() => setConfirmDeleteVaultIndex(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
-                            <button onClick={() => { setVaultImages(prev => prev.filter((_, i) => i !== confirmDeleteVaultIndex)); setConfirmDeleteVaultIndex(null); }} className="flex-1 h-11 rounded-2xl bg-red-500 text-white text-sm font-black hover:bg-red-400 transition-all">Eliminar</button>
+                            <button onClick={() => { setVaultImages(prev => prev.filter((_, i) => i !== confirmDeleteVaultIndex)); setConfirmDeleteVaultIndex(null); closePreview(); }} className="flex-1 h-11 rounded-2xl bg-red-500 text-white text-sm font-black hover:bg-red-400 transition-all">Eliminar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Save Prompt Dialog */}
+            {showSavePromptDialog && (
+                <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true" onClick={() => setShowSavePromptDialog(false)}>
+                    <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="space-y-1">
+                            <p className="text-base font-black text-white">Guardar prompt</p>
+                            <p className="text-sm text-neutral-500">Se guardará el prompt actual con todos sus campos.</p>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Nombre</label>
+                                <input
+                                    value={savePromptName}
+                                    onChange={e => setSavePromptName(e.target.value)}
+                                    placeholder="Ej: Mandalas florales pastel"
+                                    className="w-full h-11 rounded-2xl bg-white/5 border border-white/10 px-4 text-sm text-white outline-none focus:border-violet-500/40 transition-all placeholder:text-neutral-700"
+                                    autoFocus
+                                    onKeyDown={e => { if (e.key === "Enter") void saveCurrentPrompt(); }}
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Categoría</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {Array.from(new Set([...DEFAULT_PROMPT_CATEGORIES, ...savedPrompts.map(p => p.category)])).map(cat => (
+                                        <button
+                                            key={cat}
+                                            type="button"
+                                            onClick={() => setSavePromptCategory(cat)}
+                                            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${savePromptCategory === cat ? "bg-violet-500/30 border-violet-500/50 text-violet-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                                        >
+                                            {cat}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="flex gap-2 mt-1">
+                                    <input
+                                        value={newCategoryInput}
+                                        onChange={e => setNewCategoryInput(e.target.value)}
+                                        placeholder="Nueva categoría..."
+                                        className="flex-1 h-9 rounded-xl bg-white/5 border border-white/10 px-3 text-sm text-white outline-none focus:border-violet-500/40 transition-all placeholder:text-neutral-700"
+                                        onKeyDown={e => {
+                                            if (e.key === "Enter" && newCategoryInput.trim()) {
+                                                setSavePromptCategory(newCategoryInput.trim());
+                                                setNewCategoryInput("");
+                                            }
+                                        }}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => { if (newCategoryInput.trim()) { setSavePromptCategory(newCategoryInput.trim()); setNewCategoryInput(""); } }}
+                                        className="h-9 px-3 rounded-xl bg-violet-500/20 border border-violet-500/30 text-violet-400 text-[9px] font-black uppercase hover:bg-violet-500/30 transition-all"
+                                    >
+                                        Crear
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl bg-white/[0.02] border border-white/5 p-3 space-y-1">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Preview del prompt</p>
+                                <p className="text-[10px] text-neutral-400 line-clamp-3 font-medium">{promptTheme}{promptSpecs ? ` · ${promptSpecs}` : ""}{promptDetails ? ` · ${promptDetails}` : ""}</p>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button onClick={() => setShowSavePromptDialog(false)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
+                            <button
+                                onClick={() => void saveCurrentPrompt()}
+                                disabled={isSavingPrompt || !savePromptName.trim()}
+                                className="flex-1 h-11 rounded-2xl bg-violet-500 text-white text-sm font-black hover:bg-violet-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {isSavingPrompt ? <Loader2 size={14} className="animate-spin" /> : <BookMarked size={14} />}
+                                Guardar
+                            </button>
                         </div>
                     </div>
                 </div>

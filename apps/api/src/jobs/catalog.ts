@@ -178,11 +178,9 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             if (isComplete) {
                 io.emit("catalog:completed", { catalogId });
             } else {
-                // Short delay between images: 20-35s
-                const delaySeconds = 20 + Math.floor(Math.random() * 16);
-                console.log(`${tag} Scheduling next image in ${delaySeconds}s`);
+                console.log(`${tag} Scheduling next image in 90s`);
                 try {
-                    await agenda.schedule(`in ${delaySeconds} seconds`, JOB_NAME, { catalogId });
+                    await agenda.schedule("in 90 seconds", JOB_NAME, { catalogId });
                 } catch (schedErr: any) {
                     console.error(`${tag} Schedule failed: ${schedErr?.message} — retrying in 10s`);
                     setTimeout(async () => {
