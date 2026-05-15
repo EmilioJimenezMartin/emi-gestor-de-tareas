@@ -77,6 +77,23 @@ function annualizedAmount(cadence: FinanceEntryCadence, amount: number) {
   return amount;
 }
 
+// Monthly net flow for active movements at a given reference date
+function monthlyNetAt(movements: FinanceMovement[], refDate: Date): number {
+  let net = 0;
+  for (const m of movements) {
+    const start = new Date(m.date || m.createdAt);
+    const end = m.endDate ? new Date(m.endDate) : null;
+    if (start > refDate) continue;
+    if (end && end < refDate) continue;
+    let val = 0;
+    if (m.cadence === "mensual") val = m.amount;
+    else if (m.cadence === "anual") val = m.amount / 12;
+    if (m.kind === "ingreso") net += val;
+    else net -= val;
+  }
+  return net;
+}
+
 export default function FinanzasPage() {
   const dispatch = useAppDispatch();
   const { movements, loaded } = useAppSelector((s) => s.finance);
@@ -141,9 +158,14 @@ export default function FinanzasPage() {
   }, [apiUrl, dispatch]);
 
   const totals = useMemo(() => {
+    const now = new Date();
     let income = 0;
     let expense = 0;
     for (const e of movements) {
+      const start = new Date(e.date || e.createdAt);
+      const end = e.endDate ? new Date(e.endDate) : null;
+      if (start > now) continue;
+      if (end && end < now) continue;
       const amt = annualizedAmount(e.cadence, e.amount);
       if (e.kind === "ingreso") income += amt;
       else expense += amt;
@@ -155,34 +177,30 @@ export default function FinanzasPage() {
   const forecast10Y = useMemo(() => calculateForecast(movements, 10), [movements]);
 
   const trend = useMemo(() => {
-    const current = calculateForecast(movements, 0); // Value as of now
-    let monthlyNet = 0;
-    for (const m of movements) {
-      let val = 0;
-      if (m.cadence === "mensual") val = m.amount;
-      else if (m.cadence === "anual") val = m.amount / 12;
+    const now = new Date();
+    const currentNet = monthlyNetAt(movements, now);
 
-      if (val === 0) continue;
-      if (m.kind === "ingreso") monthlyNet += val;
-      else monthlyNet -= val;
+    if (currentNet >= 0) {
+      // Positive now — look ahead up to 60 months for a sign change
+      for (let i = 1; i <= 60; i++) {
+        const future = new Date(now);
+        future.setMonth(now.getMonth() + i);
+        if (monthlyNetAt(movements, future) < 0) {
+          return { status: "deplet", label: `Balance negativo en ${future.toLocaleDateString("es-ES", { month: "long", year: "numeric" })}` };
+        }
+      }
+      return { status: "pos", label: "Tendencia positiva estable" };
+    } else {
+      // Negative now — look ahead for recovery
+      for (let i = 1; i <= 60; i++) {
+        const future = new Date(now);
+        future.setMonth(now.getMonth() + i);
+        if (monthlyNetAt(movements, future) >= 0) {
+          return { status: "recup", label: `Balance positivo en ${future.toLocaleDateString("es-ES", { month: "long", year: "numeric" })}` };
+        }
+      }
+      return { status: "neg", label: "Tendencia negativa estable" };
     }
-
-    if (current.net >= 0 && monthlyNet >= 0) return { status: "pos", label: "Tendencia positiva estable" };
-    if (current.net < 0 && monthlyNet <= 0) return { status: "neg", label: "Tendencia negativa estable" };
-
-    if (current.net < 0 && monthlyNet > 0) {
-      const months = Math.abs(current.net) / monthlyNet;
-      const flip = new Date();
-      flip.setMonth(flip.getMonth() + months);
-      return { status: "recup", label: `Balance positivo en ${flip.toLocaleDateString()}` };
-    }
-    if (current.net > 0 && monthlyNet < 0) {
-      const months = current.net / Math.abs(monthlyNet);
-      const flip = new Date();
-      flip.setMonth(flip.getMonth() + months);
-      return { status: "deplet", label: `Balance negativo en ${flip.toLocaleDateString()}` };
-    }
-    return { status: "stable", label: "Tendencia estable" };
   }, [movements]);
 
   const ring = useMemo(() => {

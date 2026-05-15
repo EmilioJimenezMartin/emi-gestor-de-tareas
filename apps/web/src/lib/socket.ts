@@ -18,6 +18,9 @@ type ServerToClientEvents = {
   "extractor:log": (payload: { jobId?: string; timestamp?: string | Date; level?: string; message: string }) => void;
   "extractor:done": (payload: { jobId?: string }) => void;
   "extractor:result": (payload: { jobId?: string; item: Record<string, any> }) => void;
+  "catalog:progress": (payload: { catalogId: string; status: string; current: number; total: number; image?: { publicId: string; url: string; width: number; height: number; bytes: number; createdAt: string } }) => void;
+  "catalog:completed": (payload: { catalogId: string }) => void;
+  "catalog:error": (payload: { catalogId: string; error: string; current: number; total: number }) => void;
 };
 
 type ClientToServerEvents = Record<string, never>;

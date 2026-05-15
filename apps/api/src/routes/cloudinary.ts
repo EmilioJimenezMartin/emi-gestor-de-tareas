@@ -1,0 +1,134 @@
+import { FastifyInstance } from "fastify";
+import { getMongoStatus } from "../lib/mongo.js";
+import { Settings } from "../models/settings.js";
+
+const FOLDER = "emi-kdp-assets";
+
+export async function getCloudinaryConfig(): Promise<{ cloudName: string; apiKey: string; apiSecret: string } | null> {
+    let cloudName = process.env.CLOUDINARY_CLOUD_NAME || "";
+    let apiKey = process.env.CLOUDINARY_API_KEY || "";
+    let apiSecret = process.env.CLOUDINARY_API_SECRET || "";
+
+    if (getMongoStatus() === "connected") {
+        try {
+            const rows = await Settings.find({
+                key: { $in: ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"] }
+            });
+            const map = new Map(rows.map((r) => [r.key, r.value]));
+            if (map.get("CLOUDINARY_CLOUD_NAME")) cloudName = map.get("CLOUDINARY_CLOUD_NAME")!;
+            if (map.get("CLOUDINARY_API_KEY")) apiKey = map.get("CLOUDINARY_API_KEY")!;
+            if (map.get("CLOUDINARY_API_SECRET")) apiSecret = map.get("CLOUDINARY_API_SECRET")!;
+        } catch {
+            // fallback to env
+        }
+    }
+
+    if (!cloudName || !apiKey || !apiSecret) return null;
+    return { cloudName, apiKey, apiSecret };
+}
+
+export async function initCloudinary(config: { cloudName: string; apiKey: string; apiSecret: string }) {
+    const { v2: cld } = await import("cloudinary");
+    cld.config({
+        cloud_name: config.cloudName,
+        api_key: config.apiKey,
+        api_secret: config.apiSecret,
+        secure: true,
+    });
+    return cld;
+}
+
+export async function registerCloudinaryRoutes(app: FastifyInstance) {
+    // GET /cloudinary/images — list all images in the folder
+    app.get("/cloudinary/images", async (_req, reply) => {
+        try {
+            const config = await getCloudinaryConfig();
+            if (!config) {
+                return reply.status(503).send({ error: "Cloudinary no configurado. Añade las credenciales en Ajustes." });
+            }
+
+            const cld = await initCloudinary(config);
+            const result = await cld.api.resources({
+                type: "upload",
+                prefix: `${FOLDER}/`,
+                max_results: 200,
+                direction: "desc",
+            });
+
+            const images = (result.resources as any[]).map((r) => ({
+                publicId: r.public_id,
+                url: r.secure_url,
+                width: r.width,
+                height: r.height,
+                createdAt: r.created_at,
+                format: r.format,
+                bytes: r.bytes,
+            }));
+
+            return reply.send({ images });
+        } catch (error: any) {
+            app.log.error(error);
+            return reply.status(500).send({ error: "Error listando imágenes", message: error.message });
+        }
+    });
+
+    // POST /cloudinary/upload — upload an image (base64 dataUrl)
+    app.post("/cloudinary/upload", async (request: any, reply) => {
+        try {
+            const config = await getCloudinaryConfig();
+            if (!config) {
+                return reply.status(503).send({ error: "Cloudinary no configurado." });
+            }
+
+            const { dataUrl } = request.body || {};
+            if (!dataUrl || typeof dataUrl !== "string") {
+                return reply.status(400).send({ error: "dataUrl es requerido" });
+            }
+
+            const cld = await initCloudinary(config);
+            const result = await cld.uploader.upload(dataUrl, {
+                folder: FOLDER,
+                resource_type: "image",
+            });
+
+            return reply.status(201).send({
+                success: true,
+                image: {
+                    publicId: result.public_id,
+                    url: result.secure_url,
+                    width: result.width,
+                    height: result.height,
+                    format: result.format,
+                    bytes: result.bytes,
+                    createdAt: result.created_at,
+                },
+            });
+        } catch (error: any) {
+            app.log.error(error);
+            return reply.status(500).send({ error: "Error subiendo imagen", message: error.message });
+        }
+    });
+
+    // POST /cloudinary/delete — delete by publicId (POST avoids URL encoding issues with slashes)
+    app.post("/cloudinary/delete", async (request: any, reply) => {
+        try {
+            const config = await getCloudinaryConfig();
+            if (!config) {
+                return reply.status(503).send({ error: "Cloudinary no configurado." });
+            }
+
+            const { publicId } = request.body || {};
+            if (!publicId || typeof publicId !== "string") {
+                return reply.status(400).send({ error: "publicId es requerido" });
+            }
+
+            const cld = await initCloudinary(config);
+            const result = await cld.uploader.destroy(publicId);
+
+            return reply.send({ success: true, result: result.result });
+        } catch (error: any) {
+            app.log.error(error);
+            return reply.status(500).send({ error: "Error eliminando imagen", message: error.message });
+        }
+    });
+}

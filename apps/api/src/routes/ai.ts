@@ -84,6 +84,12 @@ export async function registerAIRoutes(app: FastifyInstance) {
                     const leonardoSetting = await Settings.findOne({ key: "LEONARDO_API_KEY" });
                     apiKey = leonardoSetting?.value || "";
                 }
+            } else if (provider === "Ideogram") {
+                apiKey = process.env.IDEOGRAM_API_KEY || "";
+                if (!apiKey && getMongoStatus() === "connected") {
+                    const ideogramSetting = await Settings.findOne({ key: "IDEOGRAM_API_KEY" });
+                    apiKey = ideogramSetting?.value || "";
+                }
             }
 
             // --- GOOGLE (GEMINI IMAGE) ---
@@ -357,6 +363,92 @@ export async function registerAIRoutes(app: FastifyInstance) {
                 } catch (hfError: any) {
                     app.log.warn({ err: hfError }, "AI image: Hugging Face failed, using fallback");
                     // Si falla HF, seguimos al fallback de Pollinations abajo
+                }
+            }
+
+            // --- POLLINATIONS (explicit, passes model param) ---
+            if (provider === "Pollinations") {
+                try {
+                    const modelParam = typeof modelId === "string" && modelId.trim().length > 0 ? modelId.trim() : "flux";
+                    const seed = Math.floor(Math.random() * 1000000);
+                    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${encodeURIComponent(modelParam)}&width=${width || 1024}&height=${height || 1024}&seed=${seed}&nologo=true`;
+                    app.log.info({ modelParam }, "AI image: using Pollinations direct");
+                    const response = await axios({
+                        url: pollinationsUrl,
+                        method: "GET",
+                        responseType: "arraybuffer",
+                        timeout: 30000,
+                    });
+                    return reply.type("image/png").send(Buffer.from(response.data));
+                } catch (pollErr: any) {
+                    const status = pollErr?.response?.status;
+                    if (status === 429) {
+                        const retryAfterSeconds = getRetryAfterSecondsFromError(pollErr, 20);
+                        nextAllowedAtByKey.set(cooldownKey, Date.now() + retryAfterSeconds * 1000);
+                        return reply
+                            .status(429)
+                            .header("Retry-After", String(retryAfterSeconds))
+                            .send({ error: "Límite de peticiones alcanzado", details: `Espera ${retryAfterSeconds}s` });
+                    }
+                    app.log.warn({ err: pollErr, status }, "AI image: Pollinations direct failed, trying fallback");
+                }
+            }
+
+            // --- IDEOGRAM ---
+            if (provider === "Ideogram" && apiKey) {
+                try {
+                    const aspectRatio = ratioFromDims(width, height);
+                    const ideogramAspectMap: Record<string, string> = {
+                        "1:1": "ASPECT_1_1",
+                        "16:9": "ASPECT_16_9",
+                        "9:16": "ASPECT_9_16",
+                        "4:3": "ASPECT_4_3",
+                        "3:4": "ASPECT_3_4",
+                        "3:2": "ASPECT_3_2",
+                        "2:3": "ASPECT_2_3",
+                        "16:10": "ASPECT_16_10",
+                        "10:16": "ASPECT_10_16",
+                    };
+                    const aspect_ratio = ideogramAspectMap[aspectRatio] || "ASPECT_1_1";
+                    const ideogramModelId = typeof modelId === "string" && modelId.trim().length > 0 ? modelId.trim() : "V_2_TURBO";
+                    app.log.info({ ideogramModelId, aspect_ratio }, "AI image: using Ideogram");
+                    const ideogramResp = await axios({
+                        url: "https://api.ideogram.ai/generate",
+                        method: "POST",
+                        headers: {
+                            "Api-Key": apiKey.trim(),
+                            "Content-Type": "application/json",
+                        },
+                        data: {
+                            image_request: {
+                                prompt,
+                                aspect_ratio,
+                                model: ideogramModelId,
+                                magic_prompt_option: "AUTO",
+                            },
+                        },
+                        timeout: 60000,
+                    });
+                    const imageUrl = ideogramResp.data?.data?.[0]?.url;
+                    if (!imageUrl) throw new Error("Ideogram: no image URL in response");
+                    const imgResp = await axios({
+                        url: imageUrl,
+                        method: "GET",
+                        responseType: "arraybuffer",
+                        timeout: 30000,
+                    });
+                    return reply.type("image/jpeg").send(Buffer.from(imgResp.data));
+                } catch (ideogramErr: any) {
+                    const status = ideogramErr?.response?.status;
+                    if (status === 429) {
+                        const retryAfterSeconds = getRetryAfterSecondsFromError(ideogramErr, 60);
+                        nextAllowedAtByKey.set(cooldownKey, Date.now() + retryAfterSeconds * 1000);
+                        return reply
+                            .status(429)
+                            .header("Retry-After", String(retryAfterSeconds))
+                            .send({ error: "Límite de peticiones alcanzado", details: `Ideogram: espera ${retryAfterSeconds}s` });
+                    }
+                    app.log.warn({ err: ideogramErr, status }, "AI image: Ideogram failed, trying fallback");
                 }
             }
 

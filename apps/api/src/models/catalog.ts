@@ -1,0 +1,65 @@
+import mongoose, { Schema, Document } from "mongoose";
+
+export interface CatalogImage {
+    publicId: string;
+    url: string;
+    width: number;
+    height: number;
+    bytes: number;
+    createdAt: string;
+}
+
+export interface ICatalog extends Document {
+    name: string;
+    prompt: string;
+    model: {
+        id: string;
+        name: string;
+        provider: string;
+        modelId: string;
+    };
+    width: number;
+    height: number;
+    totalImages: number;
+    images: CatalogImage[];
+    status: "pending" | "running" | "completed" | "failed" | "cancelled";
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+const CatalogImageSchema = new Schema<CatalogImage>(
+    {
+        publicId: String,
+        url: String,
+        width: Number,
+        height: Number,
+        bytes: Number,
+        createdAt: String,
+    },
+    { _id: false }
+);
+
+const CatalogSchema = new Schema<ICatalog>(
+    {
+        name: { type: String, required: true },
+        prompt: { type: String, required: true },
+        model: {
+            id: String,
+            name: String,
+            provider: String,
+            modelId: String,
+        },
+        width: { type: Number, default: 1024 },
+        height: { type: Number, default: 1024 },
+        totalImages: { type: Number, required: true },
+        images: { type: [CatalogImageSchema], default: [] },
+        status: {
+            type: String,
+            enum: ["pending", "running", "completed", "failed", "cancelled"],
+            default: "pending",
+        },
+    },
+    { timestamps: true }
+);
+
+export const Catalog = mongoose.model<ICatalog>("Catalog", CatalogSchema);

@@ -14,6 +14,8 @@ import { registerExtractorRoutes } from "./routes/extractor.js";
 import { registerSettingsRoutes } from "./routes/settings.js";
 import { registerFinanceRoutes } from "./routes/finance.js";
 import { registerAIRoutes } from "./routes/ai.js";
+import { registerCloudinaryRoutes } from "./routes/cloudinary.js";
+import { registerCatalogRoutes } from "./routes/catalogs.js";
 import { Settings } from "./models/settings.js";
 
 const env = loadEnv(process.env);
@@ -37,6 +39,8 @@ await registerExtractorRoutes(app, deps);
 await registerSettingsRoutes(app);
 await registerFinanceRoutes(app, { io });
 await registerAIRoutes(app);
+await registerCloudinaryRoutes(app);
+await registerCatalogRoutes(app);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {
@@ -95,6 +99,27 @@ const seedSettings = async () => {
       { $setOnInsert: { key: "DEFAULT_LLM_MODEL", value: "gemini-1.5-pro", is_secret: false } },
       { upsert: true, new: true }
     );
+    // Cloudinary — cloud_name seeded; api_key and api_secret left empty for user to fill via UI
+    await Settings.findOneAndUpdate(
+      { key: "CLOUDINARY_CLOUD_NAME" },
+      { $setOnInsert: { key: "CLOUDINARY_CLOUD_NAME", value: process.env.CLOUDINARY_CLOUD_NAME || "af6b2f473a2cd3539b6d7bef68fb37", is_secret: false } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "CLOUDINARY_API_KEY" },
+      { $setOnInsert: { key: "CLOUDINARY_API_KEY", value: process.env.CLOUDINARY_API_KEY || "", is_secret: true } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "CLOUDINARY_API_SECRET" },
+      { $setOnInsert: { key: "CLOUDINARY_API_SECRET", value: process.env.CLOUDINARY_API_SECRET || "", is_secret: true } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "IDEOGRAM_API_KEY" },
+      { $setOnInsert: { key: "IDEOGRAM_API_KEY", value: process.env.IDEOGRAM_API_KEY || "", is_secret: true } },
+      { upsert: true, new: true }
+    );
     app.log.info("System config keys seeded into DB (setOnInsert).");
   } catch (e) {
     app.log.error(e, "Failed to seed config into DB");
@@ -110,7 +135,7 @@ const startAgendaOnce = async () => {
   if (status !== "connected") return;
 
   try {
-    const agenda = initAgenda(env);
+    const agenda = initAgenda(env, io);
     await startAgenda();
     deps.agenda = agenda;
 

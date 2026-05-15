@@ -5,7 +5,7 @@ import { defineJobs } from "../jobs/index.js";
 
 let agendaInstance: Agenda | null = null;
 
-export function initAgenda(env: Env): Agenda {
+export function initAgenda(env: Env, io?: any): Agenda {
   if (agendaInstance) return agendaInstance;
 
   const backend = new MongoBackend({
@@ -18,7 +18,7 @@ export function initAgenda(env: Env): Agenda {
     processEvery: "10 seconds",
   });
 
-  defineJobs(agenda);
+  defineJobs(agenda, io);
 
   agenda.on("error", (err) => {
     console.error("[agenda] error", err);

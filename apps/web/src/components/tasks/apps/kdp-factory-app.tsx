@@ -38,19 +38,25 @@ import {
     Camera,
     X,
     Check,
-    Key,
+    Cloud,
+    UploadCloud,
     Monitor,
     Maximize,
     ChevronRight,
     Activity,
     Lightbulb,
     Download,
-    Store
+    Store,
+    RefreshCw,
+    StopCircle,
+    PlayCircle,
+    ImagePlus
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { createApiSocket } from "@/lib/socket";
 
 interface ProductPlatform {
     name: string;
@@ -93,7 +99,14 @@ const AI_MODELS = [
     ,
     // Coloring-book LoRA (SDXL) - puede requerir pipeline con LoRA; si HF Inference no lo soporta, caerá al fallback.
     { id: "coloringbook-redmond", name: "ColoringBook.Redmond (LoRA)", provider: "Hugging Face", type: "Coloring Book (clean lines)", modelId: "artificialguybr/ColoringBookRedmond" },
-    { id: "coloringbook-redmond-v2", name: "ColoringBook.Redmond V2 (LoRA)", provider: "Hugging Face", type: "Coloring Book (clean lines)", modelId: "artificialguybr/ColoringBookRedmond-V2" }
+    { id: "coloringbook-redmond-v2", name: "ColoringBook.Redmond V2 (LoRA)", provider: "Hugging Face", type: "Coloring Book (clean lines)", modelId: "artificialguybr/ColoringBookRedmond-V2" },
+
+    // Pollinations — sin API key, totalmente gratis
+    { id: "pollinations-flux", name: "FLUX (Pollinations)", provider: "Pollinations", type: "Gratis · Sin API Key", modelId: "flux" },
+    { id: "pollinations-flux-realism", name: "FLUX Realism (Pollinations)", provider: "Pollinations", type: "Gratis · Fotorrealista", modelId: "flux-realism" },
+    { id: "pollinations-flux-anime", name: "FLUX Anime (Pollinations)", provider: "Pollinations", type: "Gratis · Anime/Ilustración", modelId: "flux-anime" },
+    { id: "pollinations-turbo", name: "Turbo (Pollinations)", provider: "Pollinations", type: "Gratis · Ultra Rápido", modelId: "turbo" },
+
 ];
 
 const AI_DIMENSIONS = [
@@ -113,8 +126,30 @@ const AI_DIMENSIONS = [
 
 const PLATFORMS = ["Amazon KDP", "Etsy", "Printify", "Creative Fabrica"];
 
-type TabID = "insights" | "catalog" | "creation";
+type TabID = "insights" | "catalog" | "creation" | "catalogos";
 type PeriodID = "month" | "6months" | "year" | "all";
+
+interface CatalogImageFE {
+    publicId: string;
+    url: string;
+    width: number;
+    height: number;
+    bytes: number;
+    createdAt: string;
+}
+
+interface IACatalogFE {
+    _id: string;
+    name: string;
+    prompt: string;
+    model: { id: string; name: string; provider: string; modelId: string };
+    width: number;
+    height: number;
+    totalImages: number;
+    images: CatalogImageFE[];
+    status: "pending" | "running" | "completed" | "failed" | "cancelled";
+    createdAt: string;
+}
 
 export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>("insights");
@@ -197,28 +232,254 @@ export function KdpFactoryApp() {
     const [imagePrompt, setImagePrompt] = useState("");
     const [selectedModel, setSelectedModel] = useState(AI_MODELS[0].id);
     const [selectedDim, setSelectedDim] = useState(AI_DIMENSIONS[0].id);
-    const [hfToken, setHfToken] = useState<string>(() => {
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('hf_token');
-            if (saved) return saved;
-        }
-        return "";
-    });
-    const [googleKey, setGoogleKey] = useState<string>(() => {
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('google_key');
-            if (saved) return saved;
-        }
-        return "";
-    });
+    const [cloudinaryImages, setCloudinaryImages] = useState<{ publicId: string; url: string; width: number; height: number; bytes: number; createdAt: string }[]>([]);
+    const [isLoadingCloudinary, setIsLoadingCloudinary] = useState(false);
+    const [uploadingToCloud, setUploadingToCloud] = useState<number | null>(null);
+    const [deletingFromCloud, setDeletingFromCloud] = useState<string | null>(null);
 
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('hf_token', hfToken);
-            localStorage.setItem('google_key', googleKey);
+    const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
+
+    // --- Catálogos IA state ---
+    const [iaCatalogs, setIaCatalogs] = useState<IACatalogFE[]>([]);
+    const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(false);
+    const [catalogFormName, setCatalogFormName] = useState("");
+    const [catalogFormPrompt, setCatalogFormPrompt] = useState("");
+    const [catalogFormModel, setCatalogFormModel] = useState("pollinations-flux");
+    const [catalogFormDim, setCatalogFormDim] = useState("sq");
+    const [catalogFormCount, setCatalogFormCount] = useState(5);
+    const [isCreatingCatalog, setIsCreatingCatalog] = useState(false);
+    const [deletingCatalogId, setDeletingCatalogId] = useState<string | null>(null);
+    const [buildingPdfCatalogId, setBuildingPdfCatalogId] = useState<string | null>(null);
+    const catalogSocketRef = useRef<ReturnType<typeof createApiSocket> | null>(null);
+
+    const fetchCatalogs = async () => {
+        setIsLoadingCatalogs(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/catalogs`);
+            if (!res.ok) return;
+            const data = await res.json();
+            setIaCatalogs(data.catalogs ?? []);
+        } catch {
+            // silently ignore if API unavailable
+        } finally {
+            setIsLoadingCatalogs(false);
         }
-    }, [hfToken, googleKey]);
-    const [showApiSettings, setShowApiSettings] = useState(false);
+    };
+
+    const createCatalog = async () => {
+        if (!catalogFormPrompt.trim()) {
+            toast.error("El prompt es obligatorio");
+            return;
+        }
+        const model = AI_MODELS.find((m) => m.id === catalogFormModel);
+        const dim = AI_DIMENSIONS.find((d) => d.id === catalogFormDim);
+        if (!model) return;
+
+        setIsCreatingCatalog(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/catalogs`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: catalogFormName.trim() || undefined,
+                    prompt: catalogFormPrompt.trim(),
+                    model: { id: model.id, name: model.name, provider: model.provider, modelId: model.modelId },
+                    width: dim?.width ?? 1024,
+                    height: dim?.height ?? 1024,
+                    totalImages: catalogFormCount,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Error al crear catálogo");
+            setIaCatalogs((prev) => [data.catalog, ...prev]);
+            setCatalogFormName("");
+            setCatalogFormPrompt("");
+            setCatalogFormCount(5);
+            toast.success(`Catálogo creado — generando ${catalogFormCount} imágenes en segundo plano`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al crear catálogo");
+        } finally {
+            setIsCreatingCatalog(false);
+        }
+    };
+
+    const deleteCatalog = async (id: string) => {
+        setDeletingCatalogId(id);
+        try {
+            const res = await fetch(`${API_BASE_URL}/catalogs/${id}`, { method: "DELETE" });
+            if (!res.ok) throw new Error("Error al eliminar");
+            setIaCatalogs((prev) => prev.filter((c) => c._id !== id));
+            toast.success("Catálogo eliminado");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al eliminar catálogo");
+        } finally {
+            setDeletingCatalogId(null);
+        }
+    };
+
+    const cancelCatalog = async (id: string) => {
+        try {
+            await fetch(`${API_BASE_URL}/catalogs/${id}/cancel`, { method: "POST" });
+            setIaCatalogs((prev) =>
+                prev.map((c) => (c._id === id ? { ...c, status: "cancelled" } : c))
+            );
+            toast.info("Generación cancelada");
+        } catch {
+            toast.error("Error al cancelar");
+        }
+    };
+
+    const deleteCatalogImage = async (catalogId: string, publicId: string) => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/catalogs/${catalogId}/delete-image`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ publicId }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Error");
+            setIaCatalogs((prev) =>
+                prev.map((c) =>
+                    c._id === catalogId
+                        ? { ...c, images: c.images.filter((img) => img.publicId !== publicId) }
+                        : c
+                )
+            );
+            toast.success("Imagen eliminada");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al eliminar imagen");
+        }
+    };
+
+    const addCatalogImageToVault = (img: CatalogImageFE) => {
+        setVaultImages((prev) => [{ url: img.url, model: "Catálogo IA", dim: `${img.width}x${img.height}` }, ...prev]);
+        toast.success("Imagen añadida al vault");
+    };
+
+    const buildCatalogPdf = async (catalog: IACatalogFE) => {
+        if (catalog.images.length === 0) return;
+        setBuildingPdfCatalogId(catalog._id);
+        try {
+            const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+            const pdf = await PDFDocument.create();
+            const pageWidth = 595.28;
+            const pageHeight = 841.89;
+            const margin = 48;
+
+            const totalPages = 1 + catalog.images.length * 2;
+            const pages = Array.from({ length: totalPages }, () => pdf.addPage([pageWidth, pageHeight]));
+
+            const font = await pdf.embedFont(StandardFonts.Helvetica);
+            pages[0].drawText(catalog.name, {
+                x: margin,
+                y: margin,
+                size: 12,
+                font,
+                color: rgb(0.2, 0.2, 0.2),
+            });
+
+            for (let i = 0; i < catalog.images.length; i++) {
+                const targetPageIndex = 2 + i * 2;
+                const page = pages[targetPageIndex];
+                const objectUrl = await ensureObjectUrl(catalog.images[i].url);
+                const res = await fetch(objectUrl);
+                const bytes = new Uint8Array(await res.arrayBuffer());
+
+                let embedded: any = null;
+                try { embedded = await pdf.embedPng(bytes); } catch { embedded = await pdf.embedJpg(bytes); }
+
+                const imgW = embedded.width;
+                const imgH = embedded.height;
+                const maxW = pageWidth - margin * 2;
+                const maxH = pageHeight - margin * 2;
+                const scale = Math.min(maxW / imgW, maxH / imgH);
+                page.drawImage(embedded, {
+                    x: (pageWidth - imgW * scale) / 2,
+                    y: (pageHeight - imgH * scale) / 2,
+                    width: imgW * scale,
+                    height: imgH * scale,
+                });
+            }
+
+            const pdfBytes = await pdf.save();
+            const blob = new Blob([pdfBytes as Uint8Array<ArrayBuffer>], { type: "application/pdf" });
+            const url = URL.createObjectURL(blob);
+            downloadFile(url, `${catalog.name.replace(/\s+/g, "-")}.pdf`);
+            setTimeout(() => URL.revokeObjectURL(url), 30_000);
+            toast.success("PDF generado");
+        } catch (e) {
+            console.error(e);
+            toast.error("No se pudo generar el PDF");
+        } finally {
+            setBuildingPdfCatalogId(null);
+        }
+    };
+
+    const blobUrlToDataUrl = async (url: string): Promise<string> => {
+        const res = await fetch(url);
+        const blob = await res.blob();
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    };
+
+    const fetchCloudinaryImages = async () => {
+        setIsLoadingCloudinary(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/cloudinary/images`);
+            if (!res.ok) return;
+            const data = await res.json();
+            setCloudinaryImages(data.images ?? []);
+        } catch {
+            // silently ignore if not configured
+        } finally {
+            setIsLoadingCloudinary(false);
+        }
+    };
+
+    const uploadToCloudinary = async (vaultIndex: number) => {
+        const img = vaultImages[vaultIndex];
+        if (!img) return;
+        setUploadingToCloud(vaultIndex);
+        try {
+            const dataUrl = await blobUrlToDataUrl(img.url);
+            const res = await fetch(`${API_BASE_URL}/cloudinary/upload`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ dataUrl }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Upload failed");
+            toast.success("Imagen guardada en Cloudinary");
+            setCloudinaryImages((prev) => [data.image, ...prev]);
+            setVaultImages((prev) => prev.filter((_, idx) => idx !== vaultIndex));
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al subir a Cloudinary");
+        } finally {
+            setUploadingToCloud(null);
+        }
+    };
+
+    const deleteFromCloudinary = async (publicId: string) => {
+        setDeletingFromCloud(publicId);
+        try {
+            const res = await fetch(`${API_BASE_URL}/cloudinary/delete`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ publicId }),
+            });
+            if (!res.ok) throw new Error("Error al eliminar");
+            setCloudinaryImages((prev) => prev.filter((img) => img.publicId !== publicId));
+            toast.success("Imagen eliminada de Cloudinary");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al eliminar");
+        } finally {
+            setDeletingFromCloud(null);
+        }
+    };
 
     const [isGenerating, setIsGenerating] = useState(false);
     const [isImageLoading, setIsImageLoading] = useState(false);
@@ -333,8 +594,7 @@ export function KdpFactoryApp() {
                     return;
                 }
                 ctx.imageSmoothingEnabled = true;
-                // @ts-expect-error - non-standard but supported in most browsers
-                if ("imageSmoothingQuality" in ctx) ctx.imageSmoothingQuality = "high";
+                if ("imageSmoothingQuality" in ctx) (ctx as any).imageSmoothingQuality = "high";
                 ctx.drawImage(img, 0, 0, outW, outH);
 
                 const outBlob: Blob | null = await new Promise((resolve) =>
@@ -450,7 +710,7 @@ export function KdpFactoryApp() {
             }
 
             const pdfBytes = await pdf.save();
-            const blob = new Blob([pdfBytes], { type: "application/pdf" });
+            const blob = new Blob([pdfBytes as Uint8Array<ArrayBuffer>], { type: "application/pdf" });
             const url = URL.createObjectURL(blob);
             downloadFile(url, `${(bookFileName.trim() || "libro-kdp")}.pdf`);
             setTimeout(() => URL.revokeObjectURL(url), 30_000);
@@ -476,6 +736,57 @@ export function KdpFactoryApp() {
         };
     }, []);
 
+    // Fetch Cloudinary images when entering the creation tab
+    useEffect(() => {
+        if (activeTab === "creation") {
+            void fetchCloudinaryImages();
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab]);
+
+    // Fetch catalogs + connect socket when entering the catalogos tab
+    useEffect(() => {
+        if (activeTab !== "catalogos") return;
+        void fetchCatalogs();
+
+        const socket = createApiSocket(API_BASE_URL);
+        catalogSocketRef.current = socket;
+
+        socket.on("catalog:progress", (data: { catalogId: string; status: string; current: number; total: number; image?: CatalogImageFE }) => {
+            setIaCatalogs((prev) =>
+                prev.map((c) => {
+                    if (c._id !== data.catalogId) return c;
+                    const updated: IACatalogFE = { ...c, status: data.status as IACatalogFE["status"] };
+                    if (data.image) {
+                        const alreadyExists = updated.images.some((img) => img.publicId === data.image!.publicId);
+                        if (!alreadyExists) updated.images = [...updated.images, data.image];
+                    }
+                    return updated;
+                })
+            );
+        });
+
+        socket.on("catalog:completed", (data: { catalogId: string }) => {
+            setIaCatalogs((prev) =>
+                prev.map((c) => (c._id === data.catalogId ? { ...c, status: "completed" } : c))
+            );
+            toast.success("Catálogo completado");
+        });
+
+        socket.on("catalog:error", (data: { catalogId: string; error: string }) => {
+            setIaCatalogs((prev) =>
+                prev.map((c) => (c._id === data.catalogId ? { ...c, status: "failed" } : c))
+            );
+            toast.error(`Error en catálogo: ${data.error}`);
+        });
+
+        return () => {
+            socket.disconnect();
+            catalogSocketRef.current = null;
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab]);
+
     // Sincronizar estado de carga cuando cambia la URL
     useEffect(() => {
         if (generatedImage) {
@@ -494,7 +805,6 @@ export function KdpFactoryApp() {
 
         try {
             // USAR PROXY DEL BACKEND (Resuelve CORS y asegura API Keys)
-            const API_BASE_URL = "http://localhost:3001";
 
             const response = await fetch(`${API_BASE_URL}/ai/generate-image`, {
                 method: "POST",
@@ -937,42 +1247,16 @@ export function KdpFactoryApp() {
                         <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">IA Asset Studio</h3>
                     </div>
                     <button
-                        onClick={() => setShowApiSettings(!showApiSettings)}
-                        className={`p-2 rounded-xl border transition-all ${showApiSettings ? "bg-amber-500/10 border-amber-500/30 text-amber-500" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                        onClick={() => setShowAdvancedOptions((v) => !v)}
+                        className={`p-2 rounded-xl border transition-all ${showAdvancedOptions ? "bg-white/10 border-white/20 text-white" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                        title="Opciones avanzadas"
+                        aria-label="Opciones avanzadas"
                     >
-                        <Key size={14} />
+                        <ImageIcon size={14} />
                     </button>
                 </div>
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
             </div>
-
-            {/* API Settings Collapsible */}
-            {showApiSettings && (
-                <Card variant="glass" className="p-6 border-amber-500/20 bg-amber-500/5 animate-in slide-in-from-top-4 duration-500">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-3">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-amber-500/60 ml-1">Hugging Face Token</label>
-                            <input
-                                type="password"
-                                value={hfToken}
-                                onChange={(e) => setHfToken(e.target.value)}
-                                placeholder="hf_..."
-                                className="w-full h-12 bg-black/20 border border-white/10 rounded-xl px-4 text-xs text-white focus:border-amber-500/50 outline-none"
-                            />
-                        </div>
-                        <div className="space-y-3">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-amber-500/60 ml-1">Google AI API Key</label>
-                            <input
-                                type="password"
-                                value={googleKey}
-                                onChange={(e) => setGoogleKey(e.target.value)}
-                                placeholder="AIza..."
-                                className="w-full h-12 bg-black/20 border border-white/10 rounded-xl px-4 text-xs text-white focus:border-amber-500/50 outline-none"
-                            />
-                        </div>
-                    </div>
-                </Card>
-            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Generation Control */}
@@ -984,69 +1268,150 @@ export function KdpFactoryApp() {
                     <div className="space-y-6 relative z-10">
                         {/* Model & Dim Selectors Wrapper */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-	                            <div className="space-y-3">
-	                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Modelo I.A.</label>
-	                                <div className="relative group/select">
-	                                    <select
-	                                        value={selectedModel}
-	                                        onChange={(e) => setSelectedModel(e.target.value)}
-	                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl pl-4 pr-10 text-[10px] font-black uppercase text-white appearance-none cursor-pointer focus:border-amber-500/40 outline-none hover:bg-white/10 transition-all"
-	                                    >
-	                                        {AI_MODELS.map(m => (
-	                                            <option key={m.id} value={m.id} className="bg-[#0a0a0a]">
-	                                                {m.name} — {m.type}
-	                                            </option>
-	                                        ))}
-	                                    </select>
-	                                    <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
-	                                </div>
-	                                <div className="text-[10px] text-neutral-500 font-medium italic">
-	                                    {AI_MODELS.find(m => m.id === selectedModel)?.provider} • {AI_MODELS.find(m => m.id === selectedModel)?.type}
-	                                </div>
-	                            </div>
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Modelo I.A.</label>
+                                <div className="relative group/select">
+                                    <select
+                                        value={selectedModel}
+                                        onChange={(e) => setSelectedModel(e.target.value)}
+                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl pl-4 pr-10 text-[10px] font-black uppercase text-white appearance-none cursor-pointer focus:border-amber-500/40 outline-none hover:bg-white/10 transition-all"
+                                    >
+                                        {AI_MODELS.map(m => (
+                                            <option key={m.id} value={m.id} className="bg-[#0a0a0a]">
+                                                {m.name} — {m.type}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
+                                </div>
+                                <div className="text-[10px] text-neutral-500 font-medium italic">
+                                    {AI_MODELS.find(m => m.id === selectedModel)?.provider} • {AI_MODELS.find(m => m.id === selectedModel)?.type}
+                                </div>
+                            </div>
 
-	                            <div className="space-y-3">
-	                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Dimensiones</label>
-	                                {/* Quick presets (avoid overflow on mobile/tablet) */}
-	                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-	                                    {AI_DIMENSIONS.filter((d) => ["sq", "pt", "p23", "p34"].includes(d.id)).map((d) => (
-	                                        <button
-	                                            key={d.id}
-	                                            onClick={() => setSelectedDim(d.id)}
-	                                            className={`h-12 rounded-xl border flex items-center justify-center gap-2 transition-all ${selectedDim === d.id ? "bg-white text-black border-white" : "bg-white/5 border-white/10 text-neutral-500 hover:bg-white/10"}`}
-	                                        >
-	                                            {d.id === "sq" ? <Monitor size={14} /> : d.id === "ls" ? <Maximize size={14} className="rotate-90" /> : <Maximize size={14} />}
-	                                            <span className="text-[9px] font-black uppercase">{d.ratio}</span>
-	                                        </button>
-	                                    ))}
-	                                </div>
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Dimensiones</label>
+                                {/* Quick presets (avoid overflow on mobile/tablet) */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    {AI_DIMENSIONS.filter((d) => ["sq", "pt", "p23", "p34"].includes(d.id)).map((d) => (
+                                        <button
+                                            key={d.id}
+                                            onClick={() => setSelectedDim(d.id)}
+                                            className={`h-12 rounded-xl border flex items-center justify-center gap-2 transition-all ${selectedDim === d.id ? "bg-white text-black border-white" : "bg-white/5 border-white/10 text-neutral-500 hover:bg-white/10"}`}
+                                        >
+                                            {d.id === "sq" ? <Monitor size={14} /> : d.id === "ls" ? <Maximize size={14} className="rotate-90" /> : <Maximize size={14} />}
+                                            <span className="text-[9px] font-black uppercase">{d.ratio}</span>
+                                        </button>
+                                    ))}
+                                </div>
 
-	                                {/* Full list selector (includes A4 presets) */}
-	                                <div className="relative group/select">
-	                                    <select
-	                                        value={selectedDim}
-	                                        onChange={(e) => setSelectedDim(e.target.value)}
-	                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl pl-4 pr-10 text-[10px] font-black uppercase text-white appearance-none cursor-pointer focus:border-amber-500/40 outline-none hover:bg-white/10 transition-all"
-	                                    >
-	                                        {AI_DIMENSIONS.map((d) => (
-	                                            <option key={d.id} value={d.id} className="bg-[#0a0a0a]">
-	                                                {d.name} ({d.width}×{d.height})
-	                                            </option>
-	                                        ))}
-	                                    </select>
-	                                    <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
-	                                </div>
-	                            </div>
+                                {/* Full list selector (includes A4 presets) */}
+                                <div className="relative group/select">
+                                    <select
+                                        value={selectedDim}
+                                        onChange={(e) => setSelectedDim(e.target.value)}
+                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl pl-4 pr-10 text-[10px] font-black uppercase text-white appearance-none cursor-pointer focus:border-amber-500/40 outline-none hover:bg-white/10 transition-all"
+                                    >
+                                        {AI_DIMENSIONS.map((d) => (
+                                            <option key={d.id} value={d.id} className="bg-[#0a0a0a]">
+                                                {d.name} ({d.width}×{d.height})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
+                                </div>
+                            </div>
                         </div>
 
-	                        <div className="space-y-3">
-	                            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1 block">Prompt del Activo</label>
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1 block">Prompt del Activo</label>
                             <textarea
                                 value={imagePrompt}
                                 onChange={(e) => setImagePrompt(e.target.value)}
                                 placeholder="Describe el activo visual que necesitas... (Ej: Vintage botanical illustration of a lavender field in watercolor style)"
                                 className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 focus:bg-white/[0.08] transition-all resize-none font-medium h-24"
                             />
+                        </div>
+
+                        {/* Advanced options */}
+                        <div className="space-y-3">
+
+
+                            {showAdvancedOptions && (
+                                <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-300">Imagen de referencia</p>
+                                        <p className="text-[10px] text-neutral-600 font-medium italic">Pegar (Ctrl/⌘+V) o arrastrar</p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-4 items-start">
+                                        {/* Small paste box */}
+                                        <div
+                                            className="rounded-2xl border border-dashed border-white/15 bg-black/20 w-full sm:w-[140px] aspect-square flex items-center justify-center text-center focus:outline-none focus:ring-2 focus:ring-amber-500/40 overflow-hidden"
+                                            tabIndex={0}
+                                            onDragOver={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                            }}
+                                            onDrop={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                const file = e.dataTransfer.files?.[0];
+                                                if (file) void setInitImageFromFile(file);
+                                            }}
+                                            onPaste={(e) => {
+                                                const items = Array.from(e.clipboardData?.items || []);
+                                                const imageItem = items.find((it) => it.kind === "file" && it.type.startsWith("image/"));
+                                                const file = imageItem?.getAsFile() || null;
+                                                if (file) void setInitImageFromFile(file);
+                                            }}
+                                            title="Pega (Ctrl/⌘+V) o arrastra una imagen"
+                                        >
+                                            {initImageDataUrl ? (
+                                                <img src={initImageDataUrl} alt="Referencia" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="px-3 space-y-1">
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-300">Referencia</p>
+                                                    <p className="text-[10px] text-neutral-600 font-medium italic">Pegar / Arrastrar</p>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Controls */}
+                                        <div className="space-y-3">
+                                            <div className="text-[10px] text-neutral-500 font-medium italic">
+                                                Se enviará junto al prompt (Gemini/Leonardo).
+                                            </div>
+
+                                            {initImageDataUrl && (
+                                                <div className="flex gap-2">
+                                                    <Button
+                                                        onClick={() => setInitImageDataUrl(null)}
+                                                        variant="outline"
+                                                        className="h-11 rounded-2xl border-white/10 bg-white/5 backdrop-blur-md text-[10px] font-black uppercase tracking-widest text-white hover:bg-white/10"
+                                                    >
+                                                        Quitar imagen
+                                                    </Button>
+                                                </div>
+                                            )}
+
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Fuerza (Leonardo)</label>
+                                                <input
+                                                    type="range"
+                                                    min={0.1}
+                                                    max={0.9}
+                                                    step={0.05}
+                                                    value={initImageStrength}
+                                                    onChange={(e) => setInitImageStrength(Number(e.target.value))}
+                                                    className="w-full"
+                                                />
+                                                <div className="text-[10px] text-neutral-500 font-medium italic">{initImageStrength.toFixed(2)}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <Button
@@ -1124,37 +1489,37 @@ export function KdpFactoryApp() {
                                                 {AI_MODELS.find(m => m.id === selectedModel)?.name} • {AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio}
                                             </div>
                                         </div>
-	                                        <div className="flex items-center gap-2">
-	                                            <button
-	                                                onClick={() => {
-	                                                    const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
-	                                                    const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
-	                                                    downloadPng(generatedImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
-	                                                }}
-	                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
-	                                                aria-label="Descargar imagen"
-	                                                title="Descargar"
-	                                            >
-	                                                <Download size={18} />
-	                                            </button>
-	                                            <button
-	                                                onClick={() => upscaleImageMax(generatedImage, { setAsGenerated: true })}
-	                                                disabled={isUpscaling}
-	                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-	                                                aria-label="Mejorar calidad (Upscale)"
-	                                                title="Mejorar calidad"
-	                                            >
-	                                                <Sparkles size={18} />
-	                                            </button>
-	                                            <button
-	                                                onClick={() => setGeneratedImage(null)}
-	                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
-	                                                aria-label="Cerrar"
-	                                                title="Cerrar"
-	                                            >
-	                                                <X size={18} />
-	                                            </button>
-	                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
+                                                    const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
+                                                    downloadPng(generatedImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
+                                                }}
+                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
+                                                aria-label="Descargar imagen"
+                                                title="Descargar"
+                                            >
+                                                <Download size={18} />
+                                            </button>
+                                            <button
+                                                onClick={() => upscaleImageMax(generatedImage, { setAsGenerated: true })}
+                                                disabled={isUpscaling}
+                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                aria-label="Mejorar calidad (Upscale)"
+                                                title="Mejorar calidad"
+                                            >
+                                                <Sparkles size={18} />
+                                            </button>
+                                            <button
+                                                onClick={() => setGeneratedImage(null)}
+                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
+                                                aria-label="Cerrar"
+                                                title="Cerrar"
+                                            >
+                                                <X size={18} />
+                                            </button>
+                                        </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <Button
@@ -1218,12 +1583,12 @@ export function KdpFactoryApp() {
                                 <p className="text-[10px] text-neutral-600 font-medium italic">Sesión actual: {vaultImages.length} activos conservados</p>
                             </div>
                         </div>
-	                        <Button
-	                            onClick={() => setBookEditorOpen(true)}
-	                            className="h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-100 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest shadow-[0_10px_30px_rgba(245,158,11,0.12)]"
-	                        >
-	                            Crear Libro PDF
-	                        </Button>
+                        <Button
+                            onClick={() => setBookEditorOpen(true)}
+                            className="h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-100 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest shadow-[0_10px_30px_rgba(245,158,11,0.12)]"
+                        >
+                            Crear Libro PDF
+                        </Button>
                     </div>
 
                     <div className="flex gap-5 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
@@ -1254,6 +1619,15 @@ export function KdpFactoryApp() {
                                                 Detalle
                                             </button>
                                             <button
+                                                onClick={() => void uploadToCloudinary(i)}
+                                                disabled={uploadingToCloud === i}
+                                                className="w-9 h-9 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 hover:bg-cyan-500 hover:text-white transition-all flex items-center justify-center shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                aria-label="Guardar en Cloudinary"
+                                                title="Guardar en Cloudinary"
+                                            >
+                                                {uploadingToCloud === i ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
+                                            </button>
+                                            <button
                                                 onClick={() => {
                                                     const safeName = `vault-${vaultImages.length - i}`.replaceAll(" ", "_");
                                                     downloadPng(img.url, safeName);
@@ -1278,6 +1652,81 @@ export function KdpFactoryApp() {
                     </div>
                 </div>
             )}
+
+            {/* Cloudinary Persistent Gallery */}
+            <div className="space-y-6 pb-4">
+                <div className="flex items-center gap-4 px-2">
+                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                    <div className="flex items-center gap-3">
+                        <Cloud size={14} className="text-cyan-400" />
+                        <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Cloudinary · Almacén Persistente</h3>
+                    </div>
+                    <button
+                        onClick={() => void fetchCloudinaryImages()}
+                        disabled={isLoadingCloudinary}
+                        className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-cyan-400 hover:border-cyan-500/30 transition-all disabled:opacity-40"
+                        title="Actualizar galería"
+                    >
+                        {isLoadingCloudinary ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                    </button>
+                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                </div>
+
+                {cloudinaryImages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-center space-y-3 opacity-40">
+                        <Cloud size={32} className="text-neutral-600" strokeWidth={1.5} />
+                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">
+                            {isLoadingCloudinary ? "Cargando..." : "Sin imágenes en Cloudinary · Sube assets desde el vault"}
+                        </p>
+                    </div>
+                ) : (
+                    <div className="flex gap-4 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
+                        {cloudinaryImages.map((img) => (
+                            <div key={img.publicId} className="relative group shrink-0">
+                                <div className="w-44 h-52 md:w-52 md:h-64 rounded-[28px] overflow-hidden border border-white/10 group-hover:border-cyan-500/40 transition-all shadow-xl relative bg-neutral-900">
+                                    <img
+                                        src={img.url}
+                                        alt={img.publicId}
+                                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000 opacity-80 group-hover:opacity-100 cursor-zoom-in"
+                                        onClick={() => setPreviewImage(img.url)}
+                                    />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent p-4 flex flex-col justify-end gap-2 translate-y-4 group-hover:translate-y-0 transition-transform duration-500">
+                                        <p className="text-[9px] font-mono text-neutral-400 truncate">{img.publicId.split("/").pop()}</p>
+                                        <p className="text-[9px] text-neutral-500">{img.width}×{img.height} · {(img.bytes / 1024).toFixed(0)} KB</p>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setPreviewImage(img.url)}
+                                                className="flex-1 h-8 rounded-xl bg-white/10 backdrop-blur-md text-white text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all"
+                                            >
+                                                Ver
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    const ratio = img.width && img.height ? `${img.width}×${img.height}` : "1:1";
+                                                    setVaultImages((prev) => [{ url: img.url, model: "Cloudinary", dim: ratio }, ...prev]);
+                                                    toast.success("Añadida al vault");
+                                                }}
+                                                className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/20 hover:bg-amber-500 hover:text-black transition-all flex items-center justify-center shrink-0"
+                                                title="Añadir al Vault"
+                                            >
+                                                <Plus size={12} />
+                                            </button>
+                                            <button
+                                                onClick={() => void deleteFromCloudinary(img.publicId)}
+                                                disabled={deletingFromCloud === img.publicId}
+                                                className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-500 border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all flex items-center justify-center shrink-0 disabled:opacity-50"
+                                                title="Eliminar de Cloudinary"
+                                            >
+                                                {deletingFromCloud === img.publicId ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
         </div>
     );
 
@@ -1396,6 +1845,274 @@ export function KdpFactoryApp() {
         </div>
     );
 
+    const statusBadge = (status: IACatalogFE["status"]) => {
+        const map: Record<IACatalogFE["status"], { label: string; cls: string }> = {
+            pending:   { label: "En cola",       cls: "bg-neutral-500/10 text-neutral-400 border-neutral-500/20" },
+            running:   { label: "Generando...",  cls: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+            completed: { label: "Completado",    cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+            failed:    { label: "Error",         cls: "bg-red-500/10 text-red-400 border-red-500/20" },
+            cancelled: { label: "Cancelado",     cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+        };
+        const { label, cls } = map[status];
+        return <Badge variant="neutral" className={`text-[9px] font-black uppercase ${cls}`}>{label}</Badge>;
+    };
+
+    const renderIACatalogs = () => (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {/* Create form */}
+            <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                <div className="p-6 sm:p-8 space-y-6">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-violet-500/20">
+                            <Layers size={20} />
+                        </div>
+                        <div>
+                            <h3 className="font-black text-lg text-white">Crear Catálogo</h3>
+                            <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Generación en segundo plano · 1 imagen cada 90s</p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Nombre (opcional)</label>
+                            <input
+                                type="text"
+                                value={catalogFormName}
+                                onChange={(e) => setCatalogFormName(e.target.value)}
+                                placeholder="ej: Mandalas Zen Vol.1"
+                                className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-sm text-white outline-none focus:border-violet-500/40 transition-all"
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Dimensiones</label>
+                                <select
+                                    value={catalogFormDim}
+                                    onChange={(e) => setCatalogFormDim(e.target.value)}
+                                    className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-3 text-xs font-bold text-white outline-none focus:border-violet-500/40 transition-all appearance-none"
+                                >
+                                    {AI_DIMENSIONS.map((d) => (
+                                        <option key={d.id} value={d.id}>{d.name} {d.ratio}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Nº imágenes</label>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={50}
+                                    value={catalogFormCount}
+                                    onChange={(e) => setCatalogFormCount(Math.min(50, Math.max(1, Number(e.target.value))))}
+                                    className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-sm font-bold text-white outline-none focus:border-violet-500/40 transition-all"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Modelo</label>
+                        <select
+                            value={catalogFormModel}
+                            onChange={(e) => setCatalogFormModel(e.target.value)}
+                            className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-bold text-white outline-none focus:border-violet-500/40 transition-all appearance-none"
+                        >
+                            {AI_MODELS.filter((m) => m.provider === "Pollinations").map((m) => (
+                                <option key={m.id} value={m.id}>{m.name} — {m.type}</option>
+                            ))}
+                            {AI_MODELS.filter((m) => m.provider === "Hugging Face").map((m) => (
+                                <option key={m.id} value={m.id}>{m.name} (HF)</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Prompt</label>
+                        <textarea
+                            value={catalogFormPrompt}
+                            onChange={(e) => setCatalogFormPrompt(e.target.value)}
+                            placeholder="ej: minimalist mandala with fine line art, black and white, coloring book style, white background"
+                            rows={3}
+                            className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white placeholder:text-neutral-700 outline-none focus:border-violet-500/40 transition-all resize-none"
+                        />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 pt-2">
+                        <p className="text-[11px] text-neutral-600 italic">
+                            Tiempo estimado: ~{Math.ceil(catalogFormCount * 1.5)} min · Las imágenes se guardan en Cloudinary automáticamente
+                        </p>
+                        <Button
+                            onClick={createCatalog}
+                            disabled={isCreatingCatalog || !catalogFormPrompt.trim()}
+                            className="h-11 px-8 bg-violet-600 text-white hover:bg-violet-500 transition-all text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-violet-500/20 shrink-0"
+                        >
+                            {isCreatingCatalog ? <Loader2 size={16} className="animate-spin" /> : <><PlayCircle size={16} className="mr-2" />Lanzar</>}
+                        </Button>
+                    </div>
+                </div>
+            </Card>
+
+            {/* Catalog list */}
+            <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-black text-white italic tracking-tight">Mis Catálogos</h3>
+                    <button
+                        onClick={() => void fetchCatalogs()}
+                        disabled={isLoadingCatalogs}
+                        className="p-2 rounded-xl bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10 transition-all disabled:opacity-50"
+                        title="Recargar"
+                    >
+                        <RefreshCw size={14} className={isLoadingCatalogs ? "animate-spin" : ""} />
+                    </button>
+                </div>
+
+                {isLoadingCatalogs && iaCatalogs.length === 0 ? (
+                    <div className="flex items-center justify-center py-20 text-neutral-600">
+                        <Loader2 size={24} className="animate-spin" />
+                    </div>
+                ) : iaCatalogs.length === 0 ? (
+                    <Card variant="outline" className="p-16 border-dashed border-white/10 bg-white/[0.01] flex flex-col items-center gap-4 text-center">
+                        <div className="p-5 rounded-[28px] bg-white/5 text-neutral-700">
+                            <Layers size={40} strokeWidth={1.5} />
+                        </div>
+                        <div>
+                            <p className="text-lg font-black text-white italic">Sin catálogos</p>
+                            <p className="text-sm text-neutral-500 mt-1">Crea tu primer catálogo arriba</p>
+                        </div>
+                    </Card>
+                ) : (
+                    iaCatalogs.map((catalog) => {
+                        const progress = catalog.totalImages > 0 ? (catalog.images.length / catalog.totalImages) * 100 : 0;
+                        const isActive = catalog.status === "running" || catalog.status === "pending";
+
+                        return (
+                            <Card key={catalog._id} variant="outline" className="border-white/5 bg-white/[0.01] overflow-hidden">
+                                {/* Header */}
+                                <div className="p-5 flex items-start justify-between gap-4 border-b border-white/5">
+                                    <div className="space-y-1 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <h4 className="font-black text-white truncate">{catalog.name}</h4>
+                                            {statusBadge(catalog.status)}
+                                            {isActive && <Loader2 size={12} className="text-blue-400 animate-spin shrink-0" />}
+                                        </div>
+                                        <p className="text-xs text-neutral-500 truncate">{catalog.prompt}</p>
+                                        <p className="text-[10px] text-neutral-600 font-mono">
+                                            {catalog.model.name} · {catalog.images.length}/{catalog.totalImages} imágenes · {new Date(catalog.createdAt).toLocaleDateString("es-ES")}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        {catalog.images.length > 0 && (
+                                            <button
+                                                onClick={() => void buildCatalogPdf(catalog)}
+                                                disabled={buildingPdfCatalogId === catalog._id}
+                                                title="Generar PDF"
+                                                className="p-2 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 disabled:opacity-50"
+                                            >
+                                                {buildingPdfCatalogId === catalog._id
+                                                    ? <Loader2 size={14} className="animate-spin" />
+                                                    : <FileText size={14} />
+                                                }
+                                            </button>
+                                        )}
+                                        {isActive && (
+                                            <button
+                                                onClick={() => void cancelCatalog(catalog._id)}
+                                                title="Cancelar generación"
+                                                className="p-2 rounded-xl bg-neutral-500/10 text-neutral-400 hover:bg-red-500/10 hover:text-red-400 transition-all border border-white/10"
+                                            >
+                                                <StopCircle size={14} />
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => void deleteCatalog(catalog._id)}
+                                            disabled={deletingCatalogId === catalog._id}
+                                            title="Eliminar catálogo"
+                                            className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 disabled:opacity-50"
+                                        >
+                                            {deletingCatalogId === catalog._id
+                                                ? <Loader2 size={14} className="animate-spin" />
+                                                : <Trash2 size={14} />
+                                            }
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Progress bar */}
+                                {isActive && (
+                                    <div className="px-5 pt-4 pb-2 space-y-1.5">
+                                        <div className="flex justify-between text-[10px] font-black text-neutral-500 uppercase tracking-widest">
+                                            <span>Progreso</span>
+                                            <span>{catalog.images.length} / {catalog.totalImages}</span>
+                                        </div>
+                                        <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full transition-all duration-700"
+                                                style={{ width: `${progress}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Image grid */}
+                                {catalog.images.length > 0 && (
+                                    <div className="p-5 pt-3">
+                                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
+                                            {catalog.images.map((img) => (
+                                                <div key={img.publicId} className="group relative aspect-square rounded-xl overflow-hidden bg-white/5 border border-white/5">
+                                                    <img
+                                                        src={img.url}
+                                                        alt="Imagen catálogo"
+                                                        className="w-full h-full object-cover"
+                                                        loading="lazy"
+                                                    />
+                                                    <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center gap-1.5">
+                                                        <button
+                                                            onClick={() => addCatalogImageToVault(img)}
+                                                            title="Añadir al vault"
+                                                            className="p-1.5 rounded-lg bg-emerald-500/80 text-white hover:bg-emerald-500 transition-all"
+                                                        >
+                                                            <ImagePlus size={12} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setPreviewImage(img.url)}
+                                                            title="Ver imagen"
+                                                            className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30 transition-all"
+                                                        >
+                                                            <Maximize size={12} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => downloadPng(img.url, `catalog-${catalog._id}-${img.publicId.split("/").pop()}`)}
+                                                            title="Descargar"
+                                                            className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30 transition-all"
+                                                        >
+                                                            <Download size={12} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => void deleteCatalogImage(catalog._id, img.publicId)}
+                                                            title="Eliminar"
+                                                            className="p-1.5 rounded-lg bg-red-500/80 text-white hover:bg-red-500 transition-all"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {isActive && Array.from({ length: catalog.totalImages - catalog.images.length }).map((_, i) => (
+                                                <div key={`placeholder-${i}`} className="aspect-square rounded-xl bg-white/[0.02] border border-dashed border-white/10 flex items-center justify-center">
+                                                    <Loader2 size={14} className="text-neutral-700 animate-spin" style={{ animationDelay: `${i * 0.1}s` }} />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </Card>
+                        );
+                    })
+                )}
+            </div>
+        </div>
+    );
+
     return (
         <div className="space-y-12 pb-24">
             {/* Sub-Navigation Tabs - Floating Style */}
@@ -1404,7 +2121,8 @@ export function KdpFactoryApp() {
                     {[
                         { id: "insights", name: "Insights", icon: <BarChart3 size={15} /> },
                         { id: "catalog", name: "Catálogo", icon: <Box size={15} /> },
-                        { id: "creation", name: "Creación", icon: <Plus size={15} /> }
+                        { id: "creation", name: "Creación", icon: <Plus size={15} /> },
+                        { id: "catalogos", name: "Catálogos IA", icon: <Layers size={15} /> }
                     ].map((tab) => (
                         <button
                             key={tab.id}
@@ -1426,6 +2144,7 @@ export function KdpFactoryApp() {
                 {activeTab === "insights" && renderInsights()}
                 {activeTab === "catalog" && renderCatalog()}
                 {activeTab === "creation" && renderCreation()}
+                {activeTab === "catalogos" && renderIACatalogs()}
             </div>
 
             {/* Image Preview Modal */}
@@ -1447,111 +2166,38 @@ export function KdpFactoryApp() {
                                 className="block max-w-full max-h-[85vh] w-auto h-auto object-contain bg-black rounded-2xl"
                             />
                         </div>
-	                        <div className="absolute top-4 right-4 flex gap-2">
-	                            <button
-	                                onClick={() => {
-	                                    const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
-	                                    const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
-	                                    downloadPng(previewImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
-	                                }}
-	                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
-	                                aria-label="Descargar imagen"
-	                                title="Descargar"
-	                            >
-	                                <Download size={18} />
-	                            </button>
-	                            <button
-	                                onClick={() => upscaleImageMax(previewImage, { setAsPreview: true })}
-	                                disabled={isUpscaling}
-	                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-	                                aria-label="Mejorar calidad (Upscale)"
-	                                title="Mejorar calidad"
-	                            >
-	                                <Sparkles size={18} />
-	                            </button>
-	                            <button
-	                                onClick={() => setPreviewImage(null)}
-	                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
-	                                aria-label="Cerrar vista previa"
-	                                title="Cerrar"
-	                            >
-	                                <X size={18} />
-	                            </button>
-	                        </div>
+                        <div className="absolute top-4 right-4 flex gap-2">
+                            <button
+                                onClick={() => {
+                                    const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
+                                    const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
+                                    downloadPng(previewImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
+                                }}
+                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
+                                aria-label="Descargar imagen"
+                                title="Descargar"
+                            >
+                                <Download size={18} />
+                            </button>
+                            <button
+                                onClick={() => upscaleImageMax(previewImage, { setAsPreview: true })}
+                                disabled={isUpscaling}
+                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                                aria-label="Mejorar calidad (Upscale)"
+                                title="Mejorar calidad"
+                            >
+                                <Sparkles size={18} />
+                            </button>
+                            <button
+                                onClick={() => setPreviewImage(null)}
+                                className="p-3 rounded-2xl bg-black/50 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
+                                aria-label="Cerrar vista previa"
+                                title="Cerrar"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
 
-                            {/* Advanced options */}
-                            <div className="space-y-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowAdvancedOptions((v) => !v)}
-                                    className="w-full h-11 rounded-2xl bg-white/5 border border-white/10 text-neutral-300 hover:bg-white/10 transition-all text-[10px] font-black uppercase tracking-widest"
-                                >
-                                    {showAdvancedOptions ? "Ocultar opciones avanzadas" : "Opciones avanzadas (imagen de referencia)"}
-                                </button>
-
-                                {showAdvancedOptions && (
-                                    <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
-                                        <div className="text-[10px] text-neutral-500 font-medium italic">
-                                            Pega una imagen (Ctrl/⌘+V) o arrástrala. Se enviará junto al prompt (Gemini/Leonardo).
-                                        </div>
-
-                                        <div
-                                            className="rounded-2xl border border-dashed border-white/15 bg-black/20 p-4 min-h-[120px] flex items-center justify-center text-center focus:outline-none focus:ring-2 focus:ring-amber-500/40"
-                                            tabIndex={0}
-                                            onDragOver={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                            }}
-                                            onDrop={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                const file = e.dataTransfer.files?.[0];
-                                                if (file) void setInitImageFromFile(file);
-                                            }}
-                                            onPaste={(e) => {
-                                                const items = Array.from(e.clipboardData?.items || []);
-                                                const imageItem = items.find((it) => it.kind === "file" && it.type.startsWith("image/"));
-                                                const file = imageItem?.getAsFile() || null;
-                                                if (file) void setInitImageFromFile(file);
-                                            }}
-                                        >
-                                            {initImageDataUrl ? (
-                                                <div className="w-full space-y-3">
-                                                    <img src={initImageDataUrl} alt="Referencia" className="max-h-48 mx-auto rounded-2xl object-contain" />
-                                                    <div className="flex gap-2">
-                                                        <Button
-                                                            onClick={() => setInitImageDataUrl(null)}
-                                                            variant="outline"
-                                                            className="flex-1 h-11 rounded-2xl border-white/10 bg-white/5 backdrop-blur-md text-[10px] font-black uppercase tracking-widest text-white hover:bg-white/10"
-                                                        >
-                                                            Quitar
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-1">
-                                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-300">Imagen de referencia</p>
-                                                    <p className="text-[10px] text-neutral-600 font-medium italic">Arrastra o pega aquí</p>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Fuerza (Leonardo)</label>
-                                            <input
-                                                type="range"
-                                                min={0.1}
-                                                max={0.9}
-                                                step={0.05}
-                                                value={initImageStrength}
-                                                onChange={(e) => setInitImageStrength(Number(e.target.value))}
-                                                className="w-full"
-                                            />
-                                            <div className="text-[10px] text-neutral-500 font-medium italic">{initImageStrength.toFixed(2)}</div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
                     </div>
                 </div>
             )}

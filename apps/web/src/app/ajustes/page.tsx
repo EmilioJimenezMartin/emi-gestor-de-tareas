@@ -15,7 +15,10 @@ import {
     Lock,
     Globe,
     BellRing,
-    Loader2
+    Loader2,
+    Cloud,
+    Eye,
+    EyeOff
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { createApiSocket } from "@/lib/socket";
@@ -27,6 +30,13 @@ export default function AjustesPage() {
 
     const [defaultProvider, setDefaultProvider] = useState("google");
     const [defaultModel, setDefaultModel] = useState("gemini-1.5-flash");
+
+    const [cloudinaryCloudName, setCloudinaryCloudName] = useState("af6b2f473a2cd3539b6d7bef68fb37");
+    const [cloudinaryApiKey, setCloudinaryApiKey] = useState("");
+    const [cloudinaryApiSecret, setCloudinaryApiSecret] = useState("");
+    const [showCloudinaryKey, setShowCloudinaryKey] = useState(false);
+    const [showCloudinarySecret, setShowCloudinarySecret] = useState(false);
+
 
     const apiUrl = useMemo(() => (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, ""), []);
 
@@ -45,6 +55,9 @@ export default function AjustesPage() {
 
                 if (map.has("DEFAULT_LLM_PROVIDER")) setDefaultProvider(map.get("DEFAULT_LLM_PROVIDER"));
                 if (map.has("DEFAULT_LLM_MODEL")) setDefaultModel(map.get("DEFAULT_LLM_MODEL"));
+                if (map.has("CLOUDINARY_CLOUD_NAME")) setCloudinaryCloudName(map.get("CLOUDINARY_CLOUD_NAME"));
+                if (map.has("CLOUDINARY_API_KEY")) setCloudinaryApiKey(map.get("CLOUDINARY_API_KEY"));
+                if (map.has("CLOUDINARY_API_SECRET")) setCloudinaryApiSecret(map.get("CLOUDINARY_API_SECRET"));
             } catch (err) {
                 console.error(err);
                 toast.error("Error de red conectando con la API");
@@ -70,7 +83,10 @@ export default function AjustesPage() {
         try {
             const updates = [
                 { key: "DEFAULT_LLM_PROVIDER", value: defaultProvider },
-                { key: "DEFAULT_LLM_MODEL", value: defaultModel }
+                { key: "DEFAULT_LLM_MODEL", value: defaultModel },
+                { key: "CLOUDINARY_CLOUD_NAME", value: cloudinaryCloudName },
+                { key: "CLOUDINARY_API_KEY", value: cloudinaryApiKey },
+                { key: "CLOUDINARY_API_SECRET", value: cloudinaryApiSecret },
             ];
             const res = await fetch(`${apiUrl}/settings`, {
                 method: "PATCH",
@@ -269,6 +285,85 @@ export default function AjustesPage() {
                             <Button onClick={handleSave} disabled={isSaving} variant="primary" className="w-full sm:w-fit font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
                                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar en MongoDB"}
                             </Button>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* Cloudinary Storage */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Cloudinary Storage</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-cyan-500/10 text-cyan-400 border-cyan-500/20">MEDIA</Badge>
+                    </div>
+
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
+                                    <Cloud size={22} />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Credenciales de Cloudinary</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Almacenamiento persistente de imágenes IA</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Cloud Name</label>
+                                    <input
+                                        type="text"
+                                        value={cloudinaryCloudName}
+                                        onChange={(e) => setCloudinaryCloudName(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-mono text-white outline-none focus:border-cyan-500/40 transition-all"
+                                        placeholder="ej: mi-cloud-name"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">API Key</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showCloudinaryKey ? "text" : "password"}
+                                            value={cloudinaryApiKey}
+                                            onChange={(e) => setCloudinaryApiKey(e.target.value)}
+                                            className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-cyan-500/40 transition-all"
+                                            placeholder="••••••••••••"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowCloudinaryKey((v) => !v)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors"
+                                        >
+                                            {showCloudinaryKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">API Secret</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showCloudinarySecret ? "text" : "password"}
+                                            value={cloudinaryApiSecret}
+                                            onChange={(e) => setCloudinaryApiSecret(e.target.value)}
+                                            className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-cyan-500/40 transition-all"
+                                            placeholder="••••••••••••"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowCloudinarySecret((v) => !v)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors"
+                                        >
+                                            {showCloudinarySecret ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <p className="text-[11px] text-neutral-600 leading-relaxed italic">
+                                Las credenciales se guardan cifradas en MongoDB. Se usan exclusivamente para subir y eliminar imágenes del IA Asset Studio.
+                            </p>
                         </div>
                     </Card>
                 </section>
