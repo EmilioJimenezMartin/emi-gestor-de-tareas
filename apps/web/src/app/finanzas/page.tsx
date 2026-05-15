@@ -36,62 +36,32 @@ function formatEur(v: number) {
   return `${v.toFixed(2)}€`;
 }
 
-function calculateForecast(movements: FinanceMovement[], years: number) {
-  const now = new Date();
-  const forecastEnd = new Date();
-  forecastEnd.setFullYear(now.getFullYear() + years);
-
+// Cumulative balance at a given date: counts actual occurrences from each movement's start to atDate.
+// puntual = 1 occurrence; mensual = elapsed months; anual = elapsed years.
+function cumulativeBalance(movements: FinanceMovement[], atDate: Date) {
   let income = 0;
   let expense = 0;
-
   for (const m of movements) {
     const start = new Date(m.date || m.createdAt);
-    const mEnd = m.endDate ? new Date(m.endDate) : null;
-
-    // The limit of our calculation is either the forecast end or the movement's end, whichever is sooner.
-    const limit = mEnd && mEnd < forecastEnd ? mEnd : forecastEnd;
-
-    if (start > limit) continue;
-
+    if (start > atDate) continue;
+    const rawEnd = m.endDate ? new Date(m.endDate) : null;
+    const mEnd = rawEnd && rawEnd.getFullYear() > 2000 ? rawEnd : null;
+    const limit = mEnd && mEnd < atDate ? mEnd : atDate;
     let occurrences = 0;
-
     if (m.cadence === "puntual") {
       occurrences = 1;
     } else if (m.cadence === "mensual") {
       const months = (limit.getFullYear() - start.getFullYear()) * 12 + (limit.getMonth() - start.getMonth()) + 1;
       occurrences = Math.max(0, months);
     } else if (m.cadence === "anual") {
-      const yearsElapsed = limit.getFullYear() - start.getFullYear() + 1;
-      occurrences = Math.max(0, yearsElapsed);
+      const years = limit.getFullYear() - start.getFullYear() + 1;
+      occurrences = Math.max(0, years);
     }
-
     const total = occurrences * m.amount;
     if (m.kind === "ingreso") income += total;
     else expense += total;
   }
   return { income, expense, net: income - expense };
-}
-
-function annualizedAmount(cadence: FinanceEntryCadence, amount: number) {
-  if (cadence === "mensual") return amount * 12;
-  return amount;
-}
-
-// Monthly net flow for active movements at a given reference date
-function monthlyNetAt(movements: FinanceMovement[], refDate: Date): number {
-  let net = 0;
-  for (const m of movements) {
-    const start = new Date(m.date || m.createdAt);
-    const end = m.endDate ? new Date(m.endDate) : null;
-    if (start > refDate) continue;
-    if (end && end < refDate) continue;
-    let val = 0;
-    if (m.cadence === "mensual") val = m.amount;
-    else if (m.cadence === "anual") val = m.amount / 12;
-    if (m.kind === "ingreso") net += val;
-    else net -= val;
-  }
-  return net;
 }
 
 export default function FinanzasPage() {
@@ -157,45 +127,39 @@ export default function FinanzasPage() {
     };
   }, [apiUrl, dispatch]);
 
-  const totals = useMemo(() => {
-    const now = new Date();
-    let income = 0;
-    let expense = 0;
-    for (const e of movements) {
-      const start = new Date(e.date || e.createdAt);
-      const end = e.endDate ? new Date(e.endDate) : null;
-      if (start > now) continue;
-      if (end && end < now) continue;
-      const amt = annualizedAmount(e.cadence, e.amount);
-      if (e.kind === "ingreso") income += amt;
-      else expense += amt;
-    }
-    return { income, expense, net: income - expense };
+  // Balance acumulado a día de hoy: ingresos y gastos reales desde su fecha de inicio
+  const totals = useMemo(() => cumulativeBalance(movements, new Date()), [movements]);
+
+  // Proyecciones: balance acumulado en esa fecha futura
+  const forecast1Y = useMemo(() => {
+    const d = new Date(); d.setFullYear(d.getFullYear() + 1);
+    return cumulativeBalance(movements, d);
   }, [movements]);
 
-  const forecast1Y = useMemo(() => calculateForecast(movements, 1), [movements]);
-  const forecast10Y = useMemo(() => calculateForecast(movements, 10), [movements]);
+  const forecast10Y = useMemo(() => {
+    const d = new Date(); d.setFullYear(d.getFullYear() + 10);
+    return cumulativeBalance(movements, d);
+  }, [movements]);
 
+  // Tendencia: proyecta el balance acumulado mes a mes para detectar inversión de signo
   const trend = useMemo(() => {
     const now = new Date();
-    const currentNet = monthlyNetAt(movements, now);
+    const currentBalance = cumulativeBalance(movements, now).net;
 
-    if (currentNet >= 0) {
-      // Positive now — look ahead up to 60 months for a sign change
-      for (let i = 1; i <= 60; i++) {
+    if (currentBalance >= 0) {
+      for (let i = 1; i <= 120; i++) {
         const future = new Date(now);
         future.setMonth(now.getMonth() + i);
-        if (monthlyNetAt(movements, future) < 0) {
+        if (cumulativeBalance(movements, future).net < 0) {
           return { status: "deplet", label: `Balance negativo en ${future.toLocaleDateString("es-ES", { month: "long", year: "numeric" })}` };
         }
       }
       return { status: "pos", label: "Tendencia positiva estable" };
     } else {
-      // Negative now — look ahead for recovery
-      for (let i = 1; i <= 60; i++) {
+      for (let i = 1; i <= 120; i++) {
         const future = new Date(now);
         future.setMonth(now.getMonth() + i);
-        if (monthlyNetAt(movements, future) >= 0) {
+        if (cumulativeBalance(movements, future).net >= 0) {
           return { status: "recup", label: `Balance positivo en ${future.toLocaleDateString("es-ES", { month: "long", year: "numeric" })}` };
         }
       }

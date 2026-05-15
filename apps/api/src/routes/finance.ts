@@ -11,7 +11,7 @@ const createBodySchema = z.object({
   description: z.string().optional().default(""),
   amount: z.number().finite().positive(),
   date: z.coerce.date().optional(),
-  endDate: z.coerce.date().optional(),
+  endDate: z.union([z.coerce.date(), z.null()]).optional(),
   taskIds: z.array(z.string()).optional(),
 });
 
@@ -65,9 +65,17 @@ export async function registerFinanceRoutes(
     if (!id) return reply.status(400).send({ error: "Missing id" });
 
     const body = updateBodySchema.parse(req.body);
+    const { endDate, ...rest } = body;
+    const mongoUpdate: Record<string, any> = { $set: rest };
+    if (endDate === null) {
+      mongoUpdate.$unset = { endDate: "" };
+    } else if (endDate !== undefined) {
+      mongoUpdate.$set.endDate = endDate;
+    }
+
     const updated = await FinanceMovementModel.findByIdAndUpdate(
       id,
-      { $set: body },
+      mongoUpdate,
       { new: true }
     );
 

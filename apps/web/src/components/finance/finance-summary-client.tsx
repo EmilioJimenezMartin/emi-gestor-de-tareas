@@ -11,55 +11,31 @@ function formatEur(v: number) {
   return `${v.toFixed(2)}€`;
 }
 
-function calculateForecast(movements: FinanceMovement[], years: number) {
-  const now = new Date();
-  const forecastEnd = new Date();
-  forecastEnd.setFullYear(now.getFullYear() + years);
-
+// Cumulative balance at a given date: counts actual occurrences from each movement's start to atDate.
+function cumulativeBalance(movements: FinanceMovement[], atDate: Date) {
   let income = 0;
   let expense = 0;
-
   for (const m of movements) {
     const start = new Date(m.date || m.createdAt);
-    const mEnd = m.endDate ? new Date(m.endDate) : null;
-    const limit = mEnd && mEnd < forecastEnd ? mEnd : forecastEnd;
-
-    if (start > limit) continue;
-
+    if (start > atDate) continue;
+    const rawEnd = m.endDate ? new Date(m.endDate) : null;
+    const mEnd = rawEnd && rawEnd.getFullYear() > 2000 ? rawEnd : null;
+    const limit = mEnd && mEnd < atDate ? mEnd : atDate;
     let occurrences = 0;
-
     if (m.cadence === "puntual") {
       occurrences = 1;
     } else if (m.cadence === "mensual") {
       const months = (limit.getFullYear() - start.getFullYear()) * 12 + (limit.getMonth() - start.getMonth()) + 1;
       occurrences = Math.max(0, months);
     } else if (m.cadence === "anual") {
-      const yearsElapsed = limit.getFullYear() - start.getFullYear() + 1;
-      occurrences = Math.max(0, yearsElapsed);
+      const years = limit.getFullYear() - start.getFullYear() + 1;
+      occurrences = Math.max(0, years);
     }
-
     const total = occurrences * m.amount;
     if (m.kind === "ingreso") income += total;
     else expense += total;
   }
   return { income, expense, net: income - expense };
-}
-
-// Monthly net flow considering only active movements at a reference date
-function monthlyNetAt(movements: FinanceMovement[], refDate: Date): number {
-  let net = 0;
-  for (const m of movements) {
-    const start = new Date(m.date || m.createdAt);
-    const end = m.endDate ? new Date(m.endDate) : null;
-    if (start > refDate) continue;
-    if (end && end < refDate) continue;
-    let val = 0;
-    if (m.cadence === "mensual") val = m.amount;
-    else if (m.cadence === "anual") val = m.amount / 12;
-    if (m.kind === "ingreso") net += val;
-    else net -= val;
-  }
-  return net;
 }
 
 export function FinanceSummaryClient() {
@@ -99,30 +75,26 @@ export function FinanceSummaryClient() {
     };
   }, [apiUrl]);
 
-  const forecast1Y = useMemo(() => calculateForecast(movements, 1), [movements]);
-
-  const totals = useMemo(() => {
-    return forecast1Y; // Use the 1-year lifetime forecast as the main total for the dashboard
-  }, [forecast1Y]);
+  const totals = useMemo(() => cumulativeBalance(movements, new Date()), [movements]);
 
   const trend = useMemo(() => {
     const now = new Date();
-    const currentNet = monthlyNetAt(movements, now);
+    const currentBalance = cumulativeBalance(movements, now).net;
 
-    if (currentNet >= 0) {
-      for (let i = 1; i <= 60; i++) {
+    if (currentBalance >= 0) {
+      for (let i = 1; i <= 120; i++) {
         const future = new Date(now);
         future.setMonth(now.getMonth() + i);
-        if (monthlyNetAt(movements, future) < 0) {
+        if (cumulativeBalance(movements, future).net < 0) {
           return { status: "deplet", label: `Balance negativo en ${future.toLocaleDateString("es-ES", { month: "long", year: "numeric" })}` };
         }
       }
       return { status: "pos", label: "Tendencia positiva estable" };
     } else {
-      for (let i = 1; i <= 60; i++) {
+      for (let i = 1; i <= 120; i++) {
         const future = new Date(now);
         future.setMonth(now.getMonth() + i);
-        if (monthlyNetAt(movements, future) >= 0) {
+        if (cumulativeBalance(movements, future).net >= 0) {
           return { status: "recup", label: `Balance positivo en ${future.toLocaleDateString("es-ES", { month: "long", year: "numeric" })}` };
         }
       }
@@ -159,7 +131,7 @@ export function FinanceSummaryClient() {
           <TrendingUp size={16} />
           <h3 className="text-sm font-bold">Finanzas</h3>
           <Badge variant="neutral" className="bg-white/5 border-white/10 text-[8px] font-black uppercase tracking-widest">
-            Proyección 1 Año
+            Balance acumulado
           </Badge>
         </div>
         <Badge
