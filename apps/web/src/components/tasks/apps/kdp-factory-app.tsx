@@ -2215,39 +2215,38 @@ export function KdpFactoryApp() {
                     <div className="absolute -top-16 -right-16 w-48 h-48 bg-amber-500/8 blur-[60px] pointer-events-none" />
                     <div className="p-5 space-y-4">
                         {/* Header */}
-                        <div className="flex items-start justify-between gap-4">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/20 flex items-center justify-center shadow-lg shadow-amber-500/10">
-                                    <BookOpen size={18} className="text-amber-400" />
-                                </div>
-                                <div>
-                                    <h4 className="text-sm font-black text-white tracking-tight italic">Book Factory</h4>
-                                    <p className="text-[10px] text-neutral-500 font-medium">
-                                        {bookPages.length === 0 ? "Sin páginas todavía" : `${bookPages.length} página${bookPages.length !== 1 ? "s" : ""} en el libro`}
-                                    </p>
-                                </div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/20 flex items-center justify-center shadow-lg shadow-amber-500/10 shrink-0">
+                                <BookOpen size={19} className="text-amber-400" />
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                                {bookPages.length > 0 && (
-                                    <button onClick={() => setBookPages([])} className="h-7 px-2.5 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-all text-[9px] font-black uppercase">
-                                        Vaciar
-                                    </button>
-                                )}
-                                <Button
-                                    onClick={() => {
-                                        if (vaultImages.length > 0 && bookPages.length === 0) {
-                                            const pages: BookPage[] = vaultImages.map(v => ({ id: genPageId(), type: "image" as const, image: { url: v.url, scale: 1, label: v.model }, text: defaultTextStyle() }));
-                                            setBookPages(pages);
-                                            setSelectedPageId(pages[0]?.id ?? null);
-                                        }
-                                        setBookEditorOpen(true);
-                                    }}
-                                    className="h-8 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-[0_4px_20px_rgba(245,158,11,0.3)]"
-                                >
-                                    <Pencil size={12} />
-                                    {bookPages.length === 0 ? "Crear libro" : "Editar libro"}
-                                </Button>
+                            <div className="flex-1 min-w-0">
+                                <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Book Factory</h4>
+                                <p className="text-[10px] text-neutral-500 font-medium">
+                                    {bookPages.length === 0 ? "Sin páginas todavía" : `${bookPages.length} página${bookPages.length !== 1 ? "s" : ""} en el libro`}
+                                </p>
                             </div>
+                        </div>
+                        {/* Action buttons — own row, full width on mobile */}
+                        <div className="flex items-center gap-2">
+                            {bookPages.length > 0 && (
+                                <button onClick={() => setBookPages([])} className="h-9 px-4 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-all text-[10px] font-black uppercase active:scale-95">
+                                    Vaciar
+                                </button>
+                            )}
+                            <Button
+                                onClick={() => {
+                                    if (vaultImages.length > 0 && bookPages.length === 0) {
+                                        const pages: BookPage[] = vaultImages.map(v => ({ id: genPageId(), type: "image" as const, image: { url: v.url, scale: 1, label: v.model }, text: defaultTextStyle() }));
+                                        setBookPages(pages);
+                                        setSelectedPageId(pages[0]?.id ?? null);
+                                    }
+                                    setBookEditorOpen(true);
+                                }}
+                                className="flex-1 h-9 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_20px_rgba(245,158,11,0.3)] active:scale-95"
+                            >
+                                <Pencil size={13} />
+                                {bookPages.length === 0 ? "Crear libro" : "Editar libro"}
+                            </Button>
                         </div>
 
                         {/* Page thumbnails preview or empty state */}
@@ -3099,139 +3098,115 @@ export function KdpFactoryApp() {
             </div>
 
             {/* Image Preview Modal */}
-            {previewImage && (
+            {previewImage && (() => {
+                const favLabel = previewContext?.vaultCtx
+                    ? (vaultImages[previewContext.index]?.model ?? "")
+                    : previewContext?.cloudinaryCtx
+                    ? (cloudinaryImages[previewContext.index]?.publicId?.split("/").pop() ?? "")
+                    : previewContext?.catalogCtx
+                    ? (previewContext.catalogCtx.images[previewContext.index]?.publicId?.split("/").pop() ?? "")
+                    : "";
+                const favSource: FavoriteImage["source"] = previewContext?.vaultCtx ? "vault"
+                    : previewContext?.cloudinaryCtx ? "cloudinary"
+                    : previewContext?.catalogCtx ? "catalog"
+                    : "generated";
+                const vaultIdx = previewContext?.vaultCtx ? previewContext.index : -1;
+                const vaultImg = vaultIdx >= 0 ? vaultImages[vaultIdx] : null;
+                const cldImg = previewContext?.cloudinaryCtx ? cloudinaryImages[previewContext.index] : null;
+                const catalogImg = previewContext?.catalogCtx?.images[previewContext.index] ?? null;
+                return (
                 <div
-                    className="fixed inset-x-0 top-0 z-[100] bg-black flex flex-col overflow-hidden"
-                    style={{ height: "100dvh", touchAction: "none" }}
+                    className="fixed inset-0 z-[100] bg-black/96"
+                    onClick={closePreview}
                     role="dialog"
                     aria-modal="true"
                 >
-                    {/* ── Top bar: close + counter — always visible ── */}
+                    {/* Image — centered, bottom padding leaves room for toolbar */}
                     <div
-                        className="shrink-0 flex items-center gap-3 px-4 bg-gradient-to-b from-black/80 to-transparent"
-                        style={{ paddingTop: "max(env(safe-area-inset-top), 12px)", paddingBottom: "8px" }}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {previewContext ? (
-                            <span className="text-[11px] font-black text-white/40 uppercase tracking-widest">
-                                {previewContext.index + 1} / {previewContext.urls.length}
-                            </span>
-                        ) : <span />}
-                        <button
-                            onClick={closePreview}
-                            className="ml-auto w-10 h-10 rounded-2xl bg-white/10 text-white flex items-center justify-center active:scale-90 transition-transform"
-                            title="Cerrar"
-                        >
-                            <X size={20} />
-                        </button>
-                    </div>
-
-                    {/* ── Image — fills remaining space ── */}
-                    <div
-                        className="flex-1 min-h-0 relative flex items-center justify-center px-4 py-2"
+                        className="absolute inset-x-0 top-0 flex items-center justify-center px-4 pt-4"
+                        style={{ bottom: "calc(env(safe-area-inset-bottom) + 160px)" }}
                         onClick={closePreview}
                     >
-                        <img
-                            key={previewImage}
-                            src={previewImage}
-                            alt="Vista previa"
-                            className="block max-w-full max-h-full w-auto h-auto object-contain rounded-2xl"
+                        <div
+                            className="relative flex items-center justify-center w-full max-w-6xl h-full gap-3"
                             onClick={(e) => e.stopPropagation()}
-                        />
-                        {/* Nav arrows overlaid on sides */}
-                        {previewContext && previewContext.index > 0 && (
-                            <button onClick={() => navigatePreview(-1)}
-                                className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-2xl bg-black/60 text-white border border-white/10 active:scale-95 transition-all flex items-center justify-center"
-                                title="Anterior">
-                                <ChevronLeft size={20} />
-                            </button>
-                        )}
-                        {previewContext && previewContext.index < previewContext.urls.length - 1 && (
-                            <button onClick={() => navigatePreview(1)}
-                                className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-2xl bg-black/60 text-white border border-white/10 active:scale-95 transition-all flex items-center justify-center"
-                                title="Siguiente">
-                                <ChevronRight size={20} />
-                            </button>
-                        )}
+                        >
+                            {previewContext && previewContext.index > 0 ? (
+                                <button onClick={() => navigatePreview(-1)}
+                                    className="shrink-0 w-11 h-11 rounded-2xl bg-black/60 backdrop-blur-md text-white border border-white/10 hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center">
+                                    <ChevronLeft size={20} />
+                                </button>
+                            ) : previewContext ? <div className="shrink-0 w-11" /> : null}
+                            <img
+                                key={previewImage}
+                                src={previewImage}
+                                alt="Vista previa"
+                                className="flex-1 min-w-0 max-w-full max-h-full w-auto h-auto object-contain rounded-2xl"
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                            {previewContext && previewContext.index < previewContext.urls.length - 1 ? (
+                                <button onClick={() => navigatePreview(1)}
+                                    className="shrink-0 w-11 h-11 rounded-2xl bg-black/60 backdrop-blur-md text-white border border-white/10 hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center">
+                                    <ChevronRight size={20} />
+                                </button>
+                            ) : previewContext ? <div className="shrink-0 w-11" /> : null}
+                        </div>
                     </div>
 
-                    {/* ── Action bar — solid, always visible above bottom edge ── */}
+                    {/* Toolbar — gradient overlay anchored at bottom, safe-area aware */}
                     <div
-                        className="shrink-0 bg-[#111] border-t border-white/10 flex items-center justify-center gap-2 flex-wrap px-4 py-3"
-                        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
+                        className="absolute left-0 right-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent flex flex-col items-center gap-2.5 pt-10"
+                        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 56px)" }}
                         onClick={(e) => e.stopPropagation()}
                     >
-                        {/* Favorite */}
-                        <button
-                            onClick={() => {
-                                const label = previewContext?.vaultCtx
-                                    ? (vaultImages[previewContext.index]?.model ?? "")
-                                    : previewContext?.cloudinaryCtx
-                                    ? (cloudinaryImages[previewContext.index]?.publicId?.split("/").pop() ?? "")
-                                    : previewContext?.catalogCtx
-                                    ? (previewContext.catalogCtx.images[previewContext.index]?.publicId?.split("/").pop() ?? "")
-                                    : "";
-                                const source: FavoriteImage["source"] = previewContext?.vaultCtx
-                                    ? "vault"
-                                    : previewContext?.cloudinaryCtx
-                                    ? "cloudinary"
-                                    : previewContext?.catalogCtx
-                                    ? "catalog"
-                                    : "generated";
-                                toggleFavorite(previewImage, { label, source });
-                            }}
-                            className={`p-3 rounded-2xl transition-all active:scale-90 border ${favorites.has(previewImage) ? "text-rose-400 border-rose-500/40 bg-rose-500/15" : "text-white border-white/15 bg-white/5"}`}
-                            title={favorites.has(previewImage) ? "Quitar de favoritos" : "Marcar como favorita"}
-                        >
-                            <Heart size={20} className={favorites.has(previewImage) ? "fill-rose-400" : ""} />
-                        </button>
-
-                        {/* Download */}
-                        <button
-                            onClick={() => {
-                                const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
-                                const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
-                                downloadPng(previewImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
-                            }}
-                            className="p-3 rounded-2xl bg-white/5 text-white active:scale-90 transition-all border border-white/15"
-                            title="Descargar"
-                        >
-                            <Download size={20} />
-                        </button>
-
-                        {/* Vault-specific */}
-                        {(() => {
-                            if (!previewContext?.vaultCtx) return null;
-                            const vaultIdx = previewContext.index;
-                            const vaultImg = vaultImages[vaultIdx];
-                            if (!vaultImg) return null;
-                            return (
+                        {previewContext && (
+                            <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">
+                                {previewContext.index + 1} / {previewContext.urls.length}
+                            </span>
+                        )}
+                        <div className="flex items-center gap-2 flex-wrap justify-center px-4">
+                            {/* Favorite */}
+                            <button
+                                onClick={() => toggleFavorite(previewImage, { label: favLabel, source: favSource })}
+                                className={`p-2.5 rounded-2xl backdrop-blur-md transition-all active:scale-90 border ${favorites.has(previewImage) ? "text-rose-400 border-rose-500/40 bg-rose-500/15" : "text-white border-white/15 bg-black/50"}`}
+                                title={favorites.has(previewImage) ? "Quitar de favoritos" : "Marcar como favorita"}
+                            >
+                                <Heart size={18} className={favorites.has(previewImage) ? "fill-rose-400" : ""} />
+                            </button>
+                            {/* Download */}
+                            <button
+                                onClick={() => {
+                                    const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
+                                    const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
+                                    downloadPng(previewImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
+                                }}
+                                className="p-2.5 rounded-2xl bg-black/50 backdrop-blur-md text-white active:scale-90 transition-all border border-white/15"
+                                title="Descargar"
+                            >
+                                <Download size={18} />
+                            </button>
+                            {/* Vault-specific */}
+                            {vaultImg && (
                                 <>
                                     <button
                                         onClick={() => void uploadToCloudinary(vaultIdx)}
                                         disabled={uploadingToCloud === vaultIdx}
-                                        className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-400 active:scale-90 transition-all border border-cyan-500/25 disabled:opacity-40"
+                                        className="p-2.5 rounded-2xl bg-cyan-500/15 backdrop-blur-md text-cyan-400 active:scale-90 transition-all border border-cyan-500/25 disabled:opacity-40"
                                         title="Guardar en Cloudinary"
                                     >
-                                        {uploadingToCloud === vaultIdx ? <Loader2 size={20} className="animate-spin" /> : <UploadCloud size={20} />}
+                                        {uploadingToCloud === vaultIdx ? <Loader2 size={18} className="animate-spin" /> : <UploadCloud size={18} />}
                                     </button>
                                     <button
                                         onClick={() => setConfirmDeleteVaultIndex(vaultIdx)}
-                                        className="p-3 rounded-2xl bg-rose-500/10 text-rose-400 active:scale-90 transition-all border border-rose-500/25"
+                                        className="p-2.5 rounded-2xl bg-rose-500/15 backdrop-blur-md text-rose-400 active:scale-90 transition-all border border-rose-500/25"
                                         title="Eliminar del vault"
                                     >
-                                        <Trash2 size={20} />
+                                        <Trash2 size={18} />
                                     </button>
                                 </>
-                            );
-                        })()}
-
-                        {/* Cloudinary-specific */}
-                        {(() => {
-                            if (!previewContext?.cloudinaryCtx) return null;
-                            const cldImg = cloudinaryImages[previewContext.index];
-                            if (!cldImg) return null;
-                            return (
+                            )}
+                            {/* Cloudinary-specific */}
+                            {cldImg && (
                                 <>
                                     <button
                                         onClick={() => {
@@ -3239,49 +3214,53 @@ export function KdpFactoryApp() {
                                             setVaultImages(prev => [{ url: cldImg.url, model: "Cloudinary", dim: ratio }, ...prev]);
                                             toast.success("Añadida al vault");
                                         }}
-                                        className="p-3 rounded-2xl bg-amber-500/10 text-amber-400 active:scale-90 transition-all border border-amber-500/25"
+                                        className="p-2.5 rounded-2xl bg-amber-500/15 backdrop-blur-md text-amber-400 active:scale-90 transition-all border border-amber-500/25"
                                         title="Añadir al Vault"
                                     >
-                                        <Plus size={20} />
+                                        <Plus size={18} />
                                     </button>
                                     <button
                                         onClick={() => setConfirmDeleteCloudinaryId(cldImg.publicId)}
                                         disabled={deletingFromCloud === cldImg.publicId}
-                                        className="p-3 rounded-2xl bg-rose-500/10 text-rose-400 active:scale-90 transition-all border border-rose-500/25 disabled:opacity-40"
+                                        className="p-2.5 rounded-2xl bg-rose-500/15 backdrop-blur-md text-rose-400 active:scale-90 transition-all border border-rose-500/25 disabled:opacity-40"
                                         title="Eliminar de Cloudinary"
                                     >
-                                        {deletingFromCloud === cldImg.publicId ? <Loader2 size={20} className="animate-spin" /> : <Trash2 size={20} />}
+                                        {deletingFromCloud === cldImg.publicId ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
                                     </button>
                                 </>
-                            );
-                        })()}
-
-                        {/* Catalog-specific */}
-                        {(() => {
-                            const catalogImg = previewContext?.catalogCtx?.images[previewContext.index];
-                            if (!catalogImg) return null;
-                            return (
+                            )}
+                            {/* Catalog-specific */}
+                            {catalogImg && (
                                 <>
                                     <button
                                         onClick={() => addCatalogImageToVault(catalogImg)}
-                                        className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 active:scale-90 transition-all border border-emerald-500/25"
+                                        className="p-2.5 rounded-2xl bg-emerald-500/15 backdrop-blur-md text-emerald-400 active:scale-90 transition-all border border-emerald-500/25"
                                         title="Añadir al Vault"
                                     >
-                                        <ImagePlus size={20} />
+                                        <ImagePlus size={18} />
                                     </button>
                                     <button
                                         onClick={() => setConfirmDeleteImageInfo({ catalogId: previewContext!.catalogCtx!.id, publicId: catalogImg.publicId })}
-                                        className="p-3 rounded-2xl bg-rose-500/10 text-rose-400 active:scale-90 transition-all border border-rose-500/25"
+                                        className="p-2.5 rounded-2xl bg-rose-500/15 backdrop-blur-md text-rose-400 active:scale-90 transition-all border border-rose-500/25"
                                         title="Eliminar imagen del catálogo"
                                     >
-                                        <Trash2 size={20} />
+                                        <Trash2 size={18} />
                                     </button>
                                 </>
-                            );
-                        })()}
+                            )}
+                            {/* Close */}
+                            <button
+                                onClick={closePreview}
+                                className="p-2.5 rounded-2xl bg-black/50 backdrop-blur-md text-neutral-400 hover:text-white hover:bg-rose-500/80 active:scale-90 transition-all border border-white/15"
+                                title="Cerrar"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
                     </div>
                 </div>
-            )}
+                );
+            })()}
 
             {/* Book Editor Modal */}
             {bookEditorOpen && (
@@ -3409,7 +3388,7 @@ export function KdpFactoryApp() {
                                 </div>
 
                                 {/* ── Page editor ── */}
-                                <div className="flex-1 overflow-y-auto min-h-0" style={{ WebkitOverflowScrolling: "touch" }}>
+                                <div className="flex-1 overflow-y-auto min-h-0" style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y", overscrollBehavior: "contain" } as React.CSSProperties}>
                                     {selectedPage ? (() => {
                                         const pageIdx = bookPages.findIndex(p => p.id === selectedPage.id);
                                         const allImgSources = [
@@ -3420,7 +3399,7 @@ export function KdpFactoryApp() {
                                         const needsImage = selectedPage.type === "image" || selectedPage.type === "both";
                                         const needsText = selectedPage.type === "text" || selectedPage.type === "both";
                                         return (
-                                            <div className="p-3 sm:p-4 space-y-4 max-w-xl mx-auto pb-24">
+                                            <div className="p-3 sm:p-4 space-y-4 max-w-xl mx-auto" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 120px)" }}>
 
                                                 {/* ── Page nav + actions ── */}
                                                 <div className="flex items-center gap-1.5 pt-1">
