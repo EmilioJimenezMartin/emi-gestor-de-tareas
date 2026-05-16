@@ -54,6 +54,12 @@ import {
     Send,
     ArrowRight,
     Newspaper,
+    Heart,
+    AlignLeft,
+    AlignCenter,
+    AlignRight,
+    GripVertical,
+    Pencil,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -166,6 +172,27 @@ interface SavedPromptFE {
 }
 
 const DEFAULT_PROMPT_CATEGORIES = ["General", "Anime", "Mandala", "Acuarela", "Ilustración", "Arte Digital", "Coloring Book", "Fotografía", "Retrato", "Paisaje", "Abstracto", "Cómic"];
+
+interface PageTextStyle {
+    content: string;
+    bold: boolean;
+    italic: boolean;
+    fontSize: number;
+    color: string;
+    align: "left" | "center" | "right";
+    fontFamily: "helvetica" | "times" | "courier";
+}
+
+interface BookPage {
+    id: string;
+    type: "image" | "text" | "both";
+    image?: { url: string; scale: number; label?: string };
+    text: PageTextStyle;
+}
+
+const defaultTextStyle = (): PageTextStyle => ({
+    content: "", bold: false, italic: false, fontSize: 14, color: "#333333", align: "center", fontFamily: "helvetica",
+});
 
 function KdpSelect({ value, onChange, options, accent = "white" }: {
     value: string;
@@ -320,8 +347,14 @@ export function KdpFactoryApp() {
     const [deletingCatalogId, setDeletingCatalogId] = useState<string | null>(null);
     const [confirmDeleteCatalogId, setConfirmDeleteCatalogId] = useState<string | null>(null);
     const [confirmDeleteImageInfo, setConfirmDeleteImageInfo] = useState<{ catalogId: string; publicId: string } | null>(null);
-    const [bookPdfMode, setBookPdfMode] = useState<"colored" | "full">("colored");
-    const [bookEditorImages, setBookEditorImages] = useState<{ url: string; label?: string; scale: number }[]>([]);
+    const [bookPdfMode, setBookPdfMode] = useState<"colored" | "standard">("standard");
+    const [bookPages, setBookPages] = useState<BookPage[]>([]);
+    const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
+    const [bookEditorTab, setBookEditorTab] = useState<"editor" | "preview" | "images">("editor");
+    const [showAddPageMenu, setShowAddPageMenu] = useState(false);
+    const [selectedImageUrls, setSelectedImageUrls] = useState<Set<string>>(new Set());
+    const [showInlineImagePicker, setShowInlineImagePicker] = useState(false);
+    const [bookPreviewMode, setBookPreviewMode] = useState<"single" | "spread">("single");
     const [previewContext, setPreviewContext] = useState<{ urls: string[]; index: number; catalogCtx?: { id: string; images: CatalogImageFE[] }; vaultCtx?: true; cloudinaryCtx?: true } | null>(null);
     const [confirmDeleteVaultIndex, setConfirmDeleteVaultIndex] = useState<number | null>(null);
     const [confirmDeleteCloudinaryId, setConfirmDeleteCloudinaryId] = useState<string | null>(null);
@@ -353,8 +386,23 @@ export function KdpFactoryApp() {
     const [isLoadingTrends, setIsLoadingTrends] = useState(false);
     const [selectedTrend, setSelectedTrend] = useState<any | null>(null);
 
+    // --- Favorites (persisted to MongoDB via /settings) ---
+    const [favorites, setFavorites] = useState<Set<string>>(new Set());
+
+    // --- PDF drag-to-reorder ---
+    const [bookDragIdx, setBookDragIdx] = useState<number | null>(null);
+    const [bookDragOverIdx, setBookDragOverIdx] = useState<number | null>(null);
+
+    // --- Vault carousel drag/swipe ---
+    const vaultScrollRef = useRef<HTMLDivElement>(null);
+    const vaultDrag = useRef<{ x: number; scrollLeft: number } | null>(null);
+    const vaultDragMoved = useRef(false);
+
     // Keep queue ref in sync so socket handlers always see the latest queue
     useEffect(() => { catalogQueueRef.current = catalogQueue; }, [catalogQueue]);
+
+    const selectedPage = bookPages.find(p => p.id === selectedPageId) ?? null;
+    const usedImageUrls = useMemo(() => new Set(bookPages.filter(p => p.image).map(p => p.image!.url)), [bookPages]);
 
     const fetchCatalogs = async () => {
         setIsLoadingCatalogs(true);
@@ -592,15 +640,104 @@ export function KdpFactoryApp() {
         setPreviewContext({ urls: cloudinaryImages.map(c => c.url), index, cloudinaryCtx: true });
     };
 
-    const moveBookImage = (idx: number, dir: -1 | 1) => {
-        setBookEditorImages(prev => {
-            const target = idx + dir;
-            if (target < 0 || target >= prev.length) return prev;
-            const next = [...prev];
-            [next[idx], next[target]] = [next[target], next[idx]];
+    const genPageId = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+
+    const addImagePage = (url: string, label?: string) => {
+        const id = genPageId();
+        setBookPages(prev => [...prev, { id, type: "image", image: { url, scale: 1, label }, text: defaultTextStyle() }]);
+        setSelectedPageId(id);
+        setBookEditorTab("editor");
+    };
+
+    const addBlankPage = (type: BookPage["type"]) => {
+        const id = genPageId();
+        setBookPages(prev => [...prev, { id, type, text: defaultTextStyle() }]);
+        setSelectedPageId(id);
+        setShowAddPageMenu(false);
+    };
+
+    const deletePage = (id: string) => {
+        setBookPages(prev => {
+            const next = prev.filter(p => p.id !== id);
+            if (selectedPageId === id) setSelectedPageId(next[0]?.id ?? null);
             return next;
         });
     };
+
+    const updatePageType = (id: string, type: BookPage["type"]) => {
+        setBookPages(prev => prev.map(p => p.id === id ? { ...p, type } : p));
+    };
+
+    const updatePageText = (id: string, patch: Partial<PageTextStyle>) => {
+        setBookPages(prev => prev.map(p => p.id === id ? { ...p, text: { ...p.text, ...patch } } : p));
+    };
+
+    const updatePageImageScale = (id: string, scale: number) => {
+        setBookPages(prev => prev.map(p => p.id === id && p.image ? { ...p, image: { ...p.image, scale } } : p));
+    };
+
+    const clearPageImage = (id: string) => {
+        setBookPages(prev => prev.map(p => p.id === id ? { ...p, image: undefined } : p));
+    };
+
+    const setPageImage = (id: string, url: string, label?: string) => {
+        setBookPages(prev => prev.map(p => p.id === id ? { ...p, image: { url, scale: 1, label } } : p));
+    };
+
+    const toggleImageSelect = (url: string) => {
+        setSelectedImageUrls(prev => {
+            const next = new Set(prev);
+            if (next.has(url)) next.delete(url); else next.add(url);
+            return next;
+        });
+    };
+
+    const addSelectedAsPages = () => {
+        const urls = [...selectedImageUrls];
+        if (urls.length === 0) return;
+        const newPages: BookPage[] = urls.map(url => {
+            const vaultMatch = vaultImages.find(v => v.url === url);
+            const catImg = iaCatalogs.flatMap(c => c.images).find(i => i.url === url);
+            const cloudMatch = cloudinaryImages.find(c => c.url === url);
+            const label = vaultMatch?.model ?? (catImg ? "Catálogo" : cloudMatch?.publicId.split("/").pop() ?? "");
+            return { id: genPageId(), type: "image" as const, image: { url, scale: 1, label }, text: defaultTextStyle() };
+        });
+        setBookPages(prev => [...prev, ...newPages]);
+        setSelectedImageUrls(new Set());
+        setSelectedPageId(newPages[0].id);
+        setBookEditorTab("editor");
+        toast.success(`${newPages.length} página${newPages.length > 1 ? "s" : ""} añadida${newPages.length > 1 ? "s" : ""}`);
+    };
+
+    const toggleFavorite = (url: string) => {
+        setFavorites(prev => {
+            const next = new Set(prev);
+            if (next.has(url)) next.delete(url); else next.add(url);
+            // Persist stable (non-blob) URLs to MongoDB via /settings
+            const stable = [...next].filter(u => !u.startsWith("blob:"));
+            fetch(`${API_BASE_URL}/settings`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify([{ key: "kdp-favorites", value: stable }]),
+            }).catch(() => {});
+            return next;
+        });
+    };
+
+    const handleBookDragStart = (idx: number) => setBookDragIdx(idx);
+    const handleBookDragOver = (e: React.DragEvent, idx: number) => { e.preventDefault(); setBookDragOverIdx(idx); };
+    const handleBookDrop = (toIdx: number) => {
+        if (bookDragIdx === null || bookDragIdx === toIdx) { setBookDragIdx(null); setBookDragOverIdx(null); return; }
+        setBookPages(prev => {
+            const next = [...prev];
+            const [moved] = next.splice(bookDragIdx, 1);
+            next.splice(toIdx, 0, moved);
+            return next;
+        });
+        setBookDragIdx(null);
+        setBookDragOverIdx(null);
+    };
+    const handleBookDragEnd = () => { setBookDragIdx(null); setBookDragOverIdx(null); };
 
     const openCatalogImagePreview = (images: CatalogImageFE[], index: number, catalogId?: string) => {
         setPreviewImage(images[index].url);
@@ -700,7 +837,6 @@ export function KdpFactoryApp() {
     const previewImageObjectUrlRef = useRef<string | null>(null);
 
     const [bookEditorOpen, setBookEditorOpen] = useState(false);
-    const [bookFooterText, setBookFooterText] = useState("");
     const [bookFileName, setBookFileName] = useState("libro-kdp");
     const [isBuildingPdf, setIsBuildingPdf] = useState(false);
     const [isUpscaling, setIsUpscaling] = useState(false);
@@ -861,15 +997,13 @@ export function KdpFactoryApp() {
     };
 
     const buildBookPdf = async () => {
-        if (bookEditorImages.length === 0) return;
-
+        if (bookPages.length === 0) return;
         setIsBuildingPdf(true);
         try {
             const pdf = await PDFDocument.create();
             const pageWidth = 595.28;
             const pageHeight = 841.89;
             const margin = 48;
-            const font = await pdf.embedFont(StandardFonts.Helvetica);
 
             const embedImage = async (url: string) => {
                 let bytes: Uint8Array;
@@ -897,31 +1031,51 @@ export function KdpFactoryApp() {
                 });
             };
 
-            if (bookPdfMode === "colored") {
-                // Page 1 (blank + text), then blank + image alternating
-                const totalPages = 1 + bookEditorImages.length * 2;
-                const pages = Array.from({ length: totalPages }, () => pdf.addPage([pageWidth, pageHeight]));
-                if (bookFooterText.trim()) {
-                    const text = bookFooterText.trim();
-                    const textWidth = font.widthOfTextAtSize(text, 12);
-                    pages[0].drawText(text, { x: Math.max(margin, pageWidth - margin - textWidth), y: margin, size: 12, font, color: rgb(0.2, 0.2, 0.2) });
+            const getFontKey = (style: PageTextStyle): StandardFonts => {
+                const { bold, italic, fontFamily } = style;
+                if (fontFamily === "times") {
+                    if (bold && italic) return StandardFonts.TimesRomanBoldItalic;
+                    if (bold) return StandardFonts.TimesRomanBold;
+                    if (italic) return StandardFonts.TimesRomanItalic;
+                    return StandardFonts.TimesRoman;
                 }
-                for (let i = 0; i < bookEditorImages.length; i++) {
-                    const embedded = await embedImage(bookEditorImages[i].url);
-                    drawImageCentered(pages[2 + i * 2], embedded, bookEditorImages[i].scale ?? 1);
+                if (fontFamily === "courier") {
+                    if (bold && italic) return StandardFonts.CourierBoldOblique;
+                    if (bold) return StandardFonts.CourierBold;
+                    if (italic) return StandardFonts.CourierOblique;
+                    return StandardFonts.Courier;
                 }
-            } else {
-                // Full: page 1 text only, then one image per page
-                const totalPages = 1 + bookEditorImages.length;
-                const pages = Array.from({ length: totalPages }, () => pdf.addPage([pageWidth, pageHeight]));
-                if (bookFooterText.trim()) {
-                    const text = bookFooterText.trim();
-                    const textWidth = font.widthOfTextAtSize(text, 12);
-                    pages[0].drawText(text, { x: Math.max(margin, pageWidth - margin - textWidth), y: margin, size: 12, font, color: rgb(0.2, 0.2, 0.2) });
+                if (bold && italic) return StandardFonts.HelveticaBoldOblique;
+                if (bold) return StandardFonts.HelveticaBold;
+                if (italic) return StandardFonts.HelveticaOblique;
+                return StandardFonts.Helvetica;
+            };
+
+            const drawTextOnPage = async (pdfPage: any, style: PageTextStyle) => {
+                const text = style.content.trim();
+                if (!text) return;
+                const font = await pdf.embedFont(getFontKey(style));
+                const fontSize = style.fontSize;
+                const hex = style.color.replace("#", "");
+                const textColor = rgb(parseInt(hex.slice(0, 2), 16) / 255, parseInt(hex.slice(2, 4), 16) / 255, parseInt(hex.slice(4, 6), 16) / 255);
+                const w = font.widthOfTextAtSize(text, fontSize);
+                let x = margin;
+                if (style.align === "center") x = (pageWidth - w) / 2;
+                else if (style.align === "right") x = Math.max(margin, pageWidth - margin - w);
+                pdfPage.drawText(text, { x, y: margin, size: fontSize, font, color: textColor });
+            };
+
+            for (const bookPage of bookPages) {
+                if (bookPdfMode === "colored" && bookPage.type === "image") {
+                    pdf.addPage([pageWidth, pageHeight]); // blank facing page
                 }
-                for (let i = 0; i < bookEditorImages.length; i++) {
-                    const embedded = await embedImage(bookEditorImages[i].url);
-                    drawImageCentered(pages[1 + i], embedded, bookEditorImages[i].scale ?? 1);
+                const pdfPage = pdf.addPage([pageWidth, pageHeight]);
+                if (bookPage.image) {
+                    const embedded = await embedImage(bookPage.image.url);
+                    drawImageCentered(pdfPage, embedded, bookPage.image.scale ?? 1);
+                }
+                if ((bookPage.type === "text" || bookPage.type === "both") && bookPage.text.content.trim()) {
+                    await drawTextOnPage(pdfPage, bookPage.text);
                 }
             }
 
@@ -938,6 +1092,23 @@ export function KdpFactoryApp() {
             setIsBuildingPdf(false);
         }
     };
+
+    // Load favorites from MongoDB on mount
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/settings`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const found = (data.settings ?? []).find((s: any) => s.key === "kdp-favorites");
+                if (Array.isArray(found?.value) && found.value.length > 0) {
+                    setFavorites(new Set<string>(found.value));
+                }
+            } catch {}
+        };
+        void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         return () => {
@@ -1852,6 +2023,7 @@ export function KdpFactoryApp() {
                 >
                     {generatedImage ? (
                         <div className="relative w-full h-full animate-in fade-in zoom-in duration-700">
+
                             <img
                                 src={generatedImage}
                                 alt="AI Generated"
@@ -1931,33 +2103,56 @@ export function KdpFactoryApp() {
                                 </div>
                             )}
                         </div>
+                    ) : isGenerating ? (
+                        /* Full-card skeleton while generating */
+                        <div className="absolute inset-0 overflow-hidden flex flex-col">
+                            {/* Shimmer background */}
+                            <div className="absolute inset-0 bg-gradient-to-br from-[#0d0d0d] via-neutral-900/40 to-[#0d0d0d] animate-pulse" />
+                            {/* Center content */}
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 p-8">
+                                <div className="relative">
+                                    <div className="absolute inset-0 scale-[2] blur-3xl bg-amber-500/10 animate-pulse rounded-full" />
+                                    <div className="w-20 h-20 rounded-[28px] border border-amber-500/20 bg-amber-500/[0.04] flex items-center justify-center relative">
+                                        <Zap size={30} className="text-amber-500/50 animate-bounce" />
+                                    </div>
+                                </div>
+                                <div className="space-y-2.5 w-full max-w-[180px] flex flex-col items-center">
+                                    <div className="h-2 w-full rounded-full bg-white/[0.06] animate-pulse" />
+                                    <div className="h-2 w-4/5 rounded-full bg-white/[0.04] animate-pulse" />
+                                    <div className="h-2 w-3/5 rounded-full bg-white/[0.03] animate-pulse" />
+                                </div>
+                                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-500/40 animate-pulse">
+                                    {AI_MODELS.find(m => m.id === selectedModel)?.name}
+                                </p>
+                            </div>
+                            {/* Bottom skeleton (mimics the keep/discard buttons) */}
+                            <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/60 to-transparent space-y-3 pointer-events-none">
+                                <div className="flex justify-between">
+                                    <div className="h-6 w-28 rounded-xl bg-amber-500/[0.05] animate-pulse" />
+                                    <div className="flex gap-2">
+                                        <div className="w-11 h-11 rounded-2xl bg-white/[0.04] animate-pulse" />
+                                        <div className="w-11 h-11 rounded-2xl bg-white/[0.04] animate-pulse" />
+                                        <div className="w-11 h-11 rounded-2xl bg-white/[0.04] animate-pulse" />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="h-12 rounded-2xl bg-white/[0.03] animate-pulse" />
+                                    <div className="h-12 rounded-2xl bg-white/[0.05] animate-pulse" />
+                                </div>
+                            </div>
+                        </div>
                     ) : (
                         <div className="flex flex-col items-center justify-center text-center p-12 space-y-6">
-                            {isGenerating ? (
-                                <div className="space-y-6 animate-pulse">
-                                    <div className="relative w-24 h-24 mx-auto">
-                                        <div className="absolute inset-0 blur-3xl bg-amber-500/20 animate-pulse rounded-full" />
-                                        <div className="w-full h-full rounded-[32px] border-2 border-amber-500/30 flex items-center justify-center bg-amber-500/5">
-                                            <Zap size={40} className="text-amber-500 animate-bounce" />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <p className="text-xs font-black uppercase tracking-widest text-white">Sintetizando Neuronas</p>
-                                        <p className="text-[10px] text-neutral-500 italic font-medium">El modelo está interpretando tu prompt...</p>
-                                    </div>
+                            <div className="space-y-5 opacity-30 group-hover:opacity-60 transition-all duration-500">
+                                <div className="w-24 h-24 rounded-[36px] border-2 border-dashed border-white/10 flex items-center justify-center mx-auto bg-white/5">
+                                    <Camera size={36} strokeWidth={1.5} className="text-neutral-400" />
                                 </div>
-                            ) : (
-                                <div className="space-y-5 opacity-30 group-hover:opacity-60 transition-all duration-500">
-                                    <div className="w-24 h-24 rounded-[36px] border-2 border-dashed border-white/10 flex items-center justify-center mx-auto bg-white/5">
-                                        <Camera size={36} strokeWidth={1.5} className="text-neutral-400" />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <p className="text-xs font-black uppercase tracking-widest text-white">Visual Engine Ready</p>
-                                        <p className="text-[10px] text-neutral-600 font-medium italic">Arrastra o pega (Ctrl/⌘+V) una imagen</p>
-                                        <p className="text-[10px] text-amber-500/50 font-black uppercase tracking-widest">→ va directo al vault</p>
-                                    </div>
+                                <div className="space-y-1.5">
+                                    <p className="text-xs font-black uppercase tracking-widest text-white">Visual Engine Ready</p>
+                                    <p className="text-[10px] text-neutral-600 font-medium italic">Arrastra o pega (Ctrl/⌘+V) una imagen</p>
+                                    <p className="text-[10px] text-amber-500/50 font-black uppercase tracking-widest">→ va directo al vault</p>
                                 </div>
-                            )}
+                            </div>
                         </div>
                     )}
                 </Card>
@@ -1976,10 +2171,17 @@ export function KdpFactoryApp() {
                         </div>
                     </div>
                     <Button
-                        onClick={() => { setBookEditorImages(vaultImages.map(v => ({ url: v.url, label: v.model, scale: 1 }))); setBookEditorOpen(true); }}
-                        disabled={vaultImages.length === 0}
-                        className="h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-100 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest shadow-[0_10px_30px_rgba(245,158,11,0.12)] disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-amber-500/20 disabled:hover:text-amber-100"
+                        onClick={() => {
+                            if (vaultImages.length > 0 && bookPages.length === 0) {
+                                const pages: BookPage[] = vaultImages.map(v => ({ id: genPageId(), type: "image" as const, image: { url: v.url, scale: 1, label: v.model }, text: defaultTextStyle() }));
+                                setBookPages(pages);
+                                setSelectedPageId(pages[0]?.id ?? null);
+                            }
+                            setBookEditorOpen(true);
+                        }}
+                        className="h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-100 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest shadow-[0_10px_30px_rgba(245,158,11,0.12)] flex items-center gap-2"
                     >
+                        <FileText size={13} />
                         Crear Libro PDF
                     </Button>
                 </div>
@@ -1992,18 +2194,51 @@ export function KdpFactoryApp() {
                         </p>
                     </div>
                 ) : (
-                <div className="flex gap-5 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
+                <div
+                    ref={vaultScrollRef}
+                    className="flex gap-5 overflow-x-auto pb-4 pt-2 no-scrollbar px-2 cursor-grab active:cursor-grabbing select-none"
+                    onMouseDown={(e) => {
+                        if (!vaultScrollRef.current) return;
+                        vaultDragMoved.current = false;
+                        vaultDrag.current = { x: e.clientX, scrollLeft: vaultScrollRef.current.scrollLeft };
+                    }}
+                    onMouseMove={(e) => {
+                        if (!vaultDrag.current || !vaultScrollRef.current) return;
+                        const dx = e.clientX - vaultDrag.current.x;
+                        if (Math.abs(dx) > 4) vaultDragMoved.current = true;
+                        vaultScrollRef.current.scrollLeft = vaultDrag.current.scrollLeft - dx;
+                    }}
+                    onMouseUp={() => { vaultDrag.current = null; }}
+                    onMouseLeave={() => { vaultDrag.current = null; }}
+                    onTouchStart={(e) => {
+                        if (!vaultScrollRef.current) return;
+                        vaultDragMoved.current = false;
+                        vaultDrag.current = { x: e.touches[0].clientX, scrollLeft: vaultScrollRef.current.scrollLeft };
+                    }}
+                    onTouchMove={(e) => {
+                        if (!vaultDrag.current || !vaultScrollRef.current) return;
+                        const dx = e.touches[0].clientX - vaultDrag.current.x;
+                        if (Math.abs(dx) > 4) vaultDragMoved.current = true;
+                        vaultScrollRef.current.scrollLeft = vaultDrag.current.scrollLeft - dx;
+                    }}
+                    onTouchEnd={() => { vaultDrag.current = null; }}
+                >
                     {vaultImages.map((img, i) => (
                         <div
                             key={i}
                             className="shrink-0 w-56 h-64 md:w-64 md:h-80 rounded-[32px] overflow-hidden border border-white/10 hover:border-amber-500/50 transition-all shadow-2xl relative bg-neutral-900 cursor-zoom-in"
-                            onClick={() => openVaultImagePreview(i)}
+                            onClick={() => { if (vaultDragMoved.current) return; openVaultImagePreview(i); }}
                         >
                             <img
                                 src={img.url}
                                 alt={`Vault ${i}`}
                                 className="w-full h-full object-cover"
                             />
+                            {favorites.has(img.url) && (
+                                <div className="absolute top-2 left-2 p-1.5 rounded-xl bg-black/60 text-rose-400 pointer-events-none">
+                                    <Heart size={11} className="fill-rose-400" />
+                                </div>
+                            )}
                         </div>
                     ))}
                     </div>
@@ -2073,24 +2308,49 @@ export function KdpFactoryApp() {
                         {iaCatalogs.map((catalog) => {
                             const progress = catalog.totalImages > 0 ? (catalog.images.length / catalog.totalImages) * 100 : 0;
                             const isActive = catalog.status === "running" || catalog.status === "pending";
+                            const providerColor = catalog.aiModel?.provider === "Google" ? { bar: "bg-blue-500/50", badge: "bg-blue-500/10 border-blue-500/20 text-blue-300", dot: "bg-blue-400" }
+                                : catalog.aiModel?.provider === "Leonardo" ? { bar: "bg-amber-500/50", badge: "bg-amber-500/10 border-amber-500/20 text-amber-300", dot: "bg-amber-400" }
+                                : catalog.aiModel?.provider === "Pollinations" ? { bar: "bg-emerald-500/50", badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300", dot: "bg-emerald-400" }
+                                : { bar: "bg-violet-500/50", badge: "bg-violet-500/10 border-violet-500/20 text-violet-300", dot: "bg-violet-400" };
                             return (
-                                <Card key={catalog._id} variant="outline" className="border-white/5 bg-white/[0.01] overflow-hidden">
-                                    <div className="p-4 flex items-start justify-between gap-4 border-b border-white/5">
-                                        <div className="space-y-1 min-w-0">
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <h4 className="font-black text-white truncate text-sm">{catalog.name}</h4>
-                                                {statusBadge(catalog.status)}
-                                                {isActive && <Loader2 size={11} className="text-blue-400 animate-spin shrink-0" />}
+                                <Card key={catalog._id} variant="outline" className="border-white/5 bg-white/[0.01] overflow-hidden transition-all duration-300 hover:border-white/10">
+                                    {/* Provider accent bar */}
+                                    <div className={`h-px w-full ${providerColor.bar}`} />
+                                    <div className="p-4 space-y-3">
+                                        {/* Header */}
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="min-w-0 space-y-1">
+                                                <h4 className="font-black text-white text-sm leading-tight truncate">{catalog.name}</h4>
+                                                <p className="text-[10px] text-neutral-500 line-clamp-1 leading-relaxed">{catalog.prompt}</p>
                                             </div>
-                                            <p className="text-[10px] text-neutral-500 truncate">{catalog.prompt}</p>
-                                            <p className="text-[10px] text-neutral-600 font-mono">{catalog.aiModel?.name} · {catalog.width}×{catalog.height} · {catalog.images.length}/{catalog.totalImages} imgs{(catalog.skippedImages ?? 0) > 0 ? ` · ${catalog.skippedImages} omitidas` : ""} · {new Date(catalog.createdAt).toLocaleDateString("es-ES")}</p>
-                                            {catalog.lastError && (
-                                                <p className="text-[9px] text-red-400/80 font-mono break-all leading-relaxed mt-0.5" title={catalog.lastError}>
-                                                    ⚠ {catalog.lastError.length > 120 ? catalog.lastError.slice(0, 120) + "…" : catalog.lastError}
-                                                </p>
-                                            )}
+                                            <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                                {statusBadge(catalog.status)}
+                                                <span className="text-[9px] text-neutral-600 font-mono">{new Date(catalog.createdAt).toLocaleDateString("es-ES")}</span>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-2 shrink-0">
+                                        {/* Model badge + meta */}
+                                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                                            <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border ${providerColor.badge}`}>
+                                                <div className={`w-2 h-2 rounded-full ${providerColor.dot} shrink-0`} />
+                                                <span className="text-[10px] font-black leading-none truncate max-w-[200px]">{catalog.aiModel?.name}</span>
+                                                <span className="text-[9px] opacity-60 shrink-0">{catalog.aiModel?.provider}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 text-[9px] font-mono text-neutral-600">
+                                                <span>{catalog.width}×{catalog.height}</span>
+                                                <span className="text-neutral-700">·</span>
+                                                <span className="font-black text-neutral-400">{catalog.images.length}/{catalog.totalImages}</span>
+                                                {isActive && <Loader2 size={9} className="text-blue-400 animate-spin" />}
+                                                {(catalog.skippedImages ?? 0) > 0 && <span className="text-amber-500/70 not-mono">· {catalog.skippedImages} omit.</span>}
+                                            </div>
+                                        </div>
+                                        {/* Error */}
+                                        {catalog.lastError && (
+                                            <p className="text-[9px] text-red-400/70 font-mono break-all leading-relaxed bg-red-500/5 border border-red-500/10 rounded-lg px-2 py-1.5">
+                                                ⚠ {catalog.lastError.length > 100 ? catalog.lastError.slice(0, 100) + "…" : catalog.lastError}
+                                            </p>
+                                        )}
+                                        {/* Action buttons */}
+                                        <div className="flex items-center justify-end gap-2">
                                             <button
                                                 onClick={() => {
                                                     if (catalog.promptParts?.theme) {
@@ -2100,33 +2360,34 @@ export function KdpFactoryApp() {
                                                         setPromptParticulars(catalog.promptParts.particulars ?? "");
                                                     } else {
                                                         setPromptTheme(catalog.prompt);
-                                                        setPromptSpecs("");
-                                                        setPromptDetails("");
-                                                        setPromptParticulars("");
+                                                        setPromptSpecs(""); setPromptDetails(""); setPromptParticulars("");
                                                     }
-                                                    // Restore model
                                                     const matchModel = AI_MODELS.find(m => m.id === catalog.aiModel?.id);
                                                     if (matchModel) setSelectedModel(matchModel.id);
-                                                    // Restore dimension
                                                     const matchDim = AI_DIMENSIONS.find(d => d.width === catalog.width && d.height === catalog.height);
                                                     if (matchDim) setSelectedDim(matchDim.id);
                                                     toast.success("Prompt, modelo y resolución cargados");
                                                 }}
                                                 title="Cargar prompt, modelo y resolución"
-                                                className="p-2 rounded-xl bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-white transition-all border border-white/10"
+                                                className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-white transition-all border border-white/10 text-[9px] font-black uppercase tracking-widest"
                                             >
-                                                <Copy size={13} />
+                                                <Copy size={11} /> Reusar
                                             </button>
                                             {catalog.images.length > 0 && (
                                                 <button
-                                                    onClick={() => {
-                                                        setBookEditorImages(catalog.images.map((img, i) => ({ url: img.url, label: `${catalog.name} #${i + 1}`, scale: 1 })));
-                                                        setBookEditorOpen(true);
-                                                    }}
+                                                    onClick={() => { const pages: BookPage[] = catalog.images.map((img, i) => ({ id: genPageId(), type: "image" as const, image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` }, text: defaultTextStyle() })); setBookPages(pages); setSelectedPageId(pages[0]?.id ?? null); setBookEditorOpen(true); }}
                                                     title="Editar PDF"
-                                                    className="p-2 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20"
+                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-[9px] font-black uppercase tracking-widest"
                                                 >
-                                                    <FileText size={13} />
+                                                    <FileText size={11} /> PDF
+                                                </button>
+                                            )}
+                                            {isActive && (
+                                                <button
+                                                    onClick={() => void cancelCatalog(catalog._id)}
+                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all text-[9px] font-black uppercase tracking-widest"
+                                                >
+                                                    <StopCircle size={11} /> Detener
                                                 </button>
                                             )}
                                             <button onClick={() => setConfirmDeleteCatalogId(catalog._id)} disabled={deletingCatalogId === catalog._id} title="Eliminar" className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 disabled:opacity-50">
@@ -2134,42 +2395,34 @@ export function KdpFactoryApp() {
                                             </button>
                                         </div>
                                     </div>
+                                    {/* Progress bar */}
                                     {isActive && (
-                                        <div className="px-4 pt-3 pb-3 space-y-2.5 border-b border-white/5">
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div className="flex-1 space-y-1.5">
-                                                    <div className="flex justify-between text-[10px] font-black text-neutral-600 uppercase tracking-widest">
-                                                        <span className="flex items-center gap-1.5">
-                                                            <Loader2 size={9} className="animate-spin text-blue-400" />
-                                                            {catalog.status === "pending" ? "En cola..." : "Generando"}
-                                                        </span>
-                                                        <span>{catalog.images.length}/{catalog.totalImages}</span>
-                                                    </div>
-                                                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                                                        <div className="h-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
-                                                    </div>
-                                                </div>
-                                                <button
-                                                    onClick={() => void cancelCatalog(catalog._id)}
-                                                    className="shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all text-[9px] font-black uppercase tracking-widest"
-                                                    title="Detener generación"
-                                                >
-                                                    <StopCircle size={12} />
-                                                    Detener
-                                                </button>
+                                        <div className="px-4 pb-3 space-y-1.5 border-t border-white/5 pt-3">
+                                            <div className="flex justify-between text-[9px] uppercase tracking-widest text-neutral-600">
+                                                <span className="flex items-center gap-1.5"><Loader2 size={8} className="animate-spin text-blue-400" />{catalog.status === "pending" ? "En cola..." : "Generando"}</span>
+                                                <span className="font-black text-neutral-400">{Math.round(progress)}%</span>
+                                            </div>
+                                            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                                                <div className="h-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
                                             </div>
                                         </div>
                                     )}
+                                    {/* Image grid */}
                                     {catalog.images.length > 0 && (
-                                        <div className="p-4 pt-2">
+                                        <div className="px-4 pb-4 border-t border-white/5 pt-3">
                                             <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
                                                 {catalog.images.map((img, imgIdx) => (
                                                     <div
                                                         key={img.publicId}
-                                                        className="aspect-square rounded-lg overflow-hidden bg-white/5 border border-white/5 cursor-zoom-in hover:border-violet-500/40 transition-all"
+                                                        className="aspect-square rounded-lg overflow-hidden bg-white/5 border border-white/5 cursor-zoom-in hover:border-violet-500/40 transition-all relative"
                                                         onClick={() => openCatalogImagePreview(catalog.images, imgIdx, catalog._id)}
                                                     >
                                                         <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                                                        {favorites.has(img.url) && (
+                                                            <div className="absolute top-0.5 left-0.5 p-0.5 rounded-md bg-black/60 text-rose-400 pointer-events-none">
+                                                                <Heart size={8} className="fill-rose-400" />
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 ))}
                                                 {isActive && Array.from({ length: catalog.totalImages - catalog.images.length }).map((_, i) => (
@@ -2646,6 +2899,15 @@ export function KdpFactoryApp() {
                                 {previewContext.index + 1} / {previewContext.urls.length}
                             </span>
                         )}
+                        {/* Favorite */}
+                        <button
+                            onClick={() => toggleFavorite(previewImage)}
+                            className={`p-2.5 rounded-2xl bg-black/60 backdrop-blur-md transition-all border ${favorites.has(previewImage) ? "text-rose-400 border-rose-500/30 bg-rose-500/10" : "text-white border-white/10 hover:bg-white/10"}`}
+                            title={favorites.has(previewImage) ? "Quitar de favoritos" : "Marcar como favorita"}
+                        >
+                            <Heart size={16} className={favorites.has(previewImage) ? "fill-rose-400" : ""} />
+                        </button>
+
                         {/* Download */}
                         <button
                             onClick={() => {
@@ -2806,252 +3068,488 @@ export function KdpFactoryApp() {
             {/* Book Editor Modal */}
             {bookEditorOpen && (
                 <div
-                    className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 md:p-6"
+                    className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
                     onClick={() => setBookEditorOpen(false)}
                     role="dialog"
                     aria-modal="true"
                 >
-                    <div
-                        className="relative w-full max-w-6xl max-h-[95vh] rounded-3xl border border-white/10 bg-[#0a0a0a]/95 overflow-hidden flex flex-col"
-                        onClick={(e) => e.stopPropagation()}
-                    >
+                    <div className="relative w-full max-w-4xl h-[100dvh] sm:h-auto sm:max-h-[90vh] rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+
                         {/* Header */}
-                        <div className="p-4 md:p-6 border-b border-white/10 flex flex-wrap items-center justify-between gap-3">
-                            <div className="space-y-0.5">
+                        <div className="shrink-0 px-4 pt-4 pb-3 border-b border-white/8 flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                            <div className="flex-1 min-w-0">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Editor de Libro PDF</p>
-                                <p className="text-xs text-neutral-500 font-medium">{bookEditorImages.length} imágenes · {bookPdfMode === "colored" ? `${1 + bookEditorImages.length * 2} páginas (doble hoja)` : `${1 + bookEditorImages.length} páginas (una por imagen)`}</p>
+                                <p className="text-[11px] text-neutral-600">{bookPages.length} pág.</p>
                             </div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                                {/* Mode toggle */}
-                                <div className="flex rounded-xl border border-white/10 overflow-hidden">
-                                    <button
-                                        onClick={() => setBookPdfMode("colored")}
-                                        className={`px-3 h-9 text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${bookPdfMode === "colored" ? "bg-amber-500 text-black" : "bg-white/5 text-neutral-500 hover:text-white"}`}
-                                    >
-                                        <BookMarked size={11} /> Colored
-                                    </button>
-                                    <button
-                                        onClick={() => setBookPdfMode("full")}
-                                        className={`px-3 h-9 text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${bookPdfMode === "full" ? "bg-amber-500 text-black" : "bg-white/5 text-neutral-500 hover:text-white"}`}
-                                    >
-                                        <ImageIcon size={11} /> Full
-                                    </button>
-                                </div>
-                                <Button
-                                    onClick={buildBookPdf}
-                                    disabled={isBuildingPdf || bookEditorImages.length === 0}
-                                    className="h-9 rounded-2xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest"
-                                >
-                                    {isBuildingPdf ? <><Loader2 size={13} className="animate-spin mr-2" />Generando...</> : "Descargar PDF"}
-                                </Button>
-                                <button
-                                    onClick={() => setBookEditorOpen(false)}
-                                    className="p-2.5 rounded-2xl bg-white/5 text-white hover:bg-rose-500 transition-all border border-white/10"
-                                >
-                                    <X size={16} />
-                                </button>
+                            <input value={bookFileName} onChange={e => setBookFileName(e.target.value)}
+                                className="hidden sm:block w-28 h-8 rounded-xl bg-white/5 border border-white/10 px-2.5 text-[11px] text-white outline-none focus:border-amber-500/40 shrink-0"
+                                placeholder="libro-kdp" />
+                            <div className="flex rounded-xl border border-white/10 overflow-hidden shrink-0">
+                                <button onClick={() => setBookPdfMode("standard")} className={`px-2.5 h-8 text-[9px] font-black uppercase transition-all ${bookPdfMode === "standard" ? "bg-amber-500 text-black" : "bg-white/[0.04] text-neutral-500 hover:text-white"}`}>Std</button>
+                                <button onClick={() => setBookPdfMode("colored")} className={`px-2.5 h-8 text-[9px] font-black uppercase transition-all ${bookPdfMode === "colored" ? "bg-amber-500 text-black" : "bg-white/[0.04] text-neutral-500 hover:text-white"}`}>Color</button>
                             </div>
+                            <Button onClick={buildBookPdf} disabled={isBuildingPdf || bookPages.length === 0}
+                                className="h-8 rounded-xl bg-amber-500 text-black hover:bg-amber-400 text-[10px] font-black uppercase shrink-0 px-3 gap-1.5">
+                                {isBuildingPdf ? <Loader2 size={13} className="animate-spin" /> : <><Download size={13} />PDF</>}
+                            </Button>
+                            <button onClick={() => { setBookEditorOpen(false); setShowAddPageMenu(false); }} className="p-2 rounded-xl bg-white/5 text-neutral-400 hover:bg-rose-500 hover:text-white transition-all border border-white/10 shrink-0"><X size={15} /></button>
                         </div>
 
-                        <div className="flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden" style={{ maxHeight: "calc(95vh - 80px)" }}>
-                            {/* Left panel: settings + vault images to add */}
-                            <div className="lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-white/10 p-4 space-y-4 overflow-y-auto">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Nombre del archivo</label>
-                                    <input
-                                        value={bookFileName}
-                                        onChange={(e) => setBookFileName(e.target.value)}
-                                        className="w-full h-9 rounded-xl bg-white/5 border border-white/10 px-3 text-sm text-white outline-none focus:border-amber-500/40"
-                                        placeholder="libro-kdp"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Texto página 1</label>
-                                    <textarea
-                                        value={bookFooterText}
-                                        onChange={(e) => setBookFooterText(e.target.value)}
-                                        className="w-full min-h-[80px] rounded-xl bg-white/5 border border-white/10 p-3 text-sm text-white outline-none focus:border-amber-500/40 resize-none"
-                                        placeholder="Ej: © 2026 Tu Marca"
-                                    />
-                                </div>
+                        {/* Tabs */}
+                        <div className="shrink-0 flex border-b border-white/8 bg-black/20">
+                            {([["editor", "Editor", Pencil], ["images", "Añadir", ImagePlus], ["preview", "Vista previa", FileText]] as [string, string, React.ElementType][]).map(([tab, label, Icon]) => (
+                                <button key={tab} onClick={() => setBookEditorTab(tab as "editor"|"images"|"preview")}
+                                    className={`flex-1 flex items-center justify-center gap-1.5 h-10 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all ${bookEditorTab === tab ? "border-amber-500 text-amber-400 bg-amber-500/5" : "border-transparent text-neutral-600 hover:text-neutral-400"}`}>
+                                    <Icon size={11} /><span className="hidden xs:inline">{label}</span><span className="xs:hidden">{label.split(" ")[0]}</span>
+                                </button>
+                            ))}
+                        </div>
 
-                                {/* Vault images to add */}
-                                {vaultImages.length > 0 && (
-                                    <div className="space-y-2">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-2"><Box size={10} />Añadir del Vault</p>
-                                        <div className="grid grid-cols-3 gap-1.5">
-                                            {vaultImages.map((vi, idx) => {
-                                                const alreadyAdded = bookEditorImages.some(b => b.url === vi.url);
-                                                return (
-                                                    <button
-                                                        key={idx}
-                                                        onClick={() => !alreadyAdded && setBookEditorImages(prev => [...prev, { url: vi.url, label: vi.model, scale: 1 }])}
-                                                        disabled={alreadyAdded}
-                                                        className={`aspect-square rounded-lg overflow-hidden border transition-all relative ${alreadyAdded ? "border-emerald-500/40 opacity-50" : "border-white/10 hover:border-amber-500/50"}`}
-                                                        title={alreadyAdded ? "Ya añadida" : "Añadir al editor"}
-                                                    >
-                                                        <img src={vi.url} alt="" className="w-full h-full object-cover" />
-                                                        {alreadyAdded && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><Check size={12} className="text-emerald-400" /></div>}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Catalog images to add */}
-                                {iaCatalogs.filter(c => c.images.length > 0).length > 0 && (
-                                    <div className="space-y-2">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-2"><Layers size={10} />Añadir de Catálogos</p>
-                                        {iaCatalogs.filter(c => c.images.length > 0).map(cat => (
-                                            <div key={cat._id} className="space-y-1.5">
-                                                <p className="text-[9px] text-neutral-600 truncate pl-0.5">{cat.name}</p>
-                                                <div className="grid grid-cols-3 gap-1.5">
-                                                    {cat.images.map((ci) => {
-                                                        const alreadyAdded = bookEditorImages.some(b => b.url === ci.url);
-                                                        return (
-                                                            <button
-                                                                key={ci.publicId}
-                                                                onClick={() => !alreadyAdded && setBookEditorImages(prev => [...prev, { url: ci.url, label: `${cat.name}`, scale: 1 }])}
-                                                                disabled={alreadyAdded}
-                                                                className={`aspect-square rounded-lg overflow-hidden border transition-all relative ${alreadyAdded ? "border-emerald-500/40 opacity-50" : "border-white/10 hover:border-amber-500/50"}`}
-                                                                title={alreadyAdded ? "Ya añadida" : "Añadir al editor"}
-                                                            >
-                                                                <img src={ci.url} alt="" className="w-full h-full object-cover" />
-                                                                {alreadyAdded && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><Check size={12} className="text-emerald-400" /></div>}
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Cloudinary images to add */}
-                                {cloudinaryImages.length > 0 && (
-                                    <div className="space-y-2">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-2"><Cloud size={10} />Añadir de Cloudinary</p>
-                                        <div className="grid grid-cols-3 gap-1.5">
-                                            {cloudinaryImages.map((ci) => {
-                                                const alreadyAdded = bookEditorImages.some(b => b.url === ci.url);
-                                                return (
-                                                    <button
-                                                        key={ci.publicId}
-                                                        onClick={() => !alreadyAdded && setBookEditorImages(prev => [...prev, { url: ci.url, label: ci.publicId.split("/").pop() ?? "Cloudinary", scale: 1 }])}
-                                                        disabled={alreadyAdded}
-                                                        className={`aspect-square rounded-lg overflow-hidden border transition-all relative ${alreadyAdded ? "border-emerald-500/40 opacity-50" : "border-white/10 hover:border-cyan-500/50"}`}
-                                                        title={alreadyAdded ? "Ya añadida" : "Añadir al editor"}
-                                                    >
-                                                        <img src={ci.url} alt="" className="w-full h-full object-cover" />
-                                                        {alreadyAdded && <div className="absolute inset-0 flex items-center justify-center bg-black/40"><Check size={12} className="text-emerald-400" /></div>}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Editor image list with remove + scale */}
-                                {bookEditorImages.length > 0 && (
-                                    <div className="space-y-2">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-2"><Layers size={10} />Imágenes en PDF</p>
-                                        <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                                            {bookEditorImages.map((bi, idx) => (
-                                                <div key={idx} className="rounded-lg bg-white/[0.02] border border-white/5 p-1.5 space-y-1.5">
-                                                    <div className="flex items-center gap-2">
-                                                        <img src={bi.url} alt="" className="w-8 h-8 rounded-md object-cover shrink-0" />
-                                                        <span className="text-[9px] text-neutral-500 flex-1 truncate">{bi.label || `#${idx + 1}`}</span>
-                                                        <div className="flex flex-col gap-0.5">
-                                                            <button
-                                                                onClick={() => moveBookImage(idx, -1)}
-                                                                disabled={idx === 0}
-                                                                className="p-0.5 rounded text-neutral-600 hover:text-amber-400 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
-                                                            >
-                                                                <ChevronUp size={10} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => moveBookImage(idx, 1)}
-                                                                disabled={idx === bookEditorImages.length - 1}
-                                                                className="p-0.5 rounded text-neutral-600 hover:text-amber-400 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
-                                                            >
-                                                                <ChevronDown size={10} />
-                                                            </button>
-                                                        </div>
-                                                        <button
-                                                            onClick={() => setBookEditorImages(prev => prev.filter((_, i) => i !== idx))}
-                                                            className="p-1 rounded-md text-neutral-600 hover:text-rose-400 transition-all"
-                                                        >
-                                                            <X size={10} />
-                                                        </button>
+                        {/* ── TAB: EDITOR ── */}
+                        {bookEditorTab === "editor" && (
+                            <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+                                {/* Timeline */}
+                                <div className="shrink-0 border-b border-white/8 px-3 py-2 bg-black/30">
+                                    <div className="flex items-center gap-2">
+                                        {/* Scrollable page list */}
+                                        <div className="flex-1 flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar min-w-0">
+                                            {bookPages.map((page, idx) => (
+                                                <div key={page.id} draggable
+                                                    onDragStart={() => handleBookDragStart(idx)}
+                                                    onDragOver={e => handleBookDragOver(e, idx)}
+                                                    onDrop={() => handleBookDrop(idx)}
+                                                    onDragEnd={handleBookDragEnd}
+                                                    onClick={() => { setSelectedPageId(page.id); setShowAddPageMenu(false); setShowInlineImagePicker(false); }}
+                                                    className={`shrink-0 w-[46px] h-[65px] rounded-lg border-2 cursor-pointer relative overflow-hidden transition-all select-none group ${selectedPageId === page.id ? "border-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.4)]" : bookDragOverIdx === idx && bookDragIdx !== idx ? "border-amber-500/40 scale-105" : bookDragIdx === idx ? "border-white/10 opacity-25" : "border-white/10 hover:border-white/25"}`}>
+                                                    <div className="w-full h-full bg-[#1a1a1a]">
+                                                        {page.image
+                                                            ? <img src={page.image.url} alt="" className="w-full h-full object-cover" />
+                                                            : <div className="w-full h-full flex items-center justify-center"><Type size={12} className="text-neutral-700" /></div>
+                                                        }
                                                     </div>
-                                                    <div className="flex items-center gap-2 px-0.5">
-                                                        <span className="text-[8px] text-neutral-600 shrink-0 w-6">Zoom</span>
-                                                        <input
-                                                            type="range"
-                                                            min={1}
-                                                            max={2}
-                                                            step={0.05}
-                                                            value={bi.scale ?? 1}
-                                                            onChange={(e) => setBookEditorImages(prev => prev.map((img, i) => i === idx ? { ...img, scale: Number(e.target.value) } : img))}
-                                                            className="flex-1 accent-amber-500 h-1"
-                                                        />
-                                                        <span className="text-[8px] font-mono text-amber-400 w-8 text-right">{Math.round((bi.scale ?? 1) * 100)}%</span>
+                                                    <div className="absolute bottom-0 inset-x-0 h-4 bg-gradient-to-t from-black/80 to-transparent flex items-end justify-end px-0.5 pb-0.5">
+                                                        <span className="text-[7px] font-mono text-white/60">{idx + 1}</span>
                                                     </div>
+                                                    {page.type === "text" && <div className="absolute top-0.5 left-0.5 w-2.5 h-2.5 rounded-sm bg-blue-500 flex items-center justify-center"><Type size={5} className="text-white" /></div>}
+                                                    {page.type === "both" && <div className="absolute top-0.5 left-0.5 w-2.5 h-2.5 rounded-sm bg-amber-500 flex items-center justify-center"><Type size={5} className="text-black" /></div>}
                                                 </div>
                                             ))}
+                                            {bookPages.length === 0 && (
+                                                <p className="text-[10px] text-neutral-700 shrink-0">Pulsa "Nueva" para añadir tu primera página</p>
+                                            )}
+                                        </div>
+                                        {/* Add page button — outside overflow so dropdown isn't clipped */}
+                                        <div className="relative shrink-0">
+                                            <button onClick={e => { e.stopPropagation(); setShowAddPageMenu(v => !v); }}
+                                                className={`w-[46px] h-[65px] rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-0.5 transition-all ${showAddPageMenu ? "border-amber-500/60 text-amber-500 bg-amber-500/5" : "border-white/15 text-neutral-600 hover:border-white/30 hover:text-neutral-400"}`}>
+                                                <Plus size={14} />
+                                                <span className="text-[7px] font-black uppercase">Nueva</span>
+                                            </button>
+                                            {showAddPageMenu && (
+                                                <div className="absolute z-[200] bottom-full mb-1.5 right-0 bg-[#161616] border border-white/12 rounded-2xl shadow-2xl overflow-hidden w-48">
+                                                    {([["image", "Solo imagen", ImageIcon], ["text", "Solo texto", Type], ["both", "Imagen + Texto", Layers]] as [BookPage["type"], string, React.ElementType][]).map(([type, label, Icon]) => (
+                                                        <button key={type} onClick={e => { e.stopPropagation(); addBlankPage(type); }}
+                                                            className="w-full flex items-center gap-2.5 px-3 py-2.5 text-[11px] font-bold text-neutral-300 hover:bg-white/5 hover:text-white transition-colors">
+                                                            <Icon size={12} className="text-amber-400" />{label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
-                                )}
-                            </div>
+                                </div>
 
-                            {/* Right panel: preview */}
-                            <div className="flex-1 p-4 space-y-3 overflow-y-auto">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Previsualización · modo {bookPdfMode === "colored" ? "Colored Book" : "Full"}</p>
-                                {bookEditorImages.length === 0 ? (
-                                    <div className="flex flex-col items-center justify-center py-16 text-center space-y-2 opacity-30">
-                                        <FileText size={32} className="text-neutral-600" strokeWidth={1.5} />
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Sin imágenes · añade desde catálogos o vault</p>
+                                {/* Page editor */}
+                                <div className="flex-1 overflow-y-auto" onClick={() => setShowAddPageMenu(false)}>
+                                    {selectedPage ? (
+                                        <div className="flex flex-col sm:flex-row h-full min-h-0">
+                                            {/* Left: A4 page preview */}
+                                            <div className="shrink-0 flex flex-col items-center justify-start p-4 gap-3 sm:w-56 sm:border-r sm:border-white/8 sm:overflow-y-auto bg-black/20">
+                                                {/* A4 preview */}
+                                                <div className="w-full max-w-[160px] aspect-[1/1.414] rounded-xl bg-white shadow-[0_8px_32px_rgba(0,0,0,0.6)] relative overflow-hidden flex items-center justify-center">
+                                                    {selectedPage.image ? (
+                                                        <img src={selectedPage.image.url} alt=""
+                                                            style={{ transform: `scale(${selectedPage.image.scale})`, transformOrigin: "center" }}
+                                                            className="w-full h-full object-cover transition-transform duration-150" />
+                                                    ) : selectedPage.type !== "text" ? (
+                                                        <div className="flex flex-col items-center gap-1 text-neutral-300 opacity-40">
+                                                            <ImageIcon size={24} strokeWidth={1.5} />
+                                                            <span className="text-[9px] font-bold">Sin imagen</span>
+                                                        </div>
+                                                    ) : null}
+                                                    {(selectedPage.type === "text" || selectedPage.type === "both") && selectedPage.text.content.trim() && (
+                                                        <div className="absolute inset-x-0 bottom-0 p-2" style={{ textAlign: selectedPage.text.align }}>
+                                                            <p className="text-[6px] break-words leading-tight" style={{ color: selectedPage.text.color, fontWeight: selectedPage.text.bold ? "bold" : "normal", fontStyle: selectedPage.text.italic ? "italic" : "normal" }}>
+                                                                {selectedPage.text.content.slice(0, 80)}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {/* Zoom slider (if image) */}
+                                                {selectedPage.image && (
+                                                    <div className="w-full max-w-[160px] space-y-1">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[9px] font-black uppercase text-neutral-600">Zoom</span>
+                                                            <span className="text-[9px] font-mono text-amber-400">{Math.round(selectedPage.image.scale * 100)}%</span>
+                                                        </div>
+                                                        <input type="range" min={0.5} max={2.5} step={0.05} value={selectedPage.image.scale}
+                                                            onChange={e => updatePageImageScale(selectedPage.id, Number(e.target.value))}
+                                                            className="w-full accent-amber-500 h-1" />
+                                                    </div>
+                                                )}
+                                                {/* Page number + delete */}
+                                                <div className="w-full max-w-[160px] flex items-center justify-between">
+                                                    <span className="text-[9px] text-neutral-600">Pág. {bookPages.findIndex(p => p.id === selectedPage.id) + 1}</span>
+                                                    <button onClick={() => deletePage(selectedPage.id)} className="flex items-center gap-1 text-[9px] text-neutral-600 hover:text-red-400 transition-colors">
+                                                        <Trash2 size={10} /> Eliminar
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Right: controls */}
+                                            <div className="flex-1 overflow-y-auto p-4 space-y-5">
+                                                {/* Type selector */}
+                                                <div className="space-y-2">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Tipo de página</p>
+                                                    <div className="flex gap-2">
+                                                        {([["image", "Imagen", ImageIcon], ["text", "Texto", Type], ["both", "Mixta", Layers]] as [BookPage["type"], string, React.ElementType][]).map(([type, label, Icon]) => (
+                                                            <button key={type} onClick={() => updatePageType(selectedPage.id, type)}
+                                                                className={`flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${selectedPage.type === type ? "border-amber-500/60 bg-amber-500/10 text-amber-400" : "border-white/10 bg-white/[0.02] text-neutral-500 hover:border-white/20 hover:text-neutral-300"}`}>
+                                                                <Icon size={13} />
+                                                                {label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Image source picker */}
+                                                {(selectedPage.type === "image" || selectedPage.type === "both") && (
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Imagen</p>
+                                                            <div className="flex items-center gap-2">
+                                                                {selectedPage.image && (
+                                                                    <button onClick={() => clearPageImage(selectedPage.id)} className="text-[9px] text-neutral-600 hover:text-red-400 transition-colors flex items-center gap-1"><X size={9} />Quitar</button>
+                                                                )}
+                                                                <button onClick={() => setShowInlineImagePicker(v => !v)}
+                                                                    className={`flex items-center gap-1.5 h-6 px-2.5 rounded-lg border text-[9px] font-bold transition-all ${showInlineImagePicker ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/10 text-neutral-500 hover:text-white hover:border-white/20"}`}>
+                                                                    <ImagePlus size={10} />{selectedPage.image ? "Cambiar" : "Seleccionar"}
+                                                                    <ChevronDown size={9} className={`transition-transform ${showInlineImagePicker ? "rotate-180" : ""}`} />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        {showInlineImagePicker && (() => {
+                                                            const allSources = [
+                                                                ...vaultImages.map(v => ({ url: v.url, label: v.model, fav: favorites.has(v.url) })),
+                                                                ...iaCatalogs.flatMap(c => c.images.map(i => ({ url: i.url, label: c.name, fav: favorites.has(i.url) }))),
+                                                                ...cloudinaryImages.map(c => ({ url: c.url, label: c.publicId.split("/").pop() ?? "", fav: favorites.has(c.url) })),
+                                                            ];
+                                                            return (
+                                                                <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 p-2 rounded-xl bg-white/[0.02] border border-white/8 max-h-48 overflow-y-auto">
+                                                                    {allSources.length === 0 && <p className="col-span-full text-[10px] text-neutral-600 text-center py-4">Sin imágenes disponibles</p>}
+                                                                    {allSources.map((src, i) => (
+                                                                        <button key={i} onClick={() => { setPageImage(selectedPage.id, src.url, src.label); setShowInlineImagePicker(false); }}
+                                                                            className={`aspect-square rounded-lg overflow-hidden border transition-all relative ${selectedPage.image?.url === src.url ? "border-amber-500" : "border-white/10 hover:border-amber-500/50"}`}>
+                                                                            <img src={src.url} alt="" className="w-full h-full object-cover" />
+                                                                            {selectedPage.image?.url === src.url && <div className="absolute inset-0 bg-amber-500/20 flex items-center justify-center"><Check size={12} className="text-amber-400" /></div>}
+                                                                            {src.fav && selectedPage.image?.url !== src.url && <div className="absolute top-0.5 left-0.5 pointer-events-none"><Heart size={7} className="fill-rose-400 text-rose-400" /></div>}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                    </div>
+                                                )}
+
+                                                {/* Text editor */}
+                                                {(selectedPage.type === "text" || selectedPage.type === "both") && (
+                                                    <div className="space-y-3">
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Texto</p>
+                                                        <div className="flex items-center gap-1 flex-wrap p-1.5 rounded-xl bg-white/[0.02] border border-white/8">
+                                                            <button type="button" onClick={() => updatePageText(selectedPage.id, { bold: !selectedPage.text.bold })}
+                                                                className={`w-7 h-7 rounded-lg text-[11px] flex items-center justify-center font-black border transition-all ${selectedPage.text.bold ? "bg-amber-500/20 border-amber-500/30 text-amber-300" : "border-transparent text-neutral-500 hover:bg-white/5 hover:text-white"}`}>B</button>
+                                                            <button type="button" onClick={() => updatePageText(selectedPage.id, { italic: !selectedPage.text.italic })}
+                                                                className={`w-7 h-7 rounded-lg text-[11px] flex items-center justify-center italic border font-serif transition-all ${selectedPage.text.italic ? "bg-amber-500/20 border-amber-500/30 text-amber-300" : "border-transparent text-neutral-500 hover:bg-white/5 hover:text-white"}`}>I</button>
+                                                            <div className="w-px h-4 bg-white/10 mx-0.5" />
+                                                            {([["left", AlignLeft], ["center", AlignCenter], ["right", AlignRight]] as [PageTextStyle["align"], React.ElementType][]).map(([a, Icon]) => (
+                                                                <button key={a} type="button" onClick={() => updatePageText(selectedPage.id, { align: a })}
+                                                                    className={`w-7 h-7 rounded-lg flex items-center justify-center border transition-all ${selectedPage.text.align === a ? "bg-amber-500/20 border-amber-500/30 text-amber-300" : "border-transparent text-neutral-500 hover:bg-white/5 hover:text-white"}`}>
+                                                                    <Icon size={11} />
+                                                                </button>
+                                                            ))}
+                                                            <div className="w-px h-4 bg-white/10 mx-0.5" />
+                                                            <input type="number" min={8} max={72} value={selectedPage.text.fontSize}
+                                                                onChange={e => updatePageText(selectedPage.id, { fontSize: Math.max(8, Math.min(72, Number(e.target.value))) })}
+                                                                className="w-11 h-7 rounded-lg bg-white/5 border border-white/10 text-[10px] text-white px-1.5 outline-none text-center" />
+                                                            {(["helvetica", "times", "courier"] as const).map(ff => (
+                                                                <button key={ff} type="button" onClick={() => updatePageText(selectedPage.id, { fontFamily: ff })}
+                                                                    className={`h-7 px-1.5 rounded-lg text-[9px] font-bold uppercase border transition-all ${selectedPage.text.fontFamily === ff ? "bg-amber-500/20 border-amber-500/30 text-amber-300" : "border-transparent text-neutral-500 hover:bg-white/5 hover:text-white"}`}>
+                                                                    {ff === "helvetica" ? "Hel" : ff === "times" ? "Tim" : "Cou"}
+                                                                </button>
+                                                            ))}
+                                                            <label className="ml-auto w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center cursor-pointer shrink-0" title="Color">
+                                                                <span className="w-4 h-4 rounded-sm border border-white/20" style={{ background: selectedPage.text.color }} />
+                                                                <input type="color" value={selectedPage.text.color} onChange={e => updatePageText(selectedPage.id, { color: e.target.value })} className="sr-only" />
+                                                            </label>
+                                                        </div>
+                                                        {selectedPage.text.content.trim() && (
+                                                            <div className="px-3 py-2 rounded-xl bg-[#f5f5f0] break-words" style={{ fontWeight: selectedPage.text.bold ? "bold" : "normal", fontStyle: selectedPage.text.italic ? "italic" : "normal", fontSize: `${Math.max(10, Math.min(selectedPage.text.fontSize * 0.85, 20))}px`, color: selectedPage.text.color, textAlign: selectedPage.text.align, fontFamily: selectedPage.text.fontFamily === "times" ? "Georgia, serif" : selectedPage.text.fontFamily === "courier" ? "Courier New, monospace" : "Helvetica, sans-serif" }}>
+                                                                {selectedPage.text.content}
+                                                            </div>
+                                                        )}
+                                                        <textarea value={selectedPage.text.content} onChange={e => updatePageText(selectedPage.id, { content: e.target.value })}
+                                                            className="w-full min-h-[90px] rounded-xl bg-white/5 border border-white/10 p-3 text-sm text-white outline-none focus:border-amber-500/40 resize-none"
+                                                            placeholder="Escribe el contenido de esta página..." />
+                                                    </div>
+                                                )}
+
+                                                {/* Add another page CTA */}
+                                                <button onClick={() => setShowAddPageMenu(true)}
+                                                    className="w-full flex items-center justify-center gap-2 h-10 rounded-xl border border-dashed border-white/15 text-neutral-600 hover:border-white/25 hover:text-neutral-400 transition-all text-[10px] font-black uppercase tracking-widest">
+                                                    <Plus size={13} /> Añadir otra página
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center h-full p-8 text-center gap-3 opacity-30">
+                                            <FileText size={36} className="text-neutral-600" strokeWidth={1.2} />
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Crea tu primera página</p>
+                                            <p className="text-xs text-neutral-700">Pulsa "Nueva" en la línea de tiempo</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── TAB: AÑADIR IMÁGENES ── */}
+                        {bookEditorTab === "images" && (
+                            <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+                                {/* Sticky selection bar */}
+                                <div className={`shrink-0 px-4 py-2.5 border-b flex items-center justify-between gap-3 transition-all ${selectedImageUrls.size > 0 ? "border-amber-500/20 bg-amber-500/8" : "border-white/8 bg-transparent"}`}>
+                                    <p className={`text-[10px] font-black uppercase tracking-widest transition-colors ${selectedImageUrls.size > 0 ? "text-amber-400" : "text-neutral-600"}`}>
+                                        {selectedImageUrls.size > 0 ? `${selectedImageUrls.size} seleccionada${selectedImageUrls.size > 1 ? "s" : ""}` : "Toca para seleccionar · añade varias a la vez"}
+                                    </p>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        {selectedImageUrls.size > 0 && (
+                                            <button onClick={() => setSelectedImageUrls(new Set())} className="text-[9px] text-neutral-500 hover:text-white transition-colors">Limpiar</button>
+                                        )}
+                                        <button onClick={addSelectedAsPages} disabled={selectedImageUrls.size === 0}
+                                            className={`h-7 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${selectedImageUrls.size > 0 ? "bg-amber-500 text-black hover:bg-amber-400" : "bg-white/5 text-neutral-600 border border-white/10"}`}>
+                                            Añadir como páginas
+                                        </button>
                                     </div>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {bookPdfMode === "colored" ? (
-                                            Array.from({ length: 1 + bookEditorImages.length }).map((_, spreadIndex) => {
-                                                const img = spreadIndex === 0 ? null : bookEditorImages[spreadIndex - 1];
-                                                const zoom = img?.scale ?? 1;
-                                                const pct = Math.min(98, Math.round(90 * zoom));
+                                </div>
+                                {/* Images grid */}
+                                <div className="flex-1 overflow-y-auto p-4 space-y-5">
+                                    {vaultImages.length > 0 && (
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5"><Box size={10} />Vault <span className="text-neutral-700 font-normal normal-case tracking-normal">({vaultImages.length})</span></p>
+                                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                                                {vaultImages.map((vi, idx) => {
+                                                    const sel = selectedImageUrls.has(vi.url);
+                                                    const used = usedImageUrls.has(vi.url);
+                                                    return (
+                                                        <button key={idx} onClick={() => toggleImageSelect(vi.url)}
+                                                            className={`aspect-square rounded-xl overflow-hidden border-2 transition-all relative ${sel ? "border-amber-500 scale-[0.97]" : used ? "border-emerald-500/50" : "border-white/10 hover:border-white/25"}`}>
+                                                            <img src={vi.url} alt="" className={`w-full h-full object-cover ${used && !sel ? "brightness-75" : ""}`} />
+                                                            {sel && <div className="absolute inset-0 bg-amber-500/25 flex items-center justify-center"><div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center"><Check size={11} className="text-black" /></div></div>}
+                                                            {used && !sel && <div className="absolute inset-0 flex items-end justify-center pb-1.5"><span className="text-[7px] font-black uppercase tracking-wide bg-emerald-500/90 text-white px-1.5 py-0.5 rounded-md">En libro</span></div>}
+                                                            {favorites.has(vi.url) && !sel && <div className="absolute top-1 left-1 pointer-events-none"><Heart size={9} className="fill-rose-400 text-rose-400 drop-shadow" /></div>}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {iaCatalogs.filter(c => c.images.length > 0).map(cat => (
+                                        <div key={cat._id} className="space-y-2">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5"><Layers size={10} />{cat.name}</p>
+                                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                                                {cat.images.map(ci => {
+                                                    const sel = selectedImageUrls.has(ci.url);
+                                                    const used = usedImageUrls.has(ci.url);
+                                                    return (
+                                                        <button key={ci.publicId} onClick={() => toggleImageSelect(ci.url)}
+                                                            className={`aspect-square rounded-xl overflow-hidden border-2 transition-all relative ${sel ? "border-amber-500 scale-[0.97]" : used ? "border-emerald-500/50" : "border-white/10 hover:border-white/25"}`}>
+                                                            <img src={ci.url} alt="" className={`w-full h-full object-cover ${used && !sel ? "brightness-75" : ""}`} />
+                                                            {sel && <div className="absolute inset-0 bg-amber-500/25 flex items-center justify-center"><div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center"><Check size={11} className="text-black" /></div></div>}
+                                                            {used && !sel && <div className="absolute inset-0 flex items-end justify-center pb-1.5"><span className="text-[7px] font-black uppercase tracking-wide bg-emerald-500/90 text-white px-1.5 py-0.5 rounded-md">En libro</span></div>}
+                                                            {favorites.has(ci.url) && !sel && <div className="absolute top-1 left-1 pointer-events-none"><Heart size={9} className="fill-rose-400 text-rose-400 drop-shadow" /></div>}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {cloudinaryImages.length > 0 && (
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5"><Cloud size={10} />Cloudinary</p>
+                                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                                                {cloudinaryImages.map(ci => {
+                                                    const sel = selectedImageUrls.has(ci.url);
+                                                    const used = usedImageUrls.has(ci.url);
+                                                    return (
+                                                        <button key={ci.publicId} onClick={() => toggleImageSelect(ci.url)}
+                                                            className={`aspect-square rounded-xl overflow-hidden border-2 transition-all relative ${sel ? "border-amber-500 scale-[0.97]" : used ? "border-emerald-500/50" : "border-white/10 hover:border-white/25"}`}>
+                                                            <img src={ci.url} alt="" className={`w-full h-full object-cover ${used && !sel ? "brightness-75" : ""}`} />
+                                                            {sel && <div className="absolute inset-0 bg-amber-500/25 flex items-center justify-center"><div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center"><Check size={11} className="text-black" /></div></div>}
+                                                            {used && !sel && <div className="absolute inset-0 flex items-end justify-center pb-1.5"><span className="text-[7px] font-black uppercase tracking-wide bg-emerald-500/90 text-white px-1.5 py-0.5 rounded-md">En libro</span></div>}
+                                                            {favorites.has(ci.url) && !sel && <div className="absolute top-1 left-1 pointer-events-none"><Heart size={9} className="fill-rose-400 text-rose-400 drop-shadow" /></div>}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {vaultImages.length === 0 && iaCatalogs.filter(c => c.images.length > 0).length === 0 && cloudinaryImages.length === 0 && (
+                                        <div className="flex flex-col items-center justify-center py-20 text-center gap-2 opacity-30">
+                                            <ImageIcon size={32} className="text-neutral-600" strokeWidth={1.2} />
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Sin imágenes disponibles</p>
+                                            <p className="text-xs text-neutral-700">Genera imágenes en el Studio primero</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ── TAB: VISTA PREVIA ── */}
+                        {bookEditorTab === "preview" && (
+                            <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+                                {/* Preview toolbar */}
+                                <div className="shrink-0 px-4 py-2 border-b border-white/8 bg-black/20 flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{bookPages.length} página{bookPages.length !== 1 ? "s" : ""}</span>
+                                        {bookPdfMode === "colored" && <span className="text-[9px] px-2 py-0.5 rounded-full bg-indigo-500/15 border border-indigo-500/20 text-indigo-400 font-bold">Modo libro: páginas dobles</span>}
+                                    </div>
+                                    <div className="flex rounded-xl border border-white/10 overflow-hidden">
+                                        <button onClick={() => setBookPreviewMode("single")} title="Una página" className={`w-8 h-7 flex items-center justify-center transition-all ${bookPreviewMode === "single" ? "bg-amber-500/20 text-amber-400" : "bg-white/[0.03] text-neutral-500 hover:text-white"}`}><FileText size={11} /></button>
+                                        <button onClick={() => setBookPreviewMode("spread")} title="Páginas dobles" className={`w-8 h-7 flex items-center justify-center transition-all ${bookPreviewMode === "spread" ? "bg-amber-500/20 text-amber-400" : "bg-white/[0.03] text-neutral-500 hover:text-white"}`}><BookOpen size={11} /></button>
+                                    </div>
+                                </div>
+
+                                {/* PDF reader viewport */}
+                                <div className="flex-1 overflow-y-auto bg-[#1c1c1e] px-4 py-6 space-y-6">
+                                    {bookPages.length === 0 ? (
+                                        <div className="flex flex-col items-center justify-center h-full gap-3 py-20 opacity-30">
+                                            <FileText size={40} className="text-neutral-600" strokeWidth={1} />
+                                            <p className="text-[11px] font-black uppercase tracking-widest text-neutral-600">Sin páginas</p>
+                                            <p className="text-xs text-neutral-700">Ve al Editor y crea tu primera página</p>
+                                        </div>
+                                    ) : bookPreviewMode === "single" ? (
+                                        /* Single page column view */
+                                        <div className="flex flex-col items-center gap-5">
+                                            {bookPages.map((page, idx) => {
+                                                const isEmpty = !page.image && (!page.text.content.trim());
                                                 return (
-                                                    <div key={spreadIndex} className="grid grid-cols-2 gap-2">
-                                                        <div className="aspect-[1/1.414] rounded-xl bg-white/[0.02] border border-white/10" />
-                                                        <div className="aspect-[1/1.414] rounded-xl bg-white/[0.02] border border-white/10 relative overflow-hidden flex items-center justify-center">
-                                                            {spreadIndex === 0 ? (
-                                                                <div className="absolute bottom-2 right-2 text-[8px] font-bold text-neutral-500">{bookFooterText.trim() || "Pág. 1"}</div>
-                                                            ) : img ? (
-                                                                <img src={img.url} alt="" style={{ maxWidth: `${pct}%`, maxHeight: `${pct}%` }} className="object-contain" />
-                                                            ) : null}
+                                                    <div key={page.id} className="w-full max-w-sm group cursor-pointer" onClick={() => { setSelectedPageId(page.id); setBookEditorTab("editor"); setShowInlineImagePicker(false); }}>
+                                                        {/* Page label */}
+                                                        <div className="flex items-center justify-between mb-1.5 px-1">
+                                                            <span className="text-[9px] font-mono text-neutral-600">Pág. {idx + 1}</span>
+                                                            <span className="text-[9px] text-neutral-700 italic">
+                                                                {isEmpty ? "En blanco" : page.type === "image" ? "Imagen" : page.type === "text" ? "Texto" : "Mixta"}
+                                                            </span>
+                                                        </div>
+                                                        {/* A4 page */}
+                                                        <div className="w-full aspect-[1/1.414] bg-white rounded-lg shadow-[0_4px_24px_rgba(0,0,0,0.5)] relative overflow-hidden group-hover:shadow-[0_4px_32px_rgba(245,158,11,0.15)] transition-shadow">
+                                                            {isEmpty && (
+                                                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-neutral-200/50">
+                                                                    <FileText size={28} strokeWidth={1} />
+                                                                    <span className="text-[9px] font-medium uppercase tracking-widest">Página en blanco</span>
+                                                                </div>
+                                                            )}
+                                                            {page.image && (
+                                                                <img src={page.image.url} alt=""
+                                                                    style={{ transform: `scale(${page.image.scale})`, transformOrigin: "center" }}
+                                                                    className="w-full h-full object-cover" />
+                                                            )}
+                                                            {(page.type === "text" || page.type === "both") && page.text.content.trim() && (
+                                                                <div className={`absolute ${page.image ? "inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-3" : "inset-0 flex items-center p-4"}`}
+                                                                    style={{ textAlign: page.text.align }}>
+                                                                    <p className="text-[8px] sm:text-[9px] break-words leading-relaxed"
+                                                                        style={{
+                                                                            color: page.image ? "#fff" : page.text.color,
+                                                                            fontWeight: page.text.bold ? "bold" : "normal",
+                                                                            fontStyle: page.text.italic ? "italic" : "normal",
+                                                                            fontFamily: page.text.fontFamily === "times" ? "Georgia, serif" : page.text.fontFamily === "courier" ? "Courier New, monospace" : "Helvetica, sans-serif",
+                                                                        }}>
+                                                                        {page.text.content}
+                                                                    </p>
+                                                                </div>
+                                                            )}
+                                                            {/* Edit hover overlay */}
+                                                            <div className="absolute inset-0 bg-amber-500/0 group-hover:bg-amber-500/8 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                                <span className="bg-black/60 text-amber-400 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg">Editar</span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 );
-                                            })
-                                        ) : (
-                                            [null, ...bookEditorImages].map((img, pageIdx) => {
-                                                const zoom = img?.scale ?? 1;
-                                                const pct = Math.min(98, Math.round(90 * zoom));
+                                            })}
+                                        </div>
+                                    ) : (
+                                        /* Spread (book) view — 2 facing pages */
+                                        <div className="flex flex-col items-center gap-6">
+                                            {Array.from({ length: Math.ceil(bookPages.length / 2) }).map((_, spreadIdx) => {
+                                                const left = bookPages[spreadIdx * 2];
+                                                const right = bookPages[spreadIdx * 2 + 1];
+                                                const renderPage = (page: BookPage | undefined, absIdx: number) => {
+                                                    if (!page) return (
+                                                        <div className="flex-1 aspect-[1/1.414] bg-white/5 rounded-lg border border-dashed border-white/10 flex items-center justify-center">
+                                                            <span className="text-[9px] text-neutral-700 uppercase tracking-widest">—</span>
+                                                        </div>
+                                                    );
+                                                    const isEmpty = !page.image && (!page.text.content.trim());
+                                                    return (
+                                                        <div className="flex-1 group cursor-pointer" onClick={() => { setSelectedPageId(page.id); setBookEditorTab("editor"); setShowInlineImagePicker(false); }}>
+                                                            <div className="w-full aspect-[1/1.414] bg-white rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative overflow-hidden group-hover:shadow-[0_4px_24px_rgba(245,158,11,0.15)] transition-shadow">
+                                                                {isEmpty && (
+                                                                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-neutral-200/40">
+                                                                        <FileText size={20} strokeWidth={1} />
+                                                                        <span className="text-[7px] uppercase tracking-widest">En blanco</span>
+                                                                    </div>
+                                                                )}
+                                                                {page.image && (
+                                                                    <img src={page.image.url} alt=""
+                                                                        style={{ transform: `scale(${page.image.scale})`, transformOrigin: "center" }}
+                                                                        className="w-full h-full object-cover" />
+                                                                )}
+                                                                {(page.type === "text" || page.type === "both") && page.text.content.trim() && (
+                                                                    <div className={`absolute ${page.image ? "inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2" : "inset-0 flex items-center p-2"}`}
+                                                                        style={{ textAlign: page.text.align }}>
+                                                                        <p className="text-[6px] break-words leading-tight"
+                                                                            style={{
+                                                                                color: page.image ? "#fff" : page.text.color,
+                                                                                fontWeight: page.text.bold ? "bold" : "normal",
+                                                                                fontStyle: page.text.italic ? "italic" : "normal",
+                                                                            }}>
+                                                                            {page.text.content}
+                                                                        </p>
+                                                                    </div>
+                                                                )}
+                                                                <div className="absolute inset-0 bg-amber-500/0 group-hover:bg-amber-500/8 transition-colors" />
+                                                            </div>
+                                                            <p className="text-[8px] text-neutral-600 text-center mt-1 font-mono">{absIdx + 1}</p>
+                                                        </div>
+                                                    );
+                                                };
                                                 return (
-                                                    <div key={pageIdx} className="aspect-[1/1.414] rounded-xl bg-white/[0.02] border border-white/10 relative overflow-hidden flex items-center justify-center max-w-xs mx-auto">
-                                                        {pageIdx === 0 ? (
-                                                            <div className="absolute bottom-2 right-2 text-[8px] font-bold text-neutral-500">{bookFooterText.trim() || "Pág. 1"}</div>
-                                                        ) : img ? (
-                                                            <img src={img.url} alt="" style={{ maxWidth: `${pct}%`, maxHeight: `${pct}%` }} className="object-contain" />
-                                                        ) : null}
+                                                    <div key={spreadIdx} className="w-full max-w-lg">
+                                                        {/* Spread number */}
+                                                        <p className="text-[9px] font-mono text-neutral-700 text-center mb-2">Páginas {spreadIdx * 2 + 1}{right ? `–${spreadIdx * 2 + 2}` : ""}</p>
+                                                        {/* Facing pages with spine shadow */}
+                                                        <div className="flex gap-0 shadow-[0_8px_40px_rgba(0,0,0,0.6)] rounded-lg overflow-hidden" style={{ boxShadow: "0 8px 40px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.04)" }}>
+                                                            <div className="flex-1">{renderPage(left, spreadIdx * 2)}</div>
+                                                            <div className="w-px bg-black/40 shrink-0" />
+                                                            <div className="flex-1">{renderPage(right, spreadIdx * 2 + 1)}</div>
+                                                        </div>
                                                     </div>
                                                 );
-                                            })
-                                        )}
-                                    </div>
-                                )}
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
+                        )}
+
                     </div>
                 </div>
             )}

@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTaskBySlug } from "@/lib/tasks";
-import { getTaskAppConfig } from "@/config/task-apps-config";
+import { getTaskAppMeta } from "@/config/task-apps-config";
+import { TaskAppRenderer } from "@/components/tasks/task-app-renderer";
 import {
     ArrowLeft,
     Cpu,
-    Wand2,
     Settings
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -23,7 +23,7 @@ export default async function TaskApplicationPage({
     if (!task) notFound();
 
     // Get specialized config for this task
-    const appConfig = getTaskAppConfig(slug);
+    const appConfig = getTaskAppMeta(slug);
 
     return (
         <div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
@@ -85,7 +85,7 @@ export default async function TaskApplicationPage({
           Renders the specialized app if it exists, or a fallback UI
       */}
             {appConfig ? (
-                appConfig.component
+                <TaskAppRenderer slug={slug} />
             ) : (
                 <section className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                     <div className="lg:col-span-8">
