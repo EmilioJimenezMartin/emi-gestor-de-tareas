@@ -60,6 +60,7 @@ import {
     AlignRight,
     GripVertical,
     Pencil,
+    Save,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -360,6 +361,7 @@ export function KdpFactoryApp() {
     const [bookEditorTab, setBookEditorTab] = useState<"editor" | "preview" | "images">("editor");
     const [showAddPageMenu, setShowAddPageMenu] = useState(false);
     const [selectedImageUrls, setSelectedImageUrls] = useState<Set<string>>(new Set());
+    const [isVaultSelectMode, setIsVaultSelectMode] = useState(false);
     const [showInlineImagePicker, setShowInlineImagePicker] = useState(false);
     const [bookPreviewMode, setBookPreviewMode] = useState<"single" | "spread">("single");
     const [previewContext, setPreviewContext] = useState<{ urls: string[]; index: number; catalogCtx?: { id: string; images: CatalogImageFE[] }; vaultCtx?: true; cloudinaryCtx?: true } | null>(null);
@@ -926,7 +928,7 @@ export function KdpFactoryApp() {
     const [bookEditorOpen, setBookEditorOpen] = useState(false);
     const [bookFileName, setBookFileName] = useState("libro-kdp");
     const [isBuildingPdf, setIsBuildingPdf] = useState(false);
-    const [isUpscaling, setIsUpscaling] = useState(false);
+    const [isSavingDraft, setIsSavingDraft] = useState(false);
     const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
     const [showModelParams, setShowModelParams] = useState(false);
     const [negativePrompt, setNegativePrompt] = useState("");
@@ -982,98 +984,6 @@ export function KdpFactoryApp() {
         toast.success("Imagen de referencia añadida");
     };
 
-    const upscaleImageMax = async (
-        url: string,
-        opts?: { setAsGenerated?: boolean; setAsPreview?: boolean }
-    ) => {
-        setIsUpscaling(true);
-        try {
-            const res = await fetch(url);
-            const blob = await res.blob();
-            if (!blob.type.startsWith("image/")) {
-                toast.error("La fuente no es una imagen válida");
-                return;
-            }
-
-            const srcUrl = URL.createObjectURL(blob);
-            try {
-                const img = new Image();
-                img.decoding = "async";
-                img.src = srcUrl;
-                await new Promise<void>((resolve, reject) => {
-                    img.onload = () => resolve();
-                    img.onerror = () => reject(new Error("No se pudo cargar la imagen"));
-                });
-
-                const srcW = img.naturalWidth || img.width;
-                const srcH = img.naturalHeight || img.height;
-                if (!srcW || !srcH) {
-                    toast.error("No se pudo leer el tamaño de la imagen");
-                    return;
-                }
-
-                const maxSide = Math.max(srcW, srcH);
-                const maxDim = 4096; // límite razonable para navegador/memoria
-                const maxFactorByDim = Math.max(1, Math.floor(maxDim / maxSide));
-                const factor = Math.min(4, maxFactorByDim);
-
-                if (factor <= 1) {
-                    toast.info("La imagen ya está al máximo razonable");
-                    return;
-                }
-
-                const outW = Math.round(srcW * factor);
-                const outH = Math.round(srcH * factor);
-
-                const canvas = document.createElement("canvas");
-                canvas.width = outW;
-                canvas.height = outH;
-                const ctx = canvas.getContext("2d");
-                if (!ctx) {
-                    toast.error("No se pudo inicializar el canvas");
-                    return;
-                }
-                ctx.imageSmoothingEnabled = true;
-                if ("imageSmoothingQuality" in ctx) (ctx as any).imageSmoothingQuality = "high";
-                ctx.drawImage(img, 0, 0, outW, outH);
-
-                const outBlob: Blob | null = await new Promise((resolve) =>
-                    canvas.toBlob((b) => resolve(b), "image/png", 1)
-                );
-                if (!outBlob) {
-                    toast.error("No se pudo exportar la imagen");
-                    return;
-                }
-
-                const outUrl = URL.createObjectURL(outBlob);
-                if (opts?.setAsGenerated) {
-                    if (generatedImageObjectUrlRef.current) {
-                        URL.revokeObjectURL(generatedImageObjectUrlRef.current);
-                        generatedImageObjectUrlRef.current = null;
-                    }
-                    generatedImageObjectUrlRef.current = outUrl;
-                    setIsImageLoading(true);
-                    setGeneratedImage(outUrl);
-                }
-                if (opts?.setAsPreview) {
-                    if (previewImageObjectUrlRef.current) {
-                        URL.revokeObjectURL(previewImageObjectUrlRef.current);
-                        previewImageObjectUrlRef.current = null;
-                    }
-                    previewImageObjectUrlRef.current = outUrl;
-                    setPreviewImage(outUrl);
-                }
-                toast.success(`Upscale x${factor} aplicado`);
-            } finally {
-                URL.revokeObjectURL(srcUrl);
-            }
-        } catch (e) {
-            console.error(e);
-            toast.error("No se pudo mejorar la calidad");
-        } finally {
-            setIsUpscaling(false);
-        }
-    };
 
     const ensureObjectUrl = async (url: string) => {
         if (url.startsWith("blob:")) return url;
@@ -1081,6 +991,26 @@ export function KdpFactoryApp() {
         const blob = await res.blob();
         const objectUrl = URL.createObjectURL(blob);
         return objectUrl;
+    };
+
+    const saveBookDraft = async () => {
+        setIsSavingDraft(true);
+        try {
+            const serializablePages = bookPages.map(p => ({
+                ...p,
+                image: p.image?.url.startsWith("blob:") ? undefined : p.image,
+            }));
+            await fetch(`${API_BASE_URL}/settings`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify([{ key: "kdp-book-draft", value: { pages: serializablePages, fileName: bookFileName } }]),
+            });
+            toast.success("Borrador guardado");
+        } catch {
+            toast.error("Error al guardar el borrador");
+        } finally {
+            setIsSavingDraft(false);
+        }
     };
 
     const buildBookPdf = async () => {
@@ -1110,12 +1040,12 @@ export function KdpFactoryApp() {
                 const maxW = pageWidth - effectiveMargin * 2;
                 const maxH = pageHeight - effectiveMargin * 2;
                 const imgScale = Math.min(maxW / embedded.width, maxH / embedded.height);
-                page.drawImage(embedded, {
-                    x: (pageWidth - embedded.width * imgScale) / 2,
-                    y: (pageHeight - embedded.height * imgScale) / 2,
-                    width: embedded.width * imgScale,
-                    height: embedded.height * imgScale,
-                });
+                const drawW = embedded.width * imgScale;
+                const drawH = embedded.height * imgScale;
+                const imgX = (pageWidth - drawW) / 2;
+                const imgY = (pageHeight - drawH) / 2;
+                page.drawImage(embedded, { x: imgX, y: imgY, width: drawW, height: drawH });
+                return { x: imgX, y: imgY, w: drawW, h: drawH };
             };
 
             const getFontKey = (style: PageTextStyle): StandardFonts => {
@@ -1167,21 +1097,22 @@ export function KdpFactoryApp() {
                 if (bookPage.image) {
                     const embedded = await embedImage(bookPage.image.url);
                     drawImageCentered(pdfPage, embedded, bookPage.image.scale ?? 1);
-                    // Draw border on top of image if configured
-                    if (bookPage.image.border && bookPage.image.border.width > 0) {
-                        const bw = bookPage.image.border.width;
+                    if (bookPage.image.border) {
                         const hexToRgb = (hex: string) => {
                             const r = parseInt(hex.slice(1, 3), 16) / 255;
                             const g = parseInt(hex.slice(3, 5), 16) / 255;
                             const b = parseInt(hex.slice(5, 7), 16) / 255;
                             return rgb(r, g, b);
                         };
-                        const borderColor = hexToRgb(bookPage.image.border.color);
-                        // Draw 4 filled rects (top, bottom, left, right)
-                        pdfPage.drawRectangle({ x: 0, y: pageHeight - bw, width: pageWidth, height: bw, color: borderColor });
-                        pdfPage.drawRectangle({ x: 0, y: 0, width: pageWidth, height: bw, color: borderColor });
-                        pdfPage.drawRectangle({ x: 0, y: 0, width: bw, height: pageHeight, color: borderColor });
-                        pdfPage.drawRectangle({ x: pageWidth - bw, y: 0, width: bw, height: pageHeight, color: borderColor });
+                        const bw = bookPage.image.border.width;
+                        pdfPage.drawRectangle({
+                            x: bw / 2,
+                            y: bw / 2,
+                            width: pageWidth - bw,
+                            height: pageHeight - bw,
+                            borderColor: hexToRgb(bookPage.image.border.color),
+                            borderWidth: bw,
+                        });
                     }
                 }
                 if ((bookPage.type === "text" || bookPage.type === "both") && bookPage.text.content.trim()) {
@@ -1203,25 +1134,34 @@ export function KdpFactoryApp() {
         }
     };
 
-    // Load favorites from MongoDB on mount
+    // Load favorites + book draft from MongoDB on mount
     useEffect(() => {
         const load = async () => {
             try {
                 const res = await fetch(`${API_BASE_URL}/settings`);
                 if (!res.ok) return;
                 const data = await res.json();
-                const found = (data.settings ?? []).find((s: any) => s.key === "kdp-favorites");
-                if (Array.isArray(found?.value) && found.value.length > 0) {
+
+                // Favorites
+                const favFound = (data.settings ?? []).find((s: any) => s.key === "kdp-favorites");
+                if (Array.isArray(favFound?.value) && favFound.value.length > 0) {
                     const map = new Map<string, FavoriteImage>();
-                    for (const item of found.value) {
+                    for (const item of favFound.value) {
                         if (typeof item === "string") {
-                            // migrate old format (plain URL string)
                             map.set(item, { url: item, label: "", source: "generated", savedAt: new Date().toISOString() });
                         } else if (item && typeof item.url === "string") {
                             map.set(item.url, item as FavoriteImage);
                         }
                     }
                     setFavorites(map);
+                }
+
+                // Book draft
+                const draftFound = (data.settings ?? []).find((s: any) => s.key === "kdp-book-draft");
+                if (draftFound?.value?.pages && Array.isArray(draftFound.value.pages) && draftFound.value.pages.length > 0) {
+                    setBookPages(draftFound.value.pages as BookPage[]);
+                    setSelectedPageId((draftFound.value.pages as BookPage[])[0].id);
+                    if (draftFound.value.fileName) setBookFileName(draftFound.value.fileName);
                 }
             } catch {}
         };
@@ -2186,15 +2126,6 @@ export function KdpFactoryApp() {
                                                 <Download size={18} />
                                             </button>
                                             <button
-                                                onClick={() => upscaleImageMax(generatedImage, { setAsGenerated: true })}
-                                                disabled={isUpscaling}
-                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                aria-label="Mejorar calidad (Upscale)"
-                                                title="Mejorar calidad"
-                                            >
-                                                <Sparkles size={18} />
-                                            </button>
-                                            <button
                                                 onClick={() => setGeneratedImage(null)}
                                                 className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
                                                 aria-label="Cerrar"
@@ -2379,7 +2310,7 @@ export function KdpFactoryApp() {
 
             {/* Asset Vault / Carousel — always visible */}
             <div className="space-y-6 animate-in fade-in slide-in-from-left-8 duration-700 pb-4">
-                <div className="flex items-center px-2">
+                <div className="flex items-center px-2 gap-3">
                     <div className="flex items-center gap-3 flex-1">
                         <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/5">
                             <Box size={16} />
@@ -2389,6 +2320,23 @@ export function KdpFactoryApp() {
                             <p className="text-[10px] text-neutral-600 font-medium italic">Sesión actual: {vaultImages.length} activos conservados</p>
                         </div>
                     </div>
+                    {vaultImages.length > 0 && (
+                        <button
+                            onClick={() => { setIsVaultSelectMode(v => !v); setSelectedImageUrls(new Set()); }}
+                            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${isVaultSelectMode ? "bg-amber-500/20 border-amber-500/40 text-amber-400" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white hover:border-white/20"}`}
+                        >
+                            {isVaultSelectMode ? "Cancelar" : "Seleccionar"}
+                        </button>
+                    )}
+                    {isVaultSelectMode && selectedImageUrls.size > 0 && (
+                        <button
+                            onClick={() => { addSelectedAsPages(); setIsVaultSelectMode(false); }}
+                            className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-amber-500 text-black hover:bg-amber-400 transition-all border border-amber-500/50 flex items-center gap-1.5"
+                        >
+                            <Plus size={11} />
+                            {selectedImageUrls.size} al libro
+                        </button>
+                    )}
                 </div>
 
                 {vaultImages.length === 0 ? (
@@ -2401,13 +2349,15 @@ export function KdpFactoryApp() {
                 ) : (
                 <div
                     ref={vaultScrollRef}
-                    className="flex gap-5 overflow-x-auto pb-4 pt-2 no-scrollbar px-2 cursor-grab active:cursor-grabbing select-none"
+                    className={`flex gap-5 overflow-x-auto pb-4 pt-2 no-scrollbar px-2 ${isVaultSelectMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"} select-none`}
                     onMouseDown={(e) => {
+                        if (isVaultSelectMode) return;
                         if (!vaultScrollRef.current) return;
                         vaultDragMoved.current = false;
                         vaultDrag.current = { x: e.clientX, scrollLeft: vaultScrollRef.current.scrollLeft };
                     }}
                     onMouseMove={(e) => {
+                        if (isVaultSelectMode) return;
                         if (!vaultDrag.current || !vaultScrollRef.current) return;
                         const dx = e.clientX - vaultDrag.current.x;
                         if (Math.abs(dx) > 4) vaultDragMoved.current = true;
@@ -2416,11 +2366,13 @@ export function KdpFactoryApp() {
                     onMouseUp={() => { vaultDrag.current = null; }}
                     onMouseLeave={() => { vaultDrag.current = null; }}
                     onTouchStart={(e) => {
+                        if (isVaultSelectMode) return;
                         if (!vaultScrollRef.current) return;
                         vaultDragMoved.current = false;
                         vaultDrag.current = { x: e.touches[0].clientX, scrollLeft: vaultScrollRef.current.scrollLeft };
                     }}
                     onTouchMove={(e) => {
+                        if (isVaultSelectMode) return;
                         if (!vaultDrag.current || !vaultScrollRef.current) return;
                         const dx = e.touches[0].clientX - vaultDrag.current.x;
                         if (Math.abs(dx) > 4) vaultDragMoved.current = true;
@@ -2428,24 +2380,52 @@ export function KdpFactoryApp() {
                     }}
                     onTouchEnd={() => { vaultDrag.current = null; }}
                 >
-                    {vaultImages.map((img, i) => (
+                    {vaultImages.map((img, i) => {
+                        const isSelected = selectedImageUrls.has(img.url);
+                        return (
                         <div
                             key={i}
-                            className="shrink-0 w-56 h-64 md:w-64 md:h-80 rounded-[32px] overflow-hidden border border-white/10 hover:border-amber-500/50 transition-all shadow-2xl relative bg-neutral-900 cursor-zoom-in"
-                            onClick={() => { if (vaultDragMoved.current) return; openVaultImagePreview(i); }}
+                            className={`shrink-0 w-56 h-64 md:w-64 md:h-80 rounded-[32px] overflow-hidden border transition-all shadow-2xl relative bg-neutral-900
+                                ${isVaultSelectMode
+                                    ? isSelected
+                                        ? "border-amber-500 scale-[0.97] ring-2 ring-amber-500/50"
+                                        : "border-white/20 hover:border-amber-500/60"
+                                    : usedImageUrls.has(img.url)
+                                        ? "border-emerald-500/50 hover:border-emerald-400 cursor-zoom-in"
+                                        : "border-white/10 hover:border-amber-500/50 cursor-zoom-in"}`}
+                            onClick={() => {
+                                if (isVaultSelectMode) { toggleImageSelect(img.url); return; }
+                                if (vaultDragMoved.current) return;
+                                openVaultImagePreview(i);
+                            }}
                         >
                             <img
                                 src={img.url}
                                 alt={`Vault ${i}`}
                                 className="w-full h-full object-cover"
                             />
-                            {favorites.has(img.url) && (
+                            {isVaultSelectMode && (
+                                <div className={`absolute top-3 right-3 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? "bg-amber-500 border-amber-500" : "bg-black/40 border-white/40 backdrop-blur-sm"}`}>
+                                    {isSelected && <Check size={13} className="text-black" strokeWidth={3} />}
+                                </div>
+                            )}
+                            {!isVaultSelectMode && usedImageUrls.has(img.url) && (
+                                <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-xl bg-emerald-500/90 backdrop-blur-sm pointer-events-none">
+                                    <FileText size={10} className="text-white" />
+                                    <span className="text-[9px] font-black text-white uppercase tracking-wide">En PDF</span>
+                                </div>
+                            )}
+                            {!isVaultSelectMode && favorites.has(img.url) && (
                                 <div className="absolute top-2 left-2 p-1.5 rounded-xl bg-black/60 text-rose-400 pointer-events-none">
                                     <Heart size={11} className="fill-rose-400" />
                                 </div>
                             )}
+                            {isVaultSelectMode && isSelected && (
+                                <div className="absolute inset-0 bg-amber-500/15 pointer-events-none" />
+                            )}
                         </div>
-                    ))}
+                        );
+                    })}
                     </div>
                 )}
             </div>
@@ -3121,21 +3101,66 @@ export function KdpFactoryApp() {
             {/* Image Preview Modal */}
             {previewImage && (
                 <div
-                    className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 gap-4"
-                    onClick={closePreview}
+                    className="fixed inset-x-0 top-0 z-[100] bg-black flex flex-col overflow-hidden"
+                    style={{ height: "100dvh", touchAction: "none" }}
                     role="dialog"
                     aria-modal="true"
                 >
-                    {/* Toolbar */}
+                    {/* ── Top bar: close + counter — always visible ── */}
                     <div
-                        className="flex items-center gap-2 flex-wrap justify-center"
+                        className="shrink-0 flex items-center gap-3 px-4 bg-gradient-to-b from-black/80 to-transparent"
+                        style={{ paddingTop: "max(env(safe-area-inset-top), 12px)", paddingBottom: "8px" }}
                         onClick={(e) => e.stopPropagation()}
                     >
-                        {previewContext && (
-                            <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest px-2">
+                        {previewContext ? (
+                            <span className="text-[11px] font-black text-white/40 uppercase tracking-widest">
                                 {previewContext.index + 1} / {previewContext.urls.length}
                             </span>
+                        ) : <span />}
+                        <button
+                            onClick={closePreview}
+                            className="ml-auto w-10 h-10 rounded-2xl bg-white/10 text-white flex items-center justify-center active:scale-90 transition-transform"
+                            title="Cerrar"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
+
+                    {/* ── Image — fills remaining space ── */}
+                    <div
+                        className="flex-1 min-h-0 relative flex items-center justify-center px-4 py-2"
+                        onClick={closePreview}
+                    >
+                        <img
+                            key={previewImage}
+                            src={previewImage}
+                            alt="Vista previa"
+                            className="block max-w-full max-h-full w-auto h-auto object-contain rounded-2xl"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                        {/* Nav arrows overlaid on sides */}
+                        {previewContext && previewContext.index > 0 && (
+                            <button onClick={() => navigatePreview(-1)}
+                                className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-2xl bg-black/60 text-white border border-white/10 active:scale-95 transition-all flex items-center justify-center"
+                                title="Anterior">
+                                <ChevronLeft size={20} />
+                            </button>
                         )}
+                        {previewContext && previewContext.index < previewContext.urls.length - 1 && (
+                            <button onClick={() => navigatePreview(1)}
+                                className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-2xl bg-black/60 text-white border border-white/10 active:scale-95 transition-all flex items-center justify-center"
+                                title="Siguiente">
+                                <ChevronRight size={20} />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* ── Action bar — solid, always visible above bottom edge ── */}
+                    <div
+                        className="shrink-0 bg-[#111] border-t border-white/10 flex items-center justify-center gap-2 flex-wrap px-4 py-3"
+                        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         {/* Favorite */}
                         <button
                             onClick={() => {
@@ -3155,10 +3180,10 @@ export function KdpFactoryApp() {
                                     : "generated";
                                 toggleFavorite(previewImage, { label, source });
                             }}
-                            className={`p-2.5 rounded-2xl bg-black/60 backdrop-blur-md transition-all border ${favorites.has(previewImage) ? "text-rose-400 border-rose-500/30 bg-rose-500/10" : "text-white border-white/10 hover:bg-white/10"}`}
+                            className={`p-3 rounded-2xl transition-all active:scale-90 border ${favorites.has(previewImage) ? "text-rose-400 border-rose-500/40 bg-rose-500/15" : "text-white border-white/15 bg-white/5"}`}
                             title={favorites.has(previewImage) ? "Quitar de favoritos" : "Marcar como favorita"}
                         >
-                            <Heart size={16} className={favorites.has(previewImage) ? "fill-rose-400" : ""} />
+                            <Heart size={20} className={favorites.has(previewImage) ? "fill-rose-400" : ""} />
                         </button>
 
                         {/* Download */}
@@ -3168,23 +3193,13 @@ export function KdpFactoryApp() {
                                 const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
                                 downloadPng(previewImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
                             }}
-                            className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
+                            className="p-3 rounded-2xl bg-white/5 text-white active:scale-90 transition-all border border-white/15"
                             title="Descargar"
                         >
-                            <Download size={16} />
+                            <Download size={20} />
                         </button>
 
-                        {/* Upscale */}
-                        <button
-                            onClick={() => upscaleImageMax(previewImage, { setAsPreview: true })}
-                            disabled={isUpscaling}
-                            className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
-                            title="Mejorar calidad"
-                        >
-                            <Sparkles size={16} />
-                        </button>
-
-                        {/* Vault-specific actions */}
+                        {/* Vault-specific */}
                         {(() => {
                             if (!previewContext?.vaultCtx) return null;
                             const vaultIdx = previewContext.index;
@@ -3195,23 +3210,23 @@ export function KdpFactoryApp() {
                                     <button
                                         onClick={() => void uploadToCloudinary(vaultIdx)}
                                         disabled={uploadingToCloud === vaultIdx}
-                                        className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-cyan-400 hover:bg-cyan-500/20 transition-all border border-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        className="p-3 rounded-2xl bg-cyan-500/10 text-cyan-400 active:scale-90 transition-all border border-cyan-500/25 disabled:opacity-40"
                                         title="Guardar en Cloudinary"
                                     >
-                                        {uploadingToCloud === vaultIdx ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
+                                        {uploadingToCloud === vaultIdx ? <Loader2 size={20} className="animate-spin" /> : <UploadCloud size={20} />}
                                     </button>
                                     <button
                                         onClick={() => setConfirmDeleteVaultIndex(vaultIdx)}
-                                        className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20"
+                                        className="p-3 rounded-2xl bg-rose-500/10 text-rose-400 active:scale-90 transition-all border border-rose-500/25"
                                         title="Eliminar del vault"
                                     >
-                                        <Trash2 size={16} />
+                                        <Trash2 size={20} />
                                     </button>
                                 </>
                             );
                         })()}
 
-                        {/* Cloudinary-specific actions */}
+                        {/* Cloudinary-specific */}
                         {(() => {
                             if (!previewContext?.cloudinaryCtx) return null;
                             const cldImg = cloudinaryImages[previewContext.index];
@@ -3224,24 +3239,24 @@ export function KdpFactoryApp() {
                                             setVaultImages(prev => [{ url: cldImg.url, model: "Cloudinary", dim: ratio }, ...prev]);
                                             toast.success("Añadida al vault");
                                         }}
-                                        className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20"
+                                        className="p-3 rounded-2xl bg-amber-500/10 text-amber-400 active:scale-90 transition-all border border-amber-500/25"
                                         title="Añadir al Vault"
                                     >
-                                        <Plus size={16} />
+                                        <Plus size={20} />
                                     </button>
                                     <button
                                         onClick={() => setConfirmDeleteCloudinaryId(cldImg.publicId)}
                                         disabled={deletingFromCloud === cldImg.publicId}
-                                        className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20 disabled:opacity-40"
+                                        className="p-3 rounded-2xl bg-rose-500/10 text-rose-400 active:scale-90 transition-all border border-rose-500/25 disabled:opacity-40"
                                         title="Eliminar de Cloudinary"
                                     >
-                                        {deletingFromCloud === cldImg.publicId ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                        {deletingFromCloud === cldImg.publicId ? <Loader2 size={20} className="animate-spin" /> : <Trash2 size={20} />}
                                     </button>
                                 </>
                             );
                         })()}
 
-                        {/* Catalog-specific actions */}
+                        {/* Catalog-specific */}
                         {(() => {
                             const catalogImg = previewContext?.catalogCtx?.images[previewContext.index];
                             if (!catalogImg) return null;
@@ -3249,71 +3264,21 @@ export function KdpFactoryApp() {
                                 <>
                                     <button
                                         onClick={() => addCatalogImageToVault(catalogImg)}
-                                        className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-emerald-400 hover:bg-emerald-500/20 transition-all border border-emerald-500/20"
+                                        className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 active:scale-90 transition-all border border-emerald-500/25"
                                         title="Añadir al Vault"
                                     >
-                                        <ImagePlus size={16} />
+                                        <ImagePlus size={20} />
                                     </button>
                                     <button
                                         onClick={() => setConfirmDeleteImageInfo({ catalogId: previewContext!.catalogCtx!.id, publicId: catalogImg.publicId })}
-                                        className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20"
+                                        className="p-3 rounded-2xl bg-rose-500/10 text-rose-400 active:scale-90 transition-all border border-rose-500/25"
                                         title="Eliminar imagen del catálogo"
                                     >
-                                        <Trash2 size={16} />
+                                        <Trash2 size={20} />
                                     </button>
                                 </>
                             );
                         })()}
-
-                        {/* Close */}
-                        <button
-                            onClick={closePreview}
-                            className="p-2.5 rounded-2xl bg-black/60 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
-                            title="Cerrar"
-                        >
-                            <X size={16} />
-                        </button>
-                    </div>
-
-                    {/* Image + nav arrows */}
-                    <div
-                        className="relative flex items-center justify-center w-full max-w-6xl gap-4"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {/* Prev arrow */}
-                        {previewContext && previewContext.index > 0 && (
-                            <button
-                                onClick={() => navigatePreview(-1)}
-                                className="shrink-0 w-12 h-12 rounded-2xl bg-black/60 backdrop-blur-md text-white border border-white/10 hover:bg-white/10 transition-all flex items-center justify-center"
-                                title="Anterior"
-                            >
-                                <ChevronLeft size={22} />
-                            </button>
-                        )}
-                        {previewContext && previewContext.index === 0 && (
-                            <div className="shrink-0 w-12" />
-                        )}
-
-                        <img
-                            key={previewImage}
-                            src={previewImage}
-                            alt="Vista previa"
-                            className="block max-w-full max-h-[80vh] w-auto h-auto object-contain rounded-2xl bg-black flex-1 min-w-0"
-                        />
-
-                        {/* Next arrow */}
-                        {previewContext && previewContext.index < previewContext.urls.length - 1 && (
-                            <button
-                                onClick={() => navigatePreview(1)}
-                                className="shrink-0 w-12 h-12 rounded-2xl bg-black/60 backdrop-blur-md text-white border border-white/10 hover:bg-white/10 transition-all flex items-center justify-center"
-                                title="Siguiente"
-                            >
-                                <ChevronRight size={22} />
-                            </button>
-                        )}
-                        {previewContext && previewContext.index === previewContext.urls.length - 1 && (
-                            <div className="shrink-0 w-12" />
-                        )}
                     </div>
                 </div>
             )}
@@ -3329,23 +3294,43 @@ export function KdpFactoryApp() {
                     <div className="relative w-full max-w-4xl h-[100dvh] sm:h-auto sm:max-h-[90vh] rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
 
                         {/* Header */}
-                        <div className="shrink-0 px-4 pt-4 pb-3 border-b border-white/8 flex items-center gap-2">
-                            <div className="flex-1 min-w-0">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Editor de Libro PDF</p>
-                                <p className="text-[11px] text-neutral-600">{bookPages.length} página{bookPages.length !== 1 ? "s" : ""}</p>
+                        <div className="shrink-0 border-b border-white/8">
+                            <div className="px-3 sm:px-4 pt-3 sm:pt-4 pb-3 flex items-center gap-2">
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-neutral-400">Editor · PDF</p>
+                                    <p className="text-[10px] sm:text-[11px] text-neutral-600">{bookPages.length} pág{bookPages.length !== 1 ? "s" : "."}</p>
+                                </div>
+                                {/* Filename input — desktop */}
+                                <input value={bookFileName} onChange={e => setBookFileName(e.target.value)}
+                                    className="hidden sm:block w-28 h-9 rounded-xl bg-white/5 border border-white/10 px-2.5 text-[11px] text-white outline-none focus:border-amber-500/40 shrink-0"
+                                    placeholder="libro-kdp" />
+                                {/* Save */}
+                                <button onClick={() => void saveBookDraft()} disabled={isSavingDraft || bookPages.length === 0}
+                                    className="w-9 h-9 sm:w-auto sm:px-3 rounded-xl bg-white/5 border border-white/10 text-neutral-400 hover:text-white hover:border-white/20 shrink-0 flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-[11px] font-black uppercase"
+                                    title="Guardar borrador">
+                                    {isSavingDraft ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                    <span className="hidden sm:inline">Guardar</span>
+                                </button>
+                                {/* Generate PDF — always shows text on mobile */}
+                                <button onClick={() => void buildBookPdf()} disabled={isBuildingPdf || bookPages.length === 0}
+                                    className="h-9 px-3 sm:px-4 rounded-xl bg-amber-500 text-black hover:bg-amber-400 shrink-0 flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-[10px] sm:text-[11px] font-black uppercase"
+                                    title="Generar PDF">
+                                    {isBuildingPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                                    <span>PDF</span>
+                                </button>
+                                {/* Close */}
+                                <button onClick={() => { setBookEditorOpen(false); setShowAddPageMenu(false); }}
+                                    className="w-9 h-9 rounded-xl bg-white/5 text-neutral-400 hover:bg-rose-500 hover:text-white transition-all border border-white/10 shrink-0 flex items-center justify-center">
+                                    <X size={15} />
+                                </button>
                             </div>
-                            {/* Filename — visible from sm */}
-                            <input value={bookFileName} onChange={e => setBookFileName(e.target.value)}
-                                className="hidden sm:block w-28 h-9 rounded-xl bg-white/5 border border-white/10 px-2.5 text-[11px] text-white outline-none focus:border-amber-500/40 shrink-0"
-                                placeholder="libro-kdp" />
-                            <Button onClick={buildBookPdf} disabled={isBuildingPdf || bookPages.length === 0}
-                                className="h-9 rounded-xl bg-amber-500 text-black hover:bg-amber-400 text-[11px] font-black uppercase shrink-0 px-3 sm:px-4 gap-1.5">
-                                {isBuildingPdf ? <Loader2 size={14} className="animate-spin" /> : <><Download size={14} /><span className="hidden sm:inline">Generar </span>PDF</>}
-                            </Button>
-                            <button onClick={() => { setBookEditorOpen(false); setShowAddPageMenu(false); }}
-                                className="w-9 h-9 rounded-xl bg-white/5 text-neutral-400 hover:bg-rose-500 hover:text-white transition-all border border-white/10 shrink-0 flex items-center justify-center">
-                                <X size={15} />
-                            </button>
+                            {/* Filename + page count — mobile only */}
+                            <div className="sm:hidden px-3 pb-2.5 flex items-center gap-2">
+                                <input value={bookFileName} onChange={e => setBookFileName(e.target.value)}
+                                    className="flex-1 h-9 rounded-xl bg-white/5 border border-white/10 px-3 text-[12px] text-white outline-none focus:border-amber-500/40"
+                                    placeholder="Nombre del libro..." />
+                                <span className="text-[10px] font-mono text-neutral-600 shrink-0">{bookPages.length}p</span>
+                            </div>
                         </div>
 
                         {/* Tabs */}
@@ -3379,7 +3364,7 @@ export function KdpFactoryApp() {
                                                     onTouchMove={handleThumbnailTouchMove}
                                                     onTouchEnd={handleThumbnailTouchEnd}
                                                     onClick={() => { setSelectedPageId(page.id); setShowInlineImagePicker(false); }}
-                                                    className={`group shrink-0 w-12 h-[68px] rounded-xl border-2 cursor-grab active:cursor-grabbing relative overflow-hidden transition-all select-none touch-none
+                                                    className={`group shrink-0 w-14 h-[80px] sm:w-12 sm:h-[68px] rounded-xl border-2 cursor-grab active:cursor-grabbing relative overflow-hidden transition-all select-none touch-none
                                                         ${selectedPageId === page.id
                                                             ? "border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.4)]"
                                                             : bookDragOverIdx === idx && bookDragIdx !== idx
@@ -3428,9 +3413,9 @@ export function KdpFactoryApp() {
                                     {selectedPage ? (() => {
                                         const pageIdx = bookPages.findIndex(p => p.id === selectedPage.id);
                                         const allImgSources = [
-                                            ...vaultImages.map(v => ({ url: v.url, label: v.model, fav: favorites.has(v.url) })),
-                                            ...iaCatalogs.flatMap(c => c.images.map(i => ({ url: i.url, label: c.name, fav: favorites.has(i.url) }))),
-                                            ...cloudinaryImages.map(c => ({ url: c.url, label: c.publicId.split("/").pop() ?? "", fav: favorites.has(c.url) })),
+                                            ...vaultImages.map(v => ({ url: v.url, label: v.model, fav: favorites.has(v.url), inPdf: usedImageUrls.has(v.url) })),
+                                            ...iaCatalogs.flatMap(c => c.images.map(i => ({ url: i.url, label: c.name, fav: favorites.has(i.url), inPdf: usedImageUrls.has(i.url) }))),
+                                            ...cloudinaryImages.map(c => ({ url: c.url, label: c.publicId.split("/").pop() ?? "", fav: favorites.has(c.url), inPdf: usedImageUrls.has(c.url) })),
                                         ];
                                         const needsImage = selectedPage.type === "image" || selectedPage.type === "both";
                                         const needsText = selectedPage.type === "text" || selectedPage.type === "both";
@@ -3505,18 +3490,25 @@ export function KdpFactoryApp() {
                                                             )}
                                                         </div>
 
-                                                        {selectedPage.image && (
-                                                            <div className="rounded-2xl overflow-hidden bg-black/40 relative">
-                                                                <img src={selectedPage.image.url} alt=""
-                                                                    style={{ transform: `scale(${selectedPage.image.scale})`, transformOrigin: "center" }}
-                                                                    className="w-full max-h-48 sm:max-h-56 object-contain transition-transform duration-150" />
-                                                                {selectedPage.image.border && selectedPage.image.border.width > 0 && (
-                                                                    <div className="absolute inset-0 pointer-events-none" style={{
-                                                                        boxShadow: `inset 0 0 0 ${Math.max(2, selectedPage.image.border.width * 0.15)}px ${selectedPage.image.border.color}`,
-                                                                    }} />
-                                                                )}
-                                                            </div>
-                                                        )}
+                                                        {selectedPage.image && (() => {
+                                                            const zoom = selectedPage.image.scale ?? 1;
+                                                            const hPct = Math.min(35, (48 / Math.max(zoom, 0.1) / 595.28) * 100);
+                                                            const vPct = Math.min(35, (48 / Math.max(zoom, 0.1) / 841.89) * 100);
+                                                            const brd = selectedPage.image.border;
+                                                            return (
+                                                                <div
+                                                                    className="relative w-full rounded-xl overflow-hidden border border-white/15 shadow-lg bg-white"
+                                                                    style={{
+                                                                        aspectRatio: "595/842",
+                                                                        ...(brd ? { boxShadow: `inset 0 0 0 ${brd.width}px ${brd.color}` } : {}),
+                                                                    }}
+                                                                >
+                                                                    <div className="absolute" style={{ left: `${hPct}%`, right: `${hPct}%`, top: `${vPct}%`, bottom: `${vPct}%` }}>
+                                                                        <img src={selectedPage.image.url} alt="" className="w-full h-full object-contain" />
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })()}
                                                         {selectedPage.image && (
                                                             <div className="space-y-2 p-3 rounded-2xl bg-white/[0.03] border border-white/8">
                                                                 {/* Zoom */}
@@ -3528,19 +3520,40 @@ export function KdpFactoryApp() {
                                                                     <span className="text-[10px] font-mono text-amber-400 shrink-0 w-9 text-right">{Math.round(selectedPage.image.scale * 100)}%</span>
                                                                 </div>
                                                                 {/* Border / Marco */}
-                                                                <div className="flex items-center gap-3">
-                                                                    <span className="text-[9px] font-black uppercase text-neutral-600 shrink-0 w-10">Marco</span>
-                                                                    <label className="flex items-center gap-2 cursor-pointer select-none">
-                                                                        <div className="relative">
-                                                                            <input type="checkbox"
-                                                                                checked={!!selectedPage.image.border}
-                                                                                onChange={e => updatePageImageBorder(selectedPage.id, e.target.checked ? { width: 20, color: "#ffffff" } : undefined)}
-                                                                                className="sr-only peer" />
-                                                                            <div className="w-9 h-5 rounded-full bg-white/10 peer-checked:bg-amber-500/80 transition-colors border border-white/10 peer-checked:border-amber-500/50" />
-                                                                            <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white/60 peer-checked:translate-x-4 peer-checked:bg-white transition-transform" />
+                                                                <div className="flex flex-col gap-2">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className="text-[9px] font-black uppercase text-neutral-600 shrink-0 w-10">Marco</span>
+                                                                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                                                                            <div className="relative">
+                                                                                <input type="checkbox"
+                                                                                    checked={!!selectedPage.image.border}
+                                                                                    onChange={e => updatePageImageBorder(selectedPage.id, e.target.checked ? { width: 3, color: "#000000" } : undefined)}
+                                                                                    className="sr-only peer" />
+                                                                                <div className="w-9 h-5 rounded-full bg-white/10 peer-checked:bg-amber-500/80 transition-colors border border-white/10 peer-checked:border-amber-500/50" />
+                                                                                <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white/60 peer-checked:translate-x-4 peer-checked:bg-white transition-transform" />
+                                                                            </div>
+                                                                            <span className="text-[10px] font-bold text-neutral-500">{selectedPage.image.border ? "Activo" : "Sin marco"}</span>
+                                                                        </label>
+                                                                        {selectedPage.image.border && (
+                                                                            <label className="ml-auto flex items-center gap-1.5 cursor-pointer" title="Color del marco">
+                                                                                <span className="text-[9px] text-neutral-600 font-bold">Color</span>
+                                                                                <span className="w-6 h-6 rounded-lg border border-white/20 shadow-inner" style={{ background: selectedPage.image.border.color }} />
+                                                                                <input type="color" value={selectedPage.image.border.color}
+                                                                                    onChange={e => updatePageImageBorder(selectedPage.id, { ...selectedPage.image!.border!, color: e.target.value })}
+                                                                                    className="sr-only" />
+                                                                            </label>
+                                                                        )}
+                                                                    </div>
+                                                                    {selectedPage.image.border && (
+                                                                        <div className="flex items-center gap-3">
+                                                                            <span className="text-[9px] font-black uppercase text-neutral-600 shrink-0 w-10">Grosor</span>
+                                                                            <input type="range" min={1} max={20} step={1}
+                                                                                value={selectedPage.image.border.width}
+                                                                                onChange={e => updatePageImageBorder(selectedPage.id, { ...selectedPage.image!.border!, width: Number(e.target.value) })}
+                                                                                className="flex-1 accent-amber-500 h-1.5" />
+                                                                            <span className="text-[10px] font-mono text-amber-400 shrink-0 w-6 text-right">{selectedPage.image.border.width}px</span>
                                                                         </div>
-                                                                        <span className="text-[10px] font-bold text-neutral-500 peer-checked:text-amber-400">{selectedPage.image.border ? "Activo" : "Sin marco"}</span>
-                                                                    </label>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         )}
@@ -3561,6 +3574,8 @@ export function KdpFactoryApp() {
                                                                                 className={`aspect-square rounded-xl overflow-hidden border-2 relative transition-all active:scale-95
                                                                                     ${selectedPage.image?.url === src.url
                                                                                         ? "border-amber-500 scale-[0.97]"
+                                                                                        : src.inPdf && selectedPage.image?.url !== src.url
+                                                                                        ? "border-emerald-500/50"
                                                                                         : "border-white/10 hover:border-amber-500/60"}`}>
                                                                                 <img src={src.url} alt="" className="w-full h-full object-cover" />
                                                                                 {selectedPage.image?.url === src.url && (
@@ -3568,8 +3583,13 @@ export function KdpFactoryApp() {
                                                                                         <Check size={16} className="text-amber-300" />
                                                                                     </div>
                                                                                 )}
+                                                                                {src.inPdf && selectedPage.image?.url !== src.url && (
+                                                                                    <div className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-md bg-emerald-500/90 flex items-center justify-center pointer-events-none">
+                                                                                        <FileText size={8} className="text-white" />
+                                                                                    </div>
+                                                                                )}
                                                                                 {src.fav && selectedPage.image?.url !== src.url && (
-                                                                                    <div className="absolute top-1 left-1 pointer-events-none">
+                                                                                    <div className="absolute top-0.5 left-0.5 pointer-events-none">
                                                                                         <Heart size={9} className="fill-rose-400 text-rose-400 drop-shadow" />
                                                                                     </div>
                                                                                 )}
@@ -3661,13 +3681,17 @@ export function KdpFactoryApp() {
                                                                 <div className="relative w-full rounded-xl overflow-hidden border border-white/15 shadow-2xl"
                                                                      style={{ aspectRatio: "595/842" }}>
                                                                     {/* Page background */}
-                                                                    {(selectedPage.type === "both" && selectedPage.image) ? (
-                                                                        <img src={selectedPage.image.url} alt=""
-                                                                            style={{ transform: `scale(${selectedPage.image.scale})`, transformOrigin: "center" }}
-                                                                            className="absolute inset-0 w-full h-full object-cover" />
-                                                                    ) : (
-                                                                        <div className="absolute inset-0 bg-white" />
-                                                                    )}
+                                                                    <div className="absolute inset-0 bg-white" />
+                                                                    {(selectedPage.type === "both" && selectedPage.image) && (() => {
+                                                                        const z = selectedPage.image.scale ?? 1;
+                                                                        const hP = Math.min(35, (48 / Math.max(z, 0.1) / 595.28) * 100);
+                                                                        const vP = Math.min(35, (48 / Math.max(z, 0.1) / 841.89) * 100);
+                                                                        return (
+                                                                            <div className="absolute" style={{ left: `${hP}%`, right: `${hP}%`, top: `${vP}%`, bottom: `${vP}%` }}>
+                                                                                <img src={selectedPage.image.url} alt="" className="w-full h-full object-contain" />
+                                                                            </div>
+                                                                        );
+                                                                    })()}
 
                                                                     {/* Position click zones (top / middle / bottom) */}
                                                                     {(["top", "middle", "bottom"] as PageTextStyle["verticalAlign"][]).map(v => (
@@ -3731,144 +3755,197 @@ export function KdpFactoryApp() {
                         )}
 
                         {/* ── TAB: VISTA PREVIA ── */}
-                        {bookEditorTab === "preview" && (
-                            <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-                                {/* Preview toolbar */}
-                                <div className="shrink-0 px-4 py-2 border-b border-white/8 bg-black/20 flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{bookPages.length} página{bookPages.length !== 1 ? "s" : ""}</span>
+                        {bookEditorTab === "preview" && (() => {
+                            const selIdx = bookPages.findIndex(p => p.id === selectedPageId);
+                            const curIdx = selIdx >= 0 ? selIdx : 0;
+                            const curPage = bookPages[curIdx];
+
+                            /* Renders a page's content correctly — mirrors PDF logic */
+                            const renderPageInner = (page: BookPage, scale: number = 1) => {
+                                const zoom = page.image?.scale ?? 1;
+                                /* Match drawImageCentered: effectiveMargin = 48/zoom pts on 595×842 page */
+                                const mH = (48 / Math.max(zoom, 0.1) / 595.28) * 100;
+                                const mV = (48 / Math.max(zoom, 0.1) / 841.89) * 100;
+                                const brd = page.image?.border;
+                                const isEmpty = !page.image && !page.text.content.trim();
+                                const textFontPx = Math.max(4, page.text.fontSize * scale * 0.42);
+                                const cssFf = page.text.fontFamily === "times" ? "Georgia,serif" : page.text.fontFamily === "courier" ? "'Courier New',monospace" : "Helvetica,sans-serif";
+                                return (
+                                    <div
+                                        className="w-full h-full relative bg-white"
+                                        style={brd ? { boxShadow: `inset 0 0 0 ${brd.width}px ${brd.color}` } : {}}
+                                    >
+                                        {isEmpty && (
+                                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-neutral-300/50">
+                                                <FileText size={24} strokeWidth={1} />
+                                                <span className="text-[8px] uppercase tracking-widest">En blanco</span>
+                                            </div>
+                                        )}
+                                        {page.image && (
+                                            <div className="absolute" style={{ left:`${mH}%`, right:`${mH}%`, top:`${mV}%`, bottom:`${mV}%` }}>
+                                                <img src={page.image.url} alt="" className="w-full h-full object-contain" />
+                                            </div>
+                                        )}
+                                        {(page.type === "text" || page.type === "both") && page.text.content.trim() && (() => {
+                                            const va = page.text.verticalAlign ?? "middle";
+                                            const hasImg = !!page.image;
+                                            const cls = hasImg
+                                                ? `absolute inset-x-0 px-[6%] py-[4%] ${va === "top" ? "top-0 bg-gradient-to-b from-black/60 to-transparent" : va === "middle" ? "top-1/2 -translate-y-1/2" : "bottom-0 bg-gradient-to-t from-black/60 to-transparent"}`
+                                                : `absolute inset-x-0 px-[8%] ${va === "top" ? "top-[8%]" : va === "middle" ? "top-1/2 -translate-y-1/2" : "bottom-[8%]"}`;
+                                            return (
+                                                <div className={cls} style={{ textAlign: page.text.align }}>
+                                                    <p style={{ fontSize: `${textFontPx}px`, color: hasImg ? "#fff" : page.text.color, fontWeight: page.text.bold ? "bold" : "normal", fontStyle: page.text.italic ? "italic" : "normal", fontFamily: cssFf, whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.4 }}>
+                                                        {page.text.content}
+                                                    </p>
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
-                                    <div className="flex rounded-xl border border-white/10 overflow-hidden">
-                                        <button onClick={() => setBookPreviewMode("single")} title="Una página" className={`w-8 h-7 flex items-center justify-center transition-all ${bookPreviewMode === "single" ? "bg-amber-500/20 text-amber-400" : "bg-white/[0.03] text-neutral-500 hover:text-white"}`}><FileText size={11} /></button>
-                                        <button onClick={() => setBookPreviewMode("spread")} title="Páginas dobles" className={`w-8 h-7 flex items-center justify-center transition-all ${bookPreviewMode === "spread" ? "bg-amber-500/20 text-amber-400" : "bg-white/[0.03] text-neutral-500 hover:text-white"}`}><BookOpen size={11} /></button>
+                                );
+                            };
+
+                            return (
+                            <div className="flex-1 flex flex-col min-h-0 bg-[#0f0f11]">
+
+                                {/* ── Top bar ── */}
+                                <div className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06]">
+                                    <span className="text-[11px] text-neutral-500 font-medium truncate max-w-[120px]">{bookFileName || "Sin título"}</span>
+                                    {/* Mode pills */}
+                                    <div className="flex items-center gap-0.5 p-1 rounded-full bg-white/[0.07]">
+                                        <button onClick={() => setBookPreviewMode("single")} title="Una página"
+                                            className={`w-8 h-6 rounded-full flex items-center justify-center transition-all ${bookPreviewMode === "single" ? "bg-white/20 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                            <FileText size={10} />
+                                        </button>
+                                        <button onClick={() => setBookPreviewMode("spread")} title="Doble página"
+                                            className={`w-8 h-6 rounded-full flex items-center justify-center transition-all ${bookPreviewMode === "spread" ? "bg-white/20 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                            <BookOpen size={10} />
+                                        </button>
                                     </div>
+                                    {/* PDF button */}
+                                    <button onClick={() => void buildBookPdf()} disabled={isBuildingPdf || bookPages.length === 0}
+                                        className="h-7 px-3 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase flex items-center gap-1.5 hover:bg-amber-400 active:scale-95 transition-all disabled:opacity-40">
+                                        {isBuildingPdf ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
+                                        <span>PDF</span>
+                                    </button>
                                 </div>
 
-                                {/* PDF reader viewport */}
-                                <div className="flex-1 overflow-y-auto bg-[#1c1c1e] px-4 py-6 space-y-6">
-                                    {bookPages.length === 0 ? (
-                                        <div className="flex flex-col items-center justify-center h-full gap-3 py-20 opacity-30">
-                                            <FileText size={40} className="text-neutral-600" strokeWidth={1} />
-                                            <p className="text-[11px] font-black uppercase tracking-widest text-neutral-600">Sin páginas</p>
-                                            <p className="text-xs text-neutral-700">Ve al Editor y crea tu primera página</p>
+                                {bookPages.length === 0 ? (
+                                    <div className="flex-1 flex flex-col items-center justify-center gap-4 opacity-30">
+                                        <FileText size={44} className="text-neutral-600" strokeWidth={1} />
+                                        <p className="text-[11px] font-medium text-neutral-600 uppercase tracking-widest">Sin páginas</p>
+                                    </div>
+                                ) : bookPreviewMode === "single" ? (
+                                    /* ── Focused single-page reader ── */
+                                    <div className="flex-1 flex flex-col min-h-0">
+                                        {/* Page viewport */}
+                                        <div className="flex-1 flex items-center justify-center px-3 py-3 gap-2 min-h-0">
+                                            {/* Prev */}
+                                            <button
+                                                onClick={() => curIdx > 0 && setSelectedPageId(bookPages[curIdx - 1].id)}
+                                                disabled={curIdx === 0}
+                                                className="shrink-0 w-9 h-9 rounded-full bg-white/[0.07] border border-white/10 text-neutral-400 hover:text-white hover:bg-white/15 disabled:opacity-20 flex items-center justify-center transition-all">
+                                                <ChevronLeft size={16} />
+                                            </button>
+
+                                            {/* A4 page — sized to fill available height */}
+                                            <div className="flex-1 h-full flex items-center justify-center min-w-0">
+                                                <div
+                                                    className="relative overflow-hidden rounded-xl shadow-[0_16px_64px_rgba(0,0,0,0.8)] transition-all cursor-pointer group"
+                                                    style={{ aspectRatio: "595/842", maxHeight: "100%", maxWidth: "100%", width: "auto", height: "100%" }}
+                                                    onClick={() => { setBookEditorTab("editor"); setShowInlineImagePicker(false); }}
+                                                >
+                                                    {curPage && renderPageInner(curPage, 0.5)}
+                                                    {/* Edit hint */}
+                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                        <span className="bg-black/60 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border border-white/20">
+                                                            Editar página
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Next */}
+                                            <button
+                                                onClick={() => curIdx < bookPages.length - 1 && setSelectedPageId(bookPages[curIdx + 1].id)}
+                                                disabled={curIdx === bookPages.length - 1}
+                                                className="shrink-0 w-9 h-9 rounded-full bg-white/[0.07] border border-white/10 text-neutral-400 hover:text-white hover:bg-white/15 disabled:opacity-20 flex items-center justify-center transition-all">
+                                                <ChevronRight size={16} />
+                                            </button>
                                         </div>
-                                    ) : bookPreviewMode === "single" ? (
-                                        /* Single page column view */
-                                        <div className="flex flex-col items-center gap-5">
-                                            {bookPages.map((page, idx) => {
-                                                const isEmpty = !page.image && (!page.text.content.trim());
-                                                return (
-                                                    <div key={page.id} className="w-full max-w-sm group cursor-pointer" onClick={() => { setSelectedPageId(page.id); setBookEditorTab("editor"); setShowInlineImagePicker(false); }}>
-                                                        {/* Page label */}
-                                                        <div className="flex items-center justify-between mb-1.5 px-1">
-                                                            <span className="text-[9px] font-mono text-neutral-600">Pág. {idx + 1}</span>
-                                                            <span className="text-[9px] text-neutral-700 italic">
-                                                                {isEmpty ? "En blanco" : page.type === "image" ? "Imagen" : page.type === "text" ? "Texto" : "Mixta"}
-                                                            </span>
-                                                        </div>
-                                                        {/* A4 page */}
-                                                        <div className="w-full aspect-[1/1.414] bg-white rounded-lg shadow-[0_4px_24px_rgba(0,0,0,0.5)] relative overflow-hidden group-hover:shadow-[0_4px_32px_rgba(245,158,11,0.15)] transition-shadow">
-                                                            {isEmpty && (
-                                                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-neutral-200/50">
-                                                                    <FileText size={28} strokeWidth={1} />
-                                                                    <span className="text-[9px] font-medium uppercase tracking-widest">Página en blanco</span>
+
+                                        {/* Page counter + thumbnail strip */}
+                                        <div className="shrink-0 pb-3 pt-1 flex flex-col items-center gap-2.5 border-t border-white/[0.05]">
+                                            <span className="text-[10px] font-medium text-neutral-600 tabular-nums pt-2">
+                                                {curIdx + 1} / {bookPages.length}
+                                            </span>
+                                            {/* Thumbnail filmstrip */}
+                                            <div className="w-full px-4 overflow-x-auto no-scrollbar">
+                                                <div className="flex gap-2 justify-center min-w-max mx-auto">
+                                                    {bookPages.map((page, idx) => {
+                                                        const isActive = idx === curIdx;
+                                                        const brd = page.image?.border;
+                                                        return (
+                                                            <button
+                                                                key={page.id}
+                                                                onClick={() => setSelectedPageId(page.id)}
+                                                                className={`shrink-0 w-10 relative rounded-md overflow-hidden transition-all ${isActive ? "ring-2 ring-amber-500 ring-offset-1 ring-offset-[#0f0f11] scale-105" : "opacity-50 hover:opacity-80"}`}
+                                                                style={{ aspectRatio: "595/842" }}
+                                                            >
+                                                                <div className="w-full h-full bg-white relative"
+                                                                    style={brd ? { boxShadow: `inset 0 0 0 1px ${brd.color}` } : {}}>
+                                                                    {page.image
+                                                                        ? <img src={page.image.url} alt="" className="w-full h-full object-contain" />
+                                                                        : <div className="w-full h-full flex items-center justify-center"><FileText size={8} className="text-neutral-300" /></div>
+                                                                    }
                                                                 </div>
-                                                            )}
-                                                            {page.image && (
-                                                                <img src={page.image.url} alt=""
-                                                                    style={{ transform: `scale(${page.image.scale})`, transformOrigin: "center" }}
-                                                                    className="w-full h-full object-cover" />
-                                                            )}
-                                                            {(page.type === "text" || page.type === "both") && page.text.content.trim() && (() => {
-                                                                const va = page.text.verticalAlign ?? "middle";
-                                                                const hasImg = !!page.image;
-                                                                const cls = hasImg
-                                                                    ? `absolute inset-x-0 p-3 ${va === "top" ? "top-0 bg-gradient-to-b from-black/70 to-transparent" : va === "middle" ? "top-1/2 -translate-y-1/2 bg-black/40 backdrop-blur-sm" : "bottom-0 bg-gradient-to-t from-black/70 to-transparent"}`
-                                                                    : `absolute inset-x-0 p-4 ${va === "top" ? "top-0" : va === "middle" ? "top-1/2 -translate-y-1/2" : "bottom-0"}`;
-                                                                return (
-                                                                    <div className={cls} style={{ textAlign: page.text.align }}>
-                                                                        <p className="text-[8px] sm:text-[9px] break-words leading-relaxed whitespace-pre-wrap"
-                                                                            style={{ color: hasImg ? "#fff" : page.text.color, fontWeight: page.text.bold ? "bold" : "normal", fontStyle: page.text.italic ? "italic" : "normal", fontFamily: page.text.fontFamily === "times" ? "Georgia, serif" : page.text.fontFamily === "courier" ? "Courier New, monospace" : "Helvetica, sans-serif" }}>
-                                                                            {page.text.content}
-                                                                        </p>
-                                                                    </div>
-                                                                );
-                                                            })()}
-                                                            {/* Edit hover overlay */}
-                                                            <div className="absolute inset-0 bg-amber-500/0 group-hover:bg-amber-500/8 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                                                <span className="bg-black/60 text-amber-400 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg">Editar</span>
-                                                            </div>
-                                                        </div>
+                                                                <span className="absolute bottom-0 inset-x-0 text-center text-[6px] font-mono text-white bg-black/50 leading-[1.6]">{idx + 1}</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* ── Spread (double page) view ── */
+                                    <div className="flex-1 overflow-y-auto px-3 py-5 space-y-8">
+                                        {Array.from({ length: Math.ceil(bookPages.length / 2) }).map((_, spreadIdx) => {
+                                            const left = bookPages[spreadIdx * 2];
+                                            const right = bookPages[spreadIdx * 2 + 1];
+                                            const renderSpreadPage = (page: BookPage | undefined, absIdx: number) => {
+                                                if (!page) return (
+                                                    <div className="flex-1 aspect-[595/842] bg-white/[0.03] rounded-lg border border-dashed border-white/8 flex items-center justify-center">
+                                                        <span className="text-[8px] text-neutral-700">—</span>
                                                     </div>
                                                 );
-                                            })}
-                                        </div>
-                                    ) : (
-                                        /* Spread (book) view — 2 facing pages */
-                                        <div className="flex flex-col items-center gap-6">
-                                            {Array.from({ length: Math.ceil(bookPages.length / 2) }).map((_, spreadIdx) => {
-                                                const left = bookPages[spreadIdx * 2];
-                                                const right = bookPages[spreadIdx * 2 + 1];
-                                                const renderPage = (page: BookPage | undefined, absIdx: number) => {
-                                                    if (!page) return (
-                                                        <div className="flex-1 aspect-[1/1.414] bg-white/5 rounded-lg border border-dashed border-white/10 flex items-center justify-center">
-                                                            <span className="text-[9px] text-neutral-700 uppercase tracking-widest">—</span>
-                                                        </div>
-                                                    );
-                                                    const isEmpty = !page.image && (!page.text.content.trim());
-                                                    return (
-                                                        <div className="flex-1 group cursor-pointer" onClick={() => { setSelectedPageId(page.id); setBookEditorTab("editor"); setShowInlineImagePicker(false); }}>
-                                                            <div className="w-full aspect-[1/1.414] bg-white rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative overflow-hidden group-hover:shadow-[0_4px_24px_rgba(245,158,11,0.15)] transition-shadow">
-                                                                {isEmpty && (
-                                                                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-neutral-200/40">
-                                                                        <FileText size={20} strokeWidth={1} />
-                                                                        <span className="text-[7px] uppercase tracking-widest">En blanco</span>
-                                                                    </div>
-                                                                )}
-                                                                {page.image && (
-                                                                    <img src={page.image.url} alt=""
-                                                                        style={{ transform: `scale(${page.image.scale})`, transformOrigin: "center" }}
-                                                                        className="w-full h-full object-cover" />
-                                                                )}
-                                                                {(page.type === "text" || page.type === "both") && page.text.content.trim() && (() => {
-                                                                    const va = page.text.verticalAlign ?? "middle";
-                                                                    const hasImg = !!page.image;
-                                                                    const cls = hasImg
-                                                                        ? `absolute inset-x-0 p-2 ${va === "top" ? "top-0 bg-gradient-to-b from-black/70 to-transparent" : va === "middle" ? "top-1/2 -translate-y-1/2 bg-black/40" : "bottom-0 bg-gradient-to-t from-black/70 to-transparent"}`
-                                                                        : `absolute inset-x-0 p-2 ${va === "top" ? "top-0" : va === "middle" ? "top-1/2 -translate-y-1/2" : "bottom-0"}`;
-                                                                    return (
-                                                                        <div className={cls} style={{ textAlign: page.text.align }}>
-                                                                            <p className="text-[6px] break-words leading-tight whitespace-pre-wrap"
-                                                                                style={{ color: hasImg ? "#fff" : page.text.color, fontWeight: page.text.bold ? "bold" : "normal", fontStyle: page.text.italic ? "italic" : "normal" }}>
-                                                                                {page.text.content}
-                                                                            </p>
-                                                                        </div>
-                                                                    );
-                                                                })()}
-                                                                <div className="absolute inset-0 bg-amber-500/0 group-hover:bg-amber-500/8 transition-colors" />
-                                                            </div>
-                                                            <p className="text-[8px] text-neutral-600 text-center mt-1 font-mono">{absIdx + 1}</p>
-                                                        </div>
-                                                    );
-                                                };
                                                 return (
-                                                    <div key={spreadIdx} className="w-full max-w-lg">
-                                                        {/* Spread number */}
-                                                        <p className="text-[9px] font-mono text-neutral-700 text-center mb-2">Páginas {spreadIdx * 2 + 1}{right ? `–${spreadIdx * 2 + 2}` : ""}</p>
-                                                        {/* Facing pages with spine shadow */}
-                                                        <div className="flex gap-0 shadow-[0_8px_40px_rgba(0,0,0,0.6)] rounded-lg overflow-hidden" style={{ boxShadow: "0 8px 40px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.04)" }}>
-                                                            <div className="flex-1">{renderPage(left, spreadIdx * 2)}</div>
-                                                            <div className="w-px bg-black/40 shrink-0" />
-                                                            <div className="flex-1">{renderPage(right, spreadIdx * 2 + 1)}</div>
+                                                    <div className="flex-1 cursor-pointer group" onClick={() => { setSelectedPageId(page.id); setBookEditorTab("editor"); }}>
+                                                        <div className="w-full aspect-[595/842] relative overflow-hidden rounded-l-sm rounded-r-sm shadow-[0_4px_20px_rgba(0,0,0,0.5)] group-hover:shadow-[0_4px_28px_rgba(0,0,0,0.7)] transition-shadow">
+                                                            {renderPageInner(page, 0.3)}
                                                         </div>
+                                                        <p className="text-[8px] font-mono text-neutral-700 text-center mt-1.5">{absIdx + 1}</p>
                                                     </div>
                                                 );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
+                                            };
+                                            return (
+                                                <div key={spreadIdx} className="w-full max-w-sm mx-auto">
+                                                    <p className="text-[9px] font-medium text-neutral-700 text-center mb-2 tracking-widest uppercase">
+                                                        {spreadIdx * 2 + 1}{right ? ` · ${spreadIdx * 2 + 2}` : ""}
+                                                    </p>
+                                                    <div className="flex rounded-sm overflow-hidden shadow-[0_8px_48px_rgba(0,0,0,0.7)]">
+                                                        <div className="flex-1">{renderSpreadPage(left, spreadIdx * 2)}</div>
+                                                        {/* Spine */}
+                                                        <div className="w-[2px] bg-gradient-to-b from-black/60 via-black/20 to-black/60 shrink-0" />
+                                                        <div className="flex-1">{renderSpreadPage(right, spreadIdx * 2 + 1)}</div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
-                        )}
+                            );
+                        })()}
 
                     </div>
                 </div>

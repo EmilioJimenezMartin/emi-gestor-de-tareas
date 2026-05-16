@@ -702,4 +702,58 @@ Generate exactly 15 diverse, actionable trends. Focus on currently profitable an
             return reply.status(500).send({ error: e?.message ?? "LLM error" });
         }
     });
+
+    // ── AI UPSCALE (super-resolution via HuggingFace) ────────────────────────
+    app.post("/ai/upscale", { bodyLimit: 30 * 1024 * 1024 }, async (request: any, reply) => {
+        const { dataUrl } = request.body || {};
+        if (!dataUrl || typeof dataUrl !== "string") {
+            return reply.status(400).send({ error: "dataUrl es requerido" });
+        }
+
+        const match = dataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/s);
+        if (!match) {
+            return reply.status(400).send({ error: "dataUrl no válido" });
+        }
+        const [, mimeType, b64] = match;
+        const imageBuffer = Buffer.from(b64, "base64");
+
+        let apiKey = process.env.HUGGINGFACE_API_KEY || "";
+        if (!apiKey && getMongoStatus() === "connected") {
+            try {
+                const hfSetting = await Settings.findOne({ key: "HUGGINGFACE_API_KEY" });
+                apiKey = hfSetting?.value || "";
+            } catch {}
+        }
+
+        if (!apiKey) {
+            return reply.status(503).send({ error: "HuggingFace API key no configurada" });
+        }
+
+        try {
+            const response = await axios.post(
+                "https://api-inference.huggingface.co/models/caidas/swin2SR-realworld-sr-x4-64",
+                imageBuffer,
+                {
+                    headers: {
+                        Authorization: `Bearer ${apiKey}`,
+                        "Content-Type": mimeType,
+                    },
+                    responseType: "arraybuffer",
+                    timeout: 90000,
+                    maxBodyLength: 30 * 1024 * 1024,
+                }
+            );
+
+            const contentType = (response.headers["content-type"] as string) || "image/png";
+            const outB64 = Buffer.from(response.data as ArrayBuffer).toString("base64");
+            return reply.send({ dataUrl: `data:${contentType};base64,${outB64}`, method: "ai" });
+        } catch (hfErr: any) {
+            const status = hfErr?.response?.status;
+            app.log.warn({ err: hfErr, status }, "AI upscale: HuggingFace failed");
+            if (status === 503) {
+                return reply.status(503).send({ error: "El modelo de super-resolución se está iniciando. Inténtalo en 30 segundos.", loading: true });
+            }
+            return reply.status(502).send({ error: "Error en HuggingFace SR", details: hfErr?.message });
+        }
+    });
 }
