@@ -180,6 +180,7 @@ interface PageTextStyle {
     fontSize: number;
     color: string;
     align: "left" | "center" | "right";
+    verticalAlign: "top" | "middle" | "bottom";
     fontFamily: "helvetica" | "times" | "courier";
 }
 
@@ -190,8 +191,15 @@ interface BookPage {
     text: PageTextStyle;
 }
 
+interface FavoriteImage {
+    url: string;
+    label: string;
+    source: "vault" | "catalog" | "cloudinary" | "generated";
+    savedAt: string;
+}
+
 const defaultTextStyle = (): PageTextStyle => ({
-    content: "", bold: false, italic: false, fontSize: 14, color: "#333333", align: "center", fontFamily: "helvetica",
+    content: "", bold: false, italic: false, fontSize: 14, color: "#333333", align: "center", verticalAlign: "middle", fontFamily: "helvetica",
 });
 
 function KdpSelect({ value, onChange, options, accent = "white" }: {
@@ -386,8 +394,8 @@ export function KdpFactoryApp() {
     const [isLoadingTrends, setIsLoadingTrends] = useState(false);
     const [selectedTrend, setSelectedTrend] = useState<any | null>(null);
 
-    // --- Favorites (persisted to MongoDB via /settings) ---
-    const [favorites, setFavorites] = useState<Set<string>>(new Set());
+    // --- Favorites (persisted to MongoDB via /settings as FavoriteImage[]) ---
+    const [favorites, setFavorites] = useState<Map<string, FavoriteImage>>(new Map());
 
     // --- PDF drag-to-reorder ---
     const [bookDragIdx, setBookDragIdx] = useState<number | null>(null);
@@ -654,6 +662,7 @@ export function KdpFactoryApp() {
         setBookPages(prev => [...prev, { id, type, text: defaultTextStyle() }]);
         setSelectedPageId(id);
         setShowAddPageMenu(false);
+        setBookEditorTab("editor");
     };
 
     const deletePage = (id: string) => {
@@ -684,6 +693,20 @@ export function KdpFactoryApp() {
         setBookPages(prev => prev.map(p => p.id === id ? { ...p, image: { url, scale: 1, label } } : p));
     };
 
+    const duplicatePage = (id: string) => {
+        const page = bookPages.find(p => p.id === id);
+        if (!page) return;
+        const newId = genPageId();
+        const clone = { ...page, id: newId };
+        setBookPages(prev => {
+            const idx = prev.findIndex(p => p.id === id);
+            const next = [...prev];
+            next.splice(idx + 1, 0, clone);
+            return next;
+        });
+        setSelectedPageId(newId);
+    };
+
     const toggleImageSelect = (url: string) => {
         setSelectedImageUrls(prev => {
             const next = new Set(prev);
@@ -709,12 +732,21 @@ export function KdpFactoryApp() {
         toast.success(`${newPages.length} página${newPages.length > 1 ? "s" : ""} añadida${newPages.length > 1 ? "s" : ""}`);
     };
 
-    const toggleFavorite = (url: string) => {
+    const toggleFavorite = (url: string, meta?: Pick<FavoriteImage, "label" | "source">) => {
         setFavorites(prev => {
-            const next = new Set(prev);
-            if (next.has(url)) next.delete(url); else next.add(url);
-            // Persist stable (non-blob) URLs to MongoDB via /settings
-            const stable = [...next].filter(u => !u.startsWith("blob:"));
+            const next = new Map(prev);
+            if (next.has(url)) {
+                next.delete(url);
+            } else {
+                next.set(url, {
+                    url,
+                    label: meta?.label ?? "",
+                    source: meta?.source ?? "generated",
+                    savedAt: new Date().toISOString(),
+                });
+            }
+            // Persist stable (non-blob) objects to MongoDB via /settings
+            const stable = [...next.values()].filter(f => !f.url.startsWith("blob:"));
             fetch(`${API_BASE_URL}/settings`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
@@ -1058,11 +1090,21 @@ export function KdpFactoryApp() {
                 const fontSize = style.fontSize;
                 const hex = style.color.replace("#", "");
                 const textColor = rgb(parseInt(hex.slice(0, 2), 16) / 255, parseInt(hex.slice(2, 4), 16) / 255, parseInt(hex.slice(4, 6), 16) / 255);
-                const w = font.widthOfTextAtSize(text, fontSize);
-                let x = margin;
-                if (style.align === "center") x = (pageWidth - w) / 2;
-                else if (style.align === "right") x = Math.max(margin, pageWidth - margin - w);
-                pdfPage.drawText(text, { x, y: margin, size: fontSize, font, color: textColor });
+                // Handle multi-line: split by newline and render each line
+                const lines = text.split("\n");
+                const lineH = fontSize * 1.3;
+                const blockH = lines.length * lineH;
+                let yStart: number;
+                if (style.verticalAlign === "top") yStart = pageHeight - margin - fontSize;
+                else if (style.verticalAlign === "middle") yStart = (pageHeight + blockH) / 2 - fontSize;
+                else yStart = margin + blockH - fontSize; // bottom
+                lines.forEach((line, i) => {
+                    const w = font.widthOfTextAtSize(line || " ", fontSize);
+                    let x = margin;
+                    if (style.align === "center") x = Math.max(margin, (pageWidth - w) / 2);
+                    else if (style.align === "right") x = Math.max(margin, pageWidth - margin - w);
+                    pdfPage.drawText(line || " ", { x, y: yStart - i * lineH, size: fontSize, font, color: textColor });
+                });
             };
 
             for (const bookPage of bookPages) {
@@ -1102,7 +1144,16 @@ export function KdpFactoryApp() {
                 const data = await res.json();
                 const found = (data.settings ?? []).find((s: any) => s.key === "kdp-favorites");
                 if (Array.isArray(found?.value) && found.value.length > 0) {
-                    setFavorites(new Set<string>(found.value));
+                    const map = new Map<string, FavoriteImage>();
+                    for (const item of found.value) {
+                        if (typeof item === "string") {
+                            // migrate old format (plain URL string)
+                            map.set(item, { url: item, label: "", source: "generated", savedAt: new Date().toISOString() });
+                        } else if (item && typeof item.url === "string") {
+                            map.set(item.url, item as FavoriteImage);
+                        }
+                    }
+                    setFavorites(map);
                 }
             } catch {}
         };
@@ -2158,10 +2209,110 @@ export function KdpFactoryApp() {
                 </Card>
             </div>
 
+            {/* ── BOOK FACTORY CARD ── */}
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
+                    {/* Ambient glow */}
+                    <div className="absolute -top-16 -right-16 w-48 h-48 bg-amber-500/8 blur-[60px] pointer-events-none" />
+                    <div className="p-5 space-y-4">
+                        {/* Header */}
+                        <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/20 flex items-center justify-center shadow-lg shadow-amber-500/10">
+                                    <BookOpen size={18} className="text-amber-400" />
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-black text-white tracking-tight italic">Book Factory</h4>
+                                    <p className="text-[10px] text-neutral-500 font-medium">
+                                        {bookPages.length === 0 ? "Sin páginas todavía" : `${bookPages.length} página${bookPages.length !== 1 ? "s" : ""} en el libro`}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                {bookPages.length > 0 && (
+                                    <button onClick={() => setBookPages([])} className="h-7 px-2.5 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-all text-[9px] font-black uppercase">
+                                        Vaciar
+                                    </button>
+                                )}
+                                <Button
+                                    onClick={() => {
+                                        if (vaultImages.length > 0 && bookPages.length === 0) {
+                                            const pages: BookPage[] = vaultImages.map(v => ({ id: genPageId(), type: "image" as const, image: { url: v.url, scale: 1, label: v.model }, text: defaultTextStyle() }));
+                                            setBookPages(pages);
+                                            setSelectedPageId(pages[0]?.id ?? null);
+                                        }
+                                        setBookEditorOpen(true);
+                                    }}
+                                    className="h-8 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-[0_4px_20px_rgba(245,158,11,0.3)]"
+                                >
+                                    <Pencil size={12} />
+                                    {bookPages.length === 0 ? "Crear libro" : "Editar libro"}
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Page thumbnails preview or empty state */}
+                        {bookPages.length === 0 ? (
+                            <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/6">
+                                <div className="flex gap-1.5">
+                                    {[0,1,2,3].map(i => (
+                                        <div key={i} className="w-8 h-11 rounded-md bg-white/5 border border-dashed border-white/10" style={{ opacity: 1 - i * 0.2 }} />
+                                    ))}
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Libro vacío</p>
+                                    <p className="text-[9px] text-neutral-700">Pulsa "Crear libro" para empezar o importa las imágenes del vault automáticamente</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {/* Mini thumbnail strip */}
+                                <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                                    {bookPages.map((page, idx) => (
+                                        <div key={page.id} className="shrink-0 w-9 h-[50px] rounded-lg overflow-hidden bg-white/5 border border-white/10 relative">
+                                            {page.image
+                                                ? <img src={page.image.url} alt="" className="w-full h-full object-cover" />
+                                                : <div className="w-full h-full flex items-center justify-center"><Type size={10} className="text-neutral-700" /></div>
+                                            }
+                                            <div className="absolute bottom-0 inset-x-0 h-3 bg-gradient-to-t from-black/70 to-transparent flex items-end justify-end px-0.5">
+                                                <span className="text-[5px] font-mono text-white/50">{idx+1}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <button onClick={() => { setBookEditorTab("editor"); setBookEditorOpen(true); }}
+                                        className="shrink-0 w-9 h-[50px] rounded-lg border border-dashed border-amber-500/30 text-amber-500/50 hover:border-amber-500/60 hover:text-amber-400 flex items-center justify-center transition-all">
+                                        <Plus size={12} />
+                                    </button>
+                                </div>
+                                {/* Quick stats */}
+                                <div className="flex items-center gap-3">
+                                    {[
+                                        ["Imágenes", bookPages.filter(p => p.image).length],
+                                        ["Texto", bookPages.filter(p => p.text.content.trim()).length],
+                                        ["En blanco", bookPages.filter(p => !p.image && !p.text.content.trim()).length],
+                                    ].map(([label, count]) => (
+                                        <div key={label as string} className="flex items-center gap-1">
+                                            <span className="text-[9px] font-black text-neutral-400">{count as number}</span>
+                                            <span className="text-[9px] text-neutral-600">{label as string}</span>
+                                        </div>
+                                    ))}
+                                    <div className="ml-auto flex items-center gap-1.5">
+                                        <span className="text-[9px] text-neutral-600">Nombre:</span>
+                                        <input value={bookFileName} onChange={e => setBookFileName(e.target.value)}
+                                            className="h-5 w-24 rounded-md bg-white/5 border border-white/10 px-1.5 text-[9px] text-white outline-none focus:border-amber-500/40"
+                                            placeholder="libro-kdp" />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </Card>
+            </div>
+
             {/* Asset Vault / Carousel — always visible */}
             <div className="space-y-6 animate-in fade-in slide-in-from-left-8 duration-700 pb-4">
-                <div className="flex items-center justify-between px-2">
-                    <div className="flex items-center gap-3">
+                <div className="flex items-center px-2">
+                    <div className="flex items-center gap-3 flex-1">
                         <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/5">
                             <Box size={16} />
                         </div>
@@ -2170,20 +2321,6 @@ export function KdpFactoryApp() {
                             <p className="text-[10px] text-neutral-600 font-medium italic">Sesión actual: {vaultImages.length} activos conservados</p>
                         </div>
                     </div>
-                    <Button
-                        onClick={() => {
-                            if (vaultImages.length > 0 && bookPages.length === 0) {
-                                const pages: BookPage[] = vaultImages.map(v => ({ id: genPageId(), type: "image" as const, image: { url: v.url, scale: 1, label: v.model }, text: defaultTextStyle() }));
-                                setBookPages(pages);
-                                setSelectedPageId(pages[0]?.id ?? null);
-                            }
-                            setBookEditorOpen(true);
-                        }}
-                        className="h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 text-amber-100 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest shadow-[0_10px_30px_rgba(245,158,11,0.12)] flex items-center gap-2"
-                    >
-                        <FileText size={13} />
-                        Crear Libro PDF
-                    </Button>
                 </div>
 
                 {vaultImages.length === 0 ? (
@@ -2901,7 +3038,23 @@ export function KdpFactoryApp() {
                         )}
                         {/* Favorite */}
                         <button
-                            onClick={() => toggleFavorite(previewImage)}
+                            onClick={() => {
+                                const label = previewContext?.vaultCtx
+                                    ? (vaultImages[previewContext.index]?.model ?? "")
+                                    : previewContext?.cloudinaryCtx
+                                    ? (cloudinaryImages[previewContext.index]?.publicId?.split("/").pop() ?? "")
+                                    : previewContext?.catalogCtx
+                                    ? (previewContext.catalogCtx.images[previewContext.index]?.publicId?.split("/").pop() ?? "")
+                                    : "";
+                                const source: FavoriteImage["source"] = previewContext?.vaultCtx
+                                    ? "vault"
+                                    : previewContext?.cloudinaryCtx
+                                    ? "cloudinary"
+                                    : previewContext?.catalogCtx
+                                    ? "catalog"
+                                    : "generated";
+                                toggleFavorite(previewImage, { label, source });
+                            }}
                             className={`p-2.5 rounded-2xl bg-black/60 backdrop-blur-md transition-all border ${favorites.has(previewImage) ? "text-rose-400 border-rose-500/30 bg-rose-500/10" : "text-white border-white/10 hover:bg-white/10"}`}
                             title={favorites.has(previewImage) ? "Quitar de favoritos" : "Marcar como favorita"}
                         >
@@ -3076,336 +3229,379 @@ export function KdpFactoryApp() {
                     <div className="relative w-full max-w-4xl h-[100dvh] sm:h-auto sm:max-h-[90vh] rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
 
                         {/* Header */}
-                        <div className="shrink-0 px-4 pt-4 pb-3 border-b border-white/8 flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                        <div className="shrink-0 px-4 pt-4 pb-3 border-b border-white/8 flex items-center gap-2">
                             <div className="flex-1 min-w-0">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Editor de Libro PDF</p>
-                                <p className="text-[11px] text-neutral-600">{bookPages.length} pág.</p>
+                                <p className="text-[11px] text-neutral-600">{bookPages.length} página{bookPages.length !== 1 ? "s" : ""}</p>
                             </div>
+                            {/* Filename — visible from sm */}
                             <input value={bookFileName} onChange={e => setBookFileName(e.target.value)}
-                                className="hidden sm:block w-28 h-8 rounded-xl bg-white/5 border border-white/10 px-2.5 text-[11px] text-white outline-none focus:border-amber-500/40 shrink-0"
+                                className="hidden sm:block w-28 h-9 rounded-xl bg-white/5 border border-white/10 px-2.5 text-[11px] text-white outline-none focus:border-amber-500/40 shrink-0"
                                 placeholder="libro-kdp" />
-                            <div className="flex rounded-xl border border-white/10 overflow-hidden shrink-0">
-                                <button onClick={() => setBookPdfMode("standard")} className={`px-2.5 h-8 text-[9px] font-black uppercase transition-all ${bookPdfMode === "standard" ? "bg-amber-500 text-black" : "bg-white/[0.04] text-neutral-500 hover:text-white"}`}>Std</button>
-                                <button onClick={() => setBookPdfMode("colored")} className={`px-2.5 h-8 text-[9px] font-black uppercase transition-all ${bookPdfMode === "colored" ? "bg-amber-500 text-black" : "bg-white/[0.04] text-neutral-500 hover:text-white"}`}>Color</button>
+                            {/* PDF mode toggle — desktop only */}
+                            <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-xl bg-white/[0.03] border border-white/8 shrink-0">
+                                <span className="text-[8px] font-black uppercase text-neutral-600 mr-1">PDF</span>
+                                <button onClick={() => setBookPdfMode("standard")} className={`px-1.5 h-5 rounded-md text-[8px] font-black uppercase transition-all ${bookPdfMode === "standard" ? "bg-amber-500/20 text-amber-400" : "text-neutral-600 hover:text-neutral-400"}`}>Std</button>
+                                <button onClick={() => setBookPdfMode("colored")} className={`px-1.5 h-5 rounded-md text-[8px] font-black uppercase transition-all ${bookPdfMode === "colored" ? "bg-amber-500/20 text-amber-400" : "text-neutral-600 hover:text-neutral-400"}`}>2 pág.</button>
                             </div>
                             <Button onClick={buildBookPdf} disabled={isBuildingPdf || bookPages.length === 0}
-                                className="h-8 rounded-xl bg-amber-500 text-black hover:bg-amber-400 text-[10px] font-black uppercase shrink-0 px-3 gap-1.5">
-                                {isBuildingPdf ? <Loader2 size={13} className="animate-spin" /> : <><Download size={13} />PDF</>}
+                                className="h-9 rounded-xl bg-amber-500 text-black hover:bg-amber-400 text-[11px] font-black uppercase shrink-0 px-3 sm:px-4 gap-1.5">
+                                {isBuildingPdf ? <Loader2 size={14} className="animate-spin" /> : <><Download size={14} /><span className="hidden sm:inline">Generar </span>PDF</>}
                             </Button>
-                            <button onClick={() => { setBookEditorOpen(false); setShowAddPageMenu(false); }} className="p-2 rounded-xl bg-white/5 text-neutral-400 hover:bg-rose-500 hover:text-white transition-all border border-white/10 shrink-0"><X size={15} /></button>
+                            <button onClick={() => { setBookEditorOpen(false); setShowAddPageMenu(false); }}
+                                className="w-9 h-9 rounded-xl bg-white/5 text-neutral-400 hover:bg-rose-500 hover:text-white transition-all border border-white/10 shrink-0 flex items-center justify-center">
+                                <X size={15} />
+                            </button>
                         </div>
 
                         {/* Tabs */}
                         <div className="shrink-0 flex border-b border-white/8 bg-black/20">
-                            {([["editor", "Editor", Pencil], ["images", "Añadir", ImagePlus], ["preview", "Vista previa", FileText]] as [string, string, React.ElementType][]).map(([tab, label, Icon]) => (
-                                <button key={tab} onClick={() => setBookEditorTab(tab as "editor"|"images"|"preview")}
-                                    className={`flex-1 flex items-center justify-center gap-1.5 h-10 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all ${bookEditorTab === tab ? "border-amber-500 text-amber-400 bg-amber-500/5" : "border-transparent text-neutral-600 hover:text-neutral-400"}`}>
-                                    <Icon size={11} /><span className="hidden xs:inline">{label}</span><span className="xs:hidden">{label.split(" ")[0]}</span>
+                            {([["editor", "Editar", Pencil], ["preview", "Vista previa", FileText]] as [string, string, React.ElementType][]).map(([tab, label, Icon]) => (
+                                <button key={tab} onClick={() => setBookEditorTab(tab as "editor"|"preview")}
+                                    className={`flex-1 flex items-center justify-center gap-1.5 h-12 text-[11px] font-black uppercase tracking-widest border-b-2 transition-all ${bookEditorTab === tab ? "border-amber-500 text-amber-400 bg-amber-500/5" : "border-transparent text-neutral-600 hover:text-neutral-400"}`}>
+                                    <Icon size={13} />{label}
                                 </button>
                             ))}
                         </div>
 
-                        {/* ── TAB: EDITOR ── */}
+                        {/* ── TAB: EDITAR ── */}
                         {bookEditorTab === "editor" && (
                             <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-                                {/* Timeline */}
-                                <div className="shrink-0 border-b border-white/8 px-3 py-2 bg-black/30">
+
+                                {/* ── Timeline ── */}
+                                <div className="shrink-0 border-b border-white/8 px-3 py-2.5 bg-black/30">
                                     <div className="flex items-center gap-2">
-                                        {/* Scrollable page list */}
-                                        <div className="flex-1 flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar min-w-0">
+                                        {/* Scrollable pages strip */}
+                                        <div className="flex-1 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar min-w-0">
                                             {bookPages.map((page, idx) => (
                                                 <div key={page.id} draggable
                                                     onDragStart={() => handleBookDragStart(idx)}
                                                     onDragOver={e => handleBookDragOver(e, idx)}
                                                     onDrop={() => handleBookDrop(idx)}
                                                     onDragEnd={handleBookDragEnd}
-                                                    onClick={() => { setSelectedPageId(page.id); setShowAddPageMenu(false); setShowInlineImagePicker(false); }}
-                                                    className={`shrink-0 w-[46px] h-[65px] rounded-lg border-2 cursor-pointer relative overflow-hidden transition-all select-none group ${selectedPageId === page.id ? "border-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.4)]" : bookDragOverIdx === idx && bookDragIdx !== idx ? "border-amber-500/40 scale-105" : bookDragIdx === idx ? "border-white/10 opacity-25" : "border-white/10 hover:border-white/25"}`}>
+                                                    onClick={() => { setSelectedPageId(page.id); setShowInlineImagePicker(false); }}
+                                                    className={`group shrink-0 w-12 h-[68px] rounded-xl border-2 cursor-pointer relative overflow-hidden transition-all select-none
+                                                        ${selectedPageId === page.id
+                                                            ? "border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.4)]"
+                                                            : bookDragOverIdx === idx && bookDragIdx !== idx
+                                                            ? "border-amber-500/40 scale-105"
+                                                            : bookDragIdx === idx
+                                                            ? "border-white/10 opacity-25"
+                                                            : "border-white/10 hover:border-white/30"}`}>
                                                     <div className="w-full h-full bg-[#1a1a1a]">
                                                         {page.image
                                                             ? <img src={page.image.url} alt="" className="w-full h-full object-cover" />
-                                                            : <div className="w-full h-full flex items-center justify-center"><Type size={12} className="text-neutral-700" /></div>
-                                                        }
+                                                            : <div className="w-full h-full flex flex-col items-center justify-center gap-0.5">
+                                                                <Type size={14} className="text-neutral-700" />
+                                                              </div>}
                                                     </div>
-                                                    <div className="absolute bottom-0 inset-x-0 h-4 bg-gradient-to-t from-black/80 to-transparent flex items-end justify-end px-0.5 pb-0.5">
-                                                        <span className="text-[7px] font-mono text-white/60">{idx + 1}</span>
+                                                    {/* Page number */}
+                                                    <div className="absolute bottom-0 inset-x-0 h-5 bg-gradient-to-t from-black/80 to-transparent flex items-end px-1 pb-0.5">
+                                                        <span className="text-[8px] font-mono text-white/50">{idx + 1}</span>
                                                     </div>
-                                                    {page.type === "text" && <div className="absolute top-0.5 left-0.5 w-2.5 h-2.5 rounded-sm bg-blue-500 flex items-center justify-center"><Type size={5} className="text-white" /></div>}
-                                                    {page.type === "both" && <div className="absolute top-0.5 left-0.5 w-2.5 h-2.5 rounded-sm bg-amber-500 flex items-center justify-center"><Type size={5} className="text-black" /></div>}
+                                                    {/* Type badge */}
+                                                    {page.type === "text" && <div className="absolute top-1 left-1 w-3 h-3 rounded bg-blue-500/80 flex items-center justify-center"><Type size={6} className="text-white" /></div>}
+                                                    {page.type === "both" && <div className="absolute top-1 left-1 w-3 h-3 rounded bg-purple-500/80 flex items-center justify-center"><Layers size={6} className="text-white" /></div>}
+                                                    {/* Delete — always visible on mobile, hover-only on desktop */}
+                                                    <button onClick={e => { e.stopPropagation(); deletePage(page.id); }}
+                                                        className="absolute top-0.5 right-0.5 w-5 h-5 rounded bg-black/80 text-red-400 sm:opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                                                        title="Eliminar">
+                                                        <X size={9} />
+                                                    </button>
                                                 </div>
                                             ))}
                                             {bookPages.length === 0 && (
-                                                <p className="text-[10px] text-neutral-700 shrink-0">Pulsa "Nueva" para añadir tu primera página</p>
+                                                <p className="text-[11px] text-neutral-700 shrink-0 italic px-1">Todavía no hay páginas</p>
                                             )}
                                         </div>
-                                        {/* Add page button — outside overflow so dropdown isn't clipped */}
-                                        <div className="relative shrink-0">
-                                            <button onClick={e => { e.stopPropagation(); setShowAddPageMenu(v => !v); }}
-                                                className={`w-[46px] h-[65px] rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-0.5 transition-all ${showAddPageMenu ? "border-amber-500/60 text-amber-500 bg-amber-500/5" : "border-white/15 text-neutral-600 hover:border-white/30 hover:text-neutral-400"}`}>
-                                                <Plus size={14} />
-                                                <span className="text-[7px] font-black uppercase">Nueva</span>
-                                            </button>
-                                            {showAddPageMenu && (
-                                                <div className="absolute z-[200] bottom-full mb-1.5 right-0 bg-[#161616] border border-white/12 rounded-2xl shadow-2xl overflow-hidden w-48">
-                                                    {([["image", "Solo imagen", ImageIcon], ["text", "Solo texto", Type], ["both", "Imagen + Texto", Layers]] as [BookPage["type"], string, React.ElementType][]).map(([type, label, Icon]) => (
-                                                        <button key={type} onClick={e => { e.stopPropagation(); addBlankPage(type); }}
-                                                            className="w-full flex items-center gap-2.5 px-3 py-2.5 text-[11px] font-bold text-neutral-300 hover:bg-white/5 hover:text-white transition-colors">
-                                                            <Icon size={12} className="text-amber-400" />{label}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Page editor */}
-                                <div className="flex-1 overflow-y-auto" onClick={() => setShowAddPageMenu(false)}>
-                                    {selectedPage ? (
-                                        <div className="flex flex-col sm:flex-row h-full min-h-0">
-                                            {/* Left: A4 page preview */}
-                                            <div className="shrink-0 flex flex-col items-center justify-start p-4 gap-3 sm:w-56 sm:border-r sm:border-white/8 sm:overflow-y-auto bg-black/20">
-                                                {/* A4 preview */}
-                                                <div className="w-full max-w-[160px] aspect-[1/1.414] rounded-xl bg-white shadow-[0_8px_32px_rgba(0,0,0,0.6)] relative overflow-hidden flex items-center justify-center">
-                                                    {selectedPage.image ? (
-                                                        <img src={selectedPage.image.url} alt=""
-                                                            style={{ transform: `scale(${selectedPage.image.scale})`, transformOrigin: "center" }}
-                                                            className="w-full h-full object-cover transition-transform duration-150" />
-                                                    ) : selectedPage.type !== "text" ? (
-                                                        <div className="flex flex-col items-center gap-1 text-neutral-300 opacity-40">
-                                                            <ImageIcon size={24} strokeWidth={1.5} />
-                                                            <span className="text-[9px] font-bold">Sin imagen</span>
-                                                        </div>
-                                                    ) : null}
-                                                    {(selectedPage.type === "text" || selectedPage.type === "both") && selectedPage.text.content.trim() && (
-                                                        <div className="absolute inset-x-0 bottom-0 p-2" style={{ textAlign: selectedPage.text.align }}>
-                                                            <p className="text-[6px] break-words leading-tight" style={{ color: selectedPage.text.color, fontWeight: selectedPage.text.bold ? "bold" : "normal", fontStyle: selectedPage.text.italic ? "italic" : "normal" }}>
-                                                                {selectedPage.text.content.slice(0, 80)}
-                                                            </p>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                {/* Zoom slider (if image) */}
-                                                {selectedPage.image && (
-                                                    <div className="w-full max-w-[160px] space-y-1">
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="text-[9px] font-black uppercase text-neutral-600">Zoom</span>
-                                                            <span className="text-[9px] font-mono text-amber-400">{Math.round(selectedPage.image.scale * 100)}%</span>
-                                                        </div>
-                                                        <input type="range" min={0.5} max={2.5} step={0.05} value={selectedPage.image.scale}
-                                                            onChange={e => updatePageImageScale(selectedPage.id, Number(e.target.value))}
-                                                            className="w-full accent-amber-500 h-1" />
-                                                    </div>
-                                                )}
-                                                {/* Page number + delete */}
-                                                <div className="w-full max-w-[160px] flex items-center justify-between">
-                                                    <span className="text-[9px] text-neutral-600">Pág. {bookPages.findIndex(p => p.id === selectedPage.id) + 1}</span>
-                                                    <button onClick={() => deletePage(selectedPage.id)} className="flex items-center gap-1 text-[9px] text-neutral-600 hover:text-red-400 transition-colors">
-                                                        <Trash2 size={10} /> Eliminar
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {/* Right: controls */}
-                                            <div className="flex-1 overflow-y-auto p-4 space-y-5">
-                                                {/* Type selector */}
-                                                <div className="space-y-2">
-                                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Tipo de página</p>
-                                                    <div className="flex gap-2">
-                                                        {([["image", "Imagen", ImageIcon], ["text", "Texto", Type], ["both", "Mixta", Layers]] as [BookPage["type"], string, React.ElementType][]).map(([type, label, Icon]) => (
-                                                            <button key={type} onClick={() => updatePageType(selectedPage.id, type)}
-                                                                className={`flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${selectedPage.type === type ? "border-amber-500/60 bg-amber-500/10 text-amber-400" : "border-white/10 bg-white/[0.02] text-neutral-500 hover:border-white/20 hover:text-neutral-300"}`}>
-                                                                <Icon size={13} />
-                                                                {label}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-
-                                                {/* Image source picker */}
-                                                {(selectedPage.type === "image" || selectedPage.type === "both") && (
-                                                    <div className="space-y-2">
-                                                        <div className="flex items-center justify-between">
-                                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Imagen</p>
-                                                            <div className="flex items-center gap-2">
-                                                                {selectedPage.image && (
-                                                                    <button onClick={() => clearPageImage(selectedPage.id)} className="text-[9px] text-neutral-600 hover:text-red-400 transition-colors flex items-center gap-1"><X size={9} />Quitar</button>
-                                                                )}
-                                                                <button onClick={() => setShowInlineImagePicker(v => !v)}
-                                                                    className={`flex items-center gap-1.5 h-6 px-2.5 rounded-lg border text-[9px] font-bold transition-all ${showInlineImagePicker ? "border-amber-500/40 bg-amber-500/10 text-amber-400" : "border-white/10 text-neutral-500 hover:text-white hover:border-white/20"}`}>
-                                                                    <ImagePlus size={10} />{selectedPage.image ? "Cambiar" : "Seleccionar"}
-                                                                    <ChevronDown size={9} className={`transition-transform ${showInlineImagePicker ? "rotate-180" : ""}`} />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                        {showInlineImagePicker && (() => {
-                                                            const allSources = [
-                                                                ...vaultImages.map(v => ({ url: v.url, label: v.model, fav: favorites.has(v.url) })),
-                                                                ...iaCatalogs.flatMap(c => c.images.map(i => ({ url: i.url, label: c.name, fav: favorites.has(i.url) }))),
-                                                                ...cloudinaryImages.map(c => ({ url: c.url, label: c.publicId.split("/").pop() ?? "", fav: favorites.has(c.url) })),
-                                                            ];
-                                                            return (
-                                                                <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 p-2 rounded-xl bg-white/[0.02] border border-white/8 max-h-48 overflow-y-auto">
-                                                                    {allSources.length === 0 && <p className="col-span-full text-[10px] text-neutral-600 text-center py-4">Sin imágenes disponibles</p>}
-                                                                    {allSources.map((src, i) => (
-                                                                        <button key={i} onClick={() => { setPageImage(selectedPage.id, src.url, src.label); setShowInlineImagePicker(false); }}
-                                                                            className={`aspect-square rounded-lg overflow-hidden border transition-all relative ${selectedPage.image?.url === src.url ? "border-amber-500" : "border-white/10 hover:border-amber-500/50"}`}>
-                                                                            <img src={src.url} alt="" className="w-full h-full object-cover" />
-                                                                            {selectedPage.image?.url === src.url && <div className="absolute inset-0 bg-amber-500/20 flex items-center justify-center"><Check size={12} className="text-amber-400" /></div>}
-                                                                            {src.fav && selectedPage.image?.url !== src.url && <div className="absolute top-0.5 left-0.5 pointer-events-none"><Heart size={7} className="fill-rose-400 text-rose-400" /></div>}
-                                                                        </button>
-                                                                    ))}
-                                                                </div>
-                                                            );
-                                                        })()}
-                                                    </div>
-                                                )}
-
-                                                {/* Text editor */}
-                                                {(selectedPage.type === "text" || selectedPage.type === "both") && (
-                                                    <div className="space-y-3">
-                                                        <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Texto</p>
-                                                        <div className="flex items-center gap-1 flex-wrap p-1.5 rounded-xl bg-white/[0.02] border border-white/8">
-                                                            <button type="button" onClick={() => updatePageText(selectedPage.id, { bold: !selectedPage.text.bold })}
-                                                                className={`w-7 h-7 rounded-lg text-[11px] flex items-center justify-center font-black border transition-all ${selectedPage.text.bold ? "bg-amber-500/20 border-amber-500/30 text-amber-300" : "border-transparent text-neutral-500 hover:bg-white/5 hover:text-white"}`}>B</button>
-                                                            <button type="button" onClick={() => updatePageText(selectedPage.id, { italic: !selectedPage.text.italic })}
-                                                                className={`w-7 h-7 rounded-lg text-[11px] flex items-center justify-center italic border font-serif transition-all ${selectedPage.text.italic ? "bg-amber-500/20 border-amber-500/30 text-amber-300" : "border-transparent text-neutral-500 hover:bg-white/5 hover:text-white"}`}>I</button>
-                                                            <div className="w-px h-4 bg-white/10 mx-0.5" />
-                                                            {([["left", AlignLeft], ["center", AlignCenter], ["right", AlignRight]] as [PageTextStyle["align"], React.ElementType][]).map(([a, Icon]) => (
-                                                                <button key={a} type="button" onClick={() => updatePageText(selectedPage.id, { align: a })}
-                                                                    className={`w-7 h-7 rounded-lg flex items-center justify-center border transition-all ${selectedPage.text.align === a ? "bg-amber-500/20 border-amber-500/30 text-amber-300" : "border-transparent text-neutral-500 hover:bg-white/5 hover:text-white"}`}>
-                                                                    <Icon size={11} />
-                                                                </button>
-                                                            ))}
-                                                            <div className="w-px h-4 bg-white/10 mx-0.5" />
-                                                            <input type="number" min={8} max={72} value={selectedPage.text.fontSize}
-                                                                onChange={e => updatePageText(selectedPage.id, { fontSize: Math.max(8, Math.min(72, Number(e.target.value))) })}
-                                                                className="w-11 h-7 rounded-lg bg-white/5 border border-white/10 text-[10px] text-white px-1.5 outline-none text-center" />
-                                                            {(["helvetica", "times", "courier"] as const).map(ff => (
-                                                                <button key={ff} type="button" onClick={() => updatePageText(selectedPage.id, { fontFamily: ff })}
-                                                                    className={`h-7 px-1.5 rounded-lg text-[9px] font-bold uppercase border transition-all ${selectedPage.text.fontFamily === ff ? "bg-amber-500/20 border-amber-500/30 text-amber-300" : "border-transparent text-neutral-500 hover:bg-white/5 hover:text-white"}`}>
-                                                                    {ff === "helvetica" ? "Hel" : ff === "times" ? "Tim" : "Cou"}
-                                                                </button>
-                                                            ))}
-                                                            <label className="ml-auto w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center cursor-pointer shrink-0" title="Color">
-                                                                <span className="w-4 h-4 rounded-sm border border-white/20" style={{ background: selectedPage.text.color }} />
-                                                                <input type="color" value={selectedPage.text.color} onChange={e => updatePageText(selectedPage.id, { color: e.target.value })} className="sr-only" />
-                                                            </label>
-                                                        </div>
-                                                        {selectedPage.text.content.trim() && (
-                                                            <div className="px-3 py-2 rounded-xl bg-[#f5f5f0] break-words" style={{ fontWeight: selectedPage.text.bold ? "bold" : "normal", fontStyle: selectedPage.text.italic ? "italic" : "normal", fontSize: `${Math.max(10, Math.min(selectedPage.text.fontSize * 0.85, 20))}px`, color: selectedPage.text.color, textAlign: selectedPage.text.align, fontFamily: selectedPage.text.fontFamily === "times" ? "Georgia, serif" : selectedPage.text.fontFamily === "courier" ? "Courier New, monospace" : "Helvetica, sans-serif" }}>
-                                                                {selectedPage.text.content}
-                                                            </div>
-                                                        )}
-                                                        <textarea value={selectedPage.text.content} onChange={e => updatePageText(selectedPage.id, { content: e.target.value })}
-                                                            className="w-full min-h-[90px] rounded-xl bg-white/5 border border-white/10 p-3 text-sm text-white outline-none focus:border-amber-500/40 resize-none"
-                                                            placeholder="Escribe el contenido de esta página..." />
-                                                    </div>
-                                                )}
-
-                                                {/* Add another page CTA */}
-                                                <button onClick={() => setShowAddPageMenu(true)}
-                                                    className="w-full flex items-center justify-center gap-2 h-10 rounded-xl border border-dashed border-white/15 text-neutral-600 hover:border-white/25 hover:text-neutral-400 transition-all text-[10px] font-black uppercase tracking-widest">
-                                                    <Plus size={13} /> Añadir otra página
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col items-center justify-center h-full p-8 text-center gap-3 opacity-30">
-                                            <FileText size={36} className="text-neutral-600" strokeWidth={1.2} />
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Crea tu primera página</p>
-                                            <p className="text-xs text-neutral-700">Pulsa "Nueva" en la línea de tiempo</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* ── TAB: AÑADIR IMÁGENES ── */}
-                        {bookEditorTab === "images" && (
-                            <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-                                {/* Sticky selection bar */}
-                                <div className={`shrink-0 px-4 py-2.5 border-b flex items-center justify-between gap-3 transition-all ${selectedImageUrls.size > 0 ? "border-amber-500/20 bg-amber-500/8" : "border-white/8 bg-transparent"}`}>
-                                    <p className={`text-[10px] font-black uppercase tracking-widest transition-colors ${selectedImageUrls.size > 0 ? "text-amber-400" : "text-neutral-600"}`}>
-                                        {selectedImageUrls.size > 0 ? `${selectedImageUrls.size} seleccionada${selectedImageUrls.size > 1 ? "s" : ""}` : "Toca para seleccionar · añade varias a la vez"}
-                                    </p>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                        {selectedImageUrls.size > 0 && (
-                                            <button onClick={() => setSelectedImageUrls(new Set())} className="text-[9px] text-neutral-500 hover:text-white transition-colors">Limpiar</button>
-                                        )}
-                                        <button onClick={addSelectedAsPages} disabled={selectedImageUrls.size === 0}
-                                            className={`h-7 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${selectedImageUrls.size > 0 ? "bg-amber-500 text-black hover:bg-amber-400" : "bg-white/5 text-neutral-600 border border-white/10"}`}>
-                                            Añadir como páginas
+                                        {/* Single add-page button */}
+                                        <button
+                                            onClick={() => addBlankPage("image")}
+                                            className="shrink-0 flex flex-col items-center justify-center gap-1 w-12 h-[68px] rounded-xl border-2 border-dashed border-amber-500/40 text-amber-500 hover:bg-amber-500/10 hover:border-amber-500/70 transition-all">
+                                            <Plus size={16} />
+                                            <span className="text-[8px] font-black uppercase">Nueva</span>
                                         </button>
                                     </div>
                                 </div>
-                                {/* Images grid */}
-                                <div className="flex-1 overflow-y-auto p-4 space-y-5">
-                                    {vaultImages.length > 0 && (
-                                        <div className="space-y-2">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5"><Box size={10} />Vault <span className="text-neutral-700 font-normal normal-case tracking-normal">({vaultImages.length})</span></p>
-                                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                                                {vaultImages.map((vi, idx) => {
-                                                    const sel = selectedImageUrls.has(vi.url);
-                                                    const used = usedImageUrls.has(vi.url);
-                                                    return (
-                                                        <button key={idx} onClick={() => toggleImageSelect(vi.url)}
-                                                            className={`aspect-square rounded-xl overflow-hidden border-2 transition-all relative ${sel ? "border-amber-500 scale-[0.97]" : used ? "border-emerald-500/50" : "border-white/10 hover:border-white/25"}`}>
-                                                            <img src={vi.url} alt="" className={`w-full h-full object-cover ${used && !sel ? "brightness-75" : ""}`} />
-                                                            {sel && <div className="absolute inset-0 bg-amber-500/25 flex items-center justify-center"><div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center"><Check size={11} className="text-black" /></div></div>}
-                                                            {used && !sel && <div className="absolute inset-0 flex items-end justify-center pb-1.5"><span className="text-[7px] font-black uppercase tracking-wide bg-emerald-500/90 text-white px-1.5 py-0.5 rounded-md">En libro</span></div>}
-                                                            {favorites.has(vi.url) && !sel && <div className="absolute top-1 left-1 pointer-events-none"><Heart size={9} className="fill-rose-400 text-rose-400 drop-shadow" /></div>}
+
+                                {/* ── Page editor ── */}
+                                <div className="flex-1 overflow-y-auto">
+                                    {selectedPage ? (() => {
+                                        const pageIdx = bookPages.findIndex(p => p.id === selectedPage.id);
+                                        const allImgSources = [
+                                            ...vaultImages.map(v => ({ url: v.url, label: v.model, fav: favorites.has(v.url) })),
+                                            ...iaCatalogs.flatMap(c => c.images.map(i => ({ url: i.url, label: c.name, fav: favorites.has(i.url) }))),
+                                            ...cloudinaryImages.map(c => ({ url: c.url, label: c.publicId.split("/").pop() ?? "", fav: favorites.has(c.url) })),
+                                        ];
+                                        const needsImage = selectedPage.type === "image" || selectedPage.type === "both";
+                                        const needsText = selectedPage.type === "text" || selectedPage.type === "both";
+                                        return (
+                                            <div className="p-3 sm:p-4 space-y-4 max-w-xl mx-auto pb-8">
+
+                                                {/* ── Page nav + actions ── */}
+                                                <div className="flex items-center gap-1.5 pt-1">
+                                                    {/* Nav */}
+                                                    <span className="text-[11px] font-mono text-neutral-500 shrink-0 mr-1">
+                                                        {pageIdx + 1}<span className="text-neutral-700">/{bookPages.length}</span>
+                                                    </span>
+                                                    <button onClick={() => pageIdx > 0 && setSelectedPageId(bookPages[pageIdx - 1].id)}
+                                                        disabled={pageIdx === 0}
+                                                        className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-neutral-400 hover:text-white disabled:opacity-20 flex items-center justify-center transition-all">
+                                                        <ChevronLeft size={15} />
+                                                    </button>
+                                                    <button onClick={() => pageIdx < bookPages.length - 1 && setSelectedPageId(bookPages[pageIdx + 1].id)}
+                                                        disabled={pageIdx === bookPages.length - 1}
+                                                        className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-neutral-400 hover:text-white disabled:opacity-20 flex items-center justify-center transition-all">
+                                                        <ChevronRight size={15} />
+                                                    </button>
+                                                    <button onClick={() => duplicatePage(selectedPage.id)}
+                                                        className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-white flex items-center justify-center transition-all" title="Duplicar página">
+                                                        <Copy size={14} />
+                                                    </button>
+                                                    <button onClick={() => deletePage(selectedPage.id)}
+                                                        className="ml-auto flex items-center gap-1.5 h-9 px-3 sm:px-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all text-[11px] font-black">
+                                                        <Trash2 size={13} /><span className="hidden sm:inline">Eliminar</span>
+                                                    </button>
+                                                </div>
+
+                                                {/* ── Type selector (compact pill row) ── */}
+                                                <div className="flex items-center gap-2 p-1 rounded-2xl bg-white/[0.03] border border-white/8">
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600 pl-2 shrink-0">Tipo:</span>
+                                                    {([
+                                                        ["image", "Solo imagen", ImageIcon],
+                                                        ["text",  "Solo texto",  Type],
+                                                        ["both",  "Img + Texto", Layers],
+                                                    ] as [BookPage["type"], string, React.ElementType][]).map(([type, label, Icon]) => (
+                                                        <button key={type} onClick={() => updatePageType(selectedPage.id, type)}
+                                                            className={`flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl border text-[10px] font-black transition-all
+                                                                ${selectedPage.type === type
+                                                                    ? "border-amber-500/60 bg-amber-500/15 text-amber-400"
+                                                                    : "border-transparent text-neutral-600 hover:text-neutral-300 hover:bg-white/5"}`}>
+                                                            <Icon size={11} />
+                                                            <span className="hidden sm:inline">{label}</span>
+                                                            <span className="sm:hidden">{label.split(" ")[label.split(" ").length - 1]}</span>
                                                         </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-                                    {iaCatalogs.filter(c => c.images.length > 0).map(cat => (
-                                        <div key={cat._id} className="space-y-2">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5"><Layers size={10} />{cat.name}</p>
-                                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                                                {cat.images.map(ci => {
-                                                    const sel = selectedImageUrls.has(ci.url);
-                                                    const used = usedImageUrls.has(ci.url);
+                                                    ))}
+                                                </div>
+
+                                                {/* ── IMAGE SECTION ── */}
+                                                {needsImage && (
+                                                    <div className="space-y-3">
+                                                        <div className="flex items-center justify-between">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Imagen</p>
+                                                            {selectedPage.image && (
+                                                                <div className="flex items-center gap-2">
+                                                                    <button onClick={() => setShowInlineImagePicker(v => !v)}
+                                                                        className={`flex items-center gap-1.5 h-7 px-3 rounded-lg border text-[10px] font-bold transition-all
+                                                                            ${showInlineImagePicker
+                                                                                ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
+                                                                                : "border-white/10 text-neutral-500 hover:text-white"}`}>
+                                                                        <ImagePlus size={10} />{showInlineImagePicker ? "Cerrar" : "Cambiar"}
+                                                                    </button>
+                                                                    <button onClick={() => clearPageImage(selectedPage.id)}
+                                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-all text-[10px] font-bold">
+                                                                        <X size={10} />
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {selectedPage.image && (
+                                                            <div className="rounded-2xl overflow-hidden bg-black/40">
+                                                                <img src={selectedPage.image.url} alt=""
+                                                                    style={{ transform: `scale(${selectedPage.image.scale})`, transformOrigin: "center" }}
+                                                                    className="w-full max-h-48 sm:max-h-56 object-contain transition-transform duration-150" />
+                                                            </div>
+                                                        )}
+                                                        {selectedPage.image && (
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="text-[9px] font-black uppercase text-neutral-600 shrink-0">Zoom</span>
+                                                                <input type="range" min={0.5} max={3} step={0.05} value={selectedPage.image.scale}
+                                                                    onChange={e => updatePageImageScale(selectedPage.id, Number(e.target.value))}
+                                                                    className="flex-1 accent-amber-500 h-1.5" />
+                                                                <span className="text-[10px] font-mono text-amber-400 shrink-0 w-9 text-right">{Math.round(selectedPage.image.scale * 100)}%</span>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Gallery: auto-open when no image, toggled when image exists */}
+                                                        {(!selectedPage.image || showInlineImagePicker) && (
+                                                            <div>
+                                                                {allImgSources.length === 0 ? (
+                                                                    <div className="flex flex-col items-center gap-3 py-10 rounded-2xl bg-white/[0.02] border border-white/8 text-center">
+                                                                        <ImageIcon size={28} strokeWidth={1.2} className="text-neutral-700" />
+                                                                        <p className="text-[11px] font-bold text-neutral-600">Sin imágenes disponibles.<br />Genera algunas en el Studio primero.</p>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-56 overflow-y-auto rounded-2xl bg-white/[0.02] border border-white/8 p-2">
+                                                                        {allImgSources.map((src, i) => (
+                                                                            <button key={i}
+                                                                                onClick={() => { setPageImage(selectedPage.id, src.url, src.label); setShowInlineImagePicker(false); }}
+                                                                                className={`aspect-square rounded-xl overflow-hidden border-2 relative transition-all active:scale-95
+                                                                                    ${selectedPage.image?.url === src.url
+                                                                                        ? "border-amber-500 scale-[0.97]"
+                                                                                        : "border-white/10 hover:border-amber-500/60"}`}>
+                                                                                <img src={src.url} alt="" className="w-full h-full object-cover" />
+                                                                                {selectedPage.image?.url === src.url && (
+                                                                                    <div className="absolute inset-0 bg-amber-500/30 flex items-center justify-center">
+                                                                                        <Check size={16} className="text-amber-300" />
+                                                                                    </div>
+                                                                                )}
+                                                                                {src.fav && selectedPage.image?.url !== src.url && (
+                                                                                    <div className="absolute top-1 left-1 pointer-events-none">
+                                                                                        <Heart size={9} className="fill-rose-400 text-rose-400 drop-shadow" />
+                                                                                    </div>
+                                                                                )}
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* ── TEXT SECTION ── */}
+                                                {needsText && (() => {
+                                                    const vAlign = selectedPage.text.verticalAlign ?? "middle";
+                                                    const cssFontFamily = selectedPage.text.fontFamily === "times"
+                                                        ? "Georgia, serif"
+                                                        : selectedPage.text.fontFamily === "courier"
+                                                        ? "'Courier New', monospace"
+                                                        : "Helvetica, Arial, sans-serif";
                                                     return (
-                                                        <button key={ci.publicId} onClick={() => toggleImageSelect(ci.url)}
-                                                            className={`aspect-square rounded-xl overflow-hidden border-2 transition-all relative ${sel ? "border-amber-500 scale-[0.97]" : used ? "border-emerald-500/50" : "border-white/10 hover:border-white/25"}`}>
-                                                            <img src={ci.url} alt="" className={`w-full h-full object-cover ${used && !sel ? "brightness-75" : ""}`} />
-                                                            {sel && <div className="absolute inset-0 bg-amber-500/25 flex items-center justify-center"><div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center"><Check size={11} className="text-black" /></div></div>}
-                                                            {used && !sel && <div className="absolute inset-0 flex items-end justify-center pb-1.5"><span className="text-[7px] font-black uppercase tracking-wide bg-emerald-500/90 text-white px-1.5 py-0.5 rounded-md">En libro</span></div>}
-                                                            {favorites.has(ci.url) && !sel && <div className="absolute top-1 left-1 pointer-events-none"><Heart size={9} className="fill-rose-400 text-rose-400 drop-shadow" /></div>}
-                                                        </button>
+                                                        <div className="space-y-3">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Texto</p>
+
+                                                            {/* Textarea */}
+                                                            <textarea
+                                                                value={selectedPage.text.content}
+                                                                onChange={e => updatePageText(selectedPage.id, { content: e.target.value })}
+                                                                className="w-full min-h-[90px] rounded-xl bg-white/5 border border-white/10 p-3 text-sm text-white outline-none focus:border-amber-500/40 resize-y leading-relaxed"
+                                                                placeholder="Escribe el contenido de esta página..." />
+
+                                                            {/* ── Toolbar ── */}
+                                                            <div className="space-y-2 p-3 rounded-2xl bg-white/[0.03] border border-white/8">
+                                                                {/* Row 1: B/I + align + color + size number */}
+                                                                <div className="flex items-center gap-1 flex-wrap">
+                                                                    <button type="button" onClick={() => updatePageText(selectedPage.id, { bold: !selectedPage.text.bold })}
+                                                                        className={`w-9 h-9 rounded-xl text-sm flex items-center justify-center font-black border transition-all
+                                                                            ${selectedPage.text.bold ? "bg-amber-500/20 border-amber-500/30 text-amber-300" : "border-white/10 text-neutral-500 hover:bg-white/5 hover:text-white"}`}>B</button>
+                                                                    <button type="button" onClick={() => updatePageText(selectedPage.id, { italic: !selectedPage.text.italic })}
+                                                                        className={`w-9 h-9 rounded-xl text-sm flex items-center justify-center italic border font-serif transition-all
+                                                                            ${selectedPage.text.italic ? "bg-amber-500/20 border-amber-500/30 text-amber-300" : "border-white/10 text-neutral-500 hover:bg-white/5 hover:text-white"}`}>I</button>
+                                                                    <div className="w-px h-5 bg-white/10 mx-0.5 shrink-0" />
+                                                                    {([["left", AlignLeft], ["center", AlignCenter], ["right", AlignRight]] as [PageTextStyle["align"], React.ElementType][]).map(([a, Ic]) => (
+                                                                        <button key={a} type="button" onClick={() => updatePageText(selectedPage.id, { align: a })}
+                                                                            className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all
+                                                                                ${selectedPage.text.align === a ? "bg-amber-500/20 border-amber-500/30 text-amber-300" : "border-white/10 text-neutral-500 hover:bg-white/5 hover:text-white"}`}>
+                                                                            <Ic size={13} />
+                                                                        </button>
+                                                                    ))}
+                                                                    <div className="w-px h-5 bg-white/10 mx-0.5 shrink-0" />
+                                                                    <label className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center cursor-pointer shrink-0" title="Color de texto">
+                                                                        <span className="w-5 h-5 rounded border border-white/20" style={{ background: selectedPage.text.color }} />
+                                                                        <input type="color" value={selectedPage.text.color} onChange={e => updatePageText(selectedPage.id, { color: e.target.value })} className="sr-only" />
+                                                                    </label>
+                                                                    <div className="flex items-center gap-1.5 ml-auto">
+                                                                        <span className="text-[9px] font-black uppercase text-neutral-600 shrink-0">pt</span>
+                                                                        <input type="number" min={6} max={200} value={selectedPage.text.fontSize}
+                                                                            onChange={e => updatePageText(selectedPage.id, { fontSize: Math.max(6, Math.min(200, Number(e.target.value) || 14)) })}
+                                                                            className="w-14 h-9 rounded-xl bg-white/5 border border-white/10 text-center text-[13px] font-mono text-amber-400 outline-none focus:border-amber-500/40" />
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Row 2: font size slider */}
+                                                                <input type="range" min={6} max={200} step={1} value={selectedPage.text.fontSize}
+                                                                    onChange={e => updatePageText(selectedPage.id, { fontSize: Number(e.target.value) })}
+                                                                    className="w-full accent-amber-500 h-2 cursor-pointer" />
+
+                                                                {/* Row 3: Font family */}
+                                                                <div className="flex gap-1.5">
+                                                                    {([["helvetica", "Helvetica", "Helvetica, Arial, sans-serif"], ["times", "Times New Roman", "Georgia, serif"], ["courier", "Courier", "'Courier New', monospace"]] as [PageTextStyle["fontFamily"], string, string][]).map(([ff, lbl, cssFf]) => (
+                                                                        <button key={ff} type="button" onClick={() => updatePageText(selectedPage.id, { fontFamily: ff })}
+                                                                            style={{ fontFamily: cssFf }}
+                                                                            className={`flex-1 h-9 rounded-xl border text-[12px] transition-all truncate px-1
+                                                                                ${selectedPage.text.fontFamily === ff
+                                                                                    ? "bg-amber-500/20 border-amber-500/30 text-amber-300"
+                                                                                    : "border-white/10 bg-white/[0.02] text-neutral-400 hover:border-white/20 hover:text-white"}`}>{lbl}</button>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* ── A4 Live preview ── */}
+                                                            <div className="space-y-1.5">
+                                                                <div className="flex items-center justify-between">
+                                                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Vista previa de página</p>
+                                                                    <span className="text-[9px] text-neutral-600 font-mono">{selectedPage.text.fontSize}pt · {vAlign === "top" ? "Arriba" : vAlign === "middle" ? "Centro" : "Abajo"}</span>
+                                                                </div>
+
+                                                                {/* A4 page mock */}
+                                                                <div className="relative w-full rounded-xl overflow-hidden border border-white/15 shadow-2xl"
+                                                                     style={{ aspectRatio: "595/842" }}>
+                                                                    {/* Page background */}
+                                                                    {(selectedPage.type === "both" && selectedPage.image) ? (
+                                                                        <img src={selectedPage.image.url} alt=""
+                                                                            style={{ transform: `scale(${selectedPage.image.scale})`, transformOrigin: "center" }}
+                                                                            className="absolute inset-0 w-full h-full object-cover" />
+                                                                    ) : (
+                                                                        <div className="absolute inset-0 bg-white" />
+                                                                    )}
+
+                                                                    {/* Position click zones (top / middle / bottom) */}
+                                                                    {(["top", "middle", "bottom"] as PageTextStyle["verticalAlign"][]).map(v => (
+                                                                        <button key={v} type="button"
+                                                                            onClick={() => updatePageText(selectedPage.id, { verticalAlign: v })}
+                                                                            className={`absolute inset-x-0 h-1/3 transition-all ${
+                                                                                v === "top" ? "top-0" : v === "middle" ? "top-1/3" : "top-2/3"
+                                                                            } ${vAlign === v ? "ring-2 ring-inset ring-amber-400/70 bg-amber-500/10" : "hover:bg-amber-500/5"}`}
+                                                                        />
+                                                                    ))}
+
+                                                                    {/* Text rendered in position */}
+                                                                    <div className={`absolute inset-[5%] pointer-events-none flex flex-col ${
+                                                                        vAlign === "top" ? "justify-start" :
+                                                                        vAlign === "middle" ? "justify-center" : "justify-end"
+                                                                    }`} style={{ textAlign: selectedPage.text.align }}>
+                                                                        <p style={{
+                                                                            fontFamily: cssFontFamily,
+                                                                            fontSize: `${Math.max(5, selectedPage.text.fontSize * 0.44)}px`,
+                                                                            fontWeight: selectedPage.text.bold ? "bold" : "normal",
+                                                                            fontStyle: selectedPage.text.italic ? "italic" : "normal",
+                                                                            color: (selectedPage.type === "both" && selectedPage.image) ? selectedPage.text.color : selectedPage.text.color,
+                                                                            whiteSpace: "pre-wrap",
+                                                                            wordBreak: "break-word",
+                                                                            lineHeight: 1.35,
+                                                                        }}>
+                                                                            {selectedPage.text.content || <span style={{ opacity: 0.3 }}>Tu texto aquí...</span>}
+                                                                        </p>
+                                                                    </div>
+
+                                                                    {/* Position label */}
+                                                                    <div className="absolute bottom-1.5 right-2 pointer-events-none">
+                                                                        <span className="text-[8px] font-black uppercase text-black/40 bg-white/60 px-1.5 py-0.5 rounded-full backdrop-blur-sm">
+                                                                            {vAlign === "top" ? "▲ Arriba" : vAlign === "middle" ? "● Centro" : "▼ Abajo"}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                                <p className="text-[9px] text-neutral-700 text-center">Toca las zonas de la página para cambiar la posición del texto</p>
+                                                            </div>
+                                                        </div>
                                                     );
-                                                })}
+                                                })()}
                                             </div>
-                                        </div>
-                                    ))}
-                                    {cloudinaryImages.length > 0 && (
-                                        <div className="space-y-2">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5"><Cloud size={10} />Cloudinary</p>
-                                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-                                                {cloudinaryImages.map(ci => {
-                                                    const sel = selectedImageUrls.has(ci.url);
-                                                    const used = usedImageUrls.has(ci.url);
-                                                    return (
-                                                        <button key={ci.publicId} onClick={() => toggleImageSelect(ci.url)}
-                                                            className={`aspect-square rounded-xl overflow-hidden border-2 transition-all relative ${sel ? "border-amber-500 scale-[0.97]" : used ? "border-emerald-500/50" : "border-white/10 hover:border-white/25"}`}>
-                                                            <img src={ci.url} alt="" className={`w-full h-full object-cover ${used && !sel ? "brightness-75" : ""}`} />
-                                                            {sel && <div className="absolute inset-0 bg-amber-500/25 flex items-center justify-center"><div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center"><Check size={11} className="text-black" /></div></div>}
-                                                            {used && !sel && <div className="absolute inset-0 flex items-end justify-center pb-1.5"><span className="text-[7px] font-black uppercase tracking-wide bg-emerald-500/90 text-white px-1.5 py-0.5 rounded-md">En libro</span></div>}
-                                                            {favorites.has(ci.url) && !sel && <div className="absolute top-1 left-1 pointer-events-none"><Heart size={9} className="fill-rose-400 text-rose-400 drop-shadow" /></div>}
-                                                        </button>
-                                                    );
-                                                })}
+                                        );
+                                    })() : (
+                                        /* Empty state — no page selected */
+                                        <div className="flex flex-col items-center justify-center h-full p-8 text-center gap-5">
+                                            <div className="opacity-25">
+                                                <BookOpen size={48} className="text-neutral-600 mx-auto" strokeWidth={1} />
+                                                <p className="text-[12px] font-black uppercase tracking-widest text-neutral-600 mt-3">Sin páginas todavía</p>
+                                                <p className="text-xs text-neutral-700 mt-1">Añade una página con el botón de arriba</p>
                                             </div>
-                                        </div>
-                                    )}
-                                    {vaultImages.length === 0 && iaCatalogs.filter(c => c.images.length > 0).length === 0 && cloudinaryImages.length === 0 && (
-                                        <div className="flex flex-col items-center justify-center py-20 text-center gap-2 opacity-30">
-                                            <ImageIcon size={32} className="text-neutral-600" strokeWidth={1.2} />
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Sin imágenes disponibles</p>
-                                            <p className="text-xs text-neutral-700">Genera imágenes en el Studio primero</p>
+                                            <button onClick={() => addBlankPage("image")}
+                                                className="flex items-center gap-2 h-12 px-8 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 hover:border-amber-500/60 active:scale-95 transition-all text-[12px] font-black uppercase tracking-widest">
+                                                <Plus size={16} />Nueva página
+                                            </button>
                                         </div>
                                     )}
                                 </div>
@@ -3462,20 +3658,21 @@ export function KdpFactoryApp() {
                                                                     style={{ transform: `scale(${page.image.scale})`, transformOrigin: "center" }}
                                                                     className="w-full h-full object-cover" />
                                                             )}
-                                                            {(page.type === "text" || page.type === "both") && page.text.content.trim() && (
-                                                                <div className={`absolute ${page.image ? "inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-3" : "inset-0 flex items-center p-4"}`}
-                                                                    style={{ textAlign: page.text.align }}>
-                                                                    <p className="text-[8px] sm:text-[9px] break-words leading-relaxed"
-                                                                        style={{
-                                                                            color: page.image ? "#fff" : page.text.color,
-                                                                            fontWeight: page.text.bold ? "bold" : "normal",
-                                                                            fontStyle: page.text.italic ? "italic" : "normal",
-                                                                            fontFamily: page.text.fontFamily === "times" ? "Georgia, serif" : page.text.fontFamily === "courier" ? "Courier New, monospace" : "Helvetica, sans-serif",
-                                                                        }}>
-                                                                        {page.text.content}
-                                                                    </p>
-                                                                </div>
-                                                            )}
+                                                            {(page.type === "text" || page.type === "both") && page.text.content.trim() && (() => {
+                                                                const va = page.text.verticalAlign ?? "middle";
+                                                                const hasImg = !!page.image;
+                                                                const cls = hasImg
+                                                                    ? `absolute inset-x-0 p-3 ${va === "top" ? "top-0 bg-gradient-to-b from-black/70 to-transparent" : va === "middle" ? "top-1/2 -translate-y-1/2 bg-black/40 backdrop-blur-sm" : "bottom-0 bg-gradient-to-t from-black/70 to-transparent"}`
+                                                                    : `absolute inset-x-0 p-4 ${va === "top" ? "top-0" : va === "middle" ? "top-1/2 -translate-y-1/2" : "bottom-0"}`;
+                                                                return (
+                                                                    <div className={cls} style={{ textAlign: page.text.align }}>
+                                                                        <p className="text-[8px] sm:text-[9px] break-words leading-relaxed whitespace-pre-wrap"
+                                                                            style={{ color: hasImg ? "#fff" : page.text.color, fontWeight: page.text.bold ? "bold" : "normal", fontStyle: page.text.italic ? "italic" : "normal", fontFamily: page.text.fontFamily === "times" ? "Georgia, serif" : page.text.fontFamily === "courier" ? "Courier New, monospace" : "Helvetica, sans-serif" }}>
+                                                                            {page.text.content}
+                                                                        </p>
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                             {/* Edit hover overlay */}
                                                             <div className="absolute inset-0 bg-amber-500/0 group-hover:bg-amber-500/8 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                                                                 <span className="bg-black/60 text-amber-400 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg">Editar</span>
@@ -3512,19 +3709,21 @@ export function KdpFactoryApp() {
                                                                         style={{ transform: `scale(${page.image.scale})`, transformOrigin: "center" }}
                                                                         className="w-full h-full object-cover" />
                                                                 )}
-                                                                {(page.type === "text" || page.type === "both") && page.text.content.trim() && (
-                                                                    <div className={`absolute ${page.image ? "inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2" : "inset-0 flex items-center p-2"}`}
-                                                                        style={{ textAlign: page.text.align }}>
-                                                                        <p className="text-[6px] break-words leading-tight"
-                                                                            style={{
-                                                                                color: page.image ? "#fff" : page.text.color,
-                                                                                fontWeight: page.text.bold ? "bold" : "normal",
-                                                                                fontStyle: page.text.italic ? "italic" : "normal",
-                                                                            }}>
-                                                                            {page.text.content}
-                                                                        </p>
-                                                                    </div>
-                                                                )}
+                                                                {(page.type === "text" || page.type === "both") && page.text.content.trim() && (() => {
+                                                                    const va = page.text.verticalAlign ?? "middle";
+                                                                    const hasImg = !!page.image;
+                                                                    const cls = hasImg
+                                                                        ? `absolute inset-x-0 p-2 ${va === "top" ? "top-0 bg-gradient-to-b from-black/70 to-transparent" : va === "middle" ? "top-1/2 -translate-y-1/2 bg-black/40" : "bottom-0 bg-gradient-to-t from-black/70 to-transparent"}`
+                                                                        : `absolute inset-x-0 p-2 ${va === "top" ? "top-0" : va === "middle" ? "top-1/2 -translate-y-1/2" : "bottom-0"}`;
+                                                                    return (
+                                                                        <div className={cls} style={{ textAlign: page.text.align }}>
+                                                                            <p className="text-[6px] break-words leading-tight whitespace-pre-wrap"
+                                                                                style={{ color: hasImg ? "#fff" : page.text.color, fontWeight: page.text.bold ? "bold" : "normal", fontStyle: page.text.italic ? "italic" : "normal" }}>
+                                                                                {page.text.content}
+                                                                            </p>
+                                                                        </div>
+                                                                    );
+                                                                })()}
                                                                 <div className="absolute inset-0 bg-amber-500/0 group-hover:bg-amber-500/8 transition-colors" />
                                                             </div>
                                                             <p className="text-[8px] text-neutral-600 text-center mt-1 font-mono">{absIdx + 1}</p>
