@@ -44,6 +44,22 @@ export async function registerSavedPromptsRoutes(app: FastifyInstance) {
         }
     });
 
+    app.patch("/saved-prompts/:id", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { id } = request.params as { id: string };
+            const { name, category } = request.body as any;
+            const update: Record<string, string> = {};
+            if (name?.trim()) update.name = name.trim();
+            if (category?.trim()) update.category = category.trim();
+            const prompt = await SavedPrompt.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
+            if (!prompt) return reply.status(404).send({ error: "not found" });
+            return reply.send({ prompt });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     app.delete("/saved-prompts/:id", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {

@@ -187,7 +187,7 @@ interface PageTextStyle {
 interface BookPage {
     id: string;
     type: "image" | "text" | "both";
-    image?: { url: string; scale: number; label?: string };
+    image?: { url: string; scale: number; label?: string; border?: { width: number; color: string } };
     text: PageTextStyle;
 }
 
@@ -355,7 +355,6 @@ export function KdpFactoryApp() {
     const [deletingCatalogId, setDeletingCatalogId] = useState<string | null>(null);
     const [confirmDeleteCatalogId, setConfirmDeleteCatalogId] = useState<string | null>(null);
     const [confirmDeleteImageInfo, setConfirmDeleteImageInfo] = useState<{ catalogId: string; publicId: string } | null>(null);
-    const [bookPdfMode, setBookPdfMode] = useState<"colored" | "standard">("standard");
     const [bookPages, setBookPages] = useState<BookPage[]>([]);
     const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
     const [bookEditorTab, setBookEditorTab] = useState<"editor" | "preview" | "images">("editor");
@@ -376,6 +375,8 @@ export function KdpFactoryApp() {
     const [newCategoryInput, setNewCategoryInput] = useState("");
     const [promptCategoryFilter, setPromptCategoryFilter] = useState("all");
     const [isSavingPrompt, setIsSavingPrompt] = useState(false);
+    const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
+    const [editingPromptName, setEditingPromptName] = useState("");
     const catalogSocketRef = useRef<ReturnType<typeof createApiSocket> | null>(null);
 
     // --- Content generator state ---
@@ -397,9 +398,10 @@ export function KdpFactoryApp() {
     // --- Favorites (persisted to MongoDB via /settings as FavoriteImage[]) ---
     const [favorites, setFavorites] = useState<Map<string, FavoriteImage>>(new Map());
 
-    // --- PDF drag-to-reorder ---
+    // --- PDF drag-to-reorder (desktop) + touch-reorder (mobile) ---
     const [bookDragIdx, setBookDragIdx] = useState<number | null>(null);
     const [bookDragOverIdx, setBookDragOverIdx] = useState<number | null>(null);
+    const touchReorderRef = useRef<{ startIdx: number; currentIdx: number } | null>(null);
 
     // --- Vault carousel drag/swipe ---
     const vaultScrollRef = useRef<HTMLDivElement>(null);
@@ -573,6 +575,20 @@ export function KdpFactoryApp() {
         } catch { toast.error("Error al eliminar prompt"); }
     };
 
+    const renameSavedPrompt = async (id: string, newName: string) => {
+        const trimmed = newName.trim();
+        if (!trimmed) { setEditingPromptId(null); return; }
+        setSavedPrompts(prev => prev.map(p => p._id === id ? { ...p, name: trimmed } : p));
+        setEditingPromptId(null);
+        try {
+            await fetch(`${API_BASE_URL}/saved-prompts/${id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: trimmed }),
+            });
+        } catch { toast.error("Error al renombrar prompt"); }
+    };
+
     const loadSavedPrompt = (p: SavedPromptFE) => {
         setPromptTheme(p.promptParts.theme);
         setPromptSpecs(p.promptParts.specs);
@@ -603,6 +619,7 @@ export function KdpFactoryApp() {
 
     const deleteCatalogImageConfirmed = async (catalogId: string, publicId: string) => {
         setConfirmDeleteImageInfo(null);
+        closePreview();
         try {
             const res = await fetch(`${API_BASE_URL}/catalogs/${catalogId}/delete-image`, {
                 method: "POST",
@@ -693,6 +710,10 @@ export function KdpFactoryApp() {
         setBookPages(prev => prev.map(p => p.id === id ? { ...p, image: { url, scale: 1, label } } : p));
     };
 
+    const updatePageImageBorder = (id: string, border: { width: number; color: string } | undefined) => {
+        setBookPages(prev => prev.map(p => p.id === id && p.image ? { ...p, image: { ...p.image, border } } : p));
+    };
+
     const duplicatePage = (id: string) => {
         const page = bookPages.find(p => p.id === id);
         if (!page) return;
@@ -770,6 +791,40 @@ export function KdpFactoryApp() {
         setBookDragOverIdx(null);
     };
     const handleBookDragEnd = () => { setBookDragIdx(null); setBookDragOverIdx(null); };
+
+    const handleThumbnailTouchStart = (e: React.TouchEvent, idx: number) => {
+        touchReorderRef.current = { startIdx: idx, currentIdx: idx };
+        setBookDragIdx(idx);
+    };
+    const handleThumbnailTouchMove = (e: React.TouchEvent) => {
+        if (!touchReorderRef.current) return;
+        e.preventDefault();
+        const touch = e.touches[0];
+        const el = document.elementFromPoint(touch.clientX, touch.clientY);
+        const thumbEl = el?.closest("[data-page-idx]");
+        if (thumbEl) {
+            const toIdx = parseInt(thumbEl.getAttribute("data-page-idx") ?? "0", 10);
+            if (toIdx !== touchReorderRef.current.currentIdx) {
+                touchReorderRef.current.currentIdx = toIdx;
+                setBookDragOverIdx(toIdx);
+            }
+        }
+    };
+    const handleThumbnailTouchEnd = () => {
+        if (!touchReorderRef.current) return;
+        const { startIdx, currentIdx } = touchReorderRef.current;
+        touchReorderRef.current = null;
+        if (startIdx !== currentIdx) {
+            setBookPages(prev => {
+                const next = [...prev];
+                const [moved] = next.splice(startIdx, 1);
+                next.splice(currentIdx, 0, moved);
+                return next;
+            });
+        }
+        setBookDragIdx(null);
+        setBookDragOverIdx(null);
+    };
 
     const openCatalogImagePreview = (images: CatalogImageFE[], index: number, catalogId?: string) => {
         setPreviewImage(images[index].url);
@@ -1108,13 +1163,26 @@ export function KdpFactoryApp() {
             };
 
             for (const bookPage of bookPages) {
-                if (bookPdfMode === "colored" && bookPage.type === "image") {
-                    pdf.addPage([pageWidth, pageHeight]); // blank facing page
-                }
                 const pdfPage = pdf.addPage([pageWidth, pageHeight]);
                 if (bookPage.image) {
                     const embedded = await embedImage(bookPage.image.url);
                     drawImageCentered(pdfPage, embedded, bookPage.image.scale ?? 1);
+                    // Draw border on top of image if configured
+                    if (bookPage.image.border && bookPage.image.border.width > 0) {
+                        const bw = bookPage.image.border.width;
+                        const hexToRgb = (hex: string) => {
+                            const r = parseInt(hex.slice(1, 3), 16) / 255;
+                            const g = parseInt(hex.slice(3, 5), 16) / 255;
+                            const b = parseInt(hex.slice(5, 7), 16) / 255;
+                            return rgb(r, g, b);
+                        };
+                        const borderColor = hexToRgb(bookPage.image.border.color);
+                        // Draw 4 filled rects (top, bottom, left, right)
+                        pdfPage.drawRectangle({ x: 0, y: pageHeight - bw, width: pageWidth, height: bw, color: borderColor });
+                        pdfPage.drawRectangle({ x: 0, y: 0, width: pageWidth, height: bw, color: borderColor });
+                        pdfPage.drawRectangle({ x: 0, y: 0, width: bw, height: pageHeight, color: borderColor });
+                        pdfPage.drawRectangle({ x: pageWidth - bw, y: 0, width: bw, height: pageHeight, color: borderColor });
+                    }
                 }
                 if ((bookPage.type === "text" || bookPage.type === "both") && bookPage.text.content.trim()) {
                     await drawTextOnPage(pdfPage, bookPage.text);
@@ -2620,33 +2688,65 @@ export function KdpFactoryApp() {
                 )}
 
                 {savedPrompts.length === 0 && !isLoadingSavedPrompts ? (
-                    <div className="flex items-center gap-4 px-2 opacity-30">
-                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-600 flex items-center gap-2"><BookMarked size={12} />Sin prompts guardados aún</span>
-                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                    <div className="flex flex-col items-center gap-3 py-10 opacity-40">
+                        <BookMarked size={28} strokeWidth={1.2} className="text-neutral-600" />
+                        <p className="text-[11px] font-black uppercase tracking-widest text-neutral-600">Sin prompts guardados aún</p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {savedPrompts
                             .filter(p => promptCategoryFilter === "all" || p.category === promptCategoryFilter)
                             .map(p => (
-                                <div key={p._id} className="rounded-2xl border border-white/5 bg-white/[0.02] p-4 space-y-3 hover:border-violet-500/20 transition-all group">
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div className="space-y-1 min-w-0">
-                                            <p className="text-[11px] font-black text-white truncate">{p.name}</p>
-                                            <span className="inline-block px-2 py-0.5 rounded-lg bg-violet-500/10 border border-violet-500/20 text-[9px] font-black uppercase tracking-widest text-violet-400">{p.category}</span>
+                                <div key={p._id}
+                                    className="group relative rounded-2xl border border-white/8 bg-white/[0.03] hover:border-violet-500/25 hover:bg-white/[0.05] transition-all overflow-hidden">
+                                    {/* Top accent bar */}
+                                    <div className="h-0.5 w-full bg-gradient-to-r from-violet-500/60 via-violet-400/30 to-transparent" />
+
+                                    <div className="p-4 space-y-3">
+                                        {/* Header: editable name + delete */}
+                                        <div className="flex items-start gap-2">
+                                            <div className="flex-1 min-w-0">
+                                                {editingPromptId === p._id ? (
+                                                    <input
+                                                        autoFocus
+                                                        value={editingPromptName}
+                                                        onChange={e => setEditingPromptName(e.target.value)}
+                                                        onBlur={() => void renameSavedPrompt(p._id, editingPromptName)}
+                                                        onKeyDown={e => {
+                                                            if (e.key === "Enter") void renameSavedPrompt(p._id, editingPromptName);
+                                                            if (e.key === "Escape") setEditingPromptId(null);
+                                                        }}
+                                                        className="w-full bg-white/5 border border-violet-500/40 rounded-lg px-2 py-1 text-[12px] font-black text-white outline-none"
+                                                    />
+                                                ) : (
+                                                    <button
+                                                        onClick={() => { setEditingPromptId(p._id); setEditingPromptName(p.name); }}
+                                                        className="w-full text-left group/name flex items-center gap-1.5 min-w-0"
+                                                        title="Clic para editar nombre">
+                                                        <span className="text-[12px] font-black text-white truncate">{p.name}</span>
+                                                        <Pencil size={9} className="shrink-0 text-neutral-700 group-hover/name:text-violet-400 transition-colors" />
+                                                    </button>
+                                                )}
+                                                <span className="mt-1 inline-block px-2 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-[8px] font-black uppercase tracking-widest text-violet-400">{p.category}</span>
+                                            </div>
+                                            <button onClick={() => void deleteSavedPrompt(p._id)}
+                                                className="p-1.5 rounded-lg text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all shrink-0 opacity-0 group-hover:opacity-100 mt-0.5">
+                                                <Trash2 size={12} />
+                                            </button>
                                         </div>
-                                        <button onClick={() => void deleteSavedPrompt(p._id)} className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all shrink-0 opacity-0 group-hover:opacity-100">
-                                            <Trash2 size={12} />
+
+                                        {/* Theme preview */}
+                                        <p className="text-[10px] text-neutral-500 line-clamp-2 leading-relaxed italic">
+                                            {p.promptParts.theme || <span className="opacity-40">Sin temática</span>}
+                                        </p>
+
+                                        {/* Load button */}
+                                        <button
+                                            onClick={() => loadSavedPrompt(p)}
+                                            className="w-full h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[10px] font-black uppercase tracking-widest hover:bg-violet-500 hover:text-white hover:border-violet-500 transition-all flex items-center justify-center gap-1.5">
+                                            <ArrowRight size={11} />Cargar prompt
                                         </button>
                                     </div>
-                                    <p className="text-[10px] text-neutral-500 line-clamp-2 font-medium leading-relaxed">{p.promptParts.theme}</p>
-                                    <button
-                                        onClick={() => loadSavedPrompt(p)}
-                                        className="w-full h-8 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[9px] font-black uppercase tracking-widest hover:bg-violet-500/20 transition-all"
-                                    >
-                                        Cargar prompt
-                                    </button>
                                 </div>
                             ))}
                     </div>
@@ -3238,12 +3338,6 @@ export function KdpFactoryApp() {
                             <input value={bookFileName} onChange={e => setBookFileName(e.target.value)}
                                 className="hidden sm:block w-28 h-9 rounded-xl bg-white/5 border border-white/10 px-2.5 text-[11px] text-white outline-none focus:border-amber-500/40 shrink-0"
                                 placeholder="libro-kdp" />
-                            {/* PDF mode toggle — desktop only */}
-                            <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-xl bg-white/[0.03] border border-white/8 shrink-0">
-                                <span className="text-[8px] font-black uppercase text-neutral-600 mr-1">PDF</span>
-                                <button onClick={() => setBookPdfMode("standard")} className={`px-1.5 h-5 rounded-md text-[8px] font-black uppercase transition-all ${bookPdfMode === "standard" ? "bg-amber-500/20 text-amber-400" : "text-neutral-600 hover:text-neutral-400"}`}>Std</button>
-                                <button onClick={() => setBookPdfMode("colored")} className={`px-1.5 h-5 rounded-md text-[8px] font-black uppercase transition-all ${bookPdfMode === "colored" ? "bg-amber-500/20 text-amber-400" : "text-neutral-600 hover:text-neutral-400"}`}>2 pág.</button>
-                            </div>
                             <Button onClick={buildBookPdf} disabled={isBuildingPdf || bookPages.length === 0}
                                 className="h-9 rounded-xl bg-amber-500 text-black hover:bg-amber-400 text-[11px] font-black uppercase shrink-0 px-3 sm:px-4 gap-1.5">
                                 {isBuildingPdf ? <Loader2 size={14} className="animate-spin" /> : <><Download size={14} /><span className="hidden sm:inline">Generar </span>PDF</>}
@@ -3274,13 +3368,18 @@ export function KdpFactoryApp() {
                                         {/* Scrollable pages strip */}
                                         <div className="flex-1 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar min-w-0">
                                             {bookPages.map((page, idx) => (
-                                                <div key={page.id} draggable
+                                                <div key={page.id}
+                                                    data-page-idx={idx}
+                                                    draggable
                                                     onDragStart={() => handleBookDragStart(idx)}
                                                     onDragOver={e => handleBookDragOver(e, idx)}
                                                     onDrop={() => handleBookDrop(idx)}
                                                     onDragEnd={handleBookDragEnd}
+                                                    onTouchStart={e => handleThumbnailTouchStart(e, idx)}
+                                                    onTouchMove={handleThumbnailTouchMove}
+                                                    onTouchEnd={handleThumbnailTouchEnd}
                                                     onClick={() => { setSelectedPageId(page.id); setShowInlineImagePicker(false); }}
-                                                    className={`group shrink-0 w-12 h-[68px] rounded-xl border-2 cursor-pointer relative overflow-hidden transition-all select-none
+                                                    className={`group shrink-0 w-12 h-[68px] rounded-xl border-2 cursor-grab active:cursor-grabbing relative overflow-hidden transition-all select-none touch-none
                                                         ${selectedPageId === page.id
                                                             ? "border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.4)]"
                                                             : bookDragOverIdx === idx && bookDragIdx !== idx
@@ -3325,7 +3424,7 @@ export function KdpFactoryApp() {
                                 </div>
 
                                 {/* ── Page editor ── */}
-                                <div className="flex-1 overflow-y-auto">
+                                <div className="flex-1 overflow-y-auto min-h-0" style={{ WebkitOverflowScrolling: "touch" }}>
                                     {selectedPage ? (() => {
                                         const pageIdx = bookPages.findIndex(p => p.id === selectedPage.id);
                                         const allImgSources = [
@@ -3336,7 +3435,7 @@ export function KdpFactoryApp() {
                                         const needsImage = selectedPage.type === "image" || selectedPage.type === "both";
                                         const needsText = selectedPage.type === "text" || selectedPage.type === "both";
                                         return (
-                                            <div className="p-3 sm:p-4 space-y-4 max-w-xl mx-auto pb-8">
+                                            <div className="p-3 sm:p-4 space-y-4 max-w-xl mx-auto pb-24">
 
                                                 {/* ── Page nav + actions ── */}
                                                 <div className="flex items-center gap-1.5 pt-1">
@@ -3407,19 +3506,42 @@ export function KdpFactoryApp() {
                                                         </div>
 
                                                         {selectedPage.image && (
-                                                            <div className="rounded-2xl overflow-hidden bg-black/40">
+                                                            <div className="rounded-2xl overflow-hidden bg-black/40 relative">
                                                                 <img src={selectedPage.image.url} alt=""
                                                                     style={{ transform: `scale(${selectedPage.image.scale})`, transformOrigin: "center" }}
                                                                     className="w-full max-h-48 sm:max-h-56 object-contain transition-transform duration-150" />
+                                                                {selectedPage.image.border && selectedPage.image.border.width > 0 && (
+                                                                    <div className="absolute inset-0 pointer-events-none" style={{
+                                                                        boxShadow: `inset 0 0 0 ${Math.max(2, selectedPage.image.border.width * 0.15)}px ${selectedPage.image.border.color}`,
+                                                                    }} />
+                                                                )}
                                                             </div>
                                                         )}
                                                         {selectedPage.image && (
-                                                            <div className="flex items-center gap-3">
-                                                                <span className="text-[9px] font-black uppercase text-neutral-600 shrink-0">Zoom</span>
-                                                                <input type="range" min={0.5} max={3} step={0.05} value={selectedPage.image.scale}
-                                                                    onChange={e => updatePageImageScale(selectedPage.id, Number(e.target.value))}
-                                                                    className="flex-1 accent-amber-500 h-1.5" />
-                                                                <span className="text-[10px] font-mono text-amber-400 shrink-0 w-9 text-right">{Math.round(selectedPage.image.scale * 100)}%</span>
+                                                            <div className="space-y-2 p-3 rounded-2xl bg-white/[0.03] border border-white/8">
+                                                                {/* Zoom */}
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="text-[9px] font-black uppercase text-neutral-600 shrink-0 w-10">Zoom</span>
+                                                                    <input type="range" min={0.5} max={3} step={0.05} value={selectedPage.image.scale}
+                                                                        onChange={e => updatePageImageScale(selectedPage.id, Number(e.target.value))}
+                                                                        className="flex-1 accent-amber-500 h-1.5" />
+                                                                    <span className="text-[10px] font-mono text-amber-400 shrink-0 w-9 text-right">{Math.round(selectedPage.image.scale * 100)}%</span>
+                                                                </div>
+                                                                {/* Border / Marco */}
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="text-[9px] font-black uppercase text-neutral-600 shrink-0 w-10">Marco</span>
+                                                                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                                                                        <div className="relative">
+                                                                            <input type="checkbox"
+                                                                                checked={!!selectedPage.image.border}
+                                                                                onChange={e => updatePageImageBorder(selectedPage.id, e.target.checked ? { width: 20, color: "#ffffff" } : undefined)}
+                                                                                className="sr-only peer" />
+                                                                            <div className="w-9 h-5 rounded-full bg-white/10 peer-checked:bg-amber-500/80 transition-colors border border-white/10 peer-checked:border-amber-500/50" />
+                                                                            <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white/60 peer-checked:translate-x-4 peer-checked:bg-white transition-transform" />
+                                                                        </div>
+                                                                        <span className="text-[10px] font-bold text-neutral-500 peer-checked:text-amber-400">{selectedPage.image.border ? "Activo" : "Sin marco"}</span>
+                                                                    </label>
+                                                                </div>
                                                             </div>
                                                         )}
 
@@ -3615,7 +3737,6 @@ export function KdpFactoryApp() {
                                 <div className="shrink-0 px-4 py-2 border-b border-white/8 bg-black/20 flex items-center justify-between gap-3">
                                     <div className="flex items-center gap-2">
                                         <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{bookPages.length} página{bookPages.length !== 1 ? "s" : ""}</span>
-                                        {bookPdfMode === "colored" && <span className="text-[9px] px-2 py-0.5 rounded-full bg-indigo-500/15 border border-indigo-500/20 text-indigo-400 font-bold">Modo libro: páginas dobles</span>}
                                     </div>
                                     <div className="flex rounded-xl border border-white/10 overflow-hidden">
                                         <button onClick={() => setBookPreviewMode("single")} title="Una página" className={`w-8 h-7 flex items-center justify-center transition-all ${bookPreviewMode === "single" ? "bg-amber-500/20 text-amber-400" : "bg-white/[0.03] text-neutral-500 hover:text-white"}`}><FileText size={11} /></button>
@@ -3893,7 +4014,7 @@ export function KdpFactoryApp() {
                         </div>
                         <div className="flex gap-3">
                             <button onClick={() => setConfirmDeleteCloudinaryId(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
-                            <button onClick={() => { void deleteFromCloudinary(confirmDeleteCloudinaryId); setConfirmDeleteCloudinaryId(null); }} className="flex-1 h-11 rounded-2xl bg-red-500 text-white text-sm font-black hover:bg-red-400 transition-all">Eliminar</button>
+                            <button onClick={() => { void deleteFromCloudinary(confirmDeleteCloudinaryId); setConfirmDeleteCloudinaryId(null); closePreview(); }} className="flex-1 h-11 rounded-2xl bg-red-500 text-white text-sm font-black hover:bg-red-400 transition-all">Eliminar</button>
                         </div>
                     </div>
                 </div>
