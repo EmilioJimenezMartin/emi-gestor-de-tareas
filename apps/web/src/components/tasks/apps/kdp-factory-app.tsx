@@ -365,6 +365,7 @@ export function KdpFactoryApp() {
     const [showInlineImagePicker, setShowInlineImagePicker] = useState(false);
     const [bookPreviewMode, setBookPreviewMode] = useState<"single" | "spread">("single");
     const [previewContext, setPreviewContext] = useState<{ urls: string[]; index: number; catalogCtx?: { id: string; images: CatalogImageFE[] }; vaultCtx?: true; cloudinaryCtx?: true } | null>(null);
+    const [confirmClearBook, setConfirmClearBook] = useState(false);
     const [confirmDeleteVaultIndex, setConfirmDeleteVaultIndex] = useState<number | null>(null);
     const [confirmDeleteCloudinaryId, setConfirmDeleteCloudinaryId] = useState<string | null>(null);
     const [catalogQueue, setCatalogQueue] = useState<QueuedCatalog[]>([]);
@@ -1010,6 +1011,18 @@ export function KdpFactoryApp() {
             toast.error("Error al guardar el borrador");
         } finally {
             setIsSavingDraft(false);
+        }
+    };
+
+    const deleteBookDraft = async () => {
+        try {
+            await fetch(`${API_BASE_URL}/settings`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify([{ key: "kdp-book-draft", value: { pages: [], fileName: "" } }]),
+            });
+        } catch {
+            // silent — local state is already cleared
         }
     };
 
@@ -2229,24 +2242,41 @@ export function KdpFactoryApp() {
                         {/* Action buttons — own row, full width on mobile */}
                         <div className="flex items-center gap-2">
                             {bookPages.length > 0 && (
-                                <button onClick={() => setBookPages([])} className="h-9 px-4 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-all text-[10px] font-black uppercase active:scale-95">
-                                    Vaciar
-                                </button>
+                                confirmClearBook ? (
+                                    <>
+                                        <button
+                                            onClick={() => { setBookPages([]); setSelectedPageId(null); setConfirmClearBook(false); void deleteBookDraft(); }}
+                                            className="h-9 px-3 rounded-xl bg-red-500 text-white text-[10px] font-black uppercase active:scale-95 transition-all">
+                                            Sí, borrar
+                                        </button>
+                                        <button
+                                            onClick={() => setConfirmClearBook(false)}
+                                            className="h-9 px-3 rounded-xl border border-white/10 text-neutral-400 text-[10px] font-black uppercase active:scale-95 transition-all">
+                                            Cancelar
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button onClick={() => setConfirmClearBook(true)} className="h-9 px-4 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 transition-all text-[10px] font-black uppercase active:scale-95">
+                                        Borrar
+                                    </button>
+                                )
                             )}
-                            <Button
-                                onClick={() => {
-                                    if (vaultImages.length > 0 && bookPages.length === 0) {
-                                        const pages: BookPage[] = vaultImages.map(v => ({ id: genPageId(), type: "image" as const, image: { url: v.url, scale: 1, label: v.model }, text: defaultTextStyle() }));
-                                        setBookPages(pages);
-                                        setSelectedPageId(pages[0]?.id ?? null);
-                                    }
-                                    setBookEditorOpen(true);
-                                }}
-                                className="flex-1 h-9 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_20px_rgba(245,158,11,0.3)] active:scale-95"
-                            >
-                                <Pencil size={13} />
-                                {bookPages.length === 0 ? "Crear libro" : "Editar libro"}
-                            </Button>
+                            {!confirmClearBook && (
+                                <Button
+                                    onClick={() => {
+                                        if (vaultImages.length > 0 && bookPages.length === 0) {
+                                            const pages: BookPage[] = vaultImages.map(v => ({ id: genPageId(), type: "image" as const, image: { url: v.url, scale: 1, label: v.model }, text: defaultTextStyle() }));
+                                            setBookPages(pages);
+                                            setSelectedPageId(pages[0]?.id ?? null);
+                                        }
+                                        setBookEditorOpen(true);
+                                    }}
+                                    className="flex-1 sm:flex-none sm:px-6 h-9 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_20px_rgba(245,158,11,0.3)] active:scale-95"
+                                >
+                                    <Pencil size={13} />
+                                    {bookPages.length === 0 ? "Crear libro" : "Editar"}
+                                </Button>
+                            )}
                         </div>
 
                         {/* Page thumbnails preview or empty state */}
@@ -3270,7 +3300,7 @@ export function KdpFactoryApp() {
                     role="dialog"
                     aria-modal="true"
                 >
-                    <div className="relative w-full max-w-4xl h-[100dvh] sm:h-auto sm:max-h-[90vh] rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                    <div className="relative w-full max-w-4xl h-[100dvh] sm:h-[90vh] rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
 
                         {/* Header */}
                         <div className="shrink-0 border-b border-white/8">
@@ -3751,7 +3781,7 @@ export function KdpFactoryApp() {
                                 const cssFf = page.text.fontFamily === "times" ? "Georgia,serif" : page.text.fontFamily === "courier" ? "'Courier New',monospace" : "Helvetica,sans-serif";
                                 return (
                                     <div
-                                        className="w-full h-full relative bg-white"
+                                        className="absolute inset-0 bg-white"
                                         style={brd ? { boxShadow: `inset 0 0 0 ${brd.width}px ${brd.color}` } : {}}
                                     >
                                         {isEmpty && (
@@ -3826,11 +3856,11 @@ export function KdpFactoryApp() {
                                                 <ChevronLeft size={16} />
                                             </button>
 
-                                            {/* A4 page — sized to fill available height */}
-                                            <div className="flex-1 h-full flex items-center justify-center min-w-0">
+                                            {/* A4 page — width from viewport calc, height from aspect-ratio */}
+                                            <div className="flex-1 flex items-center justify-center min-w-0">
                                                 <div
                                                     className="relative overflow-hidden rounded-xl shadow-[0_16px_64px_rgba(0,0,0,0.8)] transition-all cursor-pointer group"
-                                                    style={{ aspectRatio: "595/842", maxHeight: "100%", maxWidth: "100%", width: "auto", height: "100%" }}
+                                                    style={{ aspectRatio: "595/842", width: "min(100%, calc((min(90vh, 100dvh) - 280px) * 595 / 842))", height: "auto" }}
                                                     onClick={() => { setBookEditorTab("editor"); setShowInlineImagePicker(false); }}
                                                 >
                                                     {curPage && renderPageInner(curPage, 0.5)}
