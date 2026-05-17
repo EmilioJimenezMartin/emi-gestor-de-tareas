@@ -18,6 +18,9 @@ export interface ICatalog extends Document {
         details: string;
         particulars: string;
     };
+    productType?: "coloring-book" | "printable-poster" | "other";
+    creativity?: number;
+    negativePrompt?: string;
     aiModel: {
         id: string;
         name: string;
@@ -57,6 +60,9 @@ const CatalogSchema = new Schema<ICatalog>(
             details: { type: String, default: "" },
             particulars: { type: String, default: "" },
         },
+        productType: { type: String, enum: ["coloring-book", "printable-poster", "other"], default: "coloring-book" },
+        creativity: { type: Number, default: 50 },
+        negativePrompt: { type: String, default: "" },
         aiModel: {
             id: String,
             name: String,

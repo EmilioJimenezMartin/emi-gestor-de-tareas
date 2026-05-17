@@ -249,6 +249,9 @@ interface QueuedCatalog {
     model: typeof AI_MODELS[number];
     dim: typeof AI_DIMENSIONS[number];
     totalImages: number;
+    productType: "coloring-book" | "printable-poster" | "other";
+    creativity: number;
+    negativePrompt: string;
 }
 
 export function KdpFactoryApp() {
@@ -353,6 +356,9 @@ export function KdpFactoryApp() {
     const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(false);
     const [catalogFormName, setCatalogFormName] = useState("");
     const [catalogFormCount, setCatalogFormCount] = useState(5);
+    const [catalogProductType, setCatalogProductType] = useState<"coloring-book" | "printable-poster" | "other">("coloring-book");
+    const [catalogCreativity, setCatalogCreativity] = useState(50);
+    const [catalogNegativePrompt, setCatalogNegativePrompt] = useState("");
     const [isCreatingCatalog, setIsCreatingCatalog] = useState(false);
     const [deletingCatalogId, setDeletingCatalogId] = useState<string | null>(null);
     const [confirmDeleteCatalogId, setConfirmDeleteCatalogId] = useState<string | null>(null);
@@ -390,9 +396,11 @@ export function KdpFactoryApp() {
     const [contentProductType, setContentProductType] = useState("Coloring Book");
     const [contentExtras, setContentExtras] = useState("");
     const [contentLanguage, setContentLanguage] = useState<"es" | "en">("en");
-    const [contentType, setContentType] = useState<"full-listing" | "titles" | "description" | "keywords" | "back-cover" | "series">("full-listing");
+    const [contentType, setContentType] = useState<"kdp-physical-book" | "full-listing" | "titles" | "description" | "keywords" | "back-cover" | "series">("kdp-physical-book");
     const [contentResult, setContentResult] = useState<any | null>(null);
     const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+    const [imagePromptSuggestion, setImagePromptSuggestion] = useState<string | null>(null);
+    const [isGeneratingImagePrompt, setIsGeneratingImagePrompt] = useState(false);
 
     // --- Trends state ---
     const [trendsPlatform, setTrendsPlatform] = useState<"all" | "kdp" | "etsy" | "printify">("all");
@@ -493,6 +501,9 @@ export function KdpFactoryApp() {
                     name: catalogFormName.trim() || undefined,
                     prompt: imagePrompt.trim(),
                     promptParts: { theme: promptTheme.trim(), specs: promptSpecs.trim(), details: promptDetails.trim(), particulars: promptParticulars.trim() },
+                    productType: catalogProductType,
+                    creativity: catalogCreativity,
+                    negativePrompt: catalogNegativePrompt.trim(),
                     aiModel: { id: model.id, name: model.name, provider: model.provider, modelId: model.modelId },
                     width: dim?.width ?? 1024,
                     height: dim?.height ?? 1024,
@@ -522,6 +533,9 @@ export function KdpFactoryApp() {
                     name: item.name || undefined,
                     prompt: item.prompt,
                     promptParts: item.promptParts,
+                    productType: item.productType,
+                    creativity: item.creativity,
+                    negativePrompt: item.negativePrompt,
                     aiModel: { id: item.model.id, name: item.model.name, provider: item.model.provider, modelId: item.model.modelId },
                     width: item.dim.width,
                     height: item.dim.height,
@@ -632,6 +646,9 @@ export function KdpFactoryApp() {
             model,
             dim,
             totalImages: catalogFormCount,
+            productType: catalogProductType,
+            creativity: catalogCreativity,
+            negativePrompt: catalogNegativePrompt.trim(),
         };
         setCatalogQueue((prev) => [...prev, item]);
         setCatalogFormName("");
@@ -1651,7 +1668,7 @@ export function KdpFactoryApp() {
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                 {/* Generation Control */}
                 <Card variant="glass" className="p-6 md:p-8 border-white/5 bg-white/[0.01] space-y-8 relative overflow-hidden group hover:shadow-[0_0_40px_rgba(245,158,11,0.08)] transition-all duration-500">
                     <div className="absolute -inset-1 bg-gradient-to-br from-amber-500/5 via-transparent to-transparent blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
@@ -2007,11 +2024,69 @@ export function KdpFactoryApp() {
                         })()}
 
                         {/* Catalog launch — reuses studio model/dim/prompt */}
-                        <div className="border-t border-white/5 pt-5 space-y-3">
+                        <div className="border-t border-white/5 pt-5 space-y-4">
                             <div className="flex items-center gap-2 text-neutral-500">
                                 <Layers size={12} />
                                 <span className="text-[10px] font-black uppercase tracking-widest">Generar catálogo con estos ajustes</span>
                             </div>
+
+                            {/* Product type selector */}
+                            <div className="space-y-2">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Tipo de producto</p>
+                                <div className="flex gap-1.5">
+                                    {([
+                                        { id: "coloring-book" as const, label: "Libro de colorear", desc: "B&W line art" },
+                                        { id: "printable-poster" as const, label: "Poster imprimible", desc: "Alta calidad" },
+                                        { id: "other" as const, label: "Otro", desc: "Sin modificar" },
+                                    ]).map(pt => (
+                                        <button key={pt.id} onClick={() => setCatalogProductType(pt.id)}
+                                            className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 px-2 rounded-xl border transition-all ${catalogProductType === pt.id ? "border-amber-500/40 bg-amber-500/[0.08] text-amber-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}>
+                                            <span className="text-[9px] font-black uppercase tracking-wide leading-tight text-center">{pt.label}</span>
+                                            <span className={`text-[8px] ${catalogProductType === pt.id ? "text-amber-500/60" : "text-neutral-700"}`}>{pt.desc}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Negative prompt — coloring book only */}
+                            {catalogProductType === "coloring-book" && (
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Prompt negativo adicional</p>
+                                        <span className="text-[8px] text-neutral-700 italic">Auto: sombreado, texturas, color…</span>
+                                    </div>
+                                    <input
+                                        value={catalogNegativePrompt}
+                                        onChange={e => setCatalogNegativePrompt(e.target.value)}
+                                        placeholder="Ej: cartoon, anime, hands, text, watermark…"
+                                        className="w-full h-9 bg-white/5 border border-white/10 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-rose-500/30 transition-all"
+                                    />
+                                    <div className="flex flex-wrap gap-1">
+                                        {["shading", "gray tones", "gradients", "color", "sepia", "textures", "shadows"].map(t => (
+                                            <span key={t} className="text-[8px] px-1.5 py-0.5 rounded-full bg-rose-500/8 border border-rose-500/15 text-rose-400/50 font-mono">{t}</span>
+                                        ))}
+                                        <span className="text-[8px] text-neutral-700 italic self-center">+ tu texto</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Creativity slider */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Variación IA de particularidades</p>
+                                    <span className={`text-[9px] font-black tabular-nums ${catalogCreativity <= 10 ? "text-neutral-700" : catalogCreativity <= 35 ? "text-sky-400/70" : catalogCreativity <= 65 ? "text-violet-400/70" : catalogCreativity <= 85 ? "text-amber-400/70" : "text-rose-400/70"}`}>
+                                        {catalogCreativity <= 10 ? "Sin variación" : catalogCreativity <= 35 ? "Sutil" : catalogCreativity <= 65 ? "Moderada" : catalogCreativity <= 85 ? "Alta" : "Máxima"}
+                                    </span>
+                                </div>
+                                <input type="range" min={0} max={100} step={5} value={catalogCreativity}
+                                    onChange={e => setCatalogCreativity(Number(e.target.value))}
+                                    className="w-full accent-violet-500 h-1.5 rounded-full cursor-pointer" />
+                                <div className="flex justify-between text-[8px] text-neutral-700">
+                                    <span>Idénticas</span>
+                                    <span>Diferentes</span>
+                                </div>
+                            </div>
+
                             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                                 <input
                                     value={catalogFormName}
@@ -2068,10 +2143,12 @@ export function KdpFactoryApp() {
                     </div>
                 </Card>
 
+                {/* Right Column */}
+                <div className="flex flex-col gap-6">
                 {/* Preview Area */}
                 <Card
                     variant="glass"
-                    className="relative border-white/5 bg-white/[0.01] overflow-hidden min-h-[400px] flex items-center justify-center group rounded-[40px] focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                    className="relative border-white/5 bg-white/[0.01] overflow-hidden h-[280px] flex items-center justify-center group rounded-[40px] focus:outline-none focus:ring-2 focus:ring-amber-500/40"
                     tabIndex={0}
                     onClick={(e) => (e.currentTarget as HTMLElement).focus()}
                     onDragOver={(e) => {
@@ -2221,6 +2298,156 @@ export function KdpFactoryApp() {
                         </div>
                     )}
                 </Card>
+
+                {/* Saved Prompts Library */}
+                <div className="space-y-4">
+                    {/* ── IA Prompt Generator ─────────────────────────────────── */}
+                    <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.03] p-4 space-y-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-violet-500/15 border border-violet-500/25 flex items-center justify-center shrink-0">
+                                <Wand2 size={14} className="text-violet-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[11px] font-black text-white tracking-tight">Generador de prompt con IA</p>
+                                <p className="text-[9px] text-neutral-600">Describe tu producto y la IA crea el prompt ideal para guardar en biblioteca</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <input
+                                value={contentNiche}
+                                onChange={e => setContentNiche(e.target.value)}
+                                onKeyDown={e => { if (e.key === "Enter") void generateImagePromptSuggestion(); }}
+                                placeholder="Ej: libro de colorear de mandalas zen para adultos…"
+                                className="flex-1 h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all"
+                            />
+                            <button
+                                onClick={() => void generateImagePromptSuggestion()}
+                                disabled={isGeneratingImagePrompt || !contentNiche.trim()}
+                                className="h-10 px-4 rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[10px] font-black uppercase tracking-wider flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
+                                {isGeneratingImagePrompt ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                {isGeneratingImagePrompt ? "..." : "Generar"}
+                            </button>
+                        </div>
+                        {isGeneratingImagePrompt && (
+                            <div className="h-12 rounded-xl bg-white/5 border border-white/8 animate-pulse flex items-center justify-center">
+                                <Loader2 size={12} className="animate-spin text-violet-400" />
+                            </div>
+                        )}
+                        {imagePromptSuggestion && !isGeneratingImagePrompt && (
+                            <div className="space-y-2">
+                                <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2.5 space-y-1.5">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-[8px] font-black uppercase tracking-widest text-amber-400/70">Prompt generado</p>
+                                        <button onClick={() => copyText(imagePromptSuggestion)} className="p-1 rounded text-neutral-700 hover:text-white transition-colors"><Copy size={8} /></button>
+                                    </div>
+                                    <p className="text-[10px] text-neutral-300 leading-relaxed font-mono">{imagePromptSuggestion}</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => saveImagePromptToLibrary(imagePromptSuggestion)}
+                                        className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]">
+                                        <BookMarked size={11} /> Guardar en biblioteca
+                                    </button>
+                                    <button onClick={() => void generateImagePromptSuggestion()}
+                                        className="h-9 px-3 rounded-xl border border-white/10 bg-white/5 text-neutral-500 hover:text-white text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-colors">
+                                        <Sparkles size={10} /> Regenerar
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-4 px-2">
+                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                        <div className="flex items-center gap-3">
+                            <BookMarked size={14} className="text-violet-400" />
+                            <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Biblioteca de Prompts</h3>
+                        </div>
+                        <button onClick={() => void fetchSavedPrompts()} disabled={isLoadingSavedPrompts} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
+                            {isLoadingSavedPrompts ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                        </button>
+                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                    </div>
+
+                    {savedPrompts.length > 0 && (
+                        <div className="flex gap-2 flex-wrap px-2">
+                            <button
+                                onClick={() => setPromptCategoryFilter("all")}
+                                className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === "all" ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                            >
+                                Todos ({savedPrompts.length})
+                            </button>
+                            {Array.from(new Set(savedPrompts.map(p => p.category))).map(cat => (
+                                <button
+                                    key={cat}
+                                    onClick={() => setPromptCategoryFilter(cat)}
+                                    className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === cat ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                                >
+                                    {cat} ({savedPrompts.filter(p => p.category === cat).length})
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    {savedPrompts.length === 0 && !isLoadingSavedPrompts ? (
+                        <div className="flex flex-col items-center gap-3 py-10 opacity-40">
+                            <BookMarked size={28} strokeWidth={1.2} className="text-neutral-600" />
+                            <p className="text-[11px] font-black uppercase tracking-widest text-neutral-600">Sin prompts guardados aún</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {savedPrompts
+                                .filter(p => promptCategoryFilter === "all" || p.category === promptCategoryFilter)
+                                .map(p => (
+                                    <div key={p._id}
+                                        className="group relative rounded-2xl border border-white/8 bg-white/[0.03] hover:border-violet-500/25 hover:bg-white/[0.05] transition-all overflow-hidden">
+                                        <div className="h-0.5 w-full bg-gradient-to-r from-violet-500/60 via-violet-400/30 to-transparent" />
+                                        <div className="p-4 space-y-3">
+                                            <div className="flex items-start gap-2">
+                                                <div className="flex-1 min-w-0">
+                                                    {editingPromptId === p._id ? (
+                                                        <input
+                                                            autoFocus
+                                                            value={editingPromptName}
+                                                            onChange={e => setEditingPromptName(e.target.value)}
+                                                            onBlur={() => void renameSavedPrompt(p._id, editingPromptName)}
+                                                            onKeyDown={e => {
+                                                                if (e.key === "Enter") void renameSavedPrompt(p._id, editingPromptName);
+                                                                if (e.key === "Escape") setEditingPromptId(null);
+                                                            }}
+                                                            className="w-full bg-white/5 border border-violet-500/40 rounded-lg px-2 py-1 text-[12px] font-black text-white outline-none"
+                                                        />
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => { setEditingPromptId(p._id); setEditingPromptName(p.name); }}
+                                                            className="w-full text-left group/name flex items-center gap-1.5 min-w-0"
+                                                            title="Clic para editar nombre">
+                                                            <span className="text-[12px] font-black text-white truncate">{p.name}</span>
+                                                            <Pencil size={9} className="shrink-0 text-neutral-700 group-hover/name:text-violet-400 transition-colors" />
+                                                        </button>
+                                                    )}
+                                                    <span className="mt-1 inline-block px-2 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-[8px] font-black uppercase tracking-widest text-violet-400">{p.category}</span>
+                                                </div>
+                                                <button onClick={() => void deleteSavedPrompt(p._id)}
+                                                    className="p-1.5 rounded-lg text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all shrink-0 opacity-0 group-hover:opacity-100 mt-0.5">
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            </div>
+                                            <p className="text-[10px] text-neutral-500 line-clamp-2 leading-relaxed italic">
+                                                {p.promptParts.theme || <span className="opacity-40">Sin temática</span>}
+                                            </p>
+                                            <button
+                                                onClick={() => loadSavedPrompt(p)}
+                                                className="w-full h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[10px] font-black uppercase tracking-widest hover:bg-violet-500 hover:text-white hover:border-violet-500 transition-all flex items-center justify-center gap-1.5">
+                                                <ArrowRight size={11} />Cargar prompt
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                        </div>
+                    )}
+                </div>
+                </div>
             </div>
 
             {/* ── BOOK FACTORY CARD ── */}
@@ -2802,105 +3029,6 @@ export function KdpFactoryApp() {
                 </div>
             )}
 
-            {/* Saved Prompts Library */}
-            <div className="space-y-4">
-                <div className="flex items-center gap-4 px-2">
-                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                    <div className="flex items-center gap-3">
-                        <BookMarked size={14} className="text-violet-400" />
-                        <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Biblioteca de Prompts</h3>
-                    </div>
-                    <button onClick={() => void fetchSavedPrompts()} disabled={isLoadingSavedPrompts} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
-                        {isLoadingSavedPrompts ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                    </button>
-                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                </div>
-
-                {savedPrompts.length > 0 && (
-                    <div className="flex gap-2 flex-wrap px-2">
-                        <button
-                            onClick={() => setPromptCategoryFilter("all")}
-                            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === "all" ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
-                        >
-                            Todos ({savedPrompts.length})
-                        </button>
-                        {Array.from(new Set(savedPrompts.map(p => p.category))).map(cat => (
-                            <button
-                                key={cat}
-                                onClick={() => setPromptCategoryFilter(cat)}
-                                className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === cat ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
-                            >
-                                {cat} ({savedPrompts.filter(p => p.category === cat).length})
-                            </button>
-                        ))}
-                    </div>
-                )}
-
-                {savedPrompts.length === 0 && !isLoadingSavedPrompts ? (
-                    <div className="flex flex-col items-center gap-3 py-10 opacity-40">
-                        <BookMarked size={28} strokeWidth={1.2} className="text-neutral-600" />
-                        <p className="text-[11px] font-black uppercase tracking-widest text-neutral-600">Sin prompts guardados aún</p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {savedPrompts
-                            .filter(p => promptCategoryFilter === "all" || p.category === promptCategoryFilter)
-                            .map(p => (
-                                <div key={p._id}
-                                    className="group relative rounded-2xl border border-white/8 bg-white/[0.03] hover:border-violet-500/25 hover:bg-white/[0.05] transition-all overflow-hidden">
-                                    {/* Top accent bar */}
-                                    <div className="h-0.5 w-full bg-gradient-to-r from-violet-500/60 via-violet-400/30 to-transparent" />
-
-                                    <div className="p-4 space-y-3">
-                                        {/* Header: editable name + delete */}
-                                        <div className="flex items-start gap-2">
-                                            <div className="flex-1 min-w-0">
-                                                {editingPromptId === p._id ? (
-                                                    <input
-                                                        autoFocus
-                                                        value={editingPromptName}
-                                                        onChange={e => setEditingPromptName(e.target.value)}
-                                                        onBlur={() => void renameSavedPrompt(p._id, editingPromptName)}
-                                                        onKeyDown={e => {
-                                                            if (e.key === "Enter") void renameSavedPrompt(p._id, editingPromptName);
-                                                            if (e.key === "Escape") setEditingPromptId(null);
-                                                        }}
-                                                        className="w-full bg-white/5 border border-violet-500/40 rounded-lg px-2 py-1 text-[12px] font-black text-white outline-none"
-                                                    />
-                                                ) : (
-                                                    <button
-                                                        onClick={() => { setEditingPromptId(p._id); setEditingPromptName(p.name); }}
-                                                        className="w-full text-left group/name flex items-center gap-1.5 min-w-0"
-                                                        title="Clic para editar nombre">
-                                                        <span className="text-[12px] font-black text-white truncate">{p.name}</span>
-                                                        <Pencil size={9} className="shrink-0 text-neutral-700 group-hover/name:text-violet-400 transition-colors" />
-                                                    </button>
-                                                )}
-                                                <span className="mt-1 inline-block px-2 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-[8px] font-black uppercase tracking-widest text-violet-400">{p.category}</span>
-                                            </div>
-                                            <button onClick={() => void deleteSavedPrompt(p._id)}
-                                                className="p-1.5 rounded-lg text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all shrink-0 opacity-0 group-hover:opacity-100 mt-0.5">
-                                                <Trash2 size={12} />
-                                            </button>
-                                        </div>
-
-                                        {/* Theme preview */}
-                                        <p className="text-[10px] text-neutral-500 line-clamp-2 leading-relaxed italic">
-                                            {p.promptParts.theme || <span className="opacity-40">Sin temática</span>}
-                                        </p>
-
-                                        {/* Load button */}
-                                        <button
-                                            onClick={() => loadSavedPrompt(p)}
-                                            className="w-full h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[10px] font-black uppercase tracking-widest hover:bg-violet-500 hover:text-white hover:border-violet-500 transition-all flex items-center justify-center gap-1.5">
-                                            <ArrowRight size={11} />Cargar prompt
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                    </div>
-                )}
-            </div>
         </div>
     );
 
@@ -2924,20 +3052,61 @@ export function KdpFactoryApp() {
 
     // ─── STUDIO (Tendencias + Contenido) ─────────────────────────────────────
     const generateContent = async () => {
-        if (!contentNiche.trim()) { toast.error("Escribe un nicho o tema"); return; }
+        if (!contentNiche.trim()) { toast.error("Describe el producto"); return; }
         setIsGeneratingContent(true);
         setContentResult(null);
         try {
             const res = await fetch(`${API_BASE_URL}/ai/generate-text`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ type: contentType, niche: contentNiche, productType: contentProductType, extras: contentExtras, language: contentLanguage }),
+                body: JSON.stringify({
+                    type: contentType,
+                    niche: contentNiche,
+                    productType: contentType === "kdp-physical-book" ? "Physical KDP Book" : contentProductType,
+                    extras: contentExtras,
+                    language: contentLanguage,
+                    model: "gemini-2.5-flash",
+                }),
             });
             const data = await res.json();
             if (!res.ok) { toast.error(data.error ?? "Error generando contenido"); return; }
             setContentResult(data.result);
         } catch { toast.error("Error conectando con la API"); }
         finally { setIsGeneratingContent(false); }
+    };
+
+    const generateImagePromptSuggestion = async () => {
+        if (!contentNiche.trim()) { toast.error("Describe el producto primero"); return; }
+        setIsGeneratingImagePrompt(true);
+        setImagePromptSuggestion(null);
+        try {
+            const res = await fetch(`${API_BASE_URL}/ai/generate-text`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    type: "image-prompt",
+                    niche: contentNiche,
+                    productType: contentType === "kdp-physical-book" ? "KDP coloring book" : contentProductType,
+                    language: "en",
+                    model: "gemini-2.5-flash",
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) { toast.error(data.error ?? "Error generando prompt"); return; }
+            const prompt = typeof data.result === "object" ? (data.result.prompt ?? "") : data.result;
+            setImagePromptSuggestion(prompt);
+        } catch { toast.error("Error conectando con la API"); }
+        finally { setIsGeneratingImagePrompt(false); }
+    };
+
+    const saveImagePromptToLibrary = (prompt: string) => {
+        setPromptTheme(prompt);
+        setPromptSpecs("");
+        setPromptDetails("");
+        setPromptParticulars("");
+        setSavePromptName("");
+        setSavePromptCategory("General");
+        setShowSavePromptDialog(true);
     };
 
     const copyText = (text: string) => { navigator.clipboard.writeText(text); toast.success("Copiado"); };
@@ -2960,13 +3129,13 @@ export function KdpFactoryApp() {
     };
 
     const CONTENT_PRODUCT_TYPES = ["Coloring Book", "Activity Book", "Journal", "Planner", "Wall Art", "Sticker Sheet", "Template Pack", "Workbook", "Puzzle Book", "Notebook", "Low Content Book", "Printable Set"];
-    const CONTENT_TYPES = [
-        { id: "full-listing", label: "Listing Completo", icon: <ListOrdered size={13} /> },
-        { id: "titles", label: "Títulos", icon: <Type size={13} /> },
-        { id: "description", label: "Descripción", icon: <FileText size={13} /> },
-        { id: "keywords", label: "Keywords", icon: <Tag size={13} /> },
-        { id: "back-cover", label: "Contraportada", icon: <BookText size={13} /> },
-        { id: "series", label: "Serie", icon: <Layers size={13} /> },
+    const CONTENT_TYPES_SECONDARY = [
+        { id: "full-listing", label: "Listing Completo", icon: <ListOrdered size={12} /> },
+        { id: "titles", label: "Títulos", icon: <Type size={12} /> },
+        { id: "description", label: "Descripción", icon: <FileText size={12} /> },
+        { id: "keywords", label: "Keywords", icon: <Tag size={12} /> },
+        { id: "back-cover", label: "Contraportada", icon: <BookText size={12} /> },
+        { id: "series", label: "Serie", icon: <Layers size={12} /> },
     ] as const;
     const TREND_CATEGORIES = ["all", "Coloring Books", "Journals", "Planners", "Wall Art", "Stickers", "Activity Books", "Templates", "Notebooks", "Puzzle Books"];
     const COMPETITION_COLORS: Record<string, string> = { low: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20", medium: "text-amber-400 bg-amber-500/10 border-amber-500/20", high: "text-rose-400 bg-rose-500/10 border-rose-500/20" };
@@ -3086,53 +3255,106 @@ export function KdpFactoryApp() {
                 {/* ── RIGHT: CONTENIDO ─────────────────────────────── */}
                 <div className="p-4 md:p-6 space-y-4">
                     <div className="space-y-0.5">
-                        <h2 className="text-base font-black bg-gradient-to-r from-violet-400 to-pink-400 bg-clip-text text-transparent flex items-center gap-2">
-                            <Type size={16} className="text-violet-400" /> Generador de Contenido
+                        <h2 className="text-base font-black bg-gradient-to-r from-amber-400 to-violet-400 bg-clip-text text-transparent flex items-center gap-2">
+                            <Sparkles size={16} className="text-amber-400" /> Generador de Contenido
                         </h2>
-                        <p className="text-[10px] text-neutral-600">Títulos, descripciones, keywords y listings para KDP y Etsy.</p>
+                        <p className="text-[10px] text-neutral-600">Metadatos listos para publicar en KDP y Etsy</p>
                     </div>
-                    <div className="grid grid-cols-3 gap-1.5">
-                        {CONTENT_TYPES.map(ct => (
-                            <button key={ct.id} onClick={() => setContentType(ct.id as any)}
-                                className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border transition-all ${contentType === ct.id ? "border-violet-500/50 bg-violet-500/10 text-violet-300" : "border-white/5 bg-white/[0.02] text-neutral-500 hover:border-white/10 hover:text-neutral-300"}`}>
+
+                    {/* ── KDP Physical Book — primary card ── */}
+                    <button
+                        onClick={() => { setContentType("kdp-physical-book"); setContentResult(null); }}
+                        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-all text-left ${contentType === "kdp-physical-book" ? "border-amber-500/40 bg-amber-500/[0.07]" : "border-white/8 bg-white/[0.02] hover:border-white/12 hover:bg-white/[0.03]"}`}>
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all ${contentType === "kdp-physical-book" ? "bg-amber-500/20" : "bg-white/5"}`}>
+                            <BookOpen size={16} className={contentType === "kdp-physical-book" ? "text-amber-400" : "text-neutral-600"} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className={`text-[11px] font-black uppercase tracking-wide leading-tight ${contentType === "kdp-physical-book" ? "text-amber-300" : "text-neutral-500"}`}>Libro físico KDP</p>
+                            <p className="text-[9px] text-neutral-600 mt-0.5">Título · Subtítulo · Descripción · 7 palabras clave</p>
+                        </div>
+                        {contentType === "kdp-physical-book" && (
+                            <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                        )}
+                    </button>
+
+                    {/* ── Secondary types ── */}
+                    <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+                        {CONTENT_TYPES_SECONDARY.map(ct => (
+                            <button key={ct.id} onClick={() => { setContentType(ct.id as any); setContentResult(null); }}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all shrink-0 ${contentType === ct.id ? "border-white/25 bg-white/10 text-white" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}>
                                 {ct.icon}
-                                <span className="text-[9px] font-bold">{ct.label}</span>
+                                <span className="text-[9px] font-bold whitespace-nowrap">{ct.label}</span>
                             </button>
                         ))}
                     </div>
-                    <input value={contentNiche} onChange={e => setContentNiche(e.target.value)}
-                        placeholder="Nicho / Tema — ej: zen mandalas, cats for beginners..."
-                        onKeyDown={e => { if (e.key === "Enter") generateContent(); }}
-                        className="w-full bg-white/[0.03] border border-white/8 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40" />
-                    <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1.5">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Tipo de producto</p>
-                            <KdpSelect accent="violet" value={contentProductType} onChange={setContentProductType}
-                                options={CONTENT_PRODUCT_TYPES.map(pt => ({ value: pt, label: pt }))} />
-                        </div>
-                        <div className="space-y-1.5">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Idioma</p>
-                            <div className="flex p-1 bg-white/[0.03] border border-white/8 rounded-xl h-[38px]">
-                                {(["en", "es"] as const).map(lang => (
-                                    <button key={lang} onClick={() => setContentLanguage(lang)}
-                                        className={`flex-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
-                                        {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
-                                    </button>
-                                ))}
+
+                    {/* ── Inputs — adapt by type ── */}
+                    {contentType === "kdp-physical-book" ? (
+                        <div className="space-y-3">
+                            <textarea
+                                value={contentNiche} onChange={e => setContentNiche(e.target.value)} rows={3}
+                                placeholder="Describe tu libro: temática, género, público objetivo, estilo visual…&#10;ej: libro de colorear de mandalas zen para adultos, estilo minimalista"
+                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none leading-relaxed transition-all" />
+                            <div className="flex items-center gap-3">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 shrink-0">Idioma del listing</p>
+                                <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl">
+                                    {(["en", "es"] as const).map(lang => (
+                                        <button key={lang} onClick={() => setContentLanguage(lang)}
+                                            className={`px-4 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                            {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <input value={contentNiche} onChange={e => setContentNiche(e.target.value)}
+                                placeholder="Nicho / Tema — ej: zen mandalas, cats for beginners..."
+                                onKeyDown={e => { if (e.key === "Enter") void generateContent(); }}
+                                className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 transition-all" />
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-1.5">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Tipo de producto</p>
+                                    <KdpSelect accent="amber" value={contentProductType} onChange={setContentProductType}
+                                        options={CONTENT_PRODUCT_TYPES.map(pt => ({ value: pt, label: pt }))} />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Idioma</p>
+                                    <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl h-[38px]">
+                                        {(["en", "es"] as const).map(lang => (
+                                            <button key={lang} onClick={() => setContentLanguage(lang)}
+                                                className={`flex-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                                {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            <textarea value={contentExtras} onChange={e => setContentExtras(e.target.value)} rows={2}
+                                placeholder="Contexto adicional: estilo, audiencia, ocasión... (opcional)"
+                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none transition-all" />
+                        </div>
+                    )}
+
+                    {/* ── Generate button ── */}
+                    <div className="space-y-1.5">
+                        <button onClick={() => void generateContent()} disabled={isGeneratingContent || !contentNiche.trim()}
+                            className="w-full h-11 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500">
+                            {isGeneratingContent ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><Sparkles size={13} /> Generar con IA</>}
+                        </button>
+                        <p className="text-center text-[9px] text-neutral-700 flex items-center justify-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/60 inline-block" />
+                            <span className="font-mono">gemini-2.5-flash</span> · gratuito
+                        </p>
                     </div>
-                    <textarea value={contentExtras} onChange={e => setContentExtras(e.target.value)} rows={2}
-                        placeholder="Contexto adicional: estilo, audiencia, ocasión... (opcional)"
-                        className="w-full bg-white/[0.03] border border-white/8 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none" />
-                    <button onClick={generateContent} disabled={isGeneratingContent || !contentNiche.trim()}
-                        className="w-full h-10 rounded-xl bg-gradient-to-r from-violet-600 to-pink-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed">
-                        {isGeneratingContent ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><Sparkles size={13} /> Generar con IA</>}
-                    </button>
+
                     {isGeneratingContent && (
-                        <div className="flex items-center justify-center py-10 gap-3">
-                            <Loader2 size={20} className="animate-spin text-violet-400" />
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Generando...</p>
+                        <div className="flex flex-col items-center justify-center py-10 gap-3">
+                            <div className="relative">
+                                <Loader2 size={24} className="animate-spin text-amber-400" />
+                            </div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Generando con IA...</p>
                         </div>
                     )}
                     {!contentResult && !isGeneratingContent && (
@@ -3142,7 +3364,61 @@ export function KdpFactoryApp() {
                         </div>
                     )}
                     {contentResult && !isGeneratingContent && (
-                        <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+                        <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
+
+                            {/* ── KDP Physical Book result ── */}
+                            {contentType === "kdp-physical-book" && typeof contentResult === "object" && (
+                                <div className="space-y-2.5">
+                                    {/* Title + Subtitle */}
+                                    {contentResult.title && (
+                                        <div className="bg-amber-500/[0.04] border border-amber-500/15 rounded-2xl p-4 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Título</p>
+                                                <button onClick={() => copyText(`${contentResult.title}${contentResult.subtitle ? `: ${contentResult.subtitle}` : ""}`)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
+                                            </div>
+                                            <p className="text-[15px] font-black text-white leading-tight">{contentResult.title}</p>
+                                            {contentResult.subtitle && (
+                                                <p className="text-[11px] text-amber-200/60 leading-snug border-t border-amber-500/10 pt-2">{contentResult.subtitle}</p>
+                                            )}
+                                        </div>
+                                    )}
+                                    {/* Description */}
+                                    {contentResult.description && (
+                                        <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/80">Descripción</p>
+                                                <button onClick={() => copyText(contentResult.description)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
+                                            </div>
+                                            <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
+                                        </div>
+                                    )}
+                                    {/* 7 Keywords */}
+                                    {Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0 && (
+                                        <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2.5">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/80">
+                                                    {contentResult.keywords.length} Palabras clave
+                                                </p>
+                                                <button onClick={() => copyText(contentResult.keywords.join("\n"))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar todo</button>
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                {contentResult.keywords.map((k: string, i: number) => (
+                                                    <div key={i} className="flex items-center gap-2 group">
+                                                        <span className="text-[9px] font-black text-amber-500/50 w-4 shrink-0 tabular-nums">{i + 1}</span>
+                                                        <p className="flex-1 text-[10px] text-neutral-300">{k}</p>
+                                                        <button onClick={() => copyText(k)} className="opacity-0 group-hover:opacity-100 p-1 rounded text-neutral-600 hover:text-white transition-all"><Copy size={9} /></button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {/* Regenerate hint */}
+                                    <button onClick={() => void generateContent()} className="w-full flex items-center justify-center gap-1.5 py-2 text-[9px] font-black uppercase tracking-widest text-neutral-700 hover:text-neutral-400 transition-colors">
+                                        <Sparkles size={9} /> Regenerar
+                                    </button>
+                                </div>
+                            )}
+
                             {contentType === "full-listing" && typeof contentResult === "object" && (
                                 <>
                                     {contentResult.title && (
@@ -3228,6 +3504,7 @@ export function KdpFactoryApp() {
                             )}
                         </div>
                     )}
+
                 </div>
             </div>
         </div>

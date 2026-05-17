@@ -52,20 +52,20 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
 
         try {
             // Build prompt
+            const creativity = catalog.creativity ?? 50;
             let finalPrompt = catalog.prompt;
             if (catalog.promptParts?.theme) {
                 let particulars = catalog.promptParts.particulars ?? "";
-                if (particulars) {
+                if (particulars && creativity > 10) {
                     try {
                         const { varyTextWithLLM } = await import("../lib/ai.js");
                         const timeout = new Promise<string>((_, reject) =>
                             setTimeout(() => reject(new Error("LLM timeout after 15s")), 15000)
                         );
-                        particulars = await Promise.race([varyTextWithLLM(particulars), timeout]);
-                        console.log(`${tag} LLM variation OK`);
+                        particulars = await Promise.race([varyTextWithLLM(particulars, creativity), timeout]);
+                        console.log(`${tag} LLM variation OK (creativity=${creativity})`);
                     } catch (llmErr: any) {
                         console.warn(`${tag} LLM variation failed (kept original): ${llmErr?.message ?? llmErr}`);
-                        // Continue with original particulars — LLM failure must not stop the job
                     }
                 }
                 finalPrompt = `Genera una imagen con la siguiente temática: ${catalog.promptParts.theme}`;
@@ -74,7 +74,24 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 if (particulars) finalPrompt += `, y las siguientes particularidades: ${particulars}`;
             }
 
+            // Apply product-type modifiers and build negative prompt
+            const productType = catalog.productType ?? "coloring-book";
+            const userNegative = catalog.negativePrompt?.trim() ?? "";
+
+            let finalNegativePrompt = "";
+            if (productType === "coloring-book") {
+                finalPrompt += ". Style: clean black and white line art, coloring book style, thick clean outlines, white background, no shading, no gray fills, no color, no gradients";
+                const coloringNegative = "shading, gray fill, gray tones, shadows, gradients, color, colors, sepia, tones, textures, crosshatching, stippling, watercolor, painterly, blur, glow, soft edges, background pattern, noise, grain, vignette, watermark, signature, logo, frame, border decoration";
+                finalNegativePrompt = userNegative ? `${coloringNegative}, ${userNegative}` : coloringNegative;
+            } else if (productType === "printable-poster") {
+                finalPrompt += ". Style: high quality, high resolution, vibrant colors, print-ready, professional poster design, sharp fine details, suitable for large format printing";
+                finalNegativePrompt = userNegative;
+            } else {
+                finalNegativePrompt = userNegative;
+            }
+
             console.log(`${tag} Prompt (${finalPrompt.length} chars): ${finalPrompt.slice(0, 100)}...`);
+            if (finalNegativePrompt) console.log(`${tag} Negative prompt: ${finalNegativePrompt.slice(0, 80)}...`);
 
             // Generate image
             let imageBuffer: Buffer;
@@ -82,7 +99,8 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             if (catalog.aiModel.provider === "Pollinations") {
                 const seed = Math.floor(Math.random() * 999999);
                 const modelParam = catalog.aiModel.modelId?.trim() || "flux";
-                const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=${catalog.width}&height=${catalog.height}&seed=${seed}&model=${encodeURIComponent(modelParam)}&nologo=true&enhance=false`;
+                const negParam = finalNegativePrompt ? `&negative=${encodeURIComponent(finalNegativePrompt)}` : "";
+                const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=${catalog.width}&height=${catalog.height}&seed=${seed}&model=${encodeURIComponent(modelParam)}&nologo=true&enhance=false${negParam}`;
                 console.log(`${tag} Calling Pollinations model=${modelParam}`);
                 const response = await axios.get(pollinationsUrl, {
                     responseType: "arraybuffer",
@@ -110,6 +128,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                         provider: catalog.aiModel.provider,
                         width: catalog.width,
                         height: catalog.height,
+                        ...(finalNegativePrompt ? { advancedParams: { negativePrompt: finalNegativePrompt } } : {}),
                     },
                     { responseType: "arraybuffer", timeout: 120000 }
                 );

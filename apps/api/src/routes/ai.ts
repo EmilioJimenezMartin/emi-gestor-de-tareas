@@ -538,12 +538,13 @@ export async function registerAIRoutes(app: FastifyInstance) {
 
     // ── TEXT GENERATION ──────────────────────────────────────────────────────
     app.post("/ai/generate-text", async (request: any, reply) => {
-        const { type, niche, productType, extras, language = "es" } = request.body as {
-            type: "titles" | "description" | "keywords" | "full-listing" | "back-cover" | "series";
+        const { type, niche, productType, extras, language = "es", model: modelOverride } = request.body as {
+            type: "titles" | "description" | "keywords" | "full-listing" | "back-cover" | "series" | "kdp-physical-book" | "image-prompt";
             niche: string;
-            productType: string;
+            productType?: string;
             extras?: string;
             language?: string;
+            model?: string;
         };
 
         if (!niche?.trim()) return reply.status(400).send({ error: "niche required" });
@@ -552,7 +553,7 @@ export async function registerAIRoutes(app: FastifyInstance) {
         const config = await (async () => {
             const { Settings: S } = await import("../models/settings.js");
             let provider = "google";
-            let model = "gemini-1.5-flash";
+            let model = "gemini-2.5-flash";
             let googleKey = process.env.GOOGLE_API_KEY ?? "";
             try {
                 const rows = await S.find({ key: { $in: ["DEFAULT_LLM_PROVIDER", "DEFAULT_LLM_MODEL", "GOOGLE_API_KEY"] } });
@@ -566,7 +567,34 @@ export async function registerAIRoutes(app: FastifyInstance) {
 
         const langInstruction = language === "en" ? "Respond in English." : "Responde en español.";
 
+        const KDP_SYSTEM_INSTRUCTION = `[ROL]
+Eres un generador de metadatos SEO para Amazon KDP. Tu salida debe ser limpia, directa y estructurada como un parser de código. Cero texto de relleno, cero introducciones, cero saludos.
+
+[REGLAS DE FORMATO CRUCIALES]
+1. TITULO: Máximo 200 caracteres. Keywords SEO de mayor volumen al principio.
+2. SUBTITULO: Máximo 200 caracteres. Enfocado en el estilo "Bold & Easy", beneficios concretos y público objetivo.
+3. DESCRIPTION: HTML básico comprimido. Usa únicamente <p>, <ul>, <li>. Sin divs, sin clases, sin relleno. Directo al punto.
+4. KEYWORDS: Exactamente 7 elementos en el array. Cada elemento es una frase de cola larga de alta conversión. PROHIBIDO incluir números, guiones o texto introductorio dentro de las frases.
+
+[INPUT DEL USUARIO]
+Producto:`;
+
+        const IMAGE_PROMPT_SYSTEM_INSTRUCTION = `You are an expert AI image prompt engineer for coloring book line art (Amazon KDP / Etsy).
+Generate a single, ready-to-use prompt string for AI image generators (Gemini, Leonardo AI, Stable Diffusion).
+The prompt must always produce: clean black and white line art, coloring book style, thick clean outlines, white background, no shading, no gray fills, no color.
+Return a JSON object with ONE key: "prompt" — a concise, descriptive sentence (30-80 words) that captures the theme, style and key visual elements. No intro, no explanation.`;
+
         const prompts: Record<string, string> = {
+            "kdp-physical-book": `Tipo de producto: "${productType || "Libro físico KDP"}"
+Descripción del libro: "${niche}"${extras ? `\nContexto adicional: ${extras}` : ""}
+
+Genera el paquete completo de metadatos.`,
+
+            "image-prompt": `${langInstruction} Product type: "${productType || "KDP coloring book"}"
+Description: "${niche}"${extras ? `\nAdditional context: ${extras}` : ""}
+
+Generate the 4 optimized prompt fields for creating coloring book pages for this product.`,
+
             titles: `${langInstruction} Generate 8 compelling titles for a "${productType}" KDP/Etsy product about "${niche}". ${extras ? `Additional context: ${extras}` : ""}
 Return ONLY a JSON array of strings: ["Title 1", "Title 2", ...]`,
 
@@ -604,19 +632,54 @@ Return ONLY a JSON object:
         };
 
         const prompt = prompts[type] || prompts["full-listing"];
+        const systemInstruction = type === "kdp-physical-book" ? KDP_SYSTEM_INSTRUCTION
+            : type === "image-prompt" ? IMAGE_PROMPT_SYSTEM_INSTRUCTION
+            : undefined;
 
         try {
             if (config.googleKey) {
-                const { GoogleGenerativeAI } = await import("@google/generative-ai");
-                const genAI = new GoogleGenerativeAI(config.googleKey);
-                const geminiModel = genAI.getGenerativeModel({ model: config.model || "gemini-1.5-flash" });
-                const result = await geminiModel.generateContent(prompt);
-                const text = result.response.text().trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+                const { GoogleGenAI, Type } = await import("@google/genai");
+                const ai = new GoogleGenAI({ apiKey: config.googleKey });
+                const textModel = modelOverride || config.model || "gemini-2.5-flash";
+
+                const kdpSchema = {
+                    type: Type.OBJECT,
+                    properties: {
+                        title: { type: Type.STRING, description: "Título optimizado para KDP SEO, max 200 caracteres" },
+                        subtitle: { type: Type.STRING, description: "Subtítulo enfocado en beneficios y estilo, max 200 caracteres" },
+                        description: { type: Type.STRING, description: "Descripción completa en formato HTML para Amazon KDP" },
+                        keywords: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Exactamente 7 palabras clave de cola larga" },
+                    },
+                    required: ["title", "subtitle", "description", "keywords"],
+                };
+
+                const imagePromptSchema = {
+                    type: Type.OBJECT,
+                    properties: {
+                        prompt: { type: Type.STRING, description: "Ready-to-use image generation prompt, 30-80 words" },
+                    },
+                    required: ["prompt"],
+                };
+
+                const useSchema = type === "kdp-physical-book" ? kdpSchema
+                    : type === "image-prompt" ? imagePromptSchema
+                    : undefined;
+
+                const response = await ai.models.generateContent({
+                    model: textModel,
+                    contents: prompt,
+                    config: {
+                        ...(systemInstruction ? { systemInstruction } : {}),
+                        responseMimeType: "application/json",
+                        ...(useSchema ? { responseSchema: useSchema } : {}),
+                    },
+                });
+
+                const raw = (response.text ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
                 try {
-                    const parsed = JSON.parse(text);
-                    return reply.send({ result: parsed });
+                    return reply.send({ result: JSON.parse(raw) });
                 } catch {
-                    return reply.send({ result: text });
+                    return reply.send({ result: raw });
                 }
             }
             return reply.status(503).send({ error: "No LLM API key configured. Add GOOGLE_API_KEY in Settings." });
@@ -636,7 +699,7 @@ Return ONLY a JSON object:
 
         const config = await (async () => {
             const { Settings: S } = await import("../models/settings.js");
-            let model = "gemini-1.5-flash";
+            let model = "gemini-2.5-flash";
             let googleKey = process.env.GOOGLE_API_KEY ?? "";
             try {
                 const rows = await S.find({ key: { $in: ["DEFAULT_LLM_MODEL", "GOOGLE_API_KEY"] } });
@@ -684,16 +747,18 @@ Generate exactly 15 diverse, actionable trends. Focus on currently profitable an
 
         try {
             if (config.googleKey) {
-                const { GoogleGenerativeAI } = await import("@google/generative-ai");
-                const genAI = new GoogleGenerativeAI(config.googleKey);
-                const geminiModel = genAI.getGenerativeModel({ model: config.model || "gemini-1.5-flash" });
-                const result = await geminiModel.generateContent(prompt);
-                const text = result.response.text().trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+                const { GoogleGenAI } = await import("@google/genai");
+                const ai = new GoogleGenAI({ apiKey: config.googleKey });
+                const response = await ai.models.generateContent({
+                    model: config.model || "gemini-2.5-flash",
+                    contents: prompt,
+                    config: { responseMimeType: "application/json" },
+                });
+                const raw = (response.text ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
                 try {
-                    const parsed = JSON.parse(text);
-                    return reply.send(parsed);
+                    return reply.send(JSON.parse(raw));
                 } catch {
-                    return reply.status(500).send({ error: "LLM returned invalid JSON", raw: text.slice(0, 500) });
+                    return reply.status(500).send({ error: "LLM returned invalid JSON", raw: raw.slice(0, 500) });
                 }
             }
             return reply.status(503).send({ error: "No GOOGLE_API_KEY configured. Add it in Settings." });

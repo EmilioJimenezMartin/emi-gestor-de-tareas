@@ -101,16 +101,30 @@ ${rawText.substring(0, 4000)}`;
     }];
 }
 
-export async function varyTextWithLLM(text: string): Promise<string> {
+export async function varyTextWithLLM(text: string, creativity = 50): Promise<string> {
     const config = await getConfig();
-    const prompt = `Slightly rephrase the following text to make it unique while preserving its core meaning. Keep it concise, in the same language, and return ONLY the rephrased text without quotes or explanations.\n\nText: ${text}`;
+
+    let instruction: string;
+    if (creativity <= 10) {
+        return text; // no variation at all
+    } else if (creativity <= 35) {
+        instruction = "Slightly rephrase the following text — swap one or two synonyms at most, keep virtually the same meaning.";
+    } else if (creativity <= 65) {
+        instruction = "Rephrase the following text to make it unique. Vary the wording and structure while preserving the core subject.";
+    } else if (creativity <= 85) {
+        instruction = "Significantly rephrase the following text. You can change the focus, swap the main subject with a related concept, or add a creative twist — same general theme but noticeably different.";
+    } else {
+        instruction = "Completely reimagine the following text. Keep only the broad thematic area and produce something genuinely different and creative.";
+    }
+
+    const prompt = `${instruction} Return ONLY the result, no quotes, no explanations.\n\nText: ${text}`;
 
     if (config.provider === "google" && config.googleKey) {
-        const { GoogleGenerativeAI } = await import("@google/generative-ai");
-        const genAI = new GoogleGenerativeAI(config.googleKey);
-        const model = genAI.getGenerativeModel({ model: config.model });
-        const result = await model.generateContent(prompt);
-        return result.response.text().trim() || text;
+        const { GoogleGenAI } = await import("@google/genai");
+        const ai = new GoogleGenAI({ apiKey: config.googleKey });
+        const model = config.model || "gemini-2.5-flash";
+        const response = await ai.models.generateContent({ model, contents: prompt });
+        return (response.text ?? "").trim() || text;
     }
 
     if (config.provider === "huggingface" && config.hfKey) {
@@ -119,7 +133,7 @@ export async function varyTextWithLLM(text: string): Promise<string> {
         const response = await hf.textGeneration({
             model: config.model,
             inputs: prompt,
-            parameters: { max_new_tokens: 200, temperature: 0.8 }
+            parameters: { max_new_tokens: 200, temperature: Math.max(0.3, creativity / 100) }
         });
         const result = (response.generated_text ?? "").replace(prompt, "").trim();
         return result || text;
