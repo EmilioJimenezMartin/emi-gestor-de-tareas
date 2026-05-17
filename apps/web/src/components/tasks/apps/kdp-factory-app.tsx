@@ -62,6 +62,7 @@ import {
     Pencil,
     Save,
     Clock,
+    Target,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -137,8 +138,52 @@ const AI_DIMENSIONS = [
 
 const PLATFORMS = ["Amazon KDP", "Etsy", "Printify", "Creative Fabrica"];
 
-type TabID = "insights" | "catalog" | "creation" | "studio";
+type TabID = "insights" | "catalog" | "creation" | "studio" | "niches";
 type PeriodID = "month" | "6months" | "year" | "all";
+
+type NicheStatus = "found" | "active" | "research" | "archived";
+type NicheProductType = "coloring-book" | "printable-poster" | "other";
+type NicheStyle = "generic" | "anime" | "illustration" | "children" | "realistic" | "watercolor" | "abstract";
+
+interface NicheFE {
+    _id: string;
+    name: string;
+    description: string;
+    tags: string[];
+    status: NicheStatus;
+    competition: "unknown" | "low" | "medium" | "high";
+    demand: "unknown" | "low" | "medium" | "high";
+    productType: NicheProductType;
+    styleCategory: NicheStyle;
+    notes: string;
+    createdAt: string;
+}
+
+const NICHE_STYLE_OPTIONS: { id: NicheStyle; label: string; desc: string }[] = [
+    { id: "generic",      label: "Dibujo genérico",    desc: "Estilo versátil y limpio" },
+    { id: "anime",        label: "Anime",              desc: "Estilo japonés animado" },
+    { id: "illustration", label: "Ilustración",        desc: "Estilo artístico/MJ" },
+    { id: "children",     label: "Dibujos para niños", desc: "Líneas limpias, coloreables" },
+    { id: "realistic",    label: "Imagen realista",    desc: "Fotorrealista" },
+    { id: "watercolor",   label: "Acuarela",           desc: "Estilo pintura acuarela" },
+    { id: "abstract",     label: "Abstracto",          desc: "Arte abstracto" },
+];
+
+const NICHE_STYLE_MODEL: Record<NicheStyle, string> = {
+    generic:      "pollinations-flux",
+    anime:        "pollinations-flux-anime",
+    illustration: "openjourney-v4",
+    children:     "coloringbook-redmond-v2",
+    realistic:    "pollinations-flux-realism",
+    watercolor:   "openjourney-v4",
+    abstract:     "pollinations-flux",
+};
+
+const NICHE_PRODUCT_OPTIONS: { id: NicheProductType; label: string }[] = [
+    { id: "coloring-book",    label: "Libro de colorear" },
+    { id: "printable-poster", label: "Poster imprimible" },
+    { id: "other",            label: "Otro" },
+];
 
 interface CatalogImageFE {
     publicId: string;
@@ -241,18 +286,6 @@ function KdpSelect({ value, onChange, options, accent = "white" }: {
     );
 }
 
-interface QueuedCatalog {
-    queueId: string;
-    name: string;
-    prompt: string;
-    promptParts: { theme: string; specs: string; details: string; particulars: string };
-    model: typeof AI_MODELS[number];
-    dim: typeof AI_DIMENSIONS[number];
-    totalImages: number;
-    productType: "coloring-book" | "printable-poster" | "other";
-    creativity: number;
-    negativePrompt: string;
-}
 
 export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>("insights");
@@ -388,6 +421,23 @@ export function KdpFactoryApp() {
     const [isSavingPrompt, setIsSavingPrompt] = useState(false);
     const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
     const [editingPromptName, setEditingPromptName] = useState("");
+    const [niches, setNiches] = useState<NicheFE[]>([]);
+    const [isLoadingNiches, setIsLoadingNiches] = useState(false);
+    const [nicheFormOpen, setNicheFormOpen] = useState(false);
+    const [nicheEditTarget, setNicheEditTarget] = useState<NicheFE | null>(null);
+    const [nicheFormName, setNicheFormName] = useState("");
+    const [nicheFormDesc, setNicheFormDesc] = useState("");
+    const [nicheFormTags, setNicheFormTags] = useState("");
+    const [nicheFormStatus, setNicheFormStatus] = useState<NicheStatus>("found");
+    const [nicheFormComp, setNicheFormComp] = useState<NicheFE["competition"]>("unknown");
+    const [nicheFormDemand, setNicheFormDemand] = useState<NicheFE["demand"]>("unknown");
+    const [nicheFormNotes, setNicheFormNotes] = useState("");
+    const [isSavingNiche, setIsSavingNiche] = useState(false);
+    const [nicheDeleteId, setNicheDeleteId] = useState<string | null>(null);
+    const [nicheStatusFilter, setNicheStatusFilter] = useState<"all" | NicheStatus>("all");
+    const [nicheGeneratingId, setNicheGeneratingId] = useState<string | null>(null);
+    const [nicheFormProductType, setNicheFormProductType] = useState<NicheProductType>("coloring-book");
+    const [nicheFormStyle, setNicheFormStyle] = useState<NicheStyle>("generic");
     const [kdpTemplateOpen, setKdpTemplateOpen] = useState(false);
     const [kdpTemplateTitle, setKdpTemplateTitle] = useState("Mi Libro de Colorear");
     const [kdpTemplateVaultSel, setKdpTemplateVaultSel] = useState<Set<number>>(new Set());
@@ -522,6 +572,142 @@ export function KdpFactoryApp() {
             setSavedPrompts(data.prompts ?? []);
         } catch { /* silently ignore */ } finally {
             setIsLoadingSavedPrompts(false);
+        }
+    };
+
+    const fetchNiches = async () => {
+        setIsLoadingNiches(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches`);
+            if (!res.ok) return;
+            const data = await res.json();
+            setNiches(data.niches ?? []);
+        } catch { /* silently ignore */ } finally {
+            setIsLoadingNiches(false);
+        }
+    };
+
+    const openNicheForm = (niche?: NicheFE) => {
+        if (niche) {
+            setNicheEditTarget(niche);
+            setNicheFormName(niche.name);
+            setNicheFormDesc(niche.description);
+            setNicheFormTags(niche.tags.join(", "));
+            setNicheFormStatus(niche.status);
+            setNicheFormComp(niche.competition);
+            setNicheFormDemand(niche.demand);
+            setNicheFormProductType(niche.productType ?? "coloring-book");
+            setNicheFormStyle(niche.styleCategory ?? "generic");
+            setNicheFormNotes(niche.notes);
+        } else {
+            setNicheEditTarget(null);
+            setNicheFormName("");
+            setNicheFormDesc("");
+            setNicheFormTags("");
+            setNicheFormStatus("found");
+            setNicheFormComp("unknown");
+            setNicheFormDemand("unknown");
+            setNicheFormProductType("coloring-book");
+            setNicheFormStyle("generic");
+            setNicheFormNotes("");
+        }
+        setNicheFormOpen(true);
+    };
+
+    const generateNicheContent = async (niche: NicheFE) => {
+        setNicheGeneratingId(niche._id);
+        try {
+            // 1. Generate an image prompt for this niche
+            const promptRes = await fetch(`${API_BASE_URL}/ai/generate-text`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    type: "image-prompt",
+                    niche: niche.name,
+                    productType: niche.productType === "coloring-book" ? "KDP coloring book" : niche.productType === "printable-poster" ? "printable poster" : niche.name,
+                    language: "en",
+                    model: "gemini-2.5-flash",
+                }),
+            });
+            const promptData = await promptRes.json();
+            if (!promptRes.ok) throw new Error(promptData.error ?? "Error generando prompt");
+            const imagePrompt: string = typeof promptData.result === "object"
+                ? (promptData.result.prompt ?? niche.name)
+                : (promptData.result ?? niche.name);
+
+            // 2. Pick AI model based on style category
+            const modelId = NICHE_STYLE_MODEL[niche.styleCategory ?? "generic"];
+            const model = AI_MODELS.find(m => m.id === modelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
+
+            // 3. Create catalog with 5 images
+            const catalogRes = await fetch(`${API_BASE_URL}/catalogs`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: niche.name,
+                    prompt: imagePrompt,
+                    promptParts: { theme: niche.name, specs: "", details: "", particulars: "" },
+                    productType: niche.productType ?? "coloring-book",
+                    aiModel: { id: model.id, name: model.name, provider: model.provider, modelId: model.modelId },
+                    width: 1024,
+                    height: 1024,
+                    totalImages: 5,
+                }),
+            });
+            const catalogData = await catalogRes.json();
+            if (!catalogRes.ok) throw new Error(catalogData.error ?? "Error al crear catálogo");
+            setIaCatalogs(prev => [catalogData.catalog, ...prev]);
+            toast.success(`Catálogo iniciado · ${niche.name} · ${model.name}`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al generar contenido");
+        } finally {
+            setNicheGeneratingId(null);
+        }
+    };
+
+    const saveNiche = async () => {
+        if (!nicheFormName.trim()) { toast.error("El nombre es obligatorio"); return; }
+        setIsSavingNiche(true);
+        try {
+            const body = {
+                name: nicheFormName.trim(),
+                description: nicheFormDesc.trim(),
+                tags: nicheFormTags.split(",").map(t => t.trim()).filter(Boolean),
+                status: nicheFormStatus,
+                competition: nicheFormComp,
+                demand: nicheFormDemand,
+                productType: nicheFormProductType,
+                styleCategory: nicheFormStyle,
+                notes: nicheFormNotes.trim(),
+            };
+            const url = nicheEditTarget ? `${API_BASE_URL}/niches/${nicheEditTarget._id}` : `${API_BASE_URL}/niches`;
+            const method = nicheEditTarget ? "PATCH" : "POST";
+            const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Error");
+            if (nicheEditTarget) {
+                setNiches(prev => prev.map(n => n._id === nicheEditTarget._id ? data.niche : n));
+                toast.success("Nicho actualizado");
+            } else {
+                setNiches(prev => [data.niche, ...prev]);
+                toast.success("Nicho creado");
+            }
+            setNicheFormOpen(false);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al guardar nicho");
+        } finally {
+            setIsSavingNiche(false);
+        }
+    };
+
+    const deleteNiche = async (id: string) => {
+        try {
+            await fetch(`${API_BASE_URL}/niches/${id}`, { method: "DELETE" });
+            setNiches(prev => prev.filter(n => n._id !== id));
+            setNicheDeleteId(null);
+            toast.success("Nicho eliminado");
+        } catch {
+            toast.error("Error al eliminar nicho");
         }
     };
 
@@ -1278,6 +1464,9 @@ export function KdpFactoryApp() {
             void fetchCloudinaryImages();
             void fetchSavedPrompts();
         }
+        if (activeTab === "studio" && niches.length === 0) {
+            void fetchNiches();
+        }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab]);
 
@@ -1511,6 +1700,26 @@ export function KdpFactoryApp() {
         setProducts(products.filter(p => p.id !== id));
         toast.success("Producto eliminado");
     };
+
+    const COMPETITION_LABELS: Record<NicheFE["competition"], { label: string; color: string }> = {
+        unknown: { label: "Desconocida", color: "text-neutral-500 bg-neutral-500/10 border-neutral-500/20" },
+        low:     { label: "Baja",        color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+        medium:  { label: "Media",       color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+        high:    { label: "Alta",        color: "text-rose-400 bg-rose-500/10 border-rose-500/20" },
+    };
+    const DEMAND_LABELS: Record<NicheFE["demand"], { label: string; color: string }> = {
+        unknown: { label: "Desconocida", color: "text-neutral-500 bg-neutral-500/10 border-neutral-500/20" },
+        low:     { label: "Baja",        color: "text-rose-400 bg-rose-500/10 border-rose-500/20" },
+        medium:  { label: "Media",       color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+        high:    { label: "Alta",        color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+    };
+    const STATUS_LABELS: Record<NicheStatus, { label: string; color: string }> = {
+        found:    { label: "Encontrado",  color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
+        research: { label: "Investigando", color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
+        active:   { label: "Activo",       color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+        archived: { label: "Archivado",    color: "text-neutral-500 bg-neutral-500/10 border-neutral-500/20" },
+    };
+
 
     const renderInsights = () => (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -3221,6 +3430,102 @@ export function KdpFactoryApp() {
                             </div>
                         </div>
                     )}
+
+                    {/* ── MIS NICHOS ─────────────────────────────────── */}
+                    <div className="border-t border-white/5 pt-4 space-y-3">
+                        {/* Header */}
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="space-y-0.5">
+                                <h2 className="text-base font-black text-white flex items-center gap-2">
+                                    <Target size={16} className="text-violet-400" /> Mis Nichos
+                                </h2>
+                                <p className="text-[10px] text-neutral-600">Nichos guardados · úsalos en el radar o en contenido</p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button onClick={() => void fetchNiches()} disabled={isLoadingNiches} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
+                                    {isLoadingNiches ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                                </button>
+                                <button onClick={() => openNicheForm()} className="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest transition-all">
+                                    <Plus size={13} /> Nuevo
+                                </button>
+                            </div>
+                        </div>
+                        {/* Filter pills */}
+                        <div className="flex gap-1.5 flex-wrap">
+                            {(["all", "found", "research", "active", "archived"] as const).map(s => (
+                                <button key={s} onClick={() => setNicheStatusFilter(s)}
+                                    className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border ${nicheStatusFilter === s ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/8 text-neutral-600 hover:text-white"}`}>
+                                    {s === "all" ? `Todos (${niches.length})` : `${STATUS_LABELS[s].label} (${niches.filter(n => n.status === s).length})`}
+                                </button>
+                            ))}
+                        </div>
+                        {/* Loading */}
+                        {isLoadingNiches && (
+                            <div className="space-y-2">
+                                {[1,2].map(i => <div key={i} className="h-20 rounded-2xl bg-white/[0.03] animate-pulse border border-white/5" />)}
+                            </div>
+                        )}
+                        {/* Empty */}
+                        {!isLoadingNiches && (nicheStatusFilter === "all" ? niches : niches.filter(n => n.status === nicheStatusFilter)).length === 0 && (
+                            <div className="flex flex-col items-center gap-3 py-8 opacity-40">
+                                <Target size={24} strokeWidth={1.2} className="text-neutral-600" />
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">
+                                    {niches.length === 0 ? "Sin nichos aún" : "Sin resultados"}
+                                </p>
+                            </div>
+                        )}
+                        {/* List */}
+                        {!isLoadingNiches && (nicheStatusFilter === "all" ? niches : niches.filter(n => n.status === nicheStatusFilter)).length > 0 && (
+                            <div className="space-y-2">
+                                {(nicheStatusFilter === "all" ? niches : niches.filter(n => n.status === nicheStatusFilter)).map(niche => (
+                                    <div key={niche._id} className="group rounded-2xl border border-white/8 bg-white/[0.02] hover:border-violet-500/20 transition-all overflow-hidden">
+                                        <div className="h-px w-full bg-gradient-to-r from-violet-500/50 via-violet-400/15 to-transparent" />
+                                        <div className="p-3 space-y-2">
+                                            <div className="flex items-start gap-2">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="text-[12px] font-black text-white leading-tight">{niche.name}</span>
+                                                        <span className={`px-1.5 py-0.5 rounded-md border text-[7px] font-black uppercase tracking-widest ${STATUS_LABELS[niche.status].color}`}>
+                                                            {STATUS_LABELS[niche.status].label}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                                        <span className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/8 text-[8px] text-neutral-500 font-black uppercase">
+                                                            {NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType}
+                                                        </span>
+                                                        <span className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/8 text-[8px] text-neutral-500">
+                                                            {NICHE_STYLE_OPTIONS.find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory}
+                                                        </span>
+                                                    </div>
+                                                    {niche.description && <p className="text-[9px] text-neutral-600 mt-0.5 line-clamp-1">{niche.description}</p>}
+                                                </div>
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <button onClick={() => openNicheForm(niche)} className="p-1.5 rounded-lg text-neutral-700 hover:text-violet-400 hover:bg-violet-500/10 transition-all"><Pencil size={11} /></button>
+                                                    <button onClick={() => setNicheDeleteId(niche._id)} className="p-1.5 rounded-lg text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all"><Trash2 size={11} /></button>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className={`px-2 py-0.5 rounded-md border text-[8px] font-black uppercase ${COMPETITION_LABELS[niche.competition].color}`}>Comp: {COMPETITION_LABELS[niche.competition].label}</span>
+                                                <span className={`px-2 py-0.5 rounded-md border text-[8px] font-black uppercase ${DEMAND_LABELS[niche.demand].color}`}>Dem: {DEMAND_LABELS[niche.demand].label}</span>
+                                                {niche.tags.slice(0, 2).map(tag => (
+                                                    <span key={tag} className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/8 text-[8px] text-neutral-600">{tag}</span>
+                                                ))}
+                                            </div>
+                                            <button
+                                                onClick={() => void generateNicheContent(niche)}
+                                                disabled={nicheGeneratingId === niche._id}
+                                                className="w-full h-8 rounded-xl bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 text-white text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_2px_12px_rgba(139,92,246,0.2)]"
+                                            >
+                                                {nicheGeneratingId === niche._id
+                                                    ? <><Loader2 size={10} className="animate-spin" /> Generando prompt...</>
+                                                    : <><Sparkles size={10} /> Generar contenido</>}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* ── RIGHT: CONTENIDO ─────────────────────────────── */}
@@ -4494,6 +4799,138 @@ export function KdpFactoryApp() {
                                 {isSavingPrompt ? <Loader2 size={14} className="animate-spin" /> : <BookMarked size={14} />}
                                 Guardar
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Niche Form Modal */}
+            {nicheFormOpen && (
+                <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-md flex items-center justify-center p-4" role="dialog" aria-modal="true">
+                    <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#0d0d0d] shadow-2xl flex flex-col max-h-[90vh]">
+                        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-white/8 shrink-0">
+                            <p className="text-base font-black text-white">{nicheEditTarget ? "Editar nicho" : "Nuevo nicho"}</p>
+                            <button onClick={() => setNicheFormOpen(false)} className="p-2 rounded-xl text-neutral-500 hover:text-white hover:bg-white/10 transition-all"><X size={16} /></button>
+                        </div>
+                        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
+                            {/* Name */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Nombre *</label>
+                                <input value={nicheFormName} onChange={e => setNicheFormName(e.target.value)} placeholder="Ej: Mandalas zen para adultos"
+                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all" />
+                            </div>
+                            {/* Description */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Descripción</label>
+                                <textarea value={nicheFormDesc} onChange={e => setNicheFormDesc(e.target.value)} rows={2} placeholder="Describe brevemente el nicho…"
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all resize-none" />
+                            </div>
+                            {/* Status */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Estado</label>
+                                <div className="flex gap-2 flex-wrap">
+                                    {(["found", "research", "active", "archived"] as const).map(s => (
+                                        <button key={s} onClick={() => setNicheFormStatus(s)}
+                                            className={`flex-1 h-9 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${nicheFormStatus === s ? `${STATUS_LABELS[s].color} ring-1 ring-current/20` : "border-white/10 bg-white/5 text-neutral-600 hover:text-white"}`}>
+                                            {STATUS_LABELS[s].label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            {/* Product Type */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Tipo de producto</label>
+                                <div className="flex gap-2">
+                                    {NICHE_PRODUCT_OPTIONS.map(opt => (
+                                        <button key={opt.id} onClick={() => setNicheFormProductType(opt.id)}
+                                            className={`flex-1 h-9 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${nicheFormProductType === opt.id ? "border-violet-500/40 bg-violet-500/10 text-violet-400 ring-1 ring-violet-500/20" : "border-white/10 bg-white/5 text-neutral-600 hover:text-white"}`}>
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            {/* Style Category */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Estilo visual</label>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                    {NICHE_STYLE_OPTIONS.map(opt => (
+                                        <button key={opt.id} onClick={() => setNicheFormStyle(opt.id)}
+                                            className={`h-10 rounded-xl border px-3 text-left transition-all ${nicheFormStyle === opt.id ? "border-violet-500/40 bg-violet-500/10 ring-1 ring-violet-500/20" : "border-white/8 bg-white/[0.02] hover:bg-white/5"}`}>
+                                            <span className={`block text-[9px] font-black uppercase tracking-widest ${nicheFormStyle === opt.id ? "text-violet-400" : "text-neutral-400"}`}>{opt.label}</span>
+                                            <span className="block text-[8px] text-neutral-600 leading-tight">{opt.desc}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            {/* Competition + Demand */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Competencia</label>
+                                    <div className="flex flex-col gap-1">
+                                        {(["unknown", "low", "medium", "high"] as const).map(v => (
+                                            <button key={v} onClick={() => setNicheFormComp(v)}
+                                                className={`h-8 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${nicheFormComp === v ? `${COMPETITION_LABELS[v].color}` : "border-white/8 bg-white/[0.02] text-neutral-700 hover:text-neutral-400"}`}>
+                                                {COMPETITION_LABELS[v].label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Demanda</label>
+                                    <div className="flex flex-col gap-1">
+                                        {(["unknown", "low", "medium", "high"] as const).map(v => (
+                                            <button key={v} onClick={() => setNicheFormDemand(v)}
+                                                className={`h-8 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${nicheFormDemand === v ? `${DEMAND_LABELS[v].color}` : "border-white/8 bg-white/[0.02] text-neutral-700 hover:text-neutral-400"}`}>
+                                                {DEMAND_LABELS[v].label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            {/* Tags */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Tags <span className="normal-case text-neutral-600">(separados por coma)</span></label>
+                                <input value={nicheFormTags} onChange={e => setNicheFormTags(e.target.value)} placeholder="mandala, zen, adultos, colorear…"
+                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all" />
+                                {nicheFormTags.trim() && (
+                                    <div className="flex flex-wrap gap-1 pt-1">
+                                        {nicheFormTags.split(",").map(t => t.trim()).filter(Boolean).map(tag => (
+                                            <span key={tag} className="px-2 py-0.5 rounded-md bg-white/5 border border-white/8 text-[8px] text-neutral-400">{tag}</span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            {/* Notes */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Notas</label>
+                                <textarea value={nicheFormNotes} onChange={e => setNicheFormNotes(e.target.value)} rows={3} placeholder="Observaciones, ideas, URLs de referencia…"
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all resize-none" />
+                            </div>
+                        </div>
+                        <div className="px-6 pb-6 pt-4 border-t border-white/8 shrink-0 flex gap-3">
+                            <button onClick={() => setNicheFormOpen(false)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
+                            <button onClick={() => void saveNiche()} disabled={isSavingNiche || !nicheFormName.trim()}
+                                className="flex-1 h-11 rounded-2xl bg-violet-500 text-white text-sm font-black hover:bg-violet-400 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
+                                {isSavingNiche ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                                {nicheEditTarget ? "Guardar cambios" : "Crear nicho"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Niche Delete Confirm */}
+            {nicheDeleteId && (
+                <div className="fixed inset-0 z-[160] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
+                    <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
+                        <div className="space-y-2 text-center">
+                            <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto"><Target size={24} className="text-red-400" /></div>
+                            <p className="text-base font-black text-white">¿Eliminar nicho?</p>
+                            <p className="text-sm text-neutral-500">Esta acción no se puede deshacer.</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={() => setNicheDeleteId(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
+                            <button onClick={() => void deleteNiche(nicheDeleteId)} className="flex-1 h-11 rounded-2xl bg-red-500 text-white text-sm font-black hover:bg-red-400 transition-all">Eliminar</button>
                         </div>
                     </div>
                 </div>

@@ -1,0 +1,32 @@
+import mongoose, { Schema, Document } from "mongoose";
+
+export interface INiche extends Document {
+    name: string;
+    description: string;
+    tags: string[];
+    status: "found" | "active" | "research" | "archived";
+    competition: "unknown" | "low" | "medium" | "high";
+    demand: "unknown" | "low" | "medium" | "high";
+    productType: "coloring-book" | "printable-poster" | "other";
+    styleCategory: "generic" | "anime" | "illustration" | "children" | "realistic" | "watercolor" | "abstract";
+    notes: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+const NicheSchema = new Schema<INiche>(
+    {
+        name: { type: String, required: true },
+        description: { type: String, default: "" },
+        tags: [{ type: String }],
+        status: { type: String, enum: ["found", "active", "research", "archived"], default: "found" },
+        competition: { type: String, enum: ["unknown", "low", "medium", "high"], default: "unknown" },
+        demand: { type: String, enum: ["unknown", "low", "medium", "high"], default: "unknown" },
+        productType: { type: String, enum: ["coloring-book", "printable-poster", "other"], default: "coloring-book" },
+        styleCategory: { type: String, enum: ["generic", "anime", "illustration", "children", "realistic", "watercolor", "abstract"], default: "generic" },
+        notes: { type: String, default: "" },
+    },
+    { timestamps: true }
+);
+
+export const Niche = mongoose.model<INiche>("Niche", NicheSchema);
