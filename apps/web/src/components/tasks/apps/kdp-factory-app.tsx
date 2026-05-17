@@ -413,6 +413,7 @@ export function KdpFactoryApp() {
     const [isCreatingCatalog, setIsCreatingCatalog] = useState(false);
     const [deletingCatalogId, setDeletingCatalogId] = useState<string | null>(null);
     const [confirmDeleteCatalogId, setConfirmDeleteCatalogId] = useState<string | null>(null);
+    const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
     const [confirmDeleteImageInfo, setConfirmDeleteImageInfo] = useState<{ catalogId: string; publicId: string } | null>(null);
     const [bookPages, setBookPages] = useState<BookPage[]>([]);
     const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
@@ -469,8 +470,13 @@ export function KdpFactoryApp() {
     // Feature: compare catalogs
     const [compareSel, setCompareSel] = useState<Set<string>>(new Set());
     const [compareOpen, setCompareOpen] = useState(false);
-    // Feature: cloudinary search
+    // Feature: cloudinary search + selection + custom catalog
     const [cloudSearch, setCloudSearch] = useState("");
+    const [isCloudSelectMode, setIsCloudSelectMode] = useState(false);
+    const [selectedCloudUrls, setSelectedCloudUrls] = useState<Set<string>>(new Set());
+    const [showCustomCatalogModal, setShowCustomCatalogModal] = useState(false);
+    const [customCatalogName, setCustomCatalogName] = useState("");
+    const [isCreatingCustomCatalog, setIsCreatingCustomCatalog] = useState(false);
     // Feature: niche sort
     const [nicheSortBy, setNicheSortBy] = useState<"score" | "date">("score");
     const catalogSocketRef = useRef<ReturnType<typeof createApiSocket> | null>(null);
@@ -1303,6 +1309,31 @@ export function KdpFactoryApp() {
         }
     };
 
+    const createCustomCatalogFromCloud = async () => {
+        const selected = cloudinaryImages.filter(img => selectedCloudUrls.has(img.url));
+        if (selected.length === 0 || !customCatalogName.trim()) return;
+        setIsCreatingCustomCatalog(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/catalogs/from-cloudinary`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: customCatalogName.trim(), images: selected }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Error al crear catálogo");
+            setIaCatalogs(prev => [data.catalog, ...prev]);
+            toast.success(`Catálogo "${customCatalogName.trim()}" creado con ${selected.length} imágenes`);
+            setShowCustomCatalogModal(false);
+            setCustomCatalogName("");
+            setSelectedCloudUrls(new Set());
+            setIsCloudSelectMode(false);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al crear catálogo personalizado");
+        } finally {
+            setIsCreatingCustomCatalog(false);
+        }
+    };
+
     const uploadToCloudinary = async (vaultIndex: number) => {
         const img = vaultImages[vaultIndex];
         if (!img) return;
@@ -2012,7 +2043,7 @@ export function KdpFactoryApp() {
                                         <Button
                                             variant="ghost"
                                             size="sm"
-                                            onClick={() => handleDeleteProduct(product.id)}
+                                            onClick={() => setConfirmDeleteProductId(product.id)}
                                             className="h-9 w-9 p-0 rounded-xl text-neutral-700 hover:text-rose-500 hover:bg-rose-500/10 transition-all"
                                         >
                                             <Trash2 size={16} />
@@ -3192,24 +3223,60 @@ export function KdpFactoryApp() {
             </div>
 
             {/* Cloudinary Persistent Gallery */}
-            <div className="space-y-6 pb-4">
-                <div className="flex items-center gap-4 px-2">
+            <div className="space-y-4 pb-4">
+                {/* Header */}
+                <div className="flex items-center gap-3 px-2">
                     <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                     <div className="flex items-center gap-3">
                         <Cloud size={14} className="text-cyan-400" />
                         <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Cloudinary · Almacén Persistente</h3>
                     </div>
+                    {cloudinaryImages.length > 0 && (
+                        <button
+                            onClick={() => {
+                                setIsCloudSelectMode(v => {
+                                    if (v) setSelectedCloudUrls(new Set());
+                                    return !v;
+                                });
+                            }}
+                            className={`h-7 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${isCloudSelectMode ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white hover:border-white/20"}`}
+                        >
+                            {isCloudSelectMode ? "Cancelar" : "Seleccionar"}
+                        </button>
+                    )}
                     <button
                         onClick={() => void fetchCloudinaryImages()}
                         disabled={isLoadingCloudinary}
                         className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-cyan-400 hover:border-cyan-500/30 transition-all disabled:opacity-40"
                         title="Actualizar galería"
                     >
-                        {isLoadingCloudinary ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                        {isLoadingCloudinary ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                     </button>
                     <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                 </div>
 
+                {/* Selection action bar */}
+                {isCloudSelectMode && selectedCloudUrls.size > 0 && (
+                    <div className="mx-2 flex items-center gap-3 px-4 py-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/20">
+                        <span className="text-[11px] font-black text-cyan-300 flex-1">{selectedCloudUrls.size} imagen{selectedCloudUrls.size !== 1 ? "es" : ""} seleccionada{selectedCloudUrls.size !== 1 ? "s" : ""}</span>
+                        <button
+                            onClick={() => setSelectedCloudUrls(new Set(cloudinaryImages.map(i => i.url)))}
+                            className="text-[10px] font-bold text-cyan-400 hover:text-cyan-200 transition-colors"
+                        >Selec. todo</button>
+                        <button
+                            onClick={() => {
+                                setCustomCatalogName(`Catálogo Cloudinary ${new Date().toLocaleDateString("es-ES")}`);
+                                setShowCustomCatalogModal(true);
+                            }}
+                            className="h-8 px-4 rounded-xl bg-cyan-500 text-black text-[11px] font-black hover:bg-cyan-400 transition-all flex items-center gap-2"
+                        >
+                            <Layers size={12} />
+                            Crear Catálogo
+                        </button>
+                    </div>
+                )}
+
+                {/* Search */}
                 {cloudinaryImages.length > 0 && (
                     <div className="px-2">
                         <input
@@ -3220,6 +3287,7 @@ export function KdpFactoryApp() {
                         />
                     </div>
                 )}
+
                 {cloudinaryImages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-10 text-center space-y-3 opacity-40">
                         <Cloud size={32} className="text-neutral-600" strokeWidth={1.5} />
@@ -3229,19 +3297,49 @@ export function KdpFactoryApp() {
                     </div>
                 ) : (
                     <div className="flex gap-4 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
-                        {cloudinaryImages.filter(img => !cloudSearch.trim() || img.publicId.toLowerCase().includes(cloudSearch.toLowerCase())).map((img, cldIdx) => (
-                            <div
-                                key={img.publicId}
-                                className="shrink-0 w-44 h-52 md:w-52 md:h-64 rounded-[28px] overflow-hidden border border-white/10 hover:border-cyan-500/40 transition-all shadow-xl relative bg-neutral-900 cursor-zoom-in"
-                                onClick={() => openCloudinaryImagePreview(cldIdx)}
-                            >
-                                <img
-                                    src={img.url}
-                                    alt={img.publicId}
-                                    className="w-full h-full object-cover"
-                                />
-                            </div>
-                        ))}
+                        {cloudinaryImages.filter(img => !cloudSearch.trim() || img.publicId.toLowerCase().includes(cloudSearch.toLowerCase())).map((img, cldIdx) => {
+                            const isCloudSel = selectedCloudUrls.has(img.url);
+                            const isFav = favorites.has(img.url);
+                            return (
+                                <div
+                                    key={img.publicId}
+                                    className={`shrink-0 w-44 h-52 md:w-52 md:h-64 rounded-[28px] overflow-hidden border transition-all shadow-xl relative bg-neutral-900 group ${isCloudSelectMode ? "cursor-pointer" : "cursor-zoom-in"} ${isCloudSel ? "border-cyan-500/70 ring-2 ring-cyan-500/30" : "border-white/10 hover:border-cyan-500/40"}`}
+                                    onClick={() => {
+                                        if (isCloudSelectMode) {
+                                            setSelectedCloudUrls(prev => {
+                                                const next = new Set(prev);
+                                                next.has(img.url) ? next.delete(img.url) : next.add(img.url);
+                                                return next;
+                                            });
+                                        } else {
+                                            openCloudinaryImagePreview(cldIdx);
+                                        }
+                                    }}
+                                >
+                                    <img src={img.url} alt={img.publicId} className="w-full h-full object-cover" />
+
+                                    {/* Selection overlay */}
+                                    {isCloudSelectMode && (
+                                        <>
+                                            <div className={`absolute top-3 right-3 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isCloudSel ? "bg-cyan-500 border-cyan-500" : "bg-black/40 border-white/40 backdrop-blur-sm"}`}>
+                                                {isCloudSel && <Check size={13} className="text-black" strokeWidth={3} />}
+                                            </div>
+                                            {isCloudSel && <div className="absolute inset-0 bg-cyan-500/10 pointer-events-none" />}
+                                        </>
+                                    )}
+
+                                    {/* Heart button: always top-left; rose filled when fav */}
+                                    {!isCloudSelectMode && (
+                                        <button
+                                            onClick={e => { e.stopPropagation(); toggleFavorite(img.url, { label: img.publicId.split("/").pop() ?? "", source: "cloudinary" }); }}
+                                            className={`absolute top-2 left-2 p-1.5 rounded-xl backdrop-blur-sm transition-all ${isFav ? "bg-rose-500/80 text-white opacity-100" : "bg-black/50 text-neutral-400 opacity-0 group-hover:opacity-100 hover:text-rose-400"}`}
+                                        >
+                                            <Heart size={11} className={isFav ? "fill-white" : ""} />
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
             </div>
@@ -3680,31 +3778,30 @@ export function KdpFactoryApp() {
     const DEMAND_ICONS: Record<string, React.ReactElement> = { rising: <ArrowUpRight size={12} className="text-emerald-400" />, stable: <ArrowRight size={12} className="text-amber-400" />, declining: <ArrowDownRight size={12} className="text-rose-400" /> };
 
     const renderStudio = () => (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="grid grid-cols-1 xl:grid-cols-2 divide-y xl:divide-y-0 xl:divide-x divide-white/5">
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6">
 
-                {/* ── LEFT: TENDENCIAS ─────────────────────────────── */}
-                <div className="p-4 md:p-6 space-y-4">
-                    <div className="space-y-0.5">
-                        <h2 className="text-base font-black bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent flex items-center gap-2">
-                            <TrendingUp size={16} className="text-amber-400" /> Radar de Nichos
-                        </h2>
-                        <p className="text-[10px] text-neutral-600">Tendencias de mercado analizadas con IA para KDP, Etsy y Printify.</p>
-                    </div>
-                    <div className="flex gap-2">
-                        <div className="flex-1">
-                            <KdpSelect accent="amber" value={trendsPlatform} onChange={v => setTrendsPlatform(v as any)}
-                                options={[{value:"all",label:"Todas las plataformas"},{value:"kdp",label:"Amazon KDP"},{value:"etsy",label:"Etsy"},{value:"printify",label:"Printify"}]} />
-                        </div>
-                        <div className="flex-1">
-                            <KdpSelect accent="amber" value={trendsCategory} onChange={v => setTrendsCategory(v)}
-                                options={TREND_CATEGORIES.map(c => ({ value: c, label: c === "all" ? "Todas las categorías" : c }))} />
+            {/* ══ RADAR IA ══ */}
+            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+                <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent rounded-t-3xl" />
+                <div className="p-6 space-y-5">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1">
+                            <h2 className="text-xl font-black bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent flex items-center gap-2.5">
+                                <TrendingUp size={20} className="text-amber-400" /> Radar de Nichos
+                            </h2>
+                            <p className="text-xs text-neutral-500">Tendencias de mercado analizadas con IA para KDP, Etsy y Printify</p>
                         </div>
                         <button onClick={() => void fetchTrends()} disabled={isLoadingTrends}
-                            className="h-[38px] px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-black text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity shrink-0">
-                            {isLoadingTrends ? <Loader2 size={12} className="animate-spin" /> : <TrendingUp size={12} />}
-                            {isLoadingTrends ? "..." : "Analizar"}
+                            className="h-10 px-5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 text-black text-[10px] font-black uppercase tracking-wider flex items-center gap-2 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity shrink-0">
+                            {isLoadingTrends ? <Loader2 size={13} className="animate-spin" /> : <TrendingUp size={13} />}
+                            {isLoadingTrends ? "Analizando..." : "Analizar"}
                         </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <KdpSelect accent="amber" value={trendsPlatform} onChange={v => setTrendsPlatform(v as any)}
+                            options={[{value:"all",label:"Todas las plataformas"},{value:"kdp",label:"Amazon KDP"},{value:"etsy",label:"Etsy"},{value:"printify",label:"Printify"}]} />
+                        <KdpSelect accent="amber" value={trendsCategory} onChange={v => setTrendsCategory(v)}
+                            options={TREND_CATEGORIES.map(c => ({ value: c, label: c === "all" ? "Todas las categorías" : c }))} />
                     </div>
                     {isLoadingTrends && (
                         <div className="flex flex-col items-center justify-center py-16 space-y-3">
@@ -3789,40 +3886,53 @@ export function KdpFactoryApp() {
                         </div>
                     )}
 
-                    {/* ── MIS NICHOS ─────────────────────────────────── */}
-                    <div className="border-t border-white/5 pt-4 space-y-3">
-                        {/* Header */}
-                        <div className="flex items-center justify-between gap-3">
-                            <div className="space-y-0.5">
-                                <h2 className="text-base font-black text-white flex items-center gap-2">
-                                    <Target size={16} className="text-violet-400" /> Mis Nichos
-                                </h2>
-                                <p className="text-[10px] text-neutral-600">Nichos guardados · úsalos en el radar o en contenido</p>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                                <button onClick={() => void fetchNiches()} disabled={isLoadingNiches} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
-                                    {isLoadingNiches ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                                </button>
-                                <button onClick={() => openNicheForm()} className="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest transition-all">
-                                    <Plus size={13} /> Nuevo
-                                </button>
-                            </div>
+                </div>
+            </div>
+
+            {/* ══ MIS NICHOS + CONTENIDO ══ */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+
+            {/* ── MIS NICHOS ── */}
+            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+                <div className="h-px w-full bg-gradient-to-r from-violet-500/60 via-violet-400/20 to-transparent rounded-t-3xl" />
+                <div className="p-6 space-y-4">
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                            <h2 className="text-xl font-black text-white flex items-center gap-2.5">
+                                <Target size={20} className="text-violet-400" /> Mis Nichos
+                            </h2>
+                            <p className="text-xs text-neutral-500">Pipeline de nichos · fases y generación de contenido</p>
                         </div>
-                        {/* Filter + sort row */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <div className="flex gap-1.5 flex-wrap flex-1">
-                                {(["all", "found", "research", "active", "archived"] as const).map(s => (
-                                    <button key={s} onClick={() => setNicheStatusFilter(s)}
-                                        className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border ${nicheStatusFilter === s ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/8 text-neutral-600 hover:text-white"}`}>
-                                        {s === "all" ? `Todos (${niches.length})` : `${STATUS_LABELS[s].label} (${niches.filter(n => n.status === s).length})`}
-                                    </button>
-                                ))}
-                            </div>
-                            <button onClick={() => setNicheSortBy(p => p === "score" ? "date" : "score")}
-                                className="flex items-center gap-1 h-7 px-2.5 rounded-lg bg-white/5 border border-white/8 text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-all shrink-0">
-                                {nicheSortBy === "score" ? "↓ Score" : "↓ Fecha"}
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button onClick={() => void fetchNiches()} disabled={isLoadingNiches} className="p-2.5 rounded-xl bg-white/5 border border-white/8 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
+                                {isLoadingNiches ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                            </button>
+                            <button onClick={() => openNicheForm()} className="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_4px_12px_rgba(139,92,246,0.3)]">
+                                <Plus size={13} /> Nuevo
                             </button>
                         </div>
+                    </div>
+                    {/* Segmented filter */}
+                    <div className="flex p-1.5 bg-white/[0.03] border border-white/8 rounded-2xl gap-0.5">
+                        {(["all", "found", "research", "active", "archived"] as const).map(s => {
+                            const cnt = s === "all" ? niches.length : niches.filter(n => n.status === s).length;
+                            const isAct = nicheStatusFilter === s;
+                            const dot: Record<string, string> = { found: "bg-blue-400", research: "bg-amber-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
+                            return (
+                                <button key={s} onClick={() => setNicheStatusFilter(s)}
+                                    className={`flex-1 h-8 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${isAct ? "bg-white/10 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                    {s !== "all" && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot[s]}`} />}
+                                    <span className="truncate">{s === "all" ? "Todo" : STATUS_LABELS[s].label}</span>
+                                    {cnt > 0 && <span className={`text-[8px] tabular-nums ${isAct ? "text-white/50" : "text-neutral-700"}`}>{cnt}</span>}
+                                </button>
+                            );
+                        })}
+                        <button onClick={() => setNicheSortBy(p => p === "score" ? "date" : "score")}
+                            className="ml-1 h-8 px-3 rounded-xl bg-white/5 border border-white/8 text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-all shrink-0">
+                            {nicheSortBy === "score" ? "★" : "↓"}
+                        </button>
+                    </div>
                         {/* Loading */}
                         {isLoadingNiches && (
                             <div className="space-y-2">
@@ -3854,109 +3964,145 @@ export function KdpFactoryApp() {
                                         { id: "published", label: "Publicado" },
                                     ];
                                     const phaseIdx = PHASES.findIndex(p => p.id === (niche.phase ?? "niche"));
+                                    const statusDot: Record<string, string> = { found: "bg-blue-400", research: "bg-amber-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
                                     return (
-                                    <div key={niche._id} className="group rounded-2xl border border-white/8 bg-white/[0.02] hover:border-violet-500/20 transition-all overflow-hidden">
-                                        <div className="h-px w-full bg-gradient-to-r from-violet-500/50 via-violet-400/15 to-transparent" />
-                                        <div className="p-3 space-y-2">
-                                            {/* Header row */}
+                                    <div key={niche._id} className="group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] hover:border-white/14 hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden">
+                                        {/* Glass shimmer line */}
+                                        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+                                        <div className="p-4 space-y-4 relative">
+                                            {/* Header */}
                                             <div className="flex items-start gap-2">
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-2 flex-wrap">
-                                                        <span className="text-[12px] font-black text-white leading-tight">{niche.name}</span>
-                                                        <span className={`px-1.5 py-0.5 rounded-md border text-[7px] font-black uppercase tracking-widest ${STATUS_LABELS[niche.status].color}`}>
-                                                            {STATUS_LABELS[niche.status].label}
+                                                        <span className="text-sm font-bold text-white leading-tight">{niche.name}</span>
+                                                        <span className="flex items-center gap-1.5">
+                                                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[niche.status] ?? "bg-neutral-600"}`} />
+                                                            <span className="text-[10px] text-neutral-500">{STATUS_LABELS[niche.status].label}</span>
                                                         </span>
-                                                        <span className={`text-[10px] font-black tabular-nums ${scoreColor}`} title="Score">★{score}</span>
+                                                        <span className={`text-xs font-bold tabular-nums ${scoreColor}`}>★ {score}</span>
                                                     </div>
-                                                    <div className="flex items-center gap-1 flex-wrap mt-0.5">
-                                                        <span className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/8 text-[8px] text-neutral-500 font-black uppercase">
+                                                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                        <span className="text-xs text-neutral-600">
                                                             {NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType}
                                                         </span>
-                                                        <span className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/8 text-[8px] text-neutral-500">
+                                                        <span className="text-xs text-neutral-700">·</span>
+                                                        <span className="text-xs text-neutral-600">
                                                             {NICHE_STYLE_OPTIONS.find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory}
                                                         </span>
                                                     </div>
-                                                    {niche.description && <p className="text-[9px] text-neutral-600 mt-0.5 line-clamp-1">{niche.description}</p>}
+                                                    {niche.description && <p className="text-xs text-neutral-600 mt-1 line-clamp-1">{niche.description}</p>}
                                                 </div>
-                                                <div className="flex items-center gap-1 shrink-0">
+                                                <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     {niche.generatedPrompt && (
-                                                        <button onClick={() => saveNichePromptToLibrary(niche)} title="Guardar prompt en biblioteca"
-                                                            className="p-1.5 rounded-lg text-neutral-700 hover:text-violet-400 hover:bg-violet-500/10 transition-all">
-                                                            <BookMarked size={11} />
+                                                        <button onClick={() => saveNichePromptToLibrary(niche)} title="Guardar prompt"
+                                                            className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all">
+                                                            <BookMarked size={13} />
                                                         </button>
                                                     )}
-                                                    <button onClick={() => openNicheForm(niche)} className="p-1.5 rounded-lg text-neutral-700 hover:text-violet-400 hover:bg-violet-500/10 transition-all"><Pencil size={11} /></button>
-                                                    <button onClick={() => setNicheDeleteId(niche._id)} className="p-1.5 rounded-lg text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all"><Trash2 size={11} /></button>
+                                                    <button onClick={() => openNicheForm(niche)} className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Pencil size={13} /></button>
+                                                    <button onClick={() => setNicheDeleteId(niche._id)} className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all"><Trash2 size={13} /></button>
                                                 </div>
                                             </div>
 
-                                            {/* Pipeline stepper */}
-                                            <div className="flex items-center gap-1">
-                                                {PHASES.map((ph, i) => {
-                                                    const done = i <= phaseIdx;
-                                                    const isCurrent = i === phaseIdx;
-                                                    const isNext = i === phaseIdx + 1;
-                                                    return (
-                                                        <div key={ph.id} className="flex items-center gap-1 flex-1">
-                                                            <button
+                                            {/* Pipeline timeline */}
+                                            <div className="relative">
+                                                {/* Background track */}
+                                                <div className="absolute top-[10px] left-4 right-4 h-px bg-white/[0.08]" />
+                                                {/* Completed track */}
+                                                {phaseIdx > 0 && (
+                                                    <div
+                                                        className="absolute top-[10px] left-4 h-px bg-gradient-to-r from-white/30 to-white/15 transition-all"
+                                                        style={{ width: `calc(${(phaseIdx / (PHASES.length - 1)) * 100}% - 32px)` }}
+                                                    />
+                                                )}
+                                                <div className="flex items-start justify-between relative">
+                                                    {PHASES.map((ph, i) => {
+                                                        const done = i <= phaseIdx;
+                                                        const isCurrent = i === phaseIdx;
+                                                        const isNext = i === phaseIdx + 1;
+                                                        return (
+                                                            <button key={ph.id}
                                                                 onClick={() => {
                                                                     if (isNext) void advanceNichePhase(niche);
                                                                     else if (done && !isCurrent) void setNichePhase(niche, ph.id);
                                                                 }}
-                                                                title={isCurrent ? ph.label : isNext ? `Avanzar a ${ph.label}` : done ? `Volver a ${ph.label}` : ph.label}
-                                                                className={`flex-1 h-5 rounded-md text-[7px] font-black uppercase tracking-widest transition-all truncate ${
-                                                                    done ? isCurrent ? "bg-violet-500 text-white" : "bg-violet-500/30 text-violet-300 hover:bg-violet-500/50 cursor-pointer"
-                                                                    : isNext ? "bg-white/5 border border-dashed border-white/20 text-neutral-600 hover:border-violet-500/40 hover:text-violet-400 cursor-pointer"
-                                                                    : "bg-white/[0.02] border border-white/5 text-neutral-700"
-                                                                }`}
+                                                                title={isCurrent ? ph.label : isNext ? `Avanzar → ${ph.label}` : done ? `Volver a ${ph.label}` : ph.label}
+                                                                className={`flex flex-col items-center gap-1.5 transition-all ${isCurrent ? "cursor-default" : (done || isNext) ? "cursor-pointer group/step" : "cursor-default"}`}
                                                             >
-                                                                {ph.label}
+                                                                {/* Dot */}
+                                                                <span className={`relative flex items-center justify-center w-5 h-5 rounded-full transition-all ${
+                                                                    isCurrent
+                                                                        ? "bg-white shadow-[0_0_0_3px_rgba(255,255,255,0.15),0_0_12px_rgba(255,255,255,0.35)]"
+                                                                        : done
+                                                                        ? "bg-white/20 border border-white/20 group-hover/step:bg-white/30"
+                                                                        : isNext
+                                                                        ? "bg-transparent border border-dashed border-white/25 group-hover/step:border-white/50"
+                                                                        : "bg-transparent border border-white/8"
+                                                                }`}>
+                                                                    {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-white/30" />}
+                                                                    {done && !isCurrent && <Check size={9} className="text-white/60" />}
+                                                                </span>
+                                                                {/* Label */}
+                                                                <span className={`text-[10px] font-semibold whitespace-nowrap transition-all ${
+                                                                    isCurrent ? "text-white"
+                                                                    : done ? "text-neutral-500 group-hover/step:text-neutral-300"
+                                                                    : isNext ? "text-neutral-600 group-hover/step:text-neutral-400"
+                                                                    : "text-neutral-800"
+                                                                }`}>{ph.label}</span>
                                                             </button>
-                                                            {i < PHASES.length - 1 && <div className={`w-1.5 h-px shrink-0 ${i < phaseIdx ? "bg-violet-500/40" : "bg-white/10"}`} />}
-                                                        </div>
-                                                    );
-                                                })}
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
 
-                                            {/* Meta row */}
-                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                                <span className={`px-2 py-0.5 rounded-md border text-[8px] font-black uppercase ${COMPETITION_LABELS[niche.competition].color}`}>Comp: {COMPETITION_LABELS[niche.competition].label}</span>
-                                                <span className={`px-2 py-0.5 rounded-md border text-[8px] font-black uppercase ${DEMAND_LABELS[niche.demand].color}`}>Dem: {DEMAND_LABELS[niche.demand].label}</span>
-                                                {niche.tags.slice(0, 2).map(tag => (
-                                                    <span key={tag} className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/8 text-[8px] text-neutral-600">{tag}</span>
-                                                ))}
-                                                {(niche.catalogIds?.length ?? 0) > 0 && (
-                                                    <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-[8px] text-emerald-400 font-black uppercase">
-                                                        {niche.catalogIds!.length} catálogo{niche.catalogIds!.length > 1 ? "s" : ""}
-                                                    </span>
-                                                )}
+                                            {/* Footer: meta + action */}
+                                            <div className="flex items-center gap-2 justify-between pt-0.5">
+                                                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                                    {niche.competition !== "unknown" && (
+                                                        <span className="text-[10px] text-neutral-600">
+                                                            Comp <span className={`font-bold ${COMPETITION_LABELS[niche.competition].color.split(" ")[0]}`}>{COMPETITION_LABELS[niche.competition].label}</span>
+                                                        </span>
+                                                    )}
+                                                    {niche.demand !== "unknown" && (
+                                                        <span className="text-[10px] text-neutral-600">
+                                                            · Dem <span className={`font-bold ${DEMAND_LABELS[niche.demand].color.split(" ")[0]}`}>{DEMAND_LABELS[niche.demand].label}</span>
+                                                        </span>
+                                                    )}
+                                                    {(niche.catalogIds?.length ?? 0) > 0 && (
+                                                        <span className="text-[10px] font-bold text-emerald-500">✓ {niche.catalogIds!.length} cat.</span>
+                                                    )}
+                                                    {niche.tags.slice(0, 1).map(tag => (
+                                                        <span key={tag} className="text-[10px] text-neutral-700">#{tag}</span>
+                                                    ))}
+                                                </div>
+                                                <button
+                                                    onClick={() => void generateNicheContent(niche)}
+                                                    disabled={nicheGeneratingId === niche._id}
+                                                    className="flex items-center gap-1.5 px-3 h-7 rounded-xl bg-white/[0.05] border border-white/10 text-[10px] font-black text-neutral-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                                                >
+                                                    {nicheGeneratingId === niche._id
+                                                        ? <><Loader2 size={10} className="animate-spin" /> IA...</>
+                                                        : <><Sparkles size={10} /> Generar</>}
+                                                </button>
                                             </div>
-
-                                            <button
-                                                onClick={() => void generateNicheContent(niche)}
-                                                disabled={nicheGeneratingId === niche._id}
-                                                className="w-full h-8 rounded-xl bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-400 text-white text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_2px_12px_rgba(139,92,246,0.2)]"
-                                            >
-                                                {nicheGeneratingId === niche._id
-                                                    ? <><Loader2 size={10} className="animate-spin" /> Generando prompt...</>
-                                                    : <><Sparkles size={10} /> Generar contenido</>}
-                                            </button>
                                         </div>
                                     </div>
                                     );
                                 })}
                             </div>
                         )}
-                    </div>
                 </div>
+            </div>
 
-                {/* ── RIGHT: CONTENIDO ─────────────────────────────── */}
-                <div className="p-4 md:p-6 space-y-4">
-                    <div className="space-y-0.5">
-                        <h2 className="text-base font-black bg-gradient-to-r from-amber-400 to-violet-400 bg-clip-text text-transparent flex items-center gap-2">
-                            <Sparkles size={16} className="text-amber-400" /> Generador de Contenido
+            {/* ── CONTENIDO ── */}
+            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+                <div className="h-px w-full bg-gradient-to-r from-amber-500/40 via-violet-400/20 to-transparent rounded-t-3xl" />
+                <div className="p-6 space-y-4">
+                    <div className="space-y-1">
+                        <h2 className="text-xl font-black bg-gradient-to-r from-amber-400 to-violet-400 bg-clip-text text-transparent flex items-center gap-2.5">
+                            <Sparkles size={20} className="text-amber-400" /> Generador de Contenido
                         </h2>
-                        <p className="text-[10px] text-neutral-600">Metadatos listos para publicar en KDP y Etsy</p>
+                        <p className="text-xs text-neutral-500">Metadatos listos para publicar en KDP y Etsy</p>
                     </div>
 
                     {/* ── KDP Physical Book — primary card ── */}
@@ -3967,8 +4113,8 @@ export function KdpFactoryApp() {
                             <BookOpen size={16} className={contentType === "kdp-physical-book" ? "text-amber-400" : "text-neutral-600"} />
                         </div>
                         <div className="flex-1 min-w-0">
-                            <p className={`text-[11px] font-black uppercase tracking-wide leading-tight ${contentType === "kdp-physical-book" ? "text-amber-300" : "text-neutral-500"}`}>Libro físico KDP</p>
-                            <p className="text-[9px] text-neutral-600 mt-0.5">Título · Subtítulo · Descripción · 7 palabras clave</p>
+                            <p className={`text-sm font-black leading-tight ${contentType === "kdp-physical-book" ? "text-amber-300" : "text-neutral-400"}`}>Libro físico KDP</p>
+                            <p className="text-[10px] text-neutral-600 mt-0.5">Título · Subtítulo · Descripción · 7 palabras clave</p>
                         </div>
                         {contentType === "kdp-physical-book" && (
                             <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
@@ -4219,6 +4365,7 @@ export function KdpFactoryApp() {
                     )}
 
                 </div>
+            </div>
             </div>
         </div>
     );
@@ -5097,6 +5244,31 @@ export function KdpFactoryApp() {
                 </div>
             )}
 
+            {/* Confirm Delete Product Dialog */}
+            {confirmDeleteProductId && (
+                <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
+                    <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
+                        <div className="space-y-3 text-center">
+                            <div className="w-14 h-14 rounded-2xl bg-rose-500/10 flex items-center justify-center mx-auto">
+                                <Trash2 size={24} className="text-rose-400" />
+                            </div>
+                            <p className="text-base font-black text-white">¿Eliminar producto?</p>
+                            <p className="text-sm text-neutral-500 leading-relaxed">
+                                Se eliminará <span className="text-white font-bold">{products.find(p => p.id === confirmDeleteProductId)?.title ?? "este producto"}</span> de tu biblioteca. Esta acción no se puede deshacer.
+                            </p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={() => setConfirmDeleteProductId(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">
+                                Cancelar
+                            </button>
+                            <button onClick={() => { handleDeleteProduct(confirmDeleteProductId); setConfirmDeleteProductId(null); }} className="flex-1 h-11 rounded-2xl bg-rose-500 text-white text-sm font-black hover:bg-rose-400 transition-all">
+                                Eliminar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Confirm Delete Catalog Dialog */}
             {confirmDeleteCatalogId && (
                 <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
@@ -5636,6 +5808,45 @@ export function KdpFactoryApp() {
                     </div>
                 );
             })()}
+
+            {/* Custom Catalog from Cloudinary Modal */}
+            {showCustomCatalogModal && (
+                <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true" onClick={() => setShowCustomCatalogModal(false)}>
+                    <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="space-y-3 text-center">
+                            <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 flex items-center justify-center mx-auto">
+                                <Layers size={24} className="text-cyan-400" />
+                            </div>
+                            <p className="text-base font-black text-white">Catálogo Personalizado</p>
+                            <p className="text-sm text-neutral-500 leading-relaxed">
+                                Se creará un catálogo con <span className="text-white font-bold">{selectedCloudUrls.size} imagen{selectedCloudUrls.size !== 1 ? "es" : ""}</span> de tu almacén Cloudinary.
+                            </p>
+                        </div>
+                        <div>
+                            <label className="block text-[11px] font-black uppercase tracking-widest text-neutral-500 mb-2">Nombre del catálogo</label>
+                            <input
+                                autoFocus
+                                value={customCatalogName}
+                                onChange={e => setCustomCatalogName(e.target.value)}
+                                onKeyDown={e => { if (e.key === "Enter" && customCatalogName.trim()) void createCustomCatalogFromCloud(); }}
+                                placeholder="Mi catálogo personalizado…"
+                                className="w-full h-11 bg-white/5 border border-white/10 rounded-2xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-cyan-500/40 transition-all"
+                            />
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={() => setShowCustomCatalogModal(false)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
+                            <button
+                                onClick={() => void createCustomCatalogFromCloud()}
+                                disabled={!customCatalogName.trim() || isCreatingCustomCatalog}
+                                className="flex-1 h-11 rounded-2xl bg-cyan-500 text-black text-sm font-black hover:bg-cyan-400 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                            >
+                                {isCreatingCustomCatalog ? <Loader2 size={16} className="animate-spin" /> : <Layers size={16} />}
+                                Crear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Confirm Delete Cloudinary Image Dialog */}
             {confirmDeleteCloudinaryId && (
