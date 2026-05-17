@@ -61,6 +61,7 @@ import {
     GripVertical,
     Pencil,
     Save,
+    Clock,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -370,6 +371,8 @@ export function KdpFactoryApp() {
     const [confirmDeleteCloudinaryId, setConfirmDeleteCloudinaryId] = useState<string | null>(null);
     const [catalogQueue, setCatalogQueue] = useState<QueuedCatalog[]>([]);
     const catalogQueueRef = useRef<QueuedCatalog[]>([]);
+    const [pendingLaunch, setPendingLaunch] = useState<{ item: QueuedCatalog; launchAt: number } | null>(null);
+    const [pendingCountdown, setPendingCountdown] = useState(0);
     const [savedPrompts, setSavedPrompts] = useState<SavedPromptFE[]>([]);
     const [isLoadingSavedPrompts, setIsLoadingSavedPrompts] = useState(false);
     const [showSavePromptDialog, setShowSavePromptDialog] = useState(false);
@@ -413,6 +416,17 @@ export function KdpFactoryApp() {
 
     // Keep queue ref in sync so socket handlers always see the latest queue
     useEffect(() => { catalogQueueRef.current = catalogQueue; }, [catalogQueue]);
+
+    // Countdown ticker for pending launch
+    useEffect(() => {
+        if (!pendingLaunch) return;
+        const interval = setInterval(() => {
+            const remaining = Math.max(0, Math.round((pendingLaunch.launchAt - Date.now()) / 1000));
+            setPendingCountdown(remaining);
+            if (remaining === 0) clearInterval(interval);
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [pendingLaunch]);
 
     const selectedPage = bookPages.find(p => p.id === selectedPageId) ?? null;
     const usedImageUrls = useMemo(() => new Set(bookPages.filter(p => p.image).map(p => p.image!.url)), [bookPages]);
@@ -499,6 +513,7 @@ export function KdpFactoryApp() {
     };
 
     const launchQueuedCatalog = async (item: QueuedCatalog) => {
+        setPendingLaunch(null);
         try {
             const res = await fetch(`${API_BASE_URL}/catalogs`, {
                 method: "POST",
@@ -527,6 +542,9 @@ export function KdpFactoryApp() {
         const [next, ...rest] = catalogQueueRef.current;
         catalogQueueRef.current = rest;
         setCatalogQueue(rest);
+        const launchAt = Date.now() + 2 * 60 * 1000;
+        setPendingLaunch({ item: next, launchAt });
+        setPendingCountdown(120);
         toast.info("Siguiente catálogo comenzará en 2 minutos...");
         setTimeout(() => void launchQueuedCatalog(next), 2 * 60 * 1000);
     };
@@ -2037,22 +2055,6 @@ export function KdpFactoryApp() {
                                     })()}
                                 </div>
                             </div>
-                            {/* Queue list */}
-                            {catalogQueue.length > 0 && (
-                                <div className="space-y-1.5">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/70 flex items-center gap-1.5">
-                                        <Layers size={9} /> Cola de catálogos ({catalogQueue.length})
-                                    </p>
-                                    {catalogQueue.map((item, idx) => (
-                                        <div key={item.queueId} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/5 border border-amber-500/15">
-                                            <span className="text-[9px] font-black text-amber-400/60 w-4 shrink-0">#{idx + 1}</span>
-                                            <span className="text-[10px] text-neutral-400 flex-1 truncate">{item.name || item.promptParts.theme || "Sin nombre"}</span>
-                                            <span className="text-[9px] text-neutral-600 font-mono shrink-0">{item.totalImages} imgs · {item.dim.ratio}</span>
-                                            <button onClick={() => setCatalogQueue(prev => prev.filter(q => q.queueId !== item.queueId))} className="p-1 rounded-md text-neutral-600 hover:text-rose-400 transition-all shrink-0"><X size={10} /></button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
                             {iaCatalogs.some(c => c.status === "running" || c.status === "pending") && (
                                 <p className="text-[10px] text-amber-500/70 italic flex items-center gap-1.5">
                                     <Loader2 size={9} className="animate-spin" />
@@ -2505,7 +2507,7 @@ export function KdpFactoryApp() {
             </div>
 
             {/* IA Catalog list */}
-            {iaCatalogs.length > 0 && (
+            {(iaCatalogs.length > 0 || catalogQueue.length > 0) && (
                 <div className="space-y-4">
                     <div className="flex items-center gap-4 px-2">
                         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
@@ -2519,6 +2521,144 @@ export function KdpFactoryApp() {
                         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                     </div>
                     <div className="space-y-3">
+                        {/* Pending launch skeleton — dequeued but not yet launched (2 min window) */}
+                        {pendingLaunch && (() => {
+                            const item = pendingLaunch.item;
+                            const mins = Math.floor(pendingCountdown / 60);
+                            const secs = pendingCountdown % 60;
+                            const countdownLabel = pendingCountdown > 0
+                                ? `${mins > 0 ? `${mins}m ` : ""}${secs}s`
+                                : "Iniciando...";
+                            const providerColor = item.model.provider === "Google" ? { bar: "from-blue-500/60 to-blue-400/20", badge: "bg-blue-500/10 border-blue-500/20 text-blue-300", dot: "bg-blue-400" }
+                                : item.model.provider === "Leonardo" ? { bar: "from-amber-500/60 to-amber-400/20", badge: "bg-amber-500/10 border-amber-500/20 text-amber-300", dot: "bg-amber-400" }
+                                : item.model.provider === "Pollinations" ? { bar: "from-emerald-500/60 to-emerald-400/20", badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300", dot: "bg-emerald-400" }
+                                : { bar: "from-violet-500/60 to-violet-400/20", badge: "bg-violet-500/10 border-violet-500/20 text-violet-300", dot: "bg-violet-400" };
+                            return (
+                                <Card variant="outline" className="border-amber-500/25 bg-amber-500/[0.03] overflow-hidden">
+                                    {/* Animated progress bar mimicking countdown */}
+                                    <div className="h-0.5 w-full bg-white/5 relative overflow-hidden">
+                                        <div
+                                            className={`absolute inset-y-0 left-0 bg-gradient-to-r ${providerColor.bar} transition-all duration-1000`}
+                                            style={{ width: `${100 - (pendingCountdown / 120) * 100}%` }}
+                                        />
+                                    </div>
+                                    <div className="p-4 space-y-3">
+                                        {/* Header */}
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="min-w-0 space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className="font-black text-white text-sm leading-tight truncate">{item.name || item.promptParts.theme || "Sin nombre"}</h4>
+                                                </div>
+                                                <p className="text-[10px] text-neutral-500 line-clamp-1 leading-relaxed">{item.prompt}</p>
+                                            </div>
+                                            <div className="shrink-0">
+                                                <Badge variant="neutral" className="text-[9px] font-black uppercase bg-amber-500/15 text-amber-400 border-amber-500/30 flex items-center gap-1.5 tabular-nums">
+                                                    <Clock size={8} className="animate-pulse" />
+                                                    {countdownLabel}
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                        {/* Model badge */}
+                                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                                            <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border ${providerColor.badge}`}>
+                                                <div className={`w-2 h-2 rounded-full ${providerColor.dot} shrink-0 animate-pulse`} />
+                                                <span className="text-[10px] font-black leading-none truncate max-w-[200px]">{item.model.name}</span>
+                                                <span className="text-[9px] opacity-60 shrink-0">{item.model.provider}</span>
+                                            </div>
+                                            <div className="text-[9px] font-mono text-neutral-600">
+                                                {item.dim.width}×{item.dim.height} · <span className="text-neutral-400 font-black">{item.totalImages} imgs</span>
+                                            </div>
+                                        </div>
+                                        {/* Disabled action buttons */}
+                                        <div className="flex items-center justify-end gap-2">
+                                            <button disabled className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/5 text-neutral-700 border border-white/5 text-[9px] font-black uppercase tracking-widest cursor-not-allowed opacity-40">
+                                                <Copy size={11} /> Reusar
+                                            </button>
+                                            <button disabled className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/5 text-amber-700 border border-amber-500/10 text-[9px] font-black uppercase tracking-widest cursor-not-allowed opacity-40">
+                                                <FileText size={11} /> PDF
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {/* Skeleton image grid */}
+                                    <div className="px-4 pb-4 border-t border-white/5 pt-3">
+                                        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
+                                            {Array.from({ length: item.totalImages }).map((_, i) => (
+                                                <div
+                                                    key={i}
+                                                    className="aspect-square rounded-lg border border-white/[0.06] overflow-hidden"
+                                                    style={{ animationDelay: `${(i % 10) * 80}ms` }}
+                                                >
+                                                    <div className="w-full h-full bg-gradient-to-br from-white/[0.04] to-white/[0.01] animate-pulse" />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </Card>
+                            );
+                        })()}
+
+                        {/* Queued-but-not-started catalogs — skeleton cards */}
+                        {catalogQueue.map((item, qIdx) => {
+                            const providerColor = item.model.provider === "Google" ? { bar: "bg-blue-500/30", badge: "bg-blue-500/10 border-blue-500/20 text-blue-300", dot: "bg-blue-400" }
+                                : item.model.provider === "Leonardo" ? { bar: "bg-amber-500/30", badge: "bg-amber-500/10 border-amber-500/20 text-amber-300", dot: "bg-amber-400" }
+                                : item.model.provider === "Pollinations" ? { bar: "bg-emerald-500/30", badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300", dot: "bg-emerald-400" }
+                                : { bar: "bg-violet-500/30", badge: "bg-violet-500/10 border-violet-500/20 text-violet-300", dot: "bg-violet-400" };
+                            return (
+                                <Card key={item.queueId} variant="outline" className="border-amber-500/10 bg-amber-500/[0.02] overflow-hidden opacity-70">
+                                    <div className={`h-px w-full ${providerColor.bar} animate-pulse`} />
+                                    <div className="p-4 space-y-3">
+                                        {/* Header */}
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="min-w-0 space-y-1">
+                                                <h4 className="font-black text-white/60 text-sm leading-tight truncate">{item.name || item.promptParts.theme || "Sin nombre"}</h4>
+                                                <p className="text-[10px] text-neutral-600 line-clamp-1 leading-relaxed">{item.prompt}</p>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                                <Badge variant="neutral" className="text-[9px] font-black uppercase bg-amber-500/10 text-amber-400/70 border-amber-500/20 flex items-center gap-1">
+                                                    <Clock size={8} /> En espera · #{qIdx + 1}
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                        {/* Model badge */}
+                                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                                            <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border opacity-50 ${providerColor.badge}`}>
+                                                <div className={`w-2 h-2 rounded-full ${providerColor.dot} shrink-0`} />
+                                                <span className="text-[10px] font-black leading-none truncate max-w-[200px]">{item.model.name}</span>
+                                                <span className="text-[9px] opacity-60 shrink-0">{item.model.provider}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 text-[9px] font-mono text-neutral-700">
+                                                <span>{item.dim.width}×{item.dim.height}</span>
+                                                <span className="text-neutral-800">·</span>
+                                                <span>{item.totalImages} imgs</span>
+                                            </div>
+                                        </div>
+                                        {/* Action buttons — disabled except cancel */}
+                                        <div className="flex items-center justify-end gap-2">
+                                            <button disabled className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/5 text-neutral-700 border border-white/5 text-[9px] font-black uppercase tracking-widest cursor-not-allowed opacity-40">
+                                                <Copy size={11} /> Reusar
+                                            </button>
+                                            <button disabled className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/5 text-amber-700 border border-amber-500/10 text-[9px] font-black uppercase tracking-widest cursor-not-allowed opacity-40">
+                                                <FileText size={11} /> PDF
+                                            </button>
+                                            <button
+                                                onClick={() => setCatalogQueue(prev => prev.filter(q => q.queueId !== item.queueId))}
+                                                className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all text-[9px] font-black uppercase tracking-widest"
+                                            >
+                                                <X size={11} /> Cancelar
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {/* Skeleton image grid */}
+                                    <div className="px-4 pb-4 border-t border-white/5 pt-3">
+                                        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
+                                            {Array.from({ length: item.totalImages }).map((_, i) => (
+                                                <div key={i} className="aspect-square rounded-lg bg-white/[0.03] border border-dashed border-white/[0.07] animate-pulse" />
+                                            ))}
+                                        </div>
+                                    </div>
+                                </Card>
+                            );
+                        })}
                         {iaCatalogs.map((catalog) => {
                             const progress = catalog.totalImages > 0 ? (catalog.images.length / catalog.totalImages) * 100 : 0;
                             const isActive = catalog.status === "running" || catalog.status === "pending";
