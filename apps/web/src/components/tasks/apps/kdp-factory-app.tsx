@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import {
     Sparkles,
@@ -390,6 +391,10 @@ export function KdpFactoryApp() {
     const [showModelPicker, setShowModelPicker] = useState(false);
     const [showDimPicker, setShowDimPicker] = useState(false);
     const [selectedDim, setSelectedDim] = useState("p34");
+    const modelPickerBtnRef = useRef<HTMLButtonElement>(null);
+    const dimPickerBtnRef = useRef<HTMLButtonElement>(null);
+    const modelPickerRectRef = useRef<DOMRect | null>(null);
+    const dimPickerRectRef = useRef<DOMRect | null>(null);
     const [cloudinaryImages, setCloudinaryImages] = useState<{ publicId: string; url: string; width: number; height: number; bytes: number; createdAt: string }[]>([]);
     const [isLoadingCloudinary, setIsLoadingCloudinary] = useState(false);
     const [uploadingToCloud, setUploadingToCloud] = useState<number | null>(null);
@@ -792,6 +797,18 @@ export function KdpFactoryApp() {
             });
             setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase: next } : n));
         } catch { toast.error("Error al avanzar fase"); }
+    };
+
+    const setNichePhase = async (niche: NicheFE, phase: NicheFE["phase"]) => {
+        if (phase === (niche.phase ?? "niche")) return;
+        try {
+            await fetch(`${API_BASE_URL}/niches/${niche._id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ phase }),
+            });
+            setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase } : n));
+        } catch { toast.error("Error al cambiar fase"); }
     };
 
     const retryFailedSlots = async (catalogId: string) => {
@@ -1340,7 +1357,7 @@ export function KdpFactoryApp() {
     const [isBuildingPdf, setIsBuildingPdf] = useState(false);
     const [isSavingDraft, setIsSavingDraft] = useState(false);
     const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
-    const [showModelParams, setShowModelParams] = useState(false);
+    const [showCatalogAccordion, setShowCatalogAccordion] = useState(false);
     const [negativePrompt, setNegativePrompt] = useState("");
     const [inferenceSteps, setInferenceSteps] = useState(28);
     const [guidanceScale, setGuidanceScale] = useState(7.5);
@@ -2034,502 +2051,492 @@ export function KdpFactoryApp() {
         </div>
     );
 
-    const renderAIStudio = () => (
-        <div className="lg:col-span-12 space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-200 mt-8 pb-12">
+    const renderAIStudio = () => {
+        const currentModel = AI_MODELS.find(m => m.id === selectedModel);
+        const currentDim = AI_DIMENSIONS.find(d => d.id === selectedDim);
+        const providerColor: Record<string, string> = {
+            "Pollinations": "emerald",
+            "Hugging Face": "amber",
+            "Google": "sky",
+            "Leonardo": "orange",
+            "Ideogram": "violet",
+        };
+        const pColor = providerColor[currentModel?.provider || ""] || "neutral";
+
+        return (
+        <div className="lg:col-span-12 space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-200 mt-8 pb-12">
+            {/* Header */}
             <div className="flex items-center gap-4 px-2">
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-3">
-                        <Zap size={16} className="text-amber-400 fill-amber-400/20" />
-                        <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">IA Asset Studio</h3>
+                <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                        <Zap size={14} className="text-amber-400 fill-amber-400/20" />
                     </div>
+                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-300">IA Asset Studio</h3>
                     <button
-                        onClick={() => setShowAdvancedOptions((v) => !v)}
-                        className={`p-2 rounded-xl border transition-all ${showAdvancedOptions ? "bg-white/10 border-white/20 text-white" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
-                        title="Opciones avanzadas"
-                        aria-label="Opciones avanzadas"
+                        onClick={() => setShowSafeArea(v => !v)}
+                        className={`px-3 h-7 rounded-xl border transition-all text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 ${showSafeArea ? "bg-amber-500/20 border-amber-500/40 text-amber-400" : "bg-white/5 border-white/10 text-neutral-600 hover:text-amber-400 hover:border-amber-500/25"}`}
                     >
-                        <ImageIcon size={14} />
-                    </button>
-                    <button
-                        onClick={() => setShowSafeArea((v) => !v)}
-                        className={`p-2 rounded-xl border transition-all text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 ${showSafeArea ? "bg-amber-500/20 border-amber-500/40 text-amber-400" : "bg-white/5 border-white/10 text-neutral-500 hover:text-amber-400 hover:border-amber-500/30"}`}
-                        title="Mostrar/ocultar área segura KDP"
-                    >
-                        <Maximize size={13} /> Safe area
+                        <Maximize size={11} /> Safe area
                     </button>
                 </div>
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-                {/* Generation Control */}
-                <Card variant="glass" className="p-6 md:p-8 border-white/5 bg-white/[0.01] space-y-8 relative overflow-hidden group hover:shadow-[0_0_40px_rgba(245,158,11,0.08)] transition-all duration-500">
-                    <div className="absolute -inset-1 bg-gradient-to-br from-amber-500/5 via-transparent to-transparent blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                {/* ─── LEFT CARD: Controls ─── */}
+                <div className="relative rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+                    <div className="absolute -top-24 -right-24 w-64 h-64 bg-amber-500/5 blur-[90px] pointer-events-none rounded-full" />
 
-                    <div className="space-y-6 relative z-10">
-                        {/* Model & Dim Selectors Wrapper */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* ── 01 MODELO & FORMATO ── */}
+                    <div className="p-6 space-y-4 relative z-10">
+                        <div className="flex items-center gap-3">
+                            <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-[9px] font-black text-neutral-500 flex items-center justify-center shrink-0">01</span>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Modelo & Formato</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {/* Model picker */}
-                            <div className="space-y-3">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Modelo I.A.</label>
+                            <div className="space-y-2">
+                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600 ml-1">Modelo I.A.</label>
                                 <div className="relative">
-                                    {showModelPicker && (
-                                        <div className="fixed inset-0 z-40" onClick={() => setShowModelPicker(false)} />
-                                    )}
-                                    <button
-                                        type="button"
-                                        onClick={() => { setShowModelPicker(v => !v); setShowDimPicker(false); }}
-                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 flex items-center justify-between gap-3 hover:bg-white/10 transition-all focus:outline-none focus:border-amber-500/40"
+                                    <button ref={modelPickerBtnRef} type="button"
+                                        onClick={() => {
+                                            modelPickerRectRef.current = modelPickerBtnRef.current?.getBoundingClientRect() ?? null;
+                                            setShowModelPicker(v => !v);
+                                            setShowDimPicker(false);
+                                        }}
+                                        className="w-full h-12 bg-white/4 border border-white/8 rounded-2xl px-3.5 flex items-center gap-3 hover:bg-white/7 hover:border-white/14 transition-all focus:outline-none"
                                     >
+                                        <div className={`w-2 h-2 rounded-full bg-${pColor}-400 shrink-0 shadow-[0_0_8px_2px] shadow-${pColor}-400/40`} />
                                         <div className="flex-1 min-w-0 text-left">
-                                            <p className="text-sm font-bold text-white truncate leading-tight">{AI_MODELS.find(m => m.id === selectedModel)?.name}</p>
-                                            <p className="text-[10px] text-neutral-500 truncate leading-tight">{AI_MODELS.find(m => m.id === selectedModel)?.provider} · {AI_MODELS.find(m => m.id === selectedModel)?.type}</p>
+                                            <p className="text-sm font-bold text-white truncate leading-tight">{currentModel?.name}</p>
+                                            <p className="text-[9px] text-neutral-500 truncate leading-tight">{currentModel?.provider} · {currentModel?.type}</p>
                                         </div>
-                                        <ChevronDown size={16} className={`text-neutral-500 shrink-0 transition-transform duration-200 ${showModelPicker ? "rotate-180" : ""}`} />
+                                        <ChevronDown size={14} className={`text-neutral-600 shrink-0 transition-transform duration-200 ${showModelPicker ? "rotate-180" : ""}`} />
                                     </button>
-                                    {showModelPicker && (
-                                        <div className="absolute top-full mt-1.5 left-0 right-0 z-50 bg-[#111]/98 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden shadow-2xl max-h-72 overflow-y-auto">
-                                            {AI_MODELS.map(m => (
-                                                <button
-                                                    key={m.id}
-                                                    type="button"
-                                                    onClick={() => { setSelectedModel(m.id); setShowModelPicker(false); }}
-                                                    className={`w-full px-4 py-3.5 flex items-center gap-3 transition-all text-left border-b border-white/5 last:border-0 ${selectedModel === m.id ? "bg-white/8" : "hover:bg-white/5"}`}
-                                                >
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-bold text-white leading-tight">{m.name}</p>
-                                                        <p className="text-[11px] text-neutral-500 leading-tight mt-0.5">{m.provider} · {m.type}</p>
-                                                    </div>
-                                                    {selectedModel === m.id && <Check size={16} className="text-emerald-400 shrink-0" />}
-                                                </button>
-                                            ))}
-                                        </div>
+                                    {showModelPicker && modelPickerRectRef.current && createPortal(
+                                        <>
+                                            <div className="fixed inset-0 z-[9998]" onClick={() => setShowModelPicker(false)} />
+                                            <div
+                                                className="fixed z-[9999] bg-[#111111] border border-white/12 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.9)] overflow-hidden"
+                                                style={{
+                                                    top: modelPickerRectRef.current.bottom + 6,
+                                                    left: modelPickerRectRef.current.left,
+                                                    width: modelPickerRectRef.current.width,
+                                                    maxHeight: "288px",
+                                                    overflowY: "auto",
+                                                }}
+                                            >
+                                                {AI_MODELS.map(m => {
+                                                    const mColor = providerColor[m.provider] || "neutral";
+                                                    return (
+                                                        <button key={m.id} type="button"
+                                                            onClick={() => { setSelectedModel(m.id); setShowModelPicker(false); }}
+                                                            className={`w-full px-4 py-3 flex items-center gap-3 transition-all text-left border-b border-white/5 last:border-0 ${selectedModel === m.id ? "bg-white/10" : "hover:bg-white/6"}`}
+                                                        >
+                                                            <div className={`w-2 h-2 rounded-full bg-${mColor}-400 shrink-0`} />
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-sm font-bold text-white leading-tight">{m.name}</p>
+                                                                <p className="text-[10px] text-neutral-500 leading-tight mt-0.5">{m.provider} · {m.type}</p>
+                                                            </div>
+                                                            {selectedModel === m.id && <Check size={14} className="text-emerald-400 shrink-0" />}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </>,
+                                        document.body
                                     )}
                                 </div>
                             </div>
 
                             {/* Dimension picker */}
-                            <div className="space-y-3">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 ml-1">Dimensiones</label>
-                                {/* Quick presets */}
-                                <div className="grid grid-cols-4 gap-2">
-                                    {AI_DIMENSIONS.filter((d) => ["sq", "pt", "p23", "p34"].includes(d.id)).map((d) => (
-                                        <button
-                                            key={d.id}
-                                            type="button"
-                                            onClick={() => setSelectedDim(d.id)}
-                                            className={`h-12 rounded-xl border flex flex-col items-center justify-center gap-0.5 transition-all ${selectedDim === d.id ? "bg-white text-black border-white" : "bg-white/5 border-white/10 text-neutral-500 hover:bg-white/10"}`}
+                            <div className="space-y-2">
+                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600 ml-1">Dimensiones</label>
+                                <div className="grid grid-cols-4 gap-1.5 mb-2">
+                                    {AI_DIMENSIONS.filter(d => ["sq", "pt", "p23", "p34"].includes(d.id)).map(d => (
+                                        <button key={d.id} type="button" onClick={() => setSelectedDim(d.id)}
+                                            className={`h-10 rounded-xl border flex flex-col items-center justify-center gap-0.5 transition-all ${selectedDim === d.id ? "bg-white text-black border-white shadow-[0_4px_12px_rgba(255,255,255,0.15)]" : "bg-white/4 border-white/8 text-neutral-500 hover:bg-white/7"}`}
                                         >
-                                            {d.id === "sq" ? <Monitor size={13} /> : <Maximize size={13} />}
-                                            <span className="text-[9px] font-black uppercase">{d.ratio}</span>
+                                            {d.id === "sq" ? <Monitor size={11} /> : <Maximize size={11} />}
+                                            <span className="text-[8px] font-black uppercase">{d.ratio}</span>
                                         </button>
                                     ))}
                                 </div>
-                                {/* Full list — custom dropdown */}
                                 <div className="relative">
-                                    {showDimPicker && (
-                                        <div className="fixed inset-0 z-40" onClick={() => setShowDimPicker(false)} />
-                                    )}
-                                    <button
-                                        type="button"
-                                        onClick={() => { setShowDimPicker(v => !v); setShowModelPicker(false); }}
-                                        className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 flex items-center justify-between gap-3 hover:bg-white/10 transition-all focus:outline-none focus:border-amber-500/40"
-                                    >
-                                        {(() => { const d = AI_DIMENSIONS.find(d => d.id === selectedDim); return (
-                                            <div className="flex-1 min-w-0 text-left">
-                                                <p className="text-sm font-bold text-white truncate leading-tight">{d?.name} <span className="font-normal text-neutral-400">({d?.ratio})</span></p>
-                                                <p className="text-[10px] text-neutral-500 leading-tight">{d?.width}×{d?.height} px</p>
-                                            </div>
-                                        ); })()}
-                                        <ChevronDown size={16} className={`text-neutral-500 shrink-0 transition-transform duration-200 ${showDimPicker ? "rotate-180" : ""}`} />
-                                    </button>
-                                    {showDimPicker && (
-                                        <div className="absolute top-full mt-1.5 left-0 right-0 z-50 bg-[#111]/98 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden shadow-2xl max-h-64 overflow-y-auto">
-                                            {AI_DIMENSIONS.map(d => (
-                                                <button
-                                                    key={d.id}
-                                                    type="button"
-                                                    onClick={() => { setSelectedDim(d.id); setShowDimPicker(false); }}
-                                                    className={`w-full px-4 py-3.5 flex items-center gap-3 transition-all text-left border-b border-white/5 last:border-0 ${selectedDim === d.id ? "bg-white/8" : "hover:bg-white/5"}`}
-                                                >
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-bold text-white leading-tight">{d.name} <span className="font-normal text-neutral-400">({d.ratio})</span></p>
-                                                        <p className="text-[11px] text-neutral-500 leading-tight mt-0.5">{d.width}×{d.height} px</p>
-                                                    </div>
-                                                    {selectedDim === d.id && <Check size={16} className="text-emerald-400 shrink-0" />}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Multi-field prompt */}
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-2 mb-1">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Prompt del Activo</span>
-                                {imagePrompt && (
-                                    <>
-                                        <button
-                                            type="button"
-                                            onClick={() => navigator.clipboard.writeText(imagePrompt).then(() => toast.success("Prompt copiado"))}
-                                            className="p-1 rounded-lg bg-white/5 text-neutral-600 hover:text-white hover:bg-white/10 transition-all border border-white/5"
-                                            title="Copiar prompt completo"
-                                        >
-                                            <Copy size={10} />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => { setSavePromptName(""); setSavePromptCategory("General"); setShowSavePromptDialog(true); }}
-                                            className="p-1 rounded-lg bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition-all border border-violet-500/20"
-                                            title="Guardar prompt en biblioteca"
-                                        >
-                                            <BookMarked size={10} />
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                            <div className="grid grid-cols-1 gap-2">
-                                <input
-                                    value={promptTheme}
-                                    onChange={(e) => setPromptTheme(e.target.value)}
-                                    placeholder="Temática · Ej: Vintage botanical illustration"
-                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 transition-all font-medium"
-                                />
-                                <input
-                                    value={promptSpecs}
-                                    onChange={(e) => setPromptSpecs(e.target.value)}
-                                    placeholder="Especificaciones · Ej: watercolor style, high detail"
-                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 transition-all font-medium"
-                                />
-                                <input
-                                    value={promptDetails}
-                                    onChange={(e) => setPromptDetails(e.target.value)}
-                                    placeholder="Detalles · Ej: lavender field, soft pastel palette"
-                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 transition-all font-medium"
-                                />
-                                <div className="relative">
-                                    <input
-                                        value={promptParticulars}
-                                        onChange={(e) => setPromptParticulars(e.target.value)}
-                                        placeholder="Particularidades · editable por IA en catálogo"
-                                        className="w-full h-10 bg-violet-500/5 border border-violet-500/20 rounded-xl px-4 pr-24 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all font-medium"
-                                    />
-                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black uppercase tracking-widest text-violet-500/60 pointer-events-none">IA varies</span>
-                                </div>
-                            </div>
-                            {imagePrompt && (
-                                <p className="text-[9px] text-neutral-600 font-mono truncate px-1" title={imagePrompt}>{imagePrompt}</p>
-                            )}
-                            {promptTheme.trim() && (
-                                <button
-                                    type="button"
-                                    onClick={() => { setSavePromptName(""); setSavePromptCategory("General"); setShowSavePromptDialog(true); }}
-                                    className="w-full h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[10px] font-black uppercase tracking-widest hover:bg-violet-500/20 transition-all flex items-center justify-center gap-2"
-                                >
-                                    <BookMarked size={13} /> Guardar prompt en biblioteca
-                                </button>
-                            )}
-                        </div>
-
-                        {/* Advanced options */}
-                        <div className="space-y-3">
-
-
-                            {showAdvancedOptions && (
-                                <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
-                                    <div className="flex items-center justify-between gap-3">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-300">Imagen de referencia</p>
-                                        <p className="text-[10px] text-neutral-600 font-medium italic">Pegar (Ctrl/⌘+V) o arrastrar</p>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-4 items-start">
-                                        {/* Small paste box */}
-                                        <div
-                                            className="rounded-2xl border border-dashed border-white/15 bg-black/20 w-full sm:w-[140px] aspect-square flex items-center justify-center text-center focus:outline-none focus:ring-2 focus:ring-amber-500/40 overflow-hidden"
-                                            tabIndex={0}
-                                            onDragOver={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                            }}
-                                            onDrop={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                const file = e.dataTransfer.files?.[0];
-                                                if (file) void setInitImageFromFile(file);
-                                            }}
-                                            onPaste={(e) => {
-                                                const items = Array.from(e.clipboardData?.items || []);
-                                                const imageItem = items.find((it) => it.kind === "file" && it.type.startsWith("image/"));
-                                                const file = imageItem?.getAsFile() || null;
-                                                if (file) void setInitImageFromFile(file);
-                                            }}
-                                            title="Pega (Ctrl/⌘+V) o arrastra una imagen"
-                                        >
-                                            {initImageDataUrl ? (
-                                                <img src={initImageDataUrl} alt="Referencia" className="w-full h-full object-cover" />
-                                            ) : (
-                                                <div className="px-3 space-y-1">
-                                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-300">Referencia</p>
-                                                    <p className="text-[10px] text-neutral-600 font-medium italic">Pegar / Arrastrar</p>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Controls */}
-                                        <div className="space-y-3">
-                                            <div className="text-[10px] text-neutral-500 font-medium italic">
-                                                Se enviará junto al prompt (Gemini/Leonardo).
-                                            </div>
-
-                                            {initImageDataUrl && (
-                                                <div className="flex gap-2">
-                                                    <Button
-                                                        onClick={() => setInitImageDataUrl(null)}
-                                                        variant="outline"
-                                                        className="h-11 rounded-2xl border-white/10 bg-white/5 backdrop-blur-md text-[10px] font-black uppercase tracking-widest text-white hover:bg-white/10"
-                                                    >
-                                                        Quitar imagen
-                                                    </Button>
-                                                </div>
-                                            )}
-
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Fuerza (Leonardo)</label>
-                                                <input
-                                                    type="range"
-                                                    min={0.1}
-                                                    max={0.9}
-                                                    step={0.05}
-                                                    value={initImageStrength}
-                                                    onChange={(e) => setInitImageStrength(Number(e.target.value))}
-                                                    className="w-full"
-                                                />
-                                                <div className="text-[10px] text-neutral-500 font-medium italic">{initImageStrength.toFixed(2)}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Model-specific advanced params */}
-                        <div className="space-y-3">
-                            <button
-                                type="button"
-                                onClick={() => setShowModelParams(v => !v)}
-                                className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-neutral-600 hover:text-neutral-300 transition-all"
-                            >
-                                <Settings size={11} />
-                                Parámetros del modelo
-                                <ChevronDown size={11} className={`transition-transform ${showModelParams ? "rotate-180" : ""}`} />
-                            </button>
-                            {showModelParams && (() => {
-                                const prov = AI_MODELS.find(m => m.id === selectedModel)?.provider;
-                                return (
-                                    <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-4">
-                                        {/* Negative prompt — all providers */}
-                                        <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Prompt negativo</label>
-                                            <input
-                                                value={negativePrompt}
-                                                onChange={e => setNegativePrompt(e.target.value)}
-                                                placeholder="Ej: ugly, deformed, blurry, watermark"
-                                                className="w-full h-9 bg-white/5 border border-white/10 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-rose-500/30 transition-all font-medium"
-                                            />
-                                        </div>
-
-                                        {/* Steps — HF + Leonardo */}
-                                        {(prov === "Hugging Face" || prov === "Leonardo") && (
-                                            <div className="space-y-1.5">
-                                                <div className="flex justify-between items-center">
-                                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Pasos de inferencia</label>
-                                                    <span className="text-[10px] font-mono text-amber-400">{inferenceSteps}</span>
-                                                </div>
-                                                <input type="range" min={10} max={50} step={1} value={inferenceSteps} onChange={e => setInferenceSteps(Number(e.target.value))} className="w-full accent-amber-500 h-1" />
-                                                <div className="flex justify-between text-[8px] text-neutral-700 font-mono"><span>10 rápido</span><span>50 calidad</span></div>
-                                            </div>
-                                        )}
-
-                                        {/* Guidance scale — HF + Leonardo */}
-                                        {(prov === "Hugging Face" || prov === "Leonardo") && (
-                                            <div className="space-y-1.5">
-                                                <div className="flex justify-between items-center">
-                                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Guidance Scale (CFG)</label>
-                                                    <span className="text-[10px] font-mono text-amber-400">{guidanceScale.toFixed(1)}</span>
-                                                </div>
-                                                <input type="range" min={1} max={20} step={0.5} value={guidanceScale} onChange={e => setGuidanceScale(Number(e.target.value))} className="w-full accent-amber-500 h-1" />
-                                                <div className="flex justify-between text-[8px] text-neutral-700 font-mono"><span>1 creativo</span><span>20 fiel al prompt</span></div>
-                                            </div>
-                                        )}
-
-                                        {/* Fixed seed — Pollinations */}
-                                        {prov === "Pollinations" && (
-                                            <div className="space-y-1.5">
-                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Seed fijo (vacío = aleatorio)</label>
-                                                <input
-                                                    type="text"
-                                                    inputMode="numeric"
-                                                    value={fixedSeed}
-                                                    onChange={e => setFixedSeed(e.target.value.replace(/\D/g, ""))}
-                                                    placeholder="Ej: 42069"
-                                                    className="w-full h-9 bg-white/5 border border-white/10 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/30 transition-all font-mono"
-                                                />
-                                            </div>
-                                        )}
-
-                                        {/* Style — Ideogram */}
-                                        {prov === "Ideogram" && (
-                                            <div className="space-y-1.5">
-                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Estilo</label>
-                                                <KdpSelect accent="amber" value={ideogramStyle} onChange={setIdeogramStyle}
-                                                    options={["AUTO", "REALISTIC", "DESIGN", "RENDER_3D", "ANIME"].map(s => ({ value: s, label: s }))} />
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })()}
-                        </div>
-
-                        {(() => {
-                            const isCatalogActive = iaCatalogs.some(c => c.status === "running" || c.status === "pending" || c.status === "queued");
-                            return (
-                                <Button
-                                    onClick={() => handleGenerateImage()}
-                                    disabled={isGenerating || !imagePrompt.trim() || isCatalogActive}
-                                    className={`w-full h-14 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all duration-500 ${isGenerating
-                                        ? "bg-amber-500/20 text-amber-500 border border-amber-500/30"
-                                        : isCatalogActive
-                                            ? "bg-white/5 text-neutral-500 border border-white/10 cursor-not-allowed"
-                                            : "bg-amber-500 text-black hover:bg-amber-400 hover:scale-[1.02] active:scale-[0.98] shadow-[0_10px_30px_rgba(245,158,11,0.2)]"
-                                        }`}
-                                >
-                                    {isGenerating ? (
-                                        <><Loader2 size={18} className="mr-3 animate-spin" /> Procesando Activo Visual...</>
-                                    ) : isCatalogActive ? (
-                                        <><Layers size={18} className="mr-3" /> Catálogo en progreso...</>
-                                    ) : (
-                                        <><Zap size={18} className="mr-3 fill-current" /> Lanzar Generación I.A.</>
-                                    )}
-                                </Button>
-                            );
-                        })()}
-
-                        {/* Catalog launch — reuses studio model/dim/prompt */}
-                        <div className="border-t border-white/5 pt-5 space-y-4">
-                            <div className="flex items-center gap-2 text-neutral-500">
-                                <Layers size={12} />
-                                <span className="text-[10px] font-black uppercase tracking-widest">Generar catálogo con estos ajustes</span>
-                            </div>
-
-                            {/* Product type selector */}
-                            <div className="space-y-2">
-                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Tipo de producto</p>
-                                <div className="flex gap-1.5">
-                                    {([
-                                        { id: "coloring-book" as const, label: "Libro de colorear", desc: "B&W line art" },
-                                        { id: "printable-poster" as const, label: "Poster imprimible", desc: "Alta calidad" },
-                                        { id: "other" as const, label: "Otro", desc: "Sin modificar" },
-                                    ]).map(pt => (
-                                        <button key={pt.id} onClick={() => setCatalogProductType(pt.id)}
-                                            className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 px-2 rounded-xl border transition-all ${catalogProductType === pt.id ? "border-amber-500/40 bg-amber-500/[0.08] text-amber-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}>
-                                            <span className="text-[9px] font-black uppercase tracking-wide leading-tight text-center">{pt.label}</span>
-                                            <span className={`text-[8px] ${catalogProductType === pt.id ? "text-amber-500/60" : "text-neutral-700"}`}>{pt.desc}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Negative prompt — coloring book only */}
-                            {catalogProductType === "coloring-book" && (
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Prompt negativo adicional</p>
-                                        <span className="text-[8px] text-neutral-700 italic">Auto: sombreado, texturas, color…</span>
-                                    </div>
-                                    <input
-                                        value={catalogNegativePrompt}
-                                        onChange={e => setCatalogNegativePrompt(e.target.value)}
-                                        placeholder="Ej: cartoon, anime, hands, text, watermark…"
-                                        className="w-full h-9 bg-white/5 border border-white/10 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-rose-500/30 transition-all"
-                                    />
-                                    <div className="flex flex-wrap gap-1">
-                                        {["shading", "gray tones", "gradients", "color", "sepia", "textures", "shadows"].map(t => (
-                                            <span key={t} className="text-[8px] px-1.5 py-0.5 rounded-full bg-rose-500/8 border border-rose-500/15 text-rose-400/50 font-mono">{t}</span>
-                                        ))}
-                                        <span className="text-[8px] text-neutral-700 italic self-center">+ tu texto</span>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Creativity slider */}
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Variación IA de particularidades</p>
-                                    <span className={`text-[9px] font-black tabular-nums ${catalogCreativity <= 10 ? "text-neutral-700" : catalogCreativity <= 35 ? "text-sky-400/70" : catalogCreativity <= 65 ? "text-violet-400/70" : catalogCreativity <= 85 ? "text-amber-400/70" : "text-rose-400/70"}`}>
-                                        {catalogCreativity <= 10 ? "Sin variación" : catalogCreativity <= 35 ? "Sutil" : catalogCreativity <= 65 ? "Moderada" : catalogCreativity <= 85 ? "Alta" : "Máxima"}
-                                    </span>
-                                </div>
-                                <input type="range" min={0} max={100} step={5} value={catalogCreativity}
-                                    onChange={e => setCatalogCreativity(Number(e.target.value))}
-                                    className="w-full accent-violet-500 h-1.5 rounded-full cursor-pointer" />
-                                <div className="flex justify-between text-[8px] text-neutral-700">
-                                    <span>Idénticas</span>
-                                    <span>Diferentes</span>
-                                </div>
-                            </div>
-
-                            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                                <input
-                                    value={catalogFormName}
-                                    onChange={(e) => setCatalogFormName(e.target.value)}
-                                    placeholder="Nombre del catálogo (opcional)"
-                                    className="flex-1 min-w-0 h-10 bg-white/5 border border-white/10 rounded-xl px-3 text-sm text-white outline-none focus:border-violet-500/40 transition-all placeholder:text-neutral-700"
-                                />
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        inputMode="numeric"
-                                        pattern="[0-9]*"
-                                        placeholder="5"
-                                        value={catalogFormCount === 0 ? "" : String(catalogFormCount)}
-                                        onChange={(e) => {
-                                            const raw = e.target.value.replace(/\D/g, "");
-                                            setCatalogFormCount(raw === "" ? 0 : Math.min(50, Number(raw)));
+                                    <button ref={dimPickerBtnRef} type="button"
+                                        onClick={() => {
+                                            dimPickerRectRef.current = dimPickerBtnRef.current?.getBoundingClientRect() ?? null;
+                                            setShowDimPicker(v => !v);
+                                            setShowModelPicker(false);
                                         }}
-                                        className="w-16 h-10 bg-white/5 border border-white/10 rounded-xl px-2 text-sm font-bold text-white outline-none focus:border-violet-500/40 transition-all text-center"
-                                    />
-                                    <button
-                                        onClick={() => void createCatalogFromStudio()}
-                                        disabled={isCreatingCatalog || !promptTheme.trim()}
-                                        className="flex-1 sm:flex-none h-10 px-5 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        className="w-full h-10 bg-white/4 border border-white/8 rounded-2xl px-3.5 flex items-center justify-between gap-3 hover:bg-white/7 transition-all focus:outline-none"
                                     >
-                                        {isCreatingCatalog ? <Loader2 size={13} className="animate-spin" /> : <><Layers size={13} />Crear catálogo</>}
+                                        <div className="flex-1 min-w-0 text-left">
+                                            <p className="text-sm font-bold text-white truncate leading-tight">{currentDim?.name} <span className="font-normal text-neutral-500">({currentDim?.ratio})</span></p>
+                                            <p className="text-[9px] text-neutral-600 leading-tight">{currentDim?.width}×{currentDim?.height}px</p>
+                                        </div>
+                                        <ChevronDown size={14} className={`text-neutral-600 shrink-0 transition-transform duration-200 ${showDimPicker ? "rotate-180" : ""}`} />
                                     </button>
+                                    {showDimPicker && dimPickerRectRef.current && createPortal(
+                                        <>
+                                            <div className="fixed inset-0 z-[9998]" onClick={() => setShowDimPicker(false)} />
+                                            <div
+                                                className="fixed z-[9999] bg-[#111111] border border-white/12 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.9)] overflow-hidden"
+                                                style={{
+                                                    top: dimPickerRectRef.current.bottom + 6,
+                                                    left: dimPickerRectRef.current.left,
+                                                    width: dimPickerRectRef.current.width,
+                                                    maxHeight: "256px",
+                                                    overflowY: "auto",
+                                                }}
+                                            >
+                                                {AI_DIMENSIONS.map(d => (
+                                                    <button key={d.id} type="button"
+                                                        onClick={() => { setSelectedDim(d.id); setShowDimPicker(false); }}
+                                                        className={`w-full px-4 py-3 flex items-center gap-3 transition-all text-left border-b border-white/5 last:border-0 ${selectedDim === d.id ? "bg-white/6" : "hover:bg-white/3"}`}
+                                                    >
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-bold text-white leading-tight">{d.name} <span className="font-normal text-neutral-500">({d.ratio})</span></p>
+                                                            <p className="text-[10px] text-neutral-500 leading-tight mt-0.5">{d.width}×{d.height}px</p>
+                                                        </div>
+                                                        {selectedDim === d.id && <Check size={14} className="text-emerald-400 shrink-0" />}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </>,
+                                        document.body
+                                    )}
                                 </div>
                             </div>
-                            {(() => {
-                                const running = iaCatalogs.filter(c => c.status === "running" || c.status === "pending");
-                                const queued = iaCatalogs.filter(c => c.status === "queued");
-                                if (running.length === 0 && queued.length === 0) return null;
-                                return (
-                                    <p className="text-[10px] text-amber-500/70 italic flex items-center gap-1.5">
-                                        <Loader2 size={9} className="animate-spin" />
-                                        {running.length > 0 ? `${running.length} en progreso` : ""}
-                                        {running.length > 0 && queued.length > 0 ? " · " : ""}
-                                        {queued.length > 0 ? `${queued.length} en cola` : ""}
-                                        {" · el nuevo se añadirá a la cola"}
-                                    </p>
-                                );
-                            })()}
-                            <p className="text-[10px] text-neutral-600 italic">
-                                ~{Math.ceil(catalogFormCount * 1.5)} min · {catalogFormCount} imágenes · {AI_MODELS.find(m => m.id === selectedModel)?.name} · {AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio}
-                            </p>
                         </div>
                     </div>
-                </Card>
+
+                    <div className="h-px bg-gradient-to-r from-transparent via-white/8 to-transparent mx-6" />
+
+                    {/* ── 02 PROMPT ── */}
+                    <div className="p-6 space-y-4 relative z-10">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-[9px] font-black text-neutral-500 flex items-center justify-center shrink-0">02</span>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Prompt del Activo</p>
+                            </div>
+                            {imagePrompt && (
+                                <div className="flex items-center gap-1.5">
+                                    <button type="button"
+                                        onClick={() => navigator.clipboard.writeText(imagePrompt).then(() => toast.success("Prompt copiado"))}
+                                        className="p-1.5 rounded-lg bg-white/5 text-neutral-600 hover:text-white hover:bg-white/10 transition-all border border-white/8" title="Copiar">
+                                        <Copy size={10} />
+                                    </button>
+                                    <button type="button"
+                                        onClick={() => { setSavePromptName(""); setSavePromptCategory("General"); setShowSavePromptDialog(true); }}
+                                        className="p-1.5 rounded-lg bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition-all border border-violet-500/20" title="Guardar en biblioteca">
+                                        <BookMarked size={10} />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                        <div className="space-y-2">
+                            <input value={promptTheme} onChange={e => setPromptTheme(e.target.value)}
+                                placeholder="Temática · Ej: Vintage botanical illustration"
+                                className="w-full h-10 bg-white/4 border border-white/8 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/25 focus:bg-white/6 transition-all font-medium"
+                            />
+                            <input value={promptSpecs} onChange={e => setPromptSpecs(e.target.value)}
+                                placeholder="Especificaciones · Ej: watercolor style, high detail"
+                                className="w-full h-10 bg-white/4 border border-white/8 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/25 focus:bg-white/6 transition-all font-medium"
+                            />
+                            <input value={promptDetails} onChange={e => setPromptDetails(e.target.value)}
+                                placeholder="Detalles · Ej: lavender field, soft pastel palette"
+                                className="w-full h-10 bg-white/4 border border-white/8 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/25 focus:bg-white/6 transition-all font-medium"
+                            />
+                            <div className="relative">
+                                <input value={promptParticulars} onChange={e => setPromptParticulars(e.target.value)}
+                                    placeholder="Particularidades · editado por IA en catálogo"
+                                    className="w-full h-10 bg-violet-500/[0.06] border border-violet-500/20 rounded-xl px-4 pr-20 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/40 focus:bg-violet-500/[0.09] transition-all font-medium"
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black uppercase tracking-widest text-violet-500/50 pointer-events-none flex items-center gap-1">
+                                    <Sparkles size={7} className="animate-pulse" /> IA
+                                </span>
+                            </div>
+                        </div>
+                        {imagePrompt && (
+                            <p className="text-[9px] text-neutral-700 font-mono truncate px-1" title={imagePrompt}>{imagePrompt}</p>
+                        )}
+                    </div>
+
+                    <div className="h-px bg-gradient-to-r from-transparent via-white/8 to-transparent mx-6" />
+
+                    {/* ── 03 OPCIONES AVANZADAS ── */}
+                    <div className="relative z-10">
+                        <button type="button"
+                            onClick={() => setShowAdvancedOptions(v => !v)}
+                            className="w-full px-6 py-4 flex items-center gap-3 hover:bg-white/2 transition-colors group"
+                        >
+                            <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-[9px] font-black text-neutral-500 flex items-center justify-center shrink-0">03</span>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 group-hover:text-neutral-200 transition-colors flex-1 text-left">Opciones avanzadas</p>
+                            <ChevronDown size={13} className={`text-neutral-600 transition-transform duration-300 ${showAdvancedOptions ? "rotate-180" : ""}`} />
+                        </button>
+
+                        {showAdvancedOptions && (() => {
+                            const prov = currentModel?.provider;
+                            return (
+                                <div className="px-6 pb-5 space-y-4">
+                                    <div className="space-y-2">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Prompt negativo</label>
+                                        <input value={negativePrompt} onChange={e => setNegativePrompt(e.target.value)}
+                                            placeholder="Ej: ugly, deformed, blurry, watermark"
+                                            className="w-full h-10 bg-white/4 border border-white/8 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-rose-500/25 transition-all"
+                                        />
+                                    </div>
+                                    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 space-y-3">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Imagen de referencia</p>
+                                            <p className="text-[9px] text-neutral-700 italic">Ctrl/⌘+V o arrastra</p>
+                                        </div>
+                                        <div className="grid grid-cols-[96px_1fr] gap-3 items-start">
+                                            <div
+                                                className="rounded-xl border border-dashed border-white/12 bg-black/20 w-24 aspect-square flex items-center justify-center text-center focus:outline-none overflow-hidden cursor-pointer"
+                                                tabIndex={0}
+                                                onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                                                onDrop={e => { e.preventDefault(); e.stopPropagation(); const file = e.dataTransfer.files?.[0]; if (file) void setInitImageFromFile(file); }}
+                                                onPaste={e => { const items = Array.from(e.clipboardData?.items || []); const imageItem = items.find(it => it.kind === "file" && it.type.startsWith("image/")); const file = imageItem?.getAsFile() || null; if (file) void setInitImageFromFile(file); }}
+                                            >
+                                                {initImageDataUrl ? (
+                                                    <img src={initImageDataUrl} alt="Referencia" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <div className="space-y-1 p-2">
+                                                        <Camera size={18} className="text-neutral-600 mx-auto" />
+                                                        <p className="text-[8px] text-neutral-700 italic">Pegar</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="space-y-3">
+                                                <p className="text-[9px] text-neutral-600 italic">Enviada junto al prompt (Gemini / Leonardo).</p>
+                                                {initImageDataUrl && (
+                                                    <>
+                                                        <Button onClick={() => setInitImageDataUrl(null)} variant="outline"
+                                                            className="h-8 rounded-xl border-white/10 bg-white/5 text-[9px] font-black uppercase text-neutral-400 hover:text-white">
+                                                            Quitar imagen
+                                                        </Button>
+                                                        <div className="space-y-1.5">
+                                                            <div className="flex justify-between">
+                                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Fuerza</label>
+                                                                <span className="text-[9px] font-mono text-amber-400">{initImageStrength.toFixed(2)}</span>
+                                                            </div>
+                                                            <input type="range" min={0.1} max={0.9} step={0.05} value={initImageStrength}
+                                                                onChange={e => setInitImageStrength(Number(e.target.value))}
+                                                                className="w-full accent-amber-500 h-1" />
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {(prov === "Hugging Face" || prov === "Leonardo") && (
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Pasos de inferencia</label>
+                                                <span className="text-[10px] font-mono text-amber-400">{inferenceSteps}</span>
+                                            </div>
+                                            <input type="range" min={10} max={50} step={1} value={inferenceSteps} onChange={e => setInferenceSteps(Number(e.target.value))} className="w-full accent-amber-500 h-1" />
+                                            <div className="flex justify-between text-[8px] text-neutral-700 font-mono"><span>10 rápido</span><span>50 calidad</span></div>
+                                        </div>
+                                    )}
+                                    {(prov === "Hugging Face" || prov === "Leonardo") && (
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Guidance Scale (CFG)</label>
+                                                <span className="text-[10px] font-mono text-amber-400">{guidanceScale.toFixed(1)}</span>
+                                            </div>
+                                            <input type="range" min={1} max={20} step={0.5} value={guidanceScale} onChange={e => setGuidanceScale(Number(e.target.value))} className="w-full accent-amber-500 h-1" />
+                                            <div className="flex justify-between text-[8px] text-neutral-700 font-mono"><span>1 creativo</span><span>20 fiel</span></div>
+                                        </div>
+                                    )}
+                                    <div className="space-y-2">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Seed fijo (vacío = aleatorio)</label>
+                                        <input type="text" inputMode="numeric" value={fixedSeed}
+                                            onChange={e => setFixedSeed(e.target.value.replace(/\D/g, ""))}
+                                            placeholder="Ej: 42069"
+                                            className="w-full h-9 bg-white/4 border border-white/8 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/25 transition-all font-mono"
+                                        />
+                                    </div>
+                                    {prov === "Ideogram" && (
+                                        <div className="space-y-2">
+                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Estilo Ideogram</label>
+                                            <KdpSelect accent="amber" value={ideogramStyle} onChange={setIdeogramStyle}
+                                                options={["AUTO", "REALISTIC", "DESIGN", "RENDER_3D", "ANIME"].map(s => ({ value: s, label: s }))} />
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
+                    </div>
+
+                    <div className="h-px bg-gradient-to-r from-transparent via-white/8 to-transparent mx-6" />
+
+                    {/* ── GENERATE BUTTON ── */}
+                    <div className="px-6 pb-6 pt-1 relative z-10 space-y-3">
+                        {(() => {
+                            const running = iaCatalogs.filter(c => c.status === "running" || c.status === "pending");
+                            const queued = iaCatalogs.filter(c => c.status === "queued");
+                            const isCatalogActive = running.length > 0 || queued.length > 0;
+                            return (
+                                <>
+                                    <Button
+                                        onClick={() => handleGenerateImage()}
+                                        disabled={isGenerating || !imagePrompt.trim() || isCatalogActive}
+                                        className={`w-full h-14 rounded-2xl font-black uppercase tracking-widest text-[11px] transition-all duration-500 ${isGenerating
+                                            ? "bg-amber-500/15 text-amber-400 border border-amber-500/25"
+                                            : isCatalogActive
+                                                ? "bg-white/4 text-neutral-500 border border-white/8 cursor-not-allowed"
+                                                : "bg-amber-500 text-black hover:bg-amber-400 hover:scale-[1.02] active:scale-[0.98] shadow-[0_8px_30px_rgba(245,158,11,0.25)]"
+                                        }`}
+                                    >
+                                        {isGenerating ? (
+                                            <><Loader2 size={18} className="mr-3 animate-spin" /> Procesando Activo Visual...</>
+                                        ) : isCatalogActive ? (
+                                            <><Layers size={18} className="mr-3" /> Catálogo en progreso...</>
+                                        ) : (
+                                            <><Zap size={18} className="mr-3 fill-current" /> Lanzar Generación I.A.</>
+                                        )}
+                                    </Button>
+
+                                    {/* Estado de cola — siempre visible cuando hay actividad */}
+                                    {isCatalogActive && (
+                                        <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-violet-500/[0.06] border border-violet-500/20">
+                                            <div className="relative shrink-0">
+                                                <div className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+                                                <div className="absolute inset-0 rounded-full bg-violet-400/40 animate-ping" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-[10px] font-black text-violet-300 leading-tight">
+                                                    {running.length > 0 ? `Generando — ${running[0]?.name || "catálogo"}` : `En cola — ${queued[0]?.name || "catálogo"}`}
+                                                </p>
+                                                <p className="text-[9px] text-neutral-600 mt-0.5">
+                                                    {running.length > 0 && `${running[0]?.images?.length ?? 0}/${running[0]?.totalImages ?? "?"} imágenes`}
+                                                    {running.length > 0 && queued.length > 0 && " · "}
+                                                    {queued.length > 0 && `${queued.length} en cola`}
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={() => setShowCatalogAccordion(true)}
+                                                className="text-[9px] font-black uppercase tracking-widest text-violet-400/60 hover:text-violet-300 transition-colors shrink-0"
+                                            >
+                                                Ver
+                                            </button>
+                                        </div>
+                                    )}
+                                </>
+                            );
+                        })()}
+                    </div>
+
+                    {/* ── 04 CATÁLOGO IA (accordion) ── */}
+                    <div className="border-t border-white/6 relative z-10">
+                        <button type="button"
+                            onClick={() => setShowCatalogAccordion(v => !v)}
+                            className="w-full px-6 py-4 flex items-center gap-3 hover:bg-white/2 transition-colors group"
+                        >
+                            <span className="w-6 h-6 rounded-full bg-violet-500/10 border border-violet-500/20 text-[9px] font-black text-violet-400 flex items-center justify-center shrink-0">04</span>
+                            <div className="flex-1 text-left">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 group-hover:text-neutral-200 transition-colors">Generar catálogo</p>
+                                <p className="text-[9px] text-neutral-600 mt-0.5">Producción masiva con estos ajustes</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {iaCatalogs.some(c => c.status === "running" || c.status === "queued") && (
+                                    <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+                                )}
+                                <ChevronDown size={13} className={`text-neutral-600 transition-transform duration-300 ${showCatalogAccordion ? "rotate-180" : ""}`} />
+                            </div>
+                        </button>
+                        {showCatalogAccordion && (
+                            <div className="px-6 pb-6 space-y-4">
+                                <div className="space-y-2">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Tipo de producto</p>
+                                    <div className="flex gap-1.5">
+                                        {([
+                                            { id: "coloring-book" as const, label: "Colorear", desc: "B&W line art" },
+                                            { id: "printable-poster" as const, label: "Poster", desc: "Alta calidad" },
+                                            { id: "other" as const, label: "Otro", desc: "Sin modificar" },
+                                        ]).map(pt => (
+                                            <button key={pt.id} onClick={() => setCatalogProductType(pt.id)}
+                                                className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 px-2 rounded-xl border transition-all ${catalogProductType === pt.id ? "border-violet-500/40 bg-violet-500/[0.08] text-violet-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}
+                                            >
+                                                <span className="text-[9px] font-black uppercase tracking-wide">{pt.label}</span>
+                                                <span className={`text-[8px] ${catalogProductType === pt.id ? "text-violet-500/60" : "text-neutral-700"}`}>{pt.desc}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {catalogProductType === "coloring-book" && (
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Prompt negativo adicional</p>
+                                            <span className="text-[8px] text-neutral-700 italic">Auto: sombreado, color…</span>
+                                        </div>
+                                        <input value={catalogNegativePrompt} onChange={e => setCatalogNegativePrompt(e.target.value)}
+                                            placeholder="Ej: cartoon, hands, text, watermark…"
+                                            className="w-full h-9 bg-white/4 border border-white/8 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-rose-500/25 transition-all"
+                                        />
+                                        <div className="flex flex-wrap gap-1">
+                                            {["shading", "gray tones", "gradients", "color", "sepia"].map(t => (
+                                                <span key={t} className="text-[8px] px-1.5 py-0.5 rounded-full bg-rose-500/6 border border-rose-500/12 text-rose-400/50 font-mono">{t}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Variación IA</p>
+                                        <span className={`text-[9px] font-black tabular-nums ${catalogCreativity <= 10 ? "text-neutral-700" : catalogCreativity <= 35 ? "text-sky-400/70" : catalogCreativity <= 65 ? "text-violet-400/70" : catalogCreativity <= 85 ? "text-amber-400/70" : "text-rose-400/70"}`}>
+                                            {catalogCreativity <= 10 ? "Sin variación" : catalogCreativity <= 35 ? "Sutil" : catalogCreativity <= 65 ? "Moderada" : catalogCreativity <= 85 ? "Alta" : "Máxima"}
+                                        </span>
+                                    </div>
+                                    <input type="range" min={0} max={100} step={5} value={catalogCreativity}
+                                        onChange={e => setCatalogCreativity(Number(e.target.value))}
+                                        className="w-full accent-violet-500 h-1.5 rounded-full cursor-pointer" />
+                                    <div className="flex justify-between text-[8px] text-neutral-700"><span>Idénticas</span><span>Diferentes</span></div>
+                                </div>
+                                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                                    <input value={catalogFormName} onChange={e => setCatalogFormName(e.target.value)}
+                                        placeholder="Nombre del catálogo (opcional)"
+                                        className="flex-1 min-w-0 h-10 bg-white/4 border border-white/8 rounded-xl px-3 text-sm text-white outline-none focus:border-violet-500/30 transition-all placeholder:text-neutral-700"
+                                    />
+                                    <div className="flex gap-2">
+                                        <input type="text" inputMode="numeric" pattern="[0-9]*" placeholder="5"
+                                            value={catalogFormCount === 0 ? "" : String(catalogFormCount)}
+                                            onChange={e => { const raw = e.target.value.replace(/\D/g, ""); setCatalogFormCount(raw === "" ? 0 : Math.min(50, Number(raw))); }}
+                                            className="w-14 h-10 bg-white/4 border border-white/8 rounded-xl px-2 text-sm font-bold text-white outline-none focus:border-violet-500/30 transition-all text-center"
+                                        />
+                                        <button onClick={() => void createCatalogFromStudio()}
+                                            disabled={isCreatingCatalog || !promptTheme.trim()}
+                                            className="flex-1 sm:flex-none h-10 px-5 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_4px_20px_rgba(139,92,246,0.2)]"
+                                        >
+                                            {isCreatingCatalog ? <Loader2 size={13} className="animate-spin" /> : <><Layers size={13} />Crear</>}
+                                        </button>
+                                    </div>
+                                </div>
+                                {(() => {
+                                    const running = iaCatalogs.filter(c => c.status === "running" || c.status === "pending");
+                                    const queued = iaCatalogs.filter(c => c.status === "queued");
+                                    if (running.length === 0 && queued.length === 0) return null;
+                                    return (
+                                        <p className="text-[10px] text-amber-500/70 italic flex items-center gap-1.5">
+                                            <Loader2 size={9} className="animate-spin" />
+                                            {running.length > 0 ? `${running.length} en progreso` : ""}
+                                            {running.length > 0 && queued.length > 0 ? " · " : ""}
+                                            {queued.length > 0 ? `${queued.length} en cola` : ""}
+                                            {" · el nuevo se añadirá a la cola"}
+                                        </p>
+                                    );
+                                })()}
+                                <p className="text-[9px] text-neutral-700 italic">
+                                    ~{Math.ceil(catalogFormCount * 1.5)} min · {catalogFormCount} imágenes · {currentModel?.name} · {currentDim?.ratio}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                </div>
 
                 {/* Right Column */}
                 <div className="flex flex-col gap-6">
@@ -3552,6 +3559,7 @@ export function KdpFactoryApp() {
 
         </div>
     );
+    };
 
     const renderCreation = () => (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -3891,10 +3899,13 @@ export function KdpFactoryApp() {
                                                     return (
                                                         <div key={ph.id} className="flex items-center gap-1 flex-1">
                                                             <button
-                                                                onClick={() => isNext ? void advanceNichePhase(niche) : undefined}
-                                                                title={isNext ? `Marcar como ${ph.label}` : ph.label}
+                                                                onClick={() => {
+                                                                    if (isNext) void advanceNichePhase(niche);
+                                                                    else if (done && !isCurrent) void setNichePhase(niche, ph.id);
+                                                                }}
+                                                                title={isCurrent ? ph.label : isNext ? `Avanzar a ${ph.label}` : done ? `Volver a ${ph.label}` : ph.label}
                                                                 className={`flex-1 h-5 rounded-md text-[7px] font-black uppercase tracking-widest transition-all truncate ${
-                                                                    done ? isCurrent ? "bg-violet-500 text-white" : "bg-violet-500/30 text-violet-300"
+                                                                    done ? isCurrent ? "bg-violet-500 text-white" : "bg-violet-500/30 text-violet-300 hover:bg-violet-500/50 cursor-pointer"
                                                                     : isNext ? "bg-white/5 border border-dashed border-white/20 text-neutral-600 hover:border-violet-500/40 hover:text-violet-400 cursor-pointer"
                                                                     : "bg-white/[0.02] border border-white/5 text-neutral-700"
                                                                 }`}
