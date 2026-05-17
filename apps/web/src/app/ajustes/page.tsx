@@ -29,7 +29,10 @@ export default function AjustesPage() {
     const [isSaving, setIsSaving] = useState(false);
 
     const [defaultProvider, setDefaultProvider] = useState("google");
-    const [defaultModel, setDefaultModel] = useState("gemini-1.5-flash");
+    const [defaultModel, setDefaultModel] = useState("gemini-2.5-flash");
+
+    const [googleApiKey, setGoogleApiKey] = useState("");
+    const [showGoogleKey, setShowGoogleKey] = useState(false);
 
     const [cloudinaryCloudName, setCloudinaryCloudName] = useState("af6b2f473a2cd3539b6d7bef68fb37");
     const [cloudinaryApiKey, setCloudinaryApiKey] = useState("");
@@ -55,6 +58,7 @@ export default function AjustesPage() {
 
                 if (map.has("DEFAULT_LLM_PROVIDER")) setDefaultProvider(map.get("DEFAULT_LLM_PROVIDER"));
                 if (map.has("DEFAULT_LLM_MODEL")) setDefaultModel(map.get("DEFAULT_LLM_MODEL"));
+                if (map.has("GOOGLE_API_KEY")) setGoogleApiKey(map.get("GOOGLE_API_KEY"));
                 if (map.has("CLOUDINARY_CLOUD_NAME")) setCloudinaryCloudName(map.get("CLOUDINARY_CLOUD_NAME"));
                 if (map.has("CLOUDINARY_API_KEY")) setCloudinaryApiKey(map.get("CLOUDINARY_API_KEY"));
                 if (map.has("CLOUDINARY_API_SECRET")) setCloudinaryApiSecret(map.get("CLOUDINARY_API_SECRET"));
@@ -84,6 +88,7 @@ export default function AjustesPage() {
             const updates = [
                 { key: "DEFAULT_LLM_PROVIDER", value: defaultProvider },
                 { key: "DEFAULT_LLM_MODEL", value: defaultModel },
+                { key: "GOOGLE_API_KEY", value: googleApiKey },
                 { key: "CLOUDINARY_CLOUD_NAME", value: cloudinaryCloudName },
                 { key: "CLOUDINARY_API_KEY", value: cloudinaryApiKey },
                 { key: "CLOUDINARY_API_SECRET", value: cloudinaryApiSecret },
@@ -146,16 +151,16 @@ export default function AjustesPage() {
                                     <div className="flex items-center gap-4">
                                         <div
                                             className={`w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center text-white shadow-lg ${defaultProvider === 'google' ? 'shadow-blue-500/20' : 'shadow-none cursor-pointer'} transition-all`}
-                                            onClick={() => handleProviderChange('google', 'gemini-1.5-pro')}
+                                            onClick={() => handleProviderChange('google', 'gemini-2.5-flash')}
                                         >
                                             <span className="font-black text-xl italic">G</span>
                                         </div>
-                                        <div className="cursor-pointer" onClick={() => handleProviderChange('google', 'gemini-1.5-pro')}>
+                                        <div className="cursor-pointer" onClick={() => handleProviderChange('google', 'gemini-2.5-flash')}>
                                             <h3 className="font-black text-lg text-white">Google Gemini</h3>
                                             <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Motor Oficial</p>
                                         </div>
                                     </div>
-                                    <div className="flex flex-col items-end gap-1 cursor-pointer" onClick={() => handleProviderChange('google', 'gemini-1.5-pro')}>
+                                    <div className="flex flex-col items-end gap-1 cursor-pointer" onClick={() => handleProviderChange('google', 'gemini-2.5-flash')}>
                                         {defaultProvider === "google" ? (
                                             <div className="flex items-center gap-2">
                                                 <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
@@ -190,19 +195,18 @@ export default function AjustesPage() {
                                         <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Google Target Model</label>
                                         <select
                                             className="w-full h-10 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-bold text-white outline-none focus:border-primary transition-all appearance-none cursor-pointer"
-                                            value={defaultProvider === 'google' ? defaultModel : 'gemini-1.5-flash'}
+                                            value={defaultProvider === 'google' ? defaultModel : 'gemini-2.5-flash'}
                                             onChange={(e) => { handleProviderChange('google', e.target.value) }}
                                         >
-                                            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Exp)</option>
+                                            <option value="gemini-2.5-flash">Gemini 2.5 Flash (recomendado - gratuito)</option>
+                                            <option value="gemini-2.5-pro">Gemini 2.5 Pro (mas capaz - cuota baja)</option>
                                             <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-                                            <option value="gemini-2.0-pro-exp">Gemini 2.0 Pro (Exp)</option>
-                                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
                                             <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
                                         </select>
                                     </div>
                                     <p className="text-[11px] text-neutral-500 leading-relaxed">
-                                        Nota: los modelos cloud suelen requerir credenciales y pueden tener cuotas (no
-                                        es “ilimitado”).
+                                        Gemini 2.5 Flash es el más potente y rápido del tier gratuito (~1500 req/día).
                                     </p>
                                 </div>
                             </div>
@@ -270,7 +274,7 @@ export default function AjustesPage() {
                                         </select>
                                     </div>
                                     <p className="text-[11px] text-neutral-500 leading-relaxed">
-                                        Estos nombres son “identificadores internos” de tu app (los mapearemos al
+                                        Estos nombres son "identificadores internos" de tu app (los mapearemos al
                                         proveedor real cuando implementemos la inferencia).
                                     </p>
                                 </div>
@@ -285,6 +289,46 @@ export default function AjustesPage() {
                             <Button onClick={handleSave} disabled={isSaving} variant="primary" className="w-full sm:w-fit font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
                                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar en MongoDB"}
                             </Button>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* API Keys */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">API Keys</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-blue-500/10 text-blue-400 border-blue-500/20">IA</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20 text-lg font-black">G</div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Google Gemini API Key</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Tendencias · Generación de prompts · LLM</p>
+                                </div>
+                            </div>
+                            <div className="space-y-2 max-w-xl">
+                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">GOOGLE_API_KEY</label>
+                                <div className="relative">
+                                    <input
+                                        type={showGoogleKey ? "text" : "password"}
+                                        value={googleApiKey}
+                                        onChange={(e) => setGoogleApiKey(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-blue-500/40 transition-all"
+                                        placeholder="AIzaSy..."
+                                    />
+                                    <button type="button" onClick={() => setShowGoogleKey((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                        {showGoogleKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-neutral-600 italic">Gratis en <span className="text-blue-400">aistudio.google.com</span> · ~1500 peticiones/día sin coste</p>
+                            </div>
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
                         </div>
                     </Card>
                 </section>

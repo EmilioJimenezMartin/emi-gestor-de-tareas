@@ -9,6 +9,12 @@ export interface ISavedPrompt extends Document {
         details: string;
         particulars: string;
     };
+    aiModel?: {
+        id: string;
+        name: string;
+        provider: string;
+        modelId: string;
+    };
     createdAt: Date;
     updatedAt: Date;
 }
@@ -22,6 +28,12 @@ const SavedPromptSchema = new Schema<ISavedPrompt>(
             specs: { type: String, default: "" },
             details: { type: String, default: "" },
             particulars: { type: String, default: "" },
+        },
+        aiModel: {
+            id: { type: String, default: "" },
+            name: { type: String, default: "" },
+            provider: { type: String, default: "" },
+            modelId: { type: String, default: "" },
         },
     },
     { timestamps: true }

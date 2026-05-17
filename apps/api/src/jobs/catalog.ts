@@ -2,6 +2,7 @@ import type { Agenda, Job } from "agenda";
 import axios from "axios";
 import { Catalog } from "../models/catalog.js";
 import { getCloudinaryConfig, initCloudinary } from "../routes/cloudinary.js";
+import { activateNextQueued } from "../lib/catalog-queue.js";
 
 const JOB_NAME = "generate-catalog-image";
 const LOCK_LIFETIME_MS = 5 * 60 * 1000; // 5 min per job execution
@@ -33,6 +34,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             catalog.status = "completed";
             await catalog.save();
             io.emit("catalog:completed", { catalogId });
+            void activateNextQueued(agenda, io);
             return;
         }
 
@@ -128,7 +130,10 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                         provider: catalog.aiModel.provider,
                         width: catalog.width,
                         height: catalog.height,
-                        ...(finalNegativePrompt ? { advancedParams: { negativePrompt: finalNegativePrompt } } : {}),
+                        advancedParams: {
+                            ...(finalNegativePrompt ? { negativePrompt: finalNegativePrompt } : {}),
+                            ...(catalog.aiModel.provider === "Ideogram" ? { style: "ILLUSTRATION" } : {}),
+                        },
                     },
                     { responseType: "arraybuffer", timeout: 120000 }
                 );
@@ -196,6 +201,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
 
             if (isComplete) {
                 io.emit("catalog:completed", { catalogId });
+                void activateNextQueued(agenda, io);
             } else {
                 console.log(`${tag} Scheduling next image in 90s`);
                 try {
@@ -248,6 +254,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
 
             if (isComplete) {
                 io.emit("catalog:completed", { catalogId });
+                void activateNextQueued(agenda, io);
             } else {
                 // Wait 2 minutes before trying the next image slot
                 console.log(`${tag} Scheduling next slot in 2 minutes`);

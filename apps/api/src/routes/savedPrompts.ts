@@ -24,7 +24,7 @@ export async function registerSavedPromptsRoutes(app: FastifyInstance) {
     app.post("/saved-prompts", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const { name, category, promptParts } = request.body as any;
+            const { name, category, promptParts, aiModel } = request.body as any;
             if (!name?.trim()) return reply.status(400).send({ error: "name required" });
             if (!promptParts?.theme?.trim()) return reply.status(400).send({ error: "theme required" });
             const prompt = new SavedPrompt({
@@ -36,6 +36,7 @@ export async function registerSavedPromptsRoutes(app: FastifyInstance) {
                     details: promptParts.details?.trim() ?? "",
                     particulars: promptParts.particulars?.trim() ?? "",
                 },
+                ...(aiModel ? { aiModel } : {}),
             });
             await prompt.save();
             return reply.status(201).send({ prompt });
@@ -48,10 +49,17 @@ export async function registerSavedPromptsRoutes(app: FastifyInstance) {
         if (!ensureMongo(reply)) return;
         try {
             const { id } = request.params as { id: string };
-            const { name, category } = request.body as any;
-            const update: Record<string, string> = {};
+            const { name, category, promptParts, aiModel } = request.body as any;
+            const update: Record<string, any> = {};
             if (name?.trim()) update.name = name.trim();
             if (category?.trim()) update.category = category.trim();
+            if (promptParts) {
+                if (promptParts.theme !== undefined) update["promptParts.theme"] = promptParts.theme.trim();
+                if (promptParts.specs !== undefined) update["promptParts.specs"] = promptParts.specs.trim();
+                if (promptParts.details !== undefined) update["promptParts.details"] = promptParts.details.trim();
+                if (promptParts.particulars !== undefined) update["promptParts.particulars"] = promptParts.particulars.trim();
+            }
+            if (aiModel) update.aiModel = aiModel;
             const prompt = await SavedPrompt.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
             if (!prompt) return reply.status(404).send({ error: "not found" });
             return reply.send({ prompt });

@@ -21,6 +21,7 @@ type ServerToClientEvents = {
   "catalog:progress": (payload: { catalogId: string; status: string; current: number; total: number; image?: { publicId: string; url: string; width: number; height: number; bytes: number; createdAt: string } }) => void;
   "catalog:completed": (payload: { catalogId: string }) => void;
   "catalog:error": (payload: { catalogId: string; error: string; current: number; total: number }) => void;
+  "catalog:queue-activated": (payload: { catalogId: string; status: string; name: string }) => void;
 };
 
 type ClientToServerEvents = Record<string, never>;

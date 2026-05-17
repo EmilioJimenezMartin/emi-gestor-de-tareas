@@ -22,7 +22,7 @@ export default function RootLayout({
             {children}
           </NavigationWrapper>
         </StoreProvider>
-        <Toaster theme="dark" richColors position="top-center" />
+        <Toaster theme="dark" richColors position="top-center" closeButton />
       </body>
     </html>
   );

@@ -42,7 +42,7 @@ await registerSettingsRoutes(app);
 await registerFinanceRoutes(app, { io });
 await registerAIRoutes(app);
 await registerCloudinaryRoutes(app);
-await registerCatalogRoutes(app);
+await registerCatalogRoutes(app, { io });
 await registerSavedPromptsRoutes(app);
 await registerNicheRoutes(app);
 
@@ -100,7 +100,7 @@ const seedSettings = async () => {
     );
     await Settings.findOneAndUpdate(
       { key: "DEFAULT_LLM_MODEL" },
-      { $setOnInsert: { key: "DEFAULT_LLM_MODEL", value: "gemini-1.5-pro", is_secret: false } },
+      { $setOnInsert: { key: "DEFAULT_LLM_MODEL", value: "gemini-2.5-flash", is_secret: false } },
       { upsert: true, new: true }
     );
     // Cloudinary — cloud_name seeded; api_key and api_secret left empty for user to fill via UI

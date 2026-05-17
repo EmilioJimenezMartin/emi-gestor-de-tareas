@@ -3,6 +3,7 @@ import { Catalog } from "../models/catalog.js";
 import { getAgenda } from "../lib/agenda.js";
 import { getMongoStatus } from "../lib/mongo.js";
 import { getCloudinaryConfig, initCloudinary } from "./cloudinary.js";
+import { activateNextQueued } from "../lib/catalog-queue.js";
 
 function ensureMongo(reply: any): boolean {
     if (getMongoStatus() !== "connected") {
@@ -12,7 +13,7 @@ function ensureMongo(reply: any): boolean {
     return true;
 }
 
-export async function registerCatalogRoutes(app: FastifyInstance) {
+export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: any } = { io: null }) {
     // GET /catalogs — list all catalogs
     app.get("/catalogs", async (_req, reply) => {
         if (!ensureMongo(reply)) return;
@@ -36,7 +37,7 @@ export async function registerCatalogRoutes(app: FastifyInstance) {
         }
     });
 
-    // POST /catalogs — create catalog and schedule first job
+    // POST /catalogs — create catalog; queue if another is already active
     app.post("/catalogs", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
@@ -45,6 +46,10 @@ export async function registerCatalogRoutes(app: FastifyInstance) {
             if (!prompt || !modelData || !totalImages) {
                 return reply.status(400).send({ error: "prompt, model y totalImages son requeridos" });
             }
+
+            // Check if any catalog is currently occupying the slot
+            const hasActive = await Catalog.exists({ status: { $in: ["queued", "pending", "running"] } });
+            const initialStatus = hasActive ? "queued" : "pending";
 
             const catalog = await Catalog.create({
                 name: (name?.trim() || `Catálogo ${new Date().toLocaleDateString("es-ES")}`),
@@ -58,11 +63,18 @@ export async function registerCatalogRoutes(app: FastifyInstance) {
                 height: height || 1024,
                 totalImages: Math.min(Math.max(1, Number(totalImages)), 50),
                 images: [],
-                status: "pending",
+                status: initialStatus,
+                queueOrder: Date.now(),
             });
 
-            const agenda = getAgenda();
-            await agenda.now("generate-catalog-image", { catalogId: String(catalog._id) });
+            if (initialStatus === "pending") {
+                const agenda = getAgenda();
+                await agenda.now("generate-catalog-image", { catalogId: String(catalog._id) });
+            } else {
+                // Count position in queue (1-based) for informational purposes
+                const queuePos = await Catalog.countDocuments({ status: "queued" });
+                app.log.info(`Catalog ${catalog._id} queued at position ${queuePos}`);
+            }
 
             return reply.status(201).send({ catalog });
         } catch (e: any) {
@@ -77,7 +89,8 @@ export async function registerCatalogRoutes(app: FastifyInstance) {
             const catalog = await Catalog.findById(request.params.id);
             if (!catalog) return reply.status(404).send({ error: "Catálogo no encontrado" });
 
-            if (catalog.status === "running" || catalog.status === "pending") {
+            const wasActive = catalog.status === "running" || catalog.status === "pending";
+            if (wasActive) {
                 catalog.status = "cancelled";
                 await catalog.save();
             }
@@ -96,6 +109,9 @@ export async function registerCatalogRoutes(app: FastifyInstance) {
             }
 
             await Catalog.findByIdAndDelete(request.params.id);
+            if (wasActive) {
+                try { void activateNextQueued(getAgenda(), io); } catch { /* agenda not ready */ }
+            }
             return reply.send({ success: true });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
@@ -131,15 +147,59 @@ export async function registerCatalogRoutes(app: FastifyInstance) {
         }
     });
 
-    // POST /catalogs/:id/cancel — cancel a running catalog
+    // POST /catalogs/:id/cancel — cancel a running/pending/queued catalog
     app.post("/catalogs/:id/cancel", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
             const catalog = await Catalog.findById(request.params.id);
             if (!catalog) return reply.status(404).send({ error: "Catálogo no encontrado" });
+            const wasActive = catalog.status === "running" || catalog.status === "pending";
             catalog.status = "cancelled";
             await catalog.save();
+            if (wasActive) {
+                try { void activateNextQueued(getAgenda(), io); } catch { /* agenda not ready */ }
+            }
             return reply.send({ success: true });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // PATCH /catalogs/queue-reorder — set queue priority order
+    app.patch("/catalogs/queue-reorder", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { ids } = request.body || {};
+            if (!Array.isArray(ids) || ids.length === 0) return reply.status(400).send({ error: "ids requerido" });
+            await Promise.all(
+                ids.map((id: string, idx: number) =>
+                    Catalog.findByIdAndUpdate(id, { $set: { queueOrder: idx } })
+                )
+            );
+            return reply.send({ success: true });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // POST /catalogs/:id/retry-failed — reset skipped slots and reschedule
+    app.post("/catalogs/:id/retry-failed", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const catalog = await Catalog.findById(request.params.id);
+            if (!catalog) return reply.status(404).send({ error: "Catálogo no encontrado" });
+            if ((catalog.skippedImages ?? 0) === 0) return reply.status(400).send({ error: "No hay slots fallados" });
+            const slotsToRetry = catalog.skippedImages ?? 0;
+            catalog.totalImages = catalog.images.length + slotsToRetry;
+            catalog.skippedImages = 0;
+            catalog.status = "running";
+            catalog.lastError = "";
+            await catalog.save();
+            try {
+                const agenda = getAgenda();
+                await agenda.schedule("in 5 seconds", "generate-catalog-image", { catalogId: String(catalog._id) });
+            } catch { /* agenda not ready yet, job will not auto-start */ }
+            return reply.send({ catalog, slotsToRetry });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
         }

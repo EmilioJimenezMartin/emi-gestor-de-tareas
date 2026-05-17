@@ -47,7 +47,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
         if (!ensureMongo(reply)) return;
         try {
             const { id } = request.params as { id: string };
-            const { name, description, tags, status, competition, demand, productType, styleCategory, notes } = request.body as any;
+            const { name, description, tags, status, competition, demand, productType, styleCategory, notes, generatedPrompt, catalogIds } = request.body as any;
             const update: Record<string, any> = {};
             if (name?.trim()) update.name = name.trim();
             if (description !== undefined) update.description = description.trim();
@@ -58,6 +58,9 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             if (productType) update.productType = productType;
             if (styleCategory) update.styleCategory = styleCategory;
             if (notes !== undefined) update.notes = notes.trim();
+            if (generatedPrompt !== undefined) update.generatedPrompt = generatedPrompt;
+            if (Array.isArray(catalogIds)) update.catalogIds = catalogIds;
+            if (request.body.phase) update.phase = request.body.phase;
             const niche = await Niche.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
             return reply.send({ niche });

@@ -31,9 +31,10 @@ export interface ICatalog extends Document {
     height: number;
     totalImages: number;
     images: CatalogImage[];
-    status: "pending" | "running" | "completed" | "failed" | "cancelled";
+    status: "queued" | "pending" | "running" | "completed" | "failed" | "cancelled";
     lastError?: string;
     skippedImages: number;
+    queueOrder: number;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -75,11 +76,12 @@ const CatalogSchema = new Schema<ICatalog>(
         images: { type: [CatalogImageSchema], default: [] },
         status: {
             type: String,
-            enum: ["pending", "running", "completed", "failed", "cancelled"],
+            enum: ["queued", "pending", "running", "completed", "failed", "cancelled"],
             default: "pending",
         },
         lastError: { type: String, default: "" },
         skippedImages: { type: Number, default: 0 },
+        queueOrder: { type: Number, default: 0 },
     },
     { timestamps: true }
 );

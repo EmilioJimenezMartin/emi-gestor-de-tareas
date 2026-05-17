@@ -63,6 +63,7 @@ import {
     Save,
     Clock,
     Target,
+    ExternalLink,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -156,6 +157,9 @@ interface NicheFE {
     productType: NicheProductType;
     styleCategory: NicheStyle;
     notes: string;
+    generatedPrompt?: string;
+    catalogIds?: string[];
+    phase?: "niche" | "catalog" | "pdf" | "published";
     createdAt: string;
 }
 
@@ -199,12 +203,15 @@ interface IACatalogFE {
     name: string;
     prompt: string;
     promptParts?: { theme: string; specs: string; details: string; particulars: string };
+    productType?: "coloring-book" | "printable-poster" | "other";
+    creativity?: number;
+    negativePrompt?: string;
     aiModel: { id: string; name: string; provider: string; modelId: string };
     width: number;
     height: number;
     totalImages: number;
     images: CatalogImageFE[];
-    status: "pending" | "running" | "completed" | "failed" | "cancelled";
+    status: "queued" | "pending" | "running" | "completed" | "failed" | "cancelled";
     lastError?: string;
     skippedImages?: number;
     createdAt: string;
@@ -215,6 +222,7 @@ interface SavedPromptFE {
     name: string;
     category: string;
     promptParts: { theme: string; specs: string; details: string; particulars: string };
+    aiModel?: { id: string; name: string; provider: string; modelId: string };
     createdAt: string;
 }
 
@@ -288,7 +296,12 @@ function KdpSelect({ value, onChange, options, accent = "white" }: {
 
 
 export function KdpFactoryApp() {
-    const [activeTab, setActiveTab] = useState<TabID>("insights");
+    const [activeTab, setActiveTab] = useState<TabID>(() => {
+        if (typeof window === "undefined") return "insights";
+        const saved = localStorage.getItem("kdp-active-tab");
+        return (saved && ["insights", "catalog", "creation", "studio"].includes(saved)) ? saved as TabID : "insights";
+    });
+    const changeTab = (tab: TabID) => { localStorage.setItem("kdp-active-tab", tab); setActiveTab(tab); };
     const [chartPeriod, setChartPeriod] = useState<PeriodID>("month");
     const [chartData, setChartData] = useState<number[]>([]);
 
@@ -421,6 +434,8 @@ export function KdpFactoryApp() {
     const [isSavingPrompt, setIsSavingPrompt] = useState(false);
     const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
     const [editingPromptName, setEditingPromptName] = useState("");
+    const [fullEditingPromptId, setFullEditingPromptId] = useState<string | null>(null);
+    const [fullEditingPrompt, setFullEditingPrompt] = useState<Partial<SavedPromptFE>>({});
     const [niches, setNiches] = useState<NicheFE[]>([]);
     const [isLoadingNiches, setIsLoadingNiches] = useState(false);
     const [nicheFormOpen, setNicheFormOpen] = useState(false);
@@ -432,6 +447,7 @@ export function KdpFactoryApp() {
     const [nicheFormComp, setNicheFormComp] = useState<NicheFE["competition"]>("unknown");
     const [nicheFormDemand, setNicheFormDemand] = useState<NicheFE["demand"]>("unknown");
     const [nicheFormNotes, setNicheFormNotes] = useState("");
+    const [nicheFormPrompt, setNicheFormPrompt] = useState("");
     const [isSavingNiche, setIsSavingNiche] = useState(false);
     const [nicheDeleteId, setNicheDeleteId] = useState<string | null>(null);
     const [nicheStatusFilter, setNicheStatusFilter] = useState<"all" | NicheStatus>("all");
@@ -442,7 +458,21 @@ export function KdpFactoryApp() {
     const [kdpTemplateTitle, setKdpTemplateTitle] = useState("Mi Libro de Colorear");
     const [kdpTemplateVaultSel, setKdpTemplateVaultSel] = useState<Set<number>>(new Set());
     const [kdpTemplateCatalogSel, setKdpTemplateCatalogSel] = useState<Set<string>>(new Set());
+    const [kdpTemplateCloudSel, setKdpTemplateCloudSel] = useState<Set<number>>(new Set());
+    // Feature: retry failed slots
+    const [retryingCatalogId, setRetryingCatalogId] = useState<string | null>(null);
+    // Feature: compare catalogs
+    const [compareSel, setCompareSel] = useState<Set<string>>(new Set());
+    const [compareOpen, setCompareOpen] = useState(false);
+    // Feature: cloudinary search
+    const [cloudSearch, setCloudSearch] = useState("");
+    // Feature: niche sort
+    const [nicheSortBy, setNicheSortBy] = useState<"score" | "date">("score");
     const catalogSocketRef = useRef<ReturnType<typeof createApiSocket> | null>(null);
+    const catalogsListRef = useRef<HTMLDivElement>(null);
+    const [collapsedCompleted, setCollapsedCompleted] = useState(true);
+    const [draggingId, setDraggingId] = useState<string | null>(null);
+    const [dragOverId, setDragOverId] = useState<string | null>(null);
 
     // --- Content generator state ---
     const [contentNiche, setContentNiche] = useState("");
@@ -554,7 +584,12 @@ export function KdpFactoryApp() {
             setIaCatalogs((prev) => [data.catalog, ...prev]);
             setCatalogFormName("");
             setCatalogFormCount(5);
-            toast.success(`Catálogo iniciado — ${catalogFormCount} imágenes en segundo plano`);
+            setTimeout(() => catalogsListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+            if (data.catalog.status === "queued") {
+                toast.info(`Catálogo añadido a la cola — comenzará al terminar el actual`);
+            } else {
+                toast.success(`Catálogo iniciado — ${catalogFormCount} imágenes en segundo plano`);
+            }
         } catch (e: any) {
             toast.error(e.message ?? "Error al crear catálogo");
         } finally {
@@ -599,6 +634,7 @@ export function KdpFactoryApp() {
             setNicheFormProductType(niche.productType ?? "coloring-book");
             setNicheFormStyle(niche.styleCategory ?? "generic");
             setNicheFormNotes(niche.notes);
+            setNicheFormPrompt(niche.generatedPrompt ?? "");
         } else {
             setNicheEditTarget(null);
             setNicheFormName("");
@@ -610,6 +646,7 @@ export function KdpFactoryApp() {
             setNicheFormProductType("coloring-book");
             setNicheFormStyle("generic");
             setNicheFormNotes("");
+            setNicheFormPrompt("");
         }
         setNicheFormOpen(true);
     };
@@ -657,6 +694,27 @@ export function KdpFactoryApp() {
             const catalogData = await catalogRes.json();
             if (!catalogRes.ok) throw new Error(catalogData.error ?? "Error al crear catálogo");
             setIaCatalogs(prev => [catalogData.catalog, ...prev]);
+
+            // 4. Save prompt + catalogId back to niche
+            const newCatalogIds = [...(niche.catalogIds ?? []), catalogData.catalog._id];
+            await fetch(`${API_BASE_URL}/niches/${niche._id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ generatedPrompt: imagePrompt, catalogIds: newCatalogIds }),
+            });
+            const nextPhase = (niche.phase === "niche" || !niche.phase) ? "catalog" : niche.phase;
+            if (nextPhase !== niche.phase) {
+                await fetch(`${API_BASE_URL}/niches/${niche._id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ phase: nextPhase }),
+                });
+            }
+            setNiches(prev => prev.map(n => n._id === niche._id
+                ? { ...n, generatedPrompt: imagePrompt, catalogIds: newCatalogIds, phase: nextPhase }
+                : n
+            ));
+
             toast.success(`Catálogo iniciado · ${niche.name} · ${model.name}`);
         } catch (e: any) {
             toast.error(e.message ?? "Error al generar contenido");
@@ -679,6 +737,7 @@ export function KdpFactoryApp() {
                 productType: nicheFormProductType,
                 styleCategory: nicheFormStyle,
                 notes: nicheFormNotes.trim(),
+                generatedPrompt: nicheFormPrompt.trim(),
             };
             const url = nicheEditTarget ? `${API_BASE_URL}/niches/${nicheEditTarget._id}` : `${API_BASE_URL}/niches`;
             const method = nicheEditTarget ? "PATCH" : "POST";
@@ -711,11 +770,96 @@ export function KdpFactoryApp() {
         }
     };
 
+    const nicheScore = (n: NicheFE): number => {
+        const demandPts = { unknown: 0, low: 10, medium: 25, high: 40 }[n.demand] ?? 0;
+        const compPts  = { unknown: 0, high: 5, medium: 20, low: 35 }[n.competition] ?? 0;
+        const catalogPts = (n.catalogIds?.length ?? 0) > 0 ? 10 : 0;
+        const phasePts = { niche: 0, catalog: 5, pdf: 10, published: 15 }[n.phase ?? "niche"] ?? 0;
+        const statusPts = n.status === "active" ? 5 : n.status === "research" ? 3 : 0;
+        return demandPts + compPts + catalogPts + phasePts + statusPts;
+    };
+
+    const advanceNichePhase = async (niche: NicheFE) => {
+        const order: NicheFE["phase"][] = ["niche", "catalog", "pdf", "published"];
+        const cur = order.indexOf(niche.phase ?? "niche");
+        if (cur >= order.length - 1) return;
+        const next = order[cur + 1];
+        try {
+            await fetch(`${API_BASE_URL}/niches/${niche._id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ phase: next }),
+            });
+            setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase: next } : n));
+        } catch { toast.error("Error al avanzar fase"); }
+    };
+
+    const retryFailedSlots = async (catalogId: string) => {
+        setRetryingCatalogId(catalogId);
+        try {
+            const res = await fetch(`${API_BASE_URL}/catalogs/${catalogId}/retry-failed`, { method: "POST" });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            setIaCatalogs(prev => prev.map(c => c._id === catalogId ? { ...c, status: "running", skippedImages: 0 } : c));
+            toast.success(`Reintentando ${data.slotsToRetry} slot${data.slotsToRetry > 1 ? "s" : ""} fallados`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al reintentar");
+        } finally {
+            setRetryingCatalogId(null);
+        }
+    };
+
+    const handleQueueReorder = async (draggedId: string, targetId: string) => {
+        if (draggedId === targetId) return;
+        setIaCatalogs(prev => {
+            const queued = prev.filter(c => c.status === "queued");
+            const draggedIdx = queued.findIndex(c => c._id === draggedId);
+            const targetIdx = queued.findIndex(c => c._id === targetId);
+            if (draggedIdx === -1 || targetIdx === -1) return prev;
+            const newQueued = [...queued];
+            const [removed] = newQueued.splice(draggedIdx, 1);
+            newQueued.splice(targetIdx, 0, removed);
+            const queuedPositions = prev.map((c, i) => c.status === "queued" ? i : -1).filter(i => i >= 0);
+            const result = [...prev];
+            newQueued.forEach((c, i) => { result[queuedPositions[i]] = c; });
+            return result;
+        });
+        try {
+            const ids = iaCatalogs.filter(c => c.status === "queued").map(c => c._id);
+            const draggedIdx = ids.indexOf(draggedId);
+            const targetIdx = ids.indexOf(targetId);
+            const reordered = [...ids];
+            const [rem] = reordered.splice(draggedIdx, 1);
+            reordered.splice(targetIdx, 0, rem);
+            await fetch(`${API_BASE_URL}/catalogs/queue-reorder`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ids: reordered }),
+            });
+        } catch { toast.error("Error al reordenar cola"); }
+    };
+
+    const saveNichePromptToLibrary = (niche: NicheFE) => {
+        if (!niche.generatedPrompt) return;
+        setPromptTheme(niche.generatedPrompt);
+        setPromptSpecs(""); setPromptDetails(""); setPromptParticulars("");
+        const modelId = NICHE_STYLE_MODEL[niche.styleCategory ?? "generic"];
+        const match = AI_MODELS.find(m => m.id === modelId);
+        if (match) setSelectedModel(match.id);
+        setSavePromptName(niche.name);
+        setSavePromptCategory(
+            niche.productType === "coloring-book" ? "Coloring Book" :
+            niche.productType === "printable-poster" ? "Arte Digital" : "General"
+        );
+        setShowSavePromptDialog(true);
+    };
+
     const saveCurrentPrompt = async () => {
         if (!promptTheme.trim()) { toast.error("La temática está vacía"); return; }
         if (!savePromptName.trim()) { toast.error("Dale un nombre al prompt"); return; }
         setIsSavingPrompt(true);
         try {
+            const model = AI_MODELS.find(m => m.id === selectedModel);
             const res = await fetch(`${API_BASE_URL}/saved-prompts`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -723,6 +867,7 @@ export function KdpFactoryApp() {
                     name: savePromptName.trim(),
                     category: savePromptCategory,
                     promptParts: { theme: promptTheme.trim(), specs: promptSpecs.trim(), details: promptDetails.trim(), particulars: promptParticulars.trim() },
+                    aiModel: model ? { id: model.id, name: model.name, provider: model.provider, modelId: model.modelId } : undefined,
                 }),
             });
             const data = await res.json();
@@ -760,11 +905,28 @@ export function KdpFactoryApp() {
         } catch { toast.error("Error al renombrar prompt"); }
     };
 
+    const updateSavedPrompt = async (id: string, patch: Partial<Pick<SavedPromptFE, "name" | "category" | "promptParts" | "aiModel">>) => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/saved-prompts/${id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(patch),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Error");
+            setSavedPrompts(prev => prev.map(p => p._id === id ? { ...p, ...patch } : p));
+        } catch { toast.error("Error al actualizar prompt"); }
+    };
+
     const loadSavedPrompt = (p: SavedPromptFE) => {
         setPromptTheme(p.promptParts.theme);
         setPromptSpecs(p.promptParts.specs);
         setPromptDetails(p.promptParts.details);
         setPromptParticulars(p.promptParts.particulars);
+        if (p.aiModel?.id) {
+            const match = AI_MODELS.find(m => m.id === p.aiModel!.id);
+            if (match) setSelectedModel(match.id);
+        }
         toast.success("Prompt cargado");
     };
 
@@ -836,12 +998,13 @@ export function KdpFactoryApp() {
 
     const openKdpTemplateSelector = () => {
         const completedCatalogs = iaCatalogs.filter(c => c.status === "completed" && c.images.length > 0);
-        if (vaultImages.length === 0 && completedCatalogs.length === 0) {
-            toast.error("No hay imágenes en el vault ni catálogos completados");
+        if (vaultImages.length === 0 && completedCatalogs.length === 0 && cloudinaryImages.length === 0) {
+            toast.error("No hay imágenes en el vault, almacén ni catálogos completados");
             return;
         }
         setKdpTemplateVaultSel(new Set(vaultImages.map((_, i) => i)));
         setKdpTemplateCatalogSel(new Set(completedCatalogs.map(c => c._id)));
+        setKdpTemplateCloudSel(new Set());
         setKdpTemplateOpen(true);
     };
 
@@ -1524,6 +1687,13 @@ export function KdpFactoryApp() {
             toast.success("Catálogo completado");
         });
 
+        socket.on("catalog:queue-activated", (data: { catalogId: string; status: string; name: string }) => {
+            setIaCatalogs((prev) =>
+                prev.map((c) => (c._id === data.catalogId ? { ...c, status: "running" } : c))
+            );
+            toast.info(`Cola: iniciando "${data.name}" — primera imagen en 2 min`);
+        });
+
         socket.on("catalog:error", (data: { catalogId: string; error: string }) => {
             setIaCatalogs((prev) =>
                 prev.map((c) => (c._id === data.catalogId ? { ...c, status: "failed", lastError: data.error } : c))
@@ -1553,26 +1723,6 @@ export function KdpFactoryApp() {
 
         setIsGenerating(true);
         setGeneratedImage(null);
-
-        // Pollinations: URL directa, sin pasar por el backend
-        if (model?.provider === "Pollinations") {
-            const seed = fixedSeed ? Number(fixedSeed) : Math.floor(Math.random() * 999999);
-            const negParam = negativePrompt.trim() ? `&negative=${encodeURIComponent(negativePrompt.trim())}` : "";
-            const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt.trim())}?width=${dimensions?.width ?? 1024}&height=${dimensions?.height ?? 1024}&seed=${seed}&model=${encodeURIComponent(model.modelId || "flux")}&nologo=true&enhance=false${negParam}`;
-            const img = new Image();
-            img.src = url;
-            img.onload = () => {
-                setGeneratedImage(url);
-                setIsGenerating(false);
-                toast.success("Imagen generada con Pollinations");
-            };
-            img.onerror = () => {
-                setIsGenerating(false);
-                setIsImageLoading(false);
-                toast.error("Error generando imagen con Pollinations");
-            };
-            return;
-        }
 
         try {
             const response = await fetch(`${API_BASE_URL}/ai/generate-image`, {
@@ -1616,21 +1766,9 @@ export function KdpFactoryApp() {
                 return;
             }
 
-            // Fallback: Pollinations sin modelo específico
-            const seed = Math.floor(Math.random() * 999999);
-            const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt.trim())}?width=${dimensions?.width ?? 1024}&height=${dimensions?.height ?? 1024}&seed=${seed}&nologo=true&enhance=false`;
-            const img = new Image();
-            img.src = url;
-            img.onload = () => {
-                setGeneratedImage(url);
-                setIsGenerating(false);
-                toast.success("Generado con Pollinations (fallback)");
-            };
-            img.onerror = () => {
-                setIsGenerating(false);
-                setIsImageLoading(false);
-                toast.error("Error en la generación");
-            };
+            setIsGenerating(false);
+            setIsImageLoading(false);
+            toast.error("Error generando imagen. Prueba otro modelo o inténtalo de nuevo.");
 
         } catch (error) {
             console.error("Generation error:", error);
@@ -1693,7 +1831,7 @@ export function KdpFactoryApp() {
         setNewTitle("");
         setNewDesc("");
         toast.success("Producto creado. ¡Revísalo en el catálogo!");
-        setActiveTab("catalog");
+        changeTab("catalog");
     };
 
     const handleDeleteProduct = (id: string) => {
@@ -2256,7 +2394,7 @@ export function KdpFactoryApp() {
                         </div>
 
                         {(() => {
-                            const isCatalogActive = iaCatalogs.some(c => c.status === "running" || c.status === "pending");
+                            const isCatalogActive = iaCatalogs.some(c => c.status === "running" || c.status === "pending" || c.status === "queued");
                             return (
                                 <Button
                                     onClick={() => handleGenerateImage()}
@@ -2374,11 +2512,15 @@ export function KdpFactoryApp() {
                             </div>
                             {(() => {
                                 const running = iaCatalogs.filter(c => c.status === "running" || c.status === "pending");
-                                if (running.length === 0) return null;
+                                const queued = iaCatalogs.filter(c => c.status === "queued");
+                                if (running.length === 0 && queued.length === 0) return null;
                                 return (
                                     <p className="text-[10px] text-amber-500/70 italic flex items-center gap-1.5">
                                         <Loader2 size={9} className="animate-spin" />
-                                        {running.length === 1 ? "1 catálogo en progreso" : `${running.length} catálogos en progreso simultáneamente`} · puedes crear más
+                                        {running.length > 0 ? `${running.length} en progreso` : ""}
+                                        {running.length > 0 && queued.length > 0 ? " · " : ""}
+                                        {queued.length > 0 ? `${queued.length} en cola` : ""}
+                                        {" · el nuevo se añadirá a la cola"}
                                     </p>
                                 );
                             })()}
@@ -2657,52 +2799,96 @@ export function KdpFactoryApp() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             {savedPrompts
                                 .filter(p => promptCategoryFilter === "all" || p.category === promptCategoryFilter)
-                                .map(p => (
+                                .map(p => {
+                                    const isFullEdit = fullEditingPromptId === p._id;
+                                    const fe = isFullEdit ? fullEditingPrompt : {};
+                                    return (
                                     <div key={p._id}
                                         className="group relative rounded-2xl border border-white/8 bg-white/[0.03] hover:border-violet-500/25 hover:bg-white/[0.05] transition-all overflow-hidden">
                                         <div className="h-0.5 w-full bg-gradient-to-r from-violet-500/60 via-violet-400/30 to-transparent" />
                                         <div className="p-4 space-y-3">
                                             <div className="flex items-start gap-2">
                                                 <div className="flex-1 min-w-0">
-                                                    {editingPromptId === p._id ? (
-                                                        <input
-                                                            autoFocus
-                                                            value={editingPromptName}
-                                                            onChange={e => setEditingPromptName(e.target.value)}
-                                                            onBlur={() => void renameSavedPrompt(p._id, editingPromptName)}
-                                                            onKeyDown={e => {
-                                                                if (e.key === "Enter") void renameSavedPrompt(p._id, editingPromptName);
-                                                                if (e.key === "Escape") setEditingPromptId(null);
-                                                            }}
-                                                            className="w-full bg-white/5 border border-violet-500/40 rounded-lg px-2 py-1 text-[12px] font-black text-white outline-none"
-                                                        />
+                                                    {isFullEdit ? (
+                                                        <input autoFocus value={(fe.name ?? p.name)} onChange={e => setFullEditingPrompt(prev => ({ ...prev, name: e.target.value }))}
+                                                            className="w-full bg-white/5 border border-violet-500/40 rounded-lg px-2 py-1 text-[12px] font-black text-white outline-none mb-1" />
                                                     ) : (
-                                                        <button
-                                                            onClick={() => { setEditingPromptId(p._id); setEditingPromptName(p.name); }}
-                                                            className="w-full text-left group/name flex items-center gap-1.5 min-w-0"
-                                                            title="Clic para editar nombre">
-                                                            <span className="text-[12px] font-black text-white truncate">{p.name}</span>
-                                                            <Pencil size={9} className="shrink-0 text-neutral-700 group-hover/name:text-violet-400 transition-colors" />
+                                                        <p className="text-[12px] font-black text-white truncate leading-tight">{p.name}</p>
+                                                    )}
+                                                    <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                                        <span className="px-2 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-[8px] font-black uppercase tracking-widest text-violet-400">{p.category}</span>
+                                                        {p.aiModel?.name && (
+                                                            <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[8px] text-neutral-500 font-black uppercase truncate max-w-[120px]" title={p.aiModel.name}>
+                                                                {p.aiModel.provider} · {p.aiModel.name.split(" ").slice(0, 2).join(" ")}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
+                                                    {isFullEdit ? null : (
+                                                        <button onClick={() => { setFullEditingPromptId(p._id); setFullEditingPrompt({ name: p.name, category: p.category, promptParts: { ...p.promptParts }, aiModel: p.aiModel }); }}
+                                                            className="p-1.5 rounded-lg text-neutral-600 hover:text-violet-400 hover:bg-violet-500/10 transition-all">
+                                                            <Pencil size={12} />
                                                         </button>
                                                     )}
-                                                    <span className="mt-1 inline-block px-2 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-[8px] font-black uppercase tracking-widest text-violet-400">{p.category}</span>
+                                                    <button onClick={() => void deleteSavedPrompt(p._id)}
+                                                        className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all">
+                                                        <Trash2 size={12} />
+                                                    </button>
                                                 </div>
-                                                <button onClick={() => void deleteSavedPrompt(p._id)}
-                                                    className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all shrink-0 mt-0.5">
-                                                    <Trash2 size={12} />
-                                                </button>
                                             </div>
-                                            <p className="text-[10px] text-neutral-500 line-clamp-2 leading-relaxed italic">
-                                                {p.promptParts.theme || <span className="opacity-40">Sin temática</span>}
-                                            </p>
-                                            <button
-                                                onClick={() => loadSavedPrompt(p)}
-                                                className="w-full h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[10px] font-black uppercase tracking-widest hover:bg-violet-500 hover:text-white hover:border-violet-500 transition-all flex items-center justify-center gap-1.5">
-                                                <ArrowRight size={11} />Cargar prompt
-                                            </button>
+
+                                            {isFullEdit ? (
+                                                <div className="space-y-2">
+                                                    <textarea value={(fe.promptParts?.theme ?? p.promptParts.theme)}
+                                                        onChange={e => setFullEditingPrompt(prev => ({ ...prev, promptParts: { ...(prev.promptParts ?? p.promptParts), theme: e.target.value } }))}
+                                                        rows={3} placeholder="Temática / prompt principal…"
+                                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none font-mono" />
+                                                    <select value={(fe.aiModel?.id ?? p.aiModel?.id ?? "")}
+                                                        onChange={e => {
+                                                            const m = AI_MODELS.find(m => m.id === e.target.value);
+                                                            setFullEditingPrompt(prev => ({ ...prev, aiModel: m ? { id: m.id, name: m.name, provider: m.provider, modelId: m.modelId } : undefined }));
+                                                        }}
+                                                        className="w-full h-8 bg-white/5 border border-white/10 rounded-xl px-3 text-[10px] text-white focus:outline-none focus:border-violet-500/40">
+                                                        <option value="">Sin modelo asociado</option>
+                                                        {AI_MODELS.map(m => <option key={m.id} value={m.id}>{m.provider} · {m.name}</option>)}
+                                                    </select>
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => setFullEditingPromptId(null)}
+                                                            className="flex-1 h-8 rounded-xl bg-white/5 border border-white/10 text-[9px] font-black uppercase text-neutral-400 hover:text-white transition-all">
+                                                            Cancelar
+                                                        </button>
+                                                        <button onClick={() => {
+                                                            void updateSavedPrompt(p._id, {
+                                                                name: fe.name ?? p.name,
+                                                                category: fe.category ?? p.category,
+                                                                promptParts: fe.promptParts ?? p.promptParts,
+                                                                aiModel: fe.aiModel,
+                                                            });
+                                                            setFullEditingPromptId(null);
+                                                            toast.success("Prompt actualizado");
+                                                        }}
+                                                            className="flex-1 h-8 rounded-xl bg-violet-500 text-white text-[9px] font-black uppercase tracking-widest hover:bg-violet-400 transition-all flex items-center justify-center gap-1.5">
+                                                            <Save size={10} /> Guardar
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <p className="text-[10px] text-neutral-500 line-clamp-2 leading-relaxed italic">
+                                                        {p.promptParts.theme || <span className="opacity-40">Sin temática</span>}
+                                                    </p>
+                                                    <button
+                                                        onClick={() => loadSavedPrompt(p)}
+                                                        className="w-full h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[10px] font-black uppercase tracking-widest hover:bg-violet-500 hover:text-white hover:border-violet-500 transition-all flex items-center justify-center gap-1.5">
+                                                        <ArrowRight size={11} />Cargar prompt
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                         </div>
                     )}
                 </div>
@@ -3017,6 +3203,16 @@ export function KdpFactoryApp() {
                     <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                 </div>
 
+                {cloudinaryImages.length > 0 && (
+                    <div className="px-2">
+                        <input
+                            value={cloudSearch}
+                            onChange={e => setCloudSearch(e.target.value)}
+                            placeholder="Buscar por nombre de archivo…"
+                            className="w-full h-8 bg-white/5 border border-white/10 rounded-xl px-3 text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-cyan-500/40 transition-all"
+                        />
+                    </div>
+                )}
                 {cloudinaryImages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-10 text-center space-y-3 opacity-40">
                         <Cloud size={32} className="text-neutral-600" strokeWidth={1.5} />
@@ -3026,7 +3222,7 @@ export function KdpFactoryApp() {
                     </div>
                 ) : (
                     <div className="flex gap-4 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
-                        {cloudinaryImages.map((img, cldIdx) => (
+                        {cloudinaryImages.filter(img => !cloudSearch.trim() || img.publicId.toLowerCase().includes(cloudSearch.toLowerCase())).map((img, cldIdx) => (
                             <div
                                 key={img.publicId}
                                 className="shrink-0 w-44 h-52 md:w-52 md:h-64 rounded-[28px] overflow-hidden border border-white/10 hover:border-cyan-500/40 transition-all shadow-xl relative bg-neutral-900 cursor-zoom-in"
@@ -3044,7 +3240,9 @@ export function KdpFactoryApp() {
             </div>
 
             {/* IA Catalog list */}
-            {iaCatalogs.length > 0 && (
+            <div ref={catalogsListRef}>
+            {/* Skeleton while loading initial list */}
+            {isLoadingCatalogs && iaCatalogs.length === 0 && (
                 <div className="space-y-4">
                     <div className="flex items-center gap-4 px-2">
                         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
@@ -3052,154 +3250,296 @@ export function KdpFactoryApp() {
                             <Layers size={14} className="text-violet-400" />
                             <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Catálogos IA</h3>
                         </div>
-                        <button onClick={() => void fetchCatalogs()} disabled={isLoadingCatalogs} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
-                            {isLoadingCatalogs ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                        </button>
                         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                     </div>
                     <div className="space-y-3">
-                        {iaCatalogs.map((catalog) => {
-                            const progress = catalog.totalImages > 0 ? (catalog.images.length / catalog.totalImages) * 100 : 0;
-                            const isActive = catalog.status === "running" || catalog.status === "pending";
-                            const providerColor = catalog.aiModel?.provider === "Google" ? { bar: "bg-blue-500/50", badge: "bg-blue-500/10 border-blue-500/20 text-blue-300", dot: "bg-blue-400" }
-                                : catalog.aiModel?.provider === "Leonardo" ? { bar: "bg-amber-500/50", badge: "bg-amber-500/10 border-amber-500/20 text-amber-300", dot: "bg-amber-400" }
-                                : catalog.aiModel?.provider === "Pollinations" ? { bar: "bg-emerald-500/50", badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300", dot: "bg-emerald-400" }
-                                : { bar: "bg-violet-500/50", badge: "bg-violet-500/10 border-violet-500/20 text-violet-300", dot: "bg-violet-400" };
-                            return (
-                                <Card key={catalog._id} variant="outline" className="border-white/5 bg-white/[0.01] overflow-hidden transition-all duration-300 hover:border-white/10">
-                                    {/* Provider accent bar */}
-                                    <div className={`h-px w-full ${providerColor.bar}`} />
-                                    <div className="p-4 space-y-3">
-                                        {/* Header */}
-                                        <div className="flex items-start justify-between gap-4">
-                                            <div className="min-w-0 space-y-1">
-                                                <h4 className="font-black text-white text-sm leading-tight truncate">{catalog.name}</h4>
-                                                <p className="text-[10px] text-neutral-500 line-clamp-1 leading-relaxed">{catalog.prompt}</p>
-                                            </div>
-                                            <div className="flex flex-col items-end gap-1.5 shrink-0">
-                                                {statusBadge(catalog.status)}
-                                                <span className="text-[9px] text-neutral-600 font-mono">{new Date(catalog.createdAt).toLocaleDateString("es-ES")}</span>
-                                            </div>
+                        {[0, 1, 2].map(i => (
+                            <div key={i} className="rounded-2xl border border-white/5 bg-white/[0.01] overflow-hidden animate-pulse">
+                                <div className="h-px w-full bg-white/10" />
+                                <div className="p-4 space-y-3">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div className="space-y-2 flex-1">
+                                            <div className="h-4 w-1/3 bg-white/5 rounded-lg" />
+                                            <div className="h-3 w-2/3 bg-white/5 rounded-lg" />
                                         </div>
-                                        {/* Model badge + meta */}
-                                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                                            <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border ${providerColor.badge}`}>
-                                                <div className={`w-2 h-2 rounded-full ${providerColor.dot} shrink-0`} />
-                                                <span className="text-[10px] font-black leading-none truncate max-w-[200px]">{catalog.aiModel?.name}</span>
-                                                <span className="text-[9px] opacity-60 shrink-0">{catalog.aiModel?.provider}</span>
-                                            </div>
-                                            <div className="flex items-center gap-1.5 text-[9px] font-mono text-neutral-600">
-                                                <span>{catalog.width}×{catalog.height}</span>
-                                                <span className="text-neutral-700">·</span>
-                                                <span className="font-black text-neutral-400">{catalog.images.length}/{catalog.totalImages}</span>
-                                                {isActive && <Loader2 size={9} className="text-blue-400 animate-spin" />}
-                                                {(catalog.skippedImages ?? 0) > 0 && <span className="text-amber-500/70 not-mono">· {catalog.skippedImages} omit.</span>}
-                                            </div>
-                                        </div>
-                                        {/* Error */}
-                                        {catalog.lastError && (
-                                            <p className="text-[9px] text-red-400/70 font-mono break-all leading-relaxed bg-red-500/5 border border-red-500/10 rounded-lg px-2 py-1.5">
-                                                ⚠ {catalog.lastError.length > 100 ? catalog.lastError.slice(0, 100) + "…" : catalog.lastError}
-                                            </p>
-                                        )}
-                                        {/* Action buttons */}
-                                        <div className="flex items-center justify-end gap-2">
-                                            <button
-                                                onClick={() => {
-                                                    if (catalog.promptParts?.theme) {
-                                                        setPromptTheme(catalog.promptParts.theme);
-                                                        setPromptSpecs(catalog.promptParts.specs ?? "");
-                                                        setPromptDetails(catalog.promptParts.details ?? "");
-                                                        setPromptParticulars(catalog.promptParts.particulars ?? "");
-                                                    } else {
-                                                        setPromptTheme(catalog.prompt);
-                                                        setPromptSpecs(""); setPromptDetails(""); setPromptParticulars("");
-                                                    }
-                                                    const matchModel = AI_MODELS.find(m => m.id === catalog.aiModel?.id);
-                                                    if (matchModel) setSelectedModel(matchModel.id);
-                                                    const matchDim = AI_DIMENSIONS.find(d => d.width === catalog.width && d.height === catalog.height);
-                                                    if (matchDim) setSelectedDim(matchDim.id);
-                                                    toast.success("Prompt, modelo y resolución cargados");
-                                                }}
-                                                title="Cargar prompt, modelo y resolución"
-                                                className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-white transition-all border border-white/10 text-[9px] font-black uppercase tracking-widest"
-                                            >
-                                                <Copy size={11} /> Reusar
-                                            </button>
-                                            {catalog.images.length > 0 && (
-                                                <button
-                                                    onClick={() => { const pages: BookPage[] = catalog.images.map((img, i) => ({ id: genPageId(), type: "image" as const, image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` }, text: defaultTextStyle() })); setBookPages(pages); setSelectedPageId(pages[0]?.id ?? null); setBookEditorOpen(true); }}
-                                                    title="Editar PDF"
-                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-[9px] font-black uppercase tracking-widest"
-                                                >
-                                                    <FileText size={11} /> PDF
-                                                </button>
-                                            )}
-                                            {isActive && (
-                                                <button
-                                                    onClick={() => void cancelCatalog(catalog._id)}
-                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all text-[9px] font-black uppercase tracking-widest"
-                                                >
-                                                    <StopCircle size={11} /> Detener
-                                                </button>
-                                            )}
-                                            <button onClick={() => setConfirmDeleteCatalogId(catalog._id)} disabled={deletingCatalogId === catalog._id} title="Eliminar" className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 disabled:opacity-50">
-                                                {deletingCatalogId === catalog._id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                                            </button>
-                                        </div>
+                                        <div className="h-5 w-20 bg-white/5 rounded-full" />
                                     </div>
-                                    {/* Progress bar */}
-                                    {isActive && (
-                                        <div className="px-4 pb-3 space-y-1.5 border-t border-white/5 pt-3">
-                                            <div className="flex justify-between text-[9px] uppercase tracking-widest text-neutral-600">
-                                                <span className="flex items-center gap-1.5"><Loader2 size={8} className="animate-spin text-blue-400" />{catalog.status === "pending" ? "En cola..." : "Generando"}</span>
-                                                <span className="font-black text-neutral-400">{Math.round(progress)}%</span>
-                                            </div>
-                                            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                                                <div className="h-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
-                                            </div>
-                                        </div>
-                                    )}
-                                    {/* Image grid */}
-                                    {catalog.images.length > 0 && (
-                                        <div className="px-4 pb-4 border-t border-white/5 pt-3">
-                                            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
-                                                {catalog.images.map((img, imgIdx) => {
-                                                    const isCatSelected = selectedImageUrls.has(img.url);
-                                                    return (
-                                                    <div
-                                                        key={img.publicId}
-                                                        className={`aspect-square rounded-lg overflow-hidden bg-white/5 border transition-all relative ${isVaultSelectMode ? (isCatSelected ? "border-violet-500 ring-1 ring-violet-500/50 cursor-pointer" : "border-white/10 hover:border-violet-500/50 cursor-pointer") : "border-white/5 cursor-zoom-in hover:border-violet-500/40"}`}
-                                                        onClick={() => isVaultSelectMode ? toggleImageSelect(img.url) : openCatalogImagePreview(catalog.images, imgIdx, catalog._id)}
-                                                    >
-                                                        <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                                                        {isVaultSelectMode && (
-                                                            <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isCatSelected ? "bg-violet-500 border-violet-500" : "bg-black/50 border-white/30 backdrop-blur-sm"}`}>
-                                                                {isCatSelected && <Check size={9} className="text-white" strokeWidth={3} />}
-                                                            </div>
-                                                        )}
-                                                        {!isVaultSelectMode && favorites.has(img.url) && (
-                                                            <div className="absolute top-0.5 left-0.5 p-0.5 rounded-md bg-black/60 text-rose-400 pointer-events-none">
-                                                                <Heart size={8} className="fill-rose-400" />
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    );
-                                                })}
-                                                {isActive && Array.from({ length: catalog.totalImages - catalog.images.length }).map((_, i) => (
-                                                    <div key={`ph-${i}`} className="aspect-square rounded-lg bg-white/[0.02] border border-dashed border-white/10 flex items-center justify-center">
-                                                        <Loader2 size={10} className="text-neutral-700 animate-spin" />
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </Card>
-                            );
-                        })}
+                                    <div className="flex justify-between">
+                                        <div className="h-7 w-36 bg-white/5 rounded-xl" />
+                                        <div className="h-4 w-20 bg-white/5 rounded-lg" />
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
+            {iaCatalogs.length > 0 && (() => {
+                const activeCatalogs = iaCatalogs.filter(c => c.status === "running" || c.status === "pending" || c.status === "queued");
+                const doneCatalogs = iaCatalogs.filter(c => c.status === "completed" || c.status === "failed" || c.status === "cancelled");
+                const totalImages = iaCatalogs.reduce((sum, c) => sum + c.images.length, 0);
+
+                const renderCard = (catalog: IACatalogFE) => {
+                    const progress = catalog.totalImages > 0 ? (catalog.images.length / catalog.totalImages) * 100 : 0;
+                    const isActive = catalog.status === "running" || catalog.status === "pending" || catalog.status === "queued";
+                    const queuedList = iaCatalogs.filter(c => c.status === "queued");
+                    const queuePos = catalog.status === "queued" ? queuedList.indexOf(catalog) + 1 : 0;
+                    const remainingImages = Math.max(0, catalog.totalImages - catalog.images.length - (catalog.skippedImages ?? 0));
+                    const estMin = Math.round(remainingImages * 1.5);
+                    const timeStr = estMin > 60 ? `~${Math.floor(estMin / 60)}h ${estMin % 60}m` : estMin > 0 ? `~${estMin}m` : "";
+                    const providerColor = catalog.aiModel?.provider === "Google" ? { bar: "bg-blue-500/50", badge: "bg-blue-500/10 border-blue-500/20 text-blue-300", dot: "bg-blue-400" }
+                        : catalog.aiModel?.provider === "Leonardo" ? { bar: "bg-amber-500/50", badge: "bg-amber-500/10 border-amber-500/20 text-amber-300", dot: "bg-amber-400" }
+                        : catalog.aiModel?.provider === "Pollinations" ? { bar: "bg-emerald-500/50", badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300", dot: "bg-emerald-400" }
+                        : { bar: "bg-violet-500/50", badge: "bg-violet-500/10 border-violet-500/20 text-violet-300", dot: "bg-violet-400" };
+                    const isDraggable = catalog.status === "queued";
+                    const isDragOver = dragOverId === catalog._id;
+                    return (
+                        <Card
+                            key={catalog._id}
+                            variant="outline"
+                            draggable={isDraggable}
+                            onDragStart={() => isDraggable && setDraggingId(catalog._id)}
+                            onDragEnd={() => { setDraggingId(null); setDragOverId(null); }}
+                            onDragOver={(e: React.DragEvent) => { if (isDraggable && draggingId) { e.preventDefault(); setDragOverId(catalog._id); } }}
+                            onDrop={(e: React.DragEvent) => { e.preventDefault(); if (draggingId && isDraggable) void handleQueueReorder(draggingId, catalog._id); setDraggingId(null); setDragOverId(null); }}
+                            className={`border-white/5 bg-white/[0.01] overflow-hidden transition-all duration-300 hover:border-white/10 ${isDraggable ? "cursor-grab active:cursor-grabbing" : ""} ${isDragOver ? "ring-1 ring-orange-500/50 border-orange-500/30" : ""} ${draggingId === catalog._id ? "opacity-50" : ""}`}
+                        >
+                            {/* Provider accent bar */}
+                            <div className={`h-px w-full ${providerColor.bar}`} />
+                            <div className="p-4 space-y-3">
+                                {/* Header */}
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="min-w-0 space-y-1">
+                                        <div className="flex items-center gap-2">
+                                            {isDraggable && <GripVertical size={12} className="text-neutral-700 shrink-0" />}
+                                            <h4 className="font-black text-white text-sm leading-tight truncate">{catalog.name}</h4>
+                                        </div>
+                                        <p className="text-[10px] text-neutral-500 line-clamp-1 leading-relaxed">{catalog.prompt}</p>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                        {statusBadge(catalog.status)}
+                                        <span className="text-[9px] text-neutral-600 font-mono">{new Date(catalog.createdAt).toLocaleDateString("es-ES")}</span>
+                                    </div>
+                                </div>
+                                {/* Model badge + meta */}
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border ${providerColor.badge}`}>
+                                        <div className={`w-2 h-2 rounded-full ${providerColor.dot} shrink-0`} />
+                                        <span className="text-[10px] font-black leading-none truncate max-w-[200px]">{catalog.aiModel?.name}</span>
+                                        <span className="text-[9px] opacity-60 shrink-0">{catalog.aiModel?.provider}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[9px] font-mono text-neutral-600">
+                                        <span>{catalog.width}×{catalog.height}</span>
+                                        <span className="text-neutral-700">·</span>
+                                        <span className="font-black text-neutral-400">{catalog.images.length}/{catalog.totalImages}</span>
+                                        {isActive && catalog.status !== "queued" && <Loader2 size={9} className="text-blue-400 animate-spin" />}
+                                        {(catalog.skippedImages ?? 0) > 0 && <span className="text-amber-500/70 not-mono">· {catalog.skippedImages} omit.</span>}
+                                        {isActive && catalog.status === "running" && timeStr && <span className="text-violet-400/70 not-mono">· {timeStr}</span>}
+                                    </div>
+                                </div>
+                                {/* Error */}
+                                {catalog.lastError && (
+                                    <p className="text-[9px] text-red-400/70 font-mono break-all leading-relaxed bg-red-500/5 border border-red-500/10 rounded-lg px-2 py-1.5">
+                                        ⚠ {catalog.lastError.length > 100 ? catalog.lastError.slice(0, 100) + "…" : catalog.lastError}
+                                    </p>
+                                )}
+                                {/* Action buttons */}
+                                <div className="flex items-center justify-end gap-2">
+                                    <button
+                                        onClick={() => {
+                                            if (catalog.promptParts?.theme) {
+                                                setPromptTheme(catalog.promptParts.theme);
+                                                setPromptSpecs(catalog.promptParts.specs ?? "");
+                                                setPromptDetails(catalog.promptParts.details ?? "");
+                                                setPromptParticulars(catalog.promptParts.particulars ?? "");
+                                            } else {
+                                                // Old catalog without parts — strip the composed prefix so
+                                                // imagePrompt doesn't double-wrap it
+                                                const prefix = "Genera una imagen con la siguiente temática: ";
+                                                let raw = catalog.prompt;
+                                                if (raw.startsWith(prefix)) raw = raw.slice(prefix.length);
+                                                // Strip style suffix added by coloring-book modifier
+                                                const styleIdx = raw.indexOf(". Style:");
+                                                if (styleIdx >= 0) raw = raw.slice(0, styleIdx);
+                                                // Take only up to the first sub-clause separator
+                                                const cutAt = [
+                                                    raw.indexOf(", que tenga las siguientes especificaciones:"),
+                                                    raw.indexOf(", con los siguientes detalles:"),
+                                                    raw.indexOf(", y las siguientes particularidades:"),
+                                                ].filter(i => i >= 0).sort((a, b) => a - b)[0] ?? -1;
+                                                setPromptTheme(cutAt >= 0 ? raw.slice(0, cutAt) : raw);
+                                                setPromptSpecs(""); setPromptDetails(""); setPromptParticulars("");
+                                            }
+                                            const matchModel = AI_MODELS.find(m => m.id === catalog.aiModel?.id);
+                                            if (matchModel) setSelectedModel(matchModel.id);
+                                            const matchDim = AI_DIMENSIONS.find(d => d.width === catalog.width && d.height === catalog.height);
+                                            if (matchDim) setSelectedDim(matchDim.id);
+                                            if (catalog.productType) setCatalogProductType(catalog.productType);
+                                            if (catalog.creativity !== undefined) setCatalogCreativity(catalog.creativity);
+                                            if (catalog.negativePrompt !== undefined) setCatalogNegativePrompt(catalog.negativePrompt);
+                                            toast.success("Prompt, modelo y resolución cargados");
+                                        }}
+                                        title="Cargar prompt, modelo y resolución"
+                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-white transition-all border border-white/10 text-[9px] font-black uppercase tracking-widest"
+                                    >
+                                        <Copy size={11} /> Reusar
+                                    </button>
+                                    {catalog.images.length > 0 && (
+                                        <button
+                                            onClick={() => { const pages: BookPage[] = catalog.images.map((img, i) => ({ id: genPageId(), type: "image" as const, image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` }, text: defaultTextStyle() })); setBookPages(pages); setSelectedPageId(pages[0]?.id ?? null); setBookEditorOpen(true); }}
+                                            title="Editar PDF"
+                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-[9px] font-black uppercase tracking-widest"
+                                        >
+                                            <FileText size={11} /> PDF
+                                        </button>
+                                    )}
+                                    {(catalog.skippedImages ?? 0) > 0 && !isActive && (
+                                        <button
+                                            onClick={() => void retryFailedSlots(catalog._id)}
+                                            disabled={retryingCatalogId === catalog._id}
+                                            title={`Reintentar ${catalog.skippedImages} slot${(catalog.skippedImages ?? 0) > 1 ? "s" : ""} fallados`}
+                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20 text-[9px] font-black uppercase tracking-widest disabled:opacity-50"
+                                        >
+                                            {retryingCatalogId === catalog._id ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                                            {catalog.skippedImages} fallidos
+                                        </button>
+                                    )}
+                                    {catalog.images.length > 0 && (
+                                        <button
+                                            onClick={() => setCompareSel(prev => {
+                                                const next = new Set(prev);
+                                                next.has(catalog._id) ? next.delete(catalog._id) : next.add(catalog._id);
+                                                return next;
+                                            })}
+                                            title="Seleccionar para comparar"
+                                            className={`flex items-center gap-1 h-8 px-2.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${compareSel.has(catalog._id) ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-white/5 border-white/10 text-neutral-600 hover:text-sky-400 hover:border-sky-500/30"}`}
+                                        >
+                                            <Copy size={10} />
+                                        </button>
+                                    )}
+                                    {isActive && (
+                                        <button
+                                            onClick={() => void cancelCatalog(catalog._id)}
+                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all text-[9px] font-black uppercase tracking-widest"
+                                        >
+                                            <StopCircle size={11} /> Detener
+                                        </button>
+                                    )}
+                                    <button onClick={() => setConfirmDeleteCatalogId(catalog._id)} disabled={deletingCatalogId === catalog._id} title="Eliminar" className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 disabled:opacity-50">
+                                        {deletingCatalogId === catalog._id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                    </button>
+                                </div>
+                            </div>
+                            {/* Progress bar */}
+                            {isActive && (
+                                <div className="px-4 pb-3 space-y-1.5 border-t border-white/5 pt-3">
+                                    <div className="flex justify-between text-[9px] uppercase tracking-widest text-neutral-600">
+                                        <span className="flex items-center gap-1.5"><Loader2 size={8} className="animate-spin text-blue-400" />{catalog.status === "queued" ? `En cola · posición ${queuePos}` : catalog.status === "pending" ? "Iniciando..." : "Generando"}</span>
+                                        {catalog.status !== "queued" && <span className="font-black text-neutral-400">{Math.round(progress)}% {timeStr && <span className="text-violet-400/80 normal-case">{timeStr}</span>}</span>}
+                                    </div>
+                                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                                        {catalog.status === "queued"
+                                            ? <div className="h-full w-1/3 bg-gradient-to-r from-orange-500/30 to-orange-400/60 rounded-full animate-pulse" />
+                                            : <div className="h-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
+                                        }
+                                    </div>
+                                </div>
+                            )}
+                            {/* Image grid */}
+                            {catalog.images.length > 0 && (
+                                <div className="px-4 pb-4 border-t border-white/5 pt-3">
+                                    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
+                                        {catalog.images.map((img, imgIdx) => {
+                                            const isCatSelected = selectedImageUrls.has(img.url);
+                                            return (
+                                                <div
+                                                    key={img.publicId}
+                                                    className={`aspect-square rounded-lg overflow-hidden bg-white/5 border transition-all relative ${isVaultSelectMode ? (isCatSelected ? "border-violet-500 ring-1 ring-violet-500/50 cursor-pointer" : "border-white/10 hover:border-violet-500/50 cursor-pointer") : "border-white/5 cursor-zoom-in hover:border-violet-500/40"}`}
+                                                    onClick={() => isVaultSelectMode ? toggleImageSelect(img.url) : openCatalogImagePreview(catalog.images, imgIdx, catalog._id)}
+                                                >
+                                                    <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                                                    {isVaultSelectMode && (
+                                                        <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isCatSelected ? "bg-violet-500 border-violet-500" : "bg-black/50 border-white/30 backdrop-blur-sm"}`}>
+                                                            {isCatSelected && <Check size={9} className="text-white" strokeWidth={3} />}
+                                                        </div>
+                                                    )}
+                                                    {!isVaultSelectMode && favorites.has(img.url) && (
+                                                        <div className="absolute top-0.5 left-0.5 p-0.5 rounded-md bg-black/60 text-rose-400 pointer-events-none">
+                                                            <Heart size={8} className="fill-rose-400" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                        {isActive && Array.from({ length: catalog.totalImages - catalog.images.length }).map((_, i) => (
+                                            <div key={`ph-${i}`} className="aspect-square rounded-lg bg-white/[0.02] border border-dashed border-white/10 flex items-center justify-center">
+                                                <Loader2 size={10} className="text-neutral-700 animate-spin" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </Card>
+                    );
+                };
+
+                return (
+                    <div className="space-y-4">
+                        {/* Header with counter + controls */}
+                        <div className="flex items-center gap-4 px-2">
+                            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                            <div className="flex items-center gap-3">
+                                <Layers size={14} className="text-violet-400" />
+                                <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Catálogos IA</h3>
+                                {totalImages > 0 && (
+                                    <span className="text-[9px] font-black text-violet-400/60 tabular-nums">{totalImages} imgs</span>
+                                )}
+                            </div>
+                            <button onClick={() => void fetchCatalogs()} disabled={isLoadingCatalogs} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
+                                {isLoadingCatalogs ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                            </button>
+                            {compareSel.size >= 2 && (
+                                <button onClick={() => setCompareOpen(true)}
+                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-300 text-[9px] font-black uppercase tracking-widest hover:bg-sky-500/25 transition-all">
+                                    <Copy size={10} /> Comparar ({compareSel.size})
+                                </button>
+                            )}
+                            {compareSel.size > 0 && (
+                                <button onClick={() => setCompareSel(new Set())} className="text-[9px] text-neutral-600 hover:text-white transition-colors uppercase font-black">Limpiar</button>
+                            )}
+                            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                        </div>
+
+                        {/* Active catalogs (always visible) */}
+                        {activeCatalogs.length > 0 && (
+                            <div className="space-y-3">
+                                {activeCatalogs.map(renderCard)}
+                            </div>
+                        )}
+
+                        {/* Done catalogs with collapse toggle */}
+                        {doneCatalogs.length > 0 && (
+                            <div className="space-y-3">
+                                <button
+                                    onClick={() => setCollapsedCompleted(v => !v)}
+                                    className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all text-left"
+                                >
+                                    <ChevronDown size={12} className={`text-neutral-600 transition-transform duration-300 ${collapsedCompleted ? "" : "rotate-180"}`} />
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">
+                                        {collapsedCompleted ? `Ver ${doneCatalogs.length} catálogo${doneCatalogs.length > 1 ? "s" : ""} finalizado${doneCatalogs.length > 1 ? "s" : ""}` : `Ocultar finalizados`}
+                                    </span>
+                                    <span className="ml-auto text-[9px] text-neutral-700 font-mono">{doneCatalogs.reduce((s, c) => s + c.images.length, 0)} imgs</span>
+                                </button>
+                                {!collapsedCompleted && (
+                                    <div className="space-y-3">
+                                        {doneCatalogs.map(renderCard)}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
 
             {iaCatalogs.length === 0 && !isLoadingCatalogs && (
                 <div className="flex items-center gap-4 px-2 opacity-30">
@@ -3208,6 +3548,7 @@ export function KdpFactoryApp() {
                     <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                 </div>
             )}
+            </div>
 
         </div>
     );
@@ -3220,7 +3561,8 @@ export function KdpFactoryApp() {
 
     const statusBadge = (status: IACatalogFE["status"]) => {
         const map: Record<IACatalogFE["status"], { label: string; cls: string }> = {
-            pending:   { label: "En cola",       cls: "bg-neutral-500/10 text-neutral-400 border-neutral-500/20" },
+            queued:    { label: "En espera",     cls: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
+            pending:   { label: "Iniciando...",  cls: "bg-neutral-500/10 text-neutral-400 border-neutral-500/20" },
             running:   { label: "Generando...",  cls: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
             completed: { label: "Completado",    cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
             failed:    { label: "Error",         cls: "bg-red-500/10 text-red-400 border-red-500/20" },
@@ -3291,19 +3633,27 @@ export function KdpFactoryApp() {
 
     const copyText = (text: string) => { navigator.clipboard.writeText(text); toast.success("Copiado"); };
 
-    const fetchTrends = async () => {
+    const fetchTrends = async (forceRefresh = false) => {
         setIsLoadingTrends(true);
-        setTrendsData(null);
-        setSelectedTrend(null);
+        if (!forceRefresh) { setTrendsData(null); setSelectedTrend(null); }
         try {
             const res = await fetch(`${API_BASE_URL}/ai/trends`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ platform: trendsPlatform, category: trendsCategory }),
+                body: JSON.stringify({ platform: trendsPlatform, category: trendsCategory, refresh: forceRefresh }),
             });
             const data = await res.json();
-            if (!res.ok) { toast.error(data.error ?? "Error obteniendo tendencias"); return; }
+            if (!res.ok) {
+                if (res.status === 429) {
+                    toast.error("Límite de cuota de Gemini alcanzado — espera unos minutos y vuelve a intentarlo", { duration: 8000 });
+                } else {
+                    toast.error(data.error ?? "Error obteniendo tendencias");
+                }
+                return;
+            }
             setTrendsData(data);
+            if (data._stale) toast.info("Mostrando datos en caché (límite de cuota alcanzado)", { duration: 5000 });
+            else if (data._cached) toast.success("Tendencias cargadas desde caché");
         } catch { toast.error("Error conectando con la API"); }
         finally { setIsLoadingTrends(false); }
     };
@@ -3342,7 +3692,7 @@ export function KdpFactoryApp() {
                             <KdpSelect accent="amber" value={trendsCategory} onChange={v => setTrendsCategory(v)}
                                 options={TREND_CATEGORIES.map(c => ({ value: c, label: c === "all" ? "Todas las categorías" : c }))} />
                         </div>
-                        <button onClick={fetchTrends} disabled={isLoadingTrends}
+                        <button onClick={() => void fetchTrends()} disabled={isLoadingTrends}
                             className="h-[38px] px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-black text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity shrink-0">
                             {isLoadingTrends ? <Loader2 size={12} className="animate-spin" /> : <TrendingUp size={12} />}
                             {isLoadingTrends ? "..." : "Analizar"}
@@ -3417,7 +3767,7 @@ export function KdpFactoryApp() {
                                                             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[9px] font-black uppercase hover:bg-violet-500/20 transition-colors">
                                                             <Send size={9} /> Usar en Contenido →
                                                         </button>
-                                                        <button onClick={() => { setPromptTheme(t.niche); setActiveTab("creation"); toast.success("Cargado en Imágenes"); }}
+                                                        <button onClick={() => { setPromptTheme(t.niche); changeTab("creation"); toast.success("Cargado en Imágenes"); }}
                                                             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[9px] font-black uppercase hover:bg-amber-500/20 transition-colors">
                                                             <ImageIcon size={9} /> Imágenes
                                                         </button>
@@ -3450,14 +3800,20 @@ export function KdpFactoryApp() {
                                 </button>
                             </div>
                         </div>
-                        {/* Filter pills */}
-                        <div className="flex gap-1.5 flex-wrap">
-                            {(["all", "found", "research", "active", "archived"] as const).map(s => (
-                                <button key={s} onClick={() => setNicheStatusFilter(s)}
-                                    className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border ${nicheStatusFilter === s ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/8 text-neutral-600 hover:text-white"}`}>
-                                    {s === "all" ? `Todos (${niches.length})` : `${STATUS_LABELS[s].label} (${niches.filter(n => n.status === s).length})`}
-                                </button>
-                            ))}
+                        {/* Filter + sort row */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex gap-1.5 flex-wrap flex-1">
+                                {(["all", "found", "research", "active", "archived"] as const).map(s => (
+                                    <button key={s} onClick={() => setNicheStatusFilter(s)}
+                                        className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all border ${nicheStatusFilter === s ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/8 text-neutral-600 hover:text-white"}`}>
+                                        {s === "all" ? `Todos (${niches.length})` : `${STATUS_LABELS[s].label} (${niches.filter(n => n.status === s).length})`}
+                                    </button>
+                                ))}
+                            </div>
+                            <button onClick={() => setNicheSortBy(p => p === "score" ? "date" : "score")}
+                                className="flex items-center gap-1 h-7 px-2.5 rounded-lg bg-white/5 border border-white/8 text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-all shrink-0">
+                                {nicheSortBy === "score" ? "↓ Score" : "↓ Fecha"}
+                            </button>
                         </div>
                         {/* Loading */}
                         {isLoadingNiches && (
@@ -3477,10 +3833,24 @@ export function KdpFactoryApp() {
                         {/* List */}
                         {!isLoadingNiches && (nicheStatusFilter === "all" ? niches : niches.filter(n => n.status === nicheStatusFilter)).length > 0 && (
                             <div className="space-y-2">
-                                {(nicheStatusFilter === "all" ? niches : niches.filter(n => n.status === nicheStatusFilter)).map(niche => (
+                                {(nicheStatusFilter === "all" ? niches : niches.filter(n => n.status === nicheStatusFilter))
+                                    .slice()
+                                    .sort((a, b) => nicheSortBy === "score" ? nicheScore(b) - nicheScore(a) : 0)
+                                    .map(niche => {
+                                    const score = nicheScore(niche);
+                                    const scoreColor = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-amber-400" : "text-neutral-500";
+                                    const PHASES: { id: NicheFE["phase"]; label: string }[] = [
+                                        { id: "niche", label: "Nicho" },
+                                        { id: "catalog", label: "Catálogo" },
+                                        { id: "pdf", label: "PDF" },
+                                        { id: "published", label: "Publicado" },
+                                    ];
+                                    const phaseIdx = PHASES.findIndex(p => p.id === (niche.phase ?? "niche"));
+                                    return (
                                     <div key={niche._id} className="group rounded-2xl border border-white/8 bg-white/[0.02] hover:border-violet-500/20 transition-all overflow-hidden">
                                         <div className="h-px w-full bg-gradient-to-r from-violet-500/50 via-violet-400/15 to-transparent" />
                                         <div className="p-3 space-y-2">
+                                            {/* Header row */}
                                             <div className="flex items-start gap-2">
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-2 flex-wrap">
@@ -3488,6 +3858,7 @@ export function KdpFactoryApp() {
                                                         <span className={`px-1.5 py-0.5 rounded-md border text-[7px] font-black uppercase tracking-widest ${STATUS_LABELS[niche.status].color}`}>
                                                             {STATUS_LABELS[niche.status].label}
                                                         </span>
+                                                        <span className={`text-[10px] font-black tabular-nums ${scoreColor}`} title="Score">★{score}</span>
                                                     </div>
                                                     <div className="flex items-center gap-1 flex-wrap mt-0.5">
                                                         <span className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/8 text-[8px] text-neutral-500 font-black uppercase">
@@ -3500,17 +3871,56 @@ export function KdpFactoryApp() {
                                                     {niche.description && <p className="text-[9px] text-neutral-600 mt-0.5 line-clamp-1">{niche.description}</p>}
                                                 </div>
                                                 <div className="flex items-center gap-1 shrink-0">
+                                                    {niche.generatedPrompt && (
+                                                        <button onClick={() => saveNichePromptToLibrary(niche)} title="Guardar prompt en biblioteca"
+                                                            className="p-1.5 rounded-lg text-neutral-700 hover:text-violet-400 hover:bg-violet-500/10 transition-all">
+                                                            <BookMarked size={11} />
+                                                        </button>
+                                                    )}
                                                     <button onClick={() => openNicheForm(niche)} className="p-1.5 rounded-lg text-neutral-700 hover:text-violet-400 hover:bg-violet-500/10 transition-all"><Pencil size={11} /></button>
                                                     <button onClick={() => setNicheDeleteId(niche._id)} className="p-1.5 rounded-lg text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all"><Trash2 size={11} /></button>
                                                 </div>
                                             </div>
+
+                                            {/* Pipeline stepper */}
+                                            <div className="flex items-center gap-1">
+                                                {PHASES.map((ph, i) => {
+                                                    const done = i <= phaseIdx;
+                                                    const isCurrent = i === phaseIdx;
+                                                    const isNext = i === phaseIdx + 1;
+                                                    return (
+                                                        <div key={ph.id} className="flex items-center gap-1 flex-1">
+                                                            <button
+                                                                onClick={() => isNext ? void advanceNichePhase(niche) : undefined}
+                                                                title={isNext ? `Marcar como ${ph.label}` : ph.label}
+                                                                className={`flex-1 h-5 rounded-md text-[7px] font-black uppercase tracking-widest transition-all truncate ${
+                                                                    done ? isCurrent ? "bg-violet-500 text-white" : "bg-violet-500/30 text-violet-300"
+                                                                    : isNext ? "bg-white/5 border border-dashed border-white/20 text-neutral-600 hover:border-violet-500/40 hover:text-violet-400 cursor-pointer"
+                                                                    : "bg-white/[0.02] border border-white/5 text-neutral-700"
+                                                                }`}
+                                                            >
+                                                                {ph.label}
+                                                            </button>
+                                                            {i < PHASES.length - 1 && <div className={`w-1.5 h-px shrink-0 ${i < phaseIdx ? "bg-violet-500/40" : "bg-white/10"}`} />}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            {/* Meta row */}
                                             <div className="flex items-center gap-1.5 flex-wrap">
                                                 <span className={`px-2 py-0.5 rounded-md border text-[8px] font-black uppercase ${COMPETITION_LABELS[niche.competition].color}`}>Comp: {COMPETITION_LABELS[niche.competition].label}</span>
                                                 <span className={`px-2 py-0.5 rounded-md border text-[8px] font-black uppercase ${DEMAND_LABELS[niche.demand].color}`}>Dem: {DEMAND_LABELS[niche.demand].label}</span>
                                                 {niche.tags.slice(0, 2).map(tag => (
                                                     <span key={tag} className="px-1.5 py-0.5 rounded-md bg-white/5 border border-white/8 text-[8px] text-neutral-600">{tag}</span>
                                                 ))}
+                                                {(niche.catalogIds?.length ?? 0) > 0 && (
+                                                    <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-[8px] text-emerald-400 font-black uppercase">
+                                                        {niche.catalogIds!.length} catálogo{niche.catalogIds!.length > 1 ? "s" : ""}
+                                                    </span>
+                                                )}
                                             </div>
+
                                             <button
                                                 onClick={() => void generateNicheContent(niche)}
                                                 disabled={nicheGeneratingId === niche._id}
@@ -3522,7 +3932,8 @@ export function KdpFactoryApp() {
                                             </button>
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
@@ -3814,7 +4225,7 @@ export function KdpFactoryApp() {
                     ].map((tab) => (
                         <button
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id as TabID)}
+                            onClick={() => changeTab(tab.id as TabID)}
                             className={`flex items-center gap-2 md:gap-3 px-4 md:px-8 py-3.5 rounded-[24px] text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-500 whitespace-nowrap justify-center ${activeTab === tab.id
                                 ? "bg-white text-black shadow-lg scale-[1.05] z-10"
                                 : "text-neutral-500 hover:text-white hover:bg-white/5"
@@ -4906,6 +5317,21 @@ export function KdpFactoryApp() {
                                 <textarea value={nicheFormNotes} onChange={e => setNicheFormNotes(e.target.value)} rows={3} placeholder="Observaciones, ideas, URLs de referencia…"
                                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all resize-none" />
                             </div>
+                            {/* Generated Prompt */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
+                                    Prompt generado <span className="normal-case text-neutral-600">(guardado automáticamente al generar contenido)</span>
+                                </label>
+                                <textarea value={nicheFormPrompt} onChange={e => setNicheFormPrompt(e.target.value)} rows={4} placeholder="El prompt de imagen se guardará aquí al usar Generar contenido…"
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-[11px] text-neutral-300 placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all resize-none font-mono leading-relaxed" />
+                                {nicheFormPrompt.trim() && (
+                                    <button
+                                        onClick={() => { setPromptTheme(nicheFormPrompt.trim()); changeTab("creation"); setNicheFormOpen(false); toast.success("Prompt aplicado al generador"); }}
+                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[9px] font-black uppercase tracking-widest hover:bg-violet-500 hover:text-white hover:border-violet-500 transition-all">
+                                        <ArrowRight size={10} /> Aplicar en generador
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         <div className="px-6 pb-6 pt-4 border-t border-white/8 shrink-0 flex gap-3">
                             <button onClick={() => setNicheFormOpen(false)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
@@ -5003,6 +5429,48 @@ export function KdpFactoryApp() {
                                 </div>
                             )}
 
+                            {/* Cloudinary — Almacén Persistente */}
+                            {cloudinaryImages.length > 0 && (
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Almacén Cloudinary ({cloudinaryImages.length} imágenes)</p>
+                                        <button
+                                            onClick={() => {
+                                                const allSel = cloudinaryImages.every((_, i) => kdpTemplateCloudSel.has(i));
+                                                setKdpTemplateCloudSel(allSel ? new Set() : new Set(cloudinaryImages.map((_, i) => i)));
+                                            }}
+                                            className="text-[9px] font-black uppercase tracking-widest text-violet-400 hover:text-violet-300 transition-colors"
+                                        >
+                                            {cloudinaryImages.every((_, i) => kdpTemplateCloudSel.has(i)) ? "Deseleccionar todo" : "Seleccionar todo"}
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-5 sm:grid-cols-8 gap-2">
+                                        {cloudinaryImages.map((img, i) => {
+                                            const sel = kdpTemplateCloudSel.has(i);
+                                            return (
+                                                <button
+                                                    key={img.publicId}
+                                                    onClick={() => setKdpTemplateCloudSel(prev => {
+                                                        const next = new Set(prev);
+                                                        sel ? next.delete(i) : next.add(i);
+                                                        return next;
+                                                    })}
+                                                    className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${sel ? "border-violet-500 ring-1 ring-violet-500/50" : "border-white/10 opacity-40 hover:opacity-70"}`}
+                                                    title={img.publicId.split("/").pop()}
+                                                >
+                                                    <img src={img.url} alt="" className="w-full h-full object-cover" />
+                                                    {sel && (
+                                                        <div className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-violet-500 flex items-center justify-center">
+                                                            <Check size={9} className="text-white" strokeWidth={3} />
+                                                        </div>
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Completed catalogs */}
                             {iaCatalogs.filter(c => c.status === "completed" && c.images.length > 0).length > 0 && (
                                 <div className="space-y-3">
@@ -5061,10 +5529,11 @@ export function KdpFactoryApp() {
                             {/* Summary */}
                             {(() => {
                                 const vaultCount = kdpTemplateVaultSel.size;
+                                const cloudCount = kdpTemplateCloudSel.size;
                                 const catalogCount = iaCatalogs
                                     .filter(c => kdpTemplateCatalogSel.has(c._id))
                                     .reduce((acc, c) => acc + c.images.length, 0);
-                                const total = vaultCount + catalogCount;
+                                const total = vaultCount + cloudCount + catalogCount;
                                 return total > 0 ? (
                                     <p className="text-[10px] text-neutral-500 text-center">
                                         <span className="text-violet-400 font-black">{total}</span> imágenes seleccionadas · <span className="text-neutral-400 font-black">{total * 2 + 2}</span> páginas totales (portada + blanco + imagen + blanco × {total})
@@ -5080,13 +5549,16 @@ export function KdpFactoryApp() {
                                         const vaultEntries = vaultImages
                                             .filter((_, i) => kdpTemplateVaultSel.has(i))
                                             .map(v => ({ url: v.url, label: v.model || "Vault" }));
+                                        const cloudEntries = cloudinaryImages
+                                            .filter((_, i) => kdpTemplateCloudSel.has(i))
+                                            .map(c => ({ url: c.url, label: c.publicId.split("/").pop() ?? "Cloud" }));
                                         const catalogEntries = iaCatalogs
                                             .filter(c => kdpTemplateCatalogSel.has(c._id))
                                             .flatMap(c => c.images.map((img, i) => ({ url: img.url, label: `${c.name} #${i + 1}` })));
                                         setKdpTemplateOpen(false);
-                                        applyColoringBookTemplate(kdpTemplateTitle || "Mi Libro de Colorear", [...vaultEntries, ...catalogEntries]);
+                                        applyColoringBookTemplate(kdpTemplateTitle || "Mi Libro de Colorear", [...vaultEntries, ...cloudEntries, ...catalogEntries]);
                                     }}
-                                    disabled={kdpTemplateVaultSel.size === 0 && kdpTemplateCatalogSel.size === 0}
+                                    disabled={kdpTemplateVaultSel.size === 0 && kdpTemplateCatalogSel.size === 0 && kdpTemplateCloudSel.size === 0}
                                     className="flex-1 h-11 rounded-2xl bg-violet-500 text-white text-sm font-black hover:bg-violet-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                 >
                                     <BookOpen size={16} /> Aplicar plantilla
@@ -5096,6 +5568,63 @@ export function KdpFactoryApp() {
                     </div>
                 </div>
             )}
+
+            {/* ── COMPARE CATALOGS MODAL ── */}
+            {compareOpen && compareSel.size >= 1 && (() => {
+                const cats = iaCatalogs.filter(c => compareSel.has(c._id));
+                return (
+                    <div className="fixed inset-0 z-[170] bg-black/85 backdrop-blur-md flex flex-col" role="dialog" aria-modal="true">
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-white/8 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <Copy size={15} className="text-sky-400" />
+                                <p className="text-sm font-black text-white">Comparando {cats.length} catálogos</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => { setCompareSel(new Set()); setCompareOpen(false); }}
+                                    className="text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-colors px-3">
+                                    Limpiar selección
+                                </button>
+                                <button onClick={() => setCompareOpen(false)}
+                                    className="p-2 rounded-xl text-neutral-500 hover:text-white hover:bg-white/10 transition-all">
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        </div>
+                        {/* Body — horizontal scroll of catalog panels */}
+                        <div className="flex-1 overflow-hidden flex gap-0">
+                            {cats.map((cat, ci) => (
+                                <div key={cat._id} className={`flex-1 min-w-0 flex flex-col border-white/8 ${ci > 0 ? "border-l" : ""}`}>
+                                    {/* Catalog header */}
+                                    <div className="px-4 py-3 border-b border-white/8 shrink-0">
+                                        <p className="text-[11px] font-black text-white truncate">{cat.name}</p>
+                                        <p className="text-[9px] text-neutral-500 truncate">{cat.aiModel?.name} · {cat.images.length} imágenes</p>
+                                    </div>
+                                    {/* Image grid — scrollable */}
+                                    <div className="flex-1 overflow-y-auto p-3 grid grid-cols-2 gap-2 content-start">
+                                        {cat.images.map((img, ii) => (
+                                            <div key={img.publicId} className="relative aspect-square rounded-xl overflow-hidden group/img border border-white/5 hover:border-white/20 transition-all">
+                                                <img src={img.url} alt="" className="w-full h-full object-cover" />
+                                                <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover/img:opacity-100">
+                                                    <a href={img.url} target="_blank" rel="noreferrer"
+                                                        className="p-1.5 rounded-lg bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 transition-all"
+                                                        onClick={e => e.stopPropagation()}>
+                                                        <ExternalLink size={12} />
+                                                    </a>
+                                                </div>
+                                                <span className="absolute bottom-1 left-1 text-[7px] font-black text-white/50 bg-black/40 rounded px-1">#{ii + 1}</span>
+                                            </div>
+                                        ))}
+                                        {cat.images.length === 0 && (
+                                            <p className="col-span-2 text-[10px] text-neutral-600 text-center py-8">Sin imágenes aún</p>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* Confirm Delete Cloudinary Image Dialog */}
             {confirmDeleteCloudinaryId && (

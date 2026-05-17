@@ -5,7 +5,7 @@ type LLMProvider = "google" | "huggingface";
 
 async function getConfig(): Promise<{ provider: LLMProvider; model: string; googleKey: string; hfKey: string }> {
     let provider: LLMProvider = "google";
-    let model = "gemini-1.5-flash";
+    let model = "gemini-2.5-flash";
     let googleKey = process.env.GOOGLE_API_KEY ?? "";
     let hfKey = process.env.HUGGINGFACE_API_KEY ?? "";
 

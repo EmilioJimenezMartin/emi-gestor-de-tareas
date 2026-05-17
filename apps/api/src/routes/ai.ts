@@ -690,12 +690,26 @@ Return ONLY a JSON object:
     });
 
     // ── TRENDS ───────────────────────────────────────────────────────────────
+    // In-memory cache: avoids redundant LLM calls and survives rate-limit windows.
+    const trendsCache = new Map<string, { data: any; expiresAt: number }>();
+    const TRENDS_TTL_MS = 60 * 60 * 1000; // 1 hour
+
     app.post("/ai/trends", async (request: any, reply) => {
         const { platform = "all", category = "all", refresh = false } = request.body as {
             platform?: "all" | "kdp" | "etsy" | "printify";
             category?: string;
             refresh?: boolean;
         };
+
+        const cacheKey = `${platform}__${category}`;
+
+        // Serve from cache unless the client explicitly requests a refresh
+        if (!refresh) {
+            const cached = trendsCache.get(cacheKey);
+            if (cached && cached.expiresAt > Date.now()) {
+                return reply.send({ ...cached.data, _cached: true });
+            }
+        }
 
         const config = await (async () => {
             const { Settings: S } = await import("../models/settings.js");
@@ -709,6 +723,13 @@ Return ONLY a JSON object:
             } catch {}
             return { model, googleKey };
         })();
+
+        if (!config.googleKey) {
+            return reply.status(503).send({ error: "No hay GOOGLE_API_KEY configurada. Añádela en Ajustes." });
+        }
+
+        // If rate-limited, try to return stale cache before giving up
+        const stale = trendsCache.get(cacheKey);
 
         const platformFilter = platform === "all" ? "Amazon KDP, Etsy, and Printify" : platform === "kdp" ? "Amazon KDP" : platform === "etsy" ? "Etsy" : "Printify";
         const categoryFilter = category === "all" ? "all niches" : `the "${category}" niche`;
@@ -746,25 +767,37 @@ Return ONLY a JSON object with this exact structure:
 Generate exactly 15 diverse, actionable trends. Focus on currently profitable and rising niches. Be specific and practical.`;
 
         try {
-            if (config.googleKey) {
-                const { GoogleGenAI } = await import("@google/genai");
-                const ai = new GoogleGenAI({ apiKey: config.googleKey });
-                const response = await ai.models.generateContent({
-                    model: config.model || "gemini-2.5-flash",
-                    contents: prompt,
-                    config: { responseMimeType: "application/json" },
-                });
-                const raw = (response.text ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
-                try {
-                    return reply.send(JSON.parse(raw));
-                } catch {
-                    return reply.status(500).send({ error: "LLM returned invalid JSON", raw: raw.slice(0, 500) });
-                }
+            const { GoogleGenAI } = await import("@google/genai");
+            const ai = new GoogleGenAI({ apiKey: config.googleKey });
+            const response = await ai.models.generateContent({
+                model: config.model || "gemini-2.5-flash",
+                contents: prompt,
+                config: { responseMimeType: "application/json" },
+            });
+            const raw = (response.text ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+            try {
+                const parsed = JSON.parse(raw);
+                trendsCache.set(cacheKey, { data: parsed, expiresAt: Date.now() + TRENDS_TTL_MS });
+                return reply.send(parsed);
+            } catch {
+                return reply.status(500).send({ error: "LLM devolvió JSON inválido", raw: raw.slice(0, 500) });
             }
-            return reply.status(503).send({ error: "No GOOGLE_API_KEY configured. Add it in Settings." });
         } catch (e: any) {
-            app.log.error({ err: e }, "AI trends failed");
-            return reply.status(500).send({ error: e?.message ?? "LLM error" });
+            const status = e?.response?.status ?? e?.status ?? e?.code;
+            app.log.error({ err: e, status }, "AI trends failed");
+
+            // Rate limit — serve stale cache if available, otherwise informative error
+            if (status === 429) {
+                if (stale) {
+                    return reply.send({ ...stale.data, _cached: true, _stale: true });
+                }
+                return reply.status(429).send({
+                    error: "Límite de cuota de Gemini alcanzado. El tier gratuito tiene ~1500 req/día. Espera unos minutos o usa Gemini 1.5 Flash en Ajustes.",
+                    retryable: true,
+                });
+            }
+
+            return reply.status(500).send({ error: e?.message ?? "Error de IA" });
         }
     });
 

@@ -10,6 +10,9 @@ export interface INiche extends Document {
     productType: "coloring-book" | "printable-poster" | "other";
     styleCategory: "generic" | "anime" | "illustration" | "children" | "realistic" | "watercolor" | "abstract";
     notes: string;
+    generatedPrompt: string;
+    catalogIds: string[];
+    phase: "niche" | "catalog" | "pdf" | "published";
     createdAt: Date;
     updatedAt: Date;
 }
@@ -25,6 +28,9 @@ const NicheSchema = new Schema<INiche>(
         productType: { type: String, enum: ["coloring-book", "printable-poster", "other"], default: "coloring-book" },
         styleCategory: { type: String, enum: ["generic", "anime", "illustration", "children", "realistic", "watercolor", "abstract"], default: "generic" },
         notes: { type: String, default: "" },
+        generatedPrompt: { type: String, default: "" },
+        catalogIds: [{ type: String }],
+        phase: { type: String, enum: ["niche", "catalog", "pdf", "published"], default: "niche" },
     },
     { timestamps: true }
 );
