@@ -65,6 +65,8 @@ import {
     Clock,
     Target,
     ExternalLink,
+    Archive,
+    FolderArchive,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -165,29 +167,29 @@ interface NicheFE {
 }
 
 const NICHE_STYLE_OPTIONS: { id: NicheStyle; label: string; desc: string }[] = [
-    { id: "generic",      label: "Dibujo genérico",    desc: "Estilo versátil y limpio" },
-    { id: "anime",        label: "Anime",              desc: "Estilo japonés animado" },
-    { id: "illustration", label: "Ilustración",        desc: "Estilo artístico/MJ" },
-    { id: "children",     label: "Dibujos para niños", desc: "Líneas limpias, coloreables" },
-    { id: "realistic",    label: "Imagen realista",    desc: "Fotorrealista" },
-    { id: "watercolor",   label: "Acuarela",           desc: "Estilo pintura acuarela" },
-    { id: "abstract",     label: "Abstracto",          desc: "Arte abstracto" },
+    { id: "generic", label: "Dibujo genérico", desc: "Estilo versátil y limpio" },
+    { id: "anime", label: "Anime", desc: "Estilo japonés animado" },
+    { id: "illustration", label: "Ilustración", desc: "Estilo artístico/MJ" },
+    { id: "children", label: "Dibujos para niños", desc: "Líneas limpias, coloreables" },
+    { id: "realistic", label: "Imagen realista", desc: "Fotorrealista" },
+    { id: "watercolor", label: "Acuarela", desc: "Estilo pintura acuarela" },
+    { id: "abstract", label: "Abstracto", desc: "Arte abstracto" },
 ];
 
 const NICHE_STYLE_MODEL: Record<NicheStyle, string> = {
-    generic:      "pollinations-flux",
-    anime:        "pollinations-flux-anime",
+    generic: "pollinations-flux",
+    anime: "pollinations-flux-anime",
     illustration: "openjourney-v4",
-    children:     "coloringbook-redmond-v2",
-    realistic:    "pollinations-flux-realism",
-    watercolor:   "openjourney-v4",
-    abstract:     "pollinations-flux",
+    children: "coloringbook-redmond-v2",
+    realistic: "pollinations-flux-realism",
+    watercolor: "openjourney-v4",
+    abstract: "pollinations-flux",
 };
 
 const NICHE_PRODUCT_OPTIONS: { id: NicheProductType; label: string }[] = [
-    { id: "coloring-book",    label: "Libro de colorear" },
+    { id: "coloring-book", label: "Libro de colorear" },
     { id: "printable-poster", label: "Poster imprimible" },
-    { id: "other",            label: "Otro" },
+    { id: "other", label: "Otro" },
 ];
 
 interface CatalogImageFE {
@@ -470,6 +472,12 @@ export function KdpFactoryApp() {
     // Feature: compare catalogs
     const [compareSel, setCompareSel] = useState<Set<string>>(new Set());
     const [compareOpen, setCompareOpen] = useState(false);
+    // Feature: Zip Factory
+    const [zipFactoryOpen, setZipFactoryOpen] = useState(false);
+    const [zipSource, setZipSource] = useState<"all" | "vault" | "catalogs" | "cloudinary" | "favorites">("all");
+    const [zipSelection, setZipSelection] = useState<Set<string>>(new Set());
+    const [zipName, setZipName] = useState("imagenes-kdp");
+    const [isDownloadingZip, setIsDownloadingZip] = useState(false);
     // Feature: cloudinary search + selection + custom catalog
     const [cloudSearch, setCloudSearch] = useState("");
     const [isCloudSelectMode, setIsCloudSelectMode] = useState(false);
@@ -783,7 +791,7 @@ export function KdpFactoryApp() {
 
     const nicheScore = (n: NicheFE): number => {
         const demandPts = { unknown: 0, low: 10, medium: 25, high: 40 }[n.demand] ?? 0;
-        const compPts  = { unknown: 0, high: 5, medium: 20, low: 35 }[n.competition] ?? 0;
+        const compPts = { unknown: 0, high: 5, medium: 20, low: 35 }[n.competition] ?? 0;
         const catalogPts = (n.catalogIds?.length ?? 0) > 0 ? 10 : 0;
         const phasePts = { niche: 0, catalog: 5, pdf: 10, published: 15 }[n.phase ?? "niche"] ?? 0;
         const statusPts = n.status === "active" ? 5 : n.status === "research" ? 3 : 0;
@@ -872,7 +880,7 @@ export function KdpFactoryApp() {
         setSavePromptName(niche.name);
         setSavePromptCategory(
             niche.productType === "coloring-book" ? "Coloring Book" :
-            niche.productType === "printable-poster" ? "Arte Digital" : "General"
+                niche.productType === "printable-poster" ? "Arte Digital" : "General"
         );
         setShowSavePromptDialog(true);
     };
@@ -1140,10 +1148,10 @@ export function KdpFactoryApp() {
     };
 
     const KDP_PAGE_SIZES = {
-        "6x9":    { label: '6"×9"',    w: 432,    h: 648    },
-        "8x10":   { label: '8"×10"',   w: 576,    h: 720    },
-        "8.5x11": { label: '8.5"×11"', w: 612,    h: 792    },
-        "a4":     { label: "A4",        w: 595.28, h: 841.89 },
+        "6x9": { label: '6"×9"', w: 432, h: 648 },
+        "8x10": { label: '8"×10"', w: 576, h: 720 },
+        "8.5x11": { label: '8.5"×11"', w: 612, h: 792 },
+        "a4": { label: "A4", w: 595.28, h: 841.89 },
     } as const;
 
     const exportKdpPdf = async () => {
@@ -1207,7 +1215,7 @@ export function KdpFactoryApp() {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify([{ key: "kdp-favorites", value: stable }]),
-            }).catch(() => {});
+            }).catch(() => { });
             return next;
         });
     };
@@ -1331,6 +1339,64 @@ export function KdpFactoryApp() {
             toast.error(e.message ?? "Error al crear catálogo personalizado");
         } finally {
             setIsCreatingCustomCatalog(false);
+        }
+    };
+
+    const downloadZip = async () => {
+        if (zipSelection.size === 0) return;
+        setIsDownloadingZip(true);
+        try {
+            // Build image list with clean filenames
+            const allZipImages: { url: string; filename: string }[] = [];
+            const usedNames = new Map<string, number>();
+            const uniqueName = (base: string, ext: string) => {
+                const key = base;
+                const n = usedNames.get(key) ?? 0;
+                usedNames.set(key, n + 1);
+                return n === 0 ? `${base}.${ext}` : `${base}-${n}.${ext}`;
+            };
+
+            // Vault
+            vaultImages.forEach((img, i) => {
+                if (!zipSelection.has(img.url)) return;
+                const base = img.model?.replace(/[^a-z0-9]/gi, "_").toLowerCase() || `vault-${i + 1}`;
+                allZipImages.push({ url: img.url, filename: uniqueName(base, "jpg") });
+            });
+            // Catalogs
+            iaCatalogs.forEach(c => {
+                c.images.forEach((img, i) => {
+                    if (!zipSelection.has(img.url)) return;
+                    const base = `${c.name.replace(/[^a-z0-9]/gi, "_").toLowerCase()}-${String(i + 1).padStart(3, "0")}`;
+                    allZipImages.push({ url: img.url, filename: uniqueName(base, "jpg") });
+                });
+            });
+            // Cloudinary
+            cloudinaryImages.forEach(img => {
+                if (!zipSelection.has(img.url)) return;
+                const base = img.publicId.split("/").pop()?.replace(/[^a-z0-9]/gi, "_").toLowerCase() || "cloudinary";
+                allZipImages.push({ url: img.url, filename: uniqueName(base, "jpg") });
+            });
+
+            const res = await fetch(`${API_BASE_URL}/zip/download`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ images: allZipImages, name: zipName || "imagenes-kdp" }),
+            });
+            if (!res.ok) throw new Error("Error al generar ZIP");
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${zipName || "imagenes-kdp"}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            toast.success(`${allZipImages.length} imágenes descargadas`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al descargar ZIP");
+        } finally {
+            setIsDownloadingZip(false);
         }
     };
 
@@ -1650,10 +1716,10 @@ export function KdpFactoryApp() {
                     setSelectedPageId((draftFound.value.pages as BookPage[])[0].id);
                     if (draftFound.value.fileName) setBookFileName(draftFound.value.fileName);
                 }
-            } catch {}
+            } catch { }
         };
         void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
@@ -1678,7 +1744,7 @@ export function KdpFactoryApp() {
         if (activeTab === "studio" && niches.length === 0) {
             void fetchNiches();
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab]);
 
     // Global paste listener: when in creation tab and no image is being shown/generated,
@@ -1698,7 +1764,7 @@ export function KdpFactoryApp() {
         };
         document.addEventListener("paste", handleGlobalPaste);
         return () => document.removeEventListener("paste", handleGlobalPaste);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, generatedImage, isGenerating]);
 
     // Fetch catalogs + connect socket when entering the creation tab
@@ -1753,7 +1819,7 @@ export function KdpFactoryApp() {
             socket.disconnect();
             catalogSocketRef.current = null;
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab]);
 
     // Sincronizar estado de carga cuando cambia la URL
@@ -1889,21 +1955,21 @@ export function KdpFactoryApp() {
 
     const COMPETITION_LABELS: Record<NicheFE["competition"], { label: string; color: string }> = {
         unknown: { label: "Desconocida", color: "text-neutral-500 bg-neutral-500/10 border-neutral-500/20" },
-        low:     { label: "Baja",        color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
-        medium:  { label: "Media",       color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
-        high:    { label: "Alta",        color: "text-rose-400 bg-rose-500/10 border-rose-500/20" },
+        low: { label: "Baja", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+        medium: { label: "Media", color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+        high: { label: "Alta", color: "text-rose-400 bg-rose-500/10 border-rose-500/20" },
     };
     const DEMAND_LABELS: Record<NicheFE["demand"], { label: string; color: string }> = {
         unknown: { label: "Desconocida", color: "text-neutral-500 bg-neutral-500/10 border-neutral-500/20" },
-        low:     { label: "Baja",        color: "text-rose-400 bg-rose-500/10 border-rose-500/20" },
-        medium:  { label: "Media",       color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
-        high:    { label: "Alta",        color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+        low: { label: "Baja", color: "text-rose-400 bg-rose-500/10 border-rose-500/20" },
+        medium: { label: "Media", color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+        high: { label: "Alta", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
     };
     const STATUS_LABELS: Record<NicheStatus, { label: string; color: string }> = {
-        found:    { label: "Encontrado",  color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
+        found: { label: "Encontrado", color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
         research: { label: "Investigando", color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
-        active:   { label: "Activo",       color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
-        archived: { label: "Archivado",    color: "text-neutral-500 bg-neutral-500/10 border-neutral-500/20" },
+        active: { label: "Activo", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+        archived: { label: "Archivado", color: "text-neutral-500 bg-neutral-500/10 border-neutral-500/20" },
     };
 
 
@@ -1946,7 +2012,7 @@ export function KdpFactoryApp() {
                         </div>
                         <div className="w-full md:w-48">
                             <KdpSelect value={chartPeriod} onChange={v => setChartPeriod(v as PeriodID)}
-                                options={[{value:"month",label:"Último Mes"},{value:"6months",label:"Últimos 6 Meses"},{value:"year",label:"Último Año"},{value:"all",label:"Histórico Total"}]} />
+                                options={[{ value: "month", label: "Último Mes" }, { value: "6months", label: "Últimos 6 Meses" }, { value: "year", label: "Último Año" }, { value: "all", label: "Histórico Total" }]} />
                         </div>
                     </div>
                     <div className="h-[250px] w-full flex items-end justify-between gap-1 sm:gap-2 pt-14 mt-4">
@@ -1971,7 +2037,7 @@ export function KdpFactoryApp() {
                     <div className="space-y-6 relative">
                         <div className="space-y-1"><h3 className="text-sm font-black text-white italic tracking-widest uppercase">Platform Split</h3><p className="text-[10px] text-neutral-500 font-medium tracking-tight">Distribución por canales de venta</p></div>
                         <div className="space-y-5">
-                            {[{name:"Amazon KDP",percent:65,color:"bg-orange-500"},{name:"Etsy",percent:25,color:"bg-indigo-500"},{name:"Creative Fabrica",percent:10,color:"bg-blue-500"}].map(plat => (
+                            {[{ name: "Amazon KDP", percent: 65, color: "bg-orange-500" }, { name: "Etsy", percent: 25, color: "bg-indigo-500" }, { name: "Creative Fabrica", percent: 10, color: "bg-blue-500" }].map(plat => (
                                 <div key={plat.name} className="space-y-2.5">
                                     <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest"><span className="text-neutral-400">{plat.name}</span><span className="text-white italic tabular-nums">{plat.percent}%</span></div>
                                     <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden p-[2px]"><div className={`h-full ${plat.color} rounded-full flex items-center justify-end px-1`} style={{ width: `${plat.percent}%` }}><div className="w-1 h-1 bg-white/40 rounded-full blur-[1px]" /></div></div>
@@ -2095,1568 +2161,1601 @@ export function KdpFactoryApp() {
         const pColor = providerColor[currentModel?.provider || ""] || "neutral";
 
         return (
-        <div className="lg:col-span-12 space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-200 mt-8 pb-12">
-            {/* Header */}
-            <div className="flex items-center gap-4 px-2">
-                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-                        <Zap size={14} className="text-amber-400 fill-amber-400/20" />
+            <div className="lg:col-span-12 space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-200 mt-8 pb-12">
+                {/* Header */}
+                <div className="flex items-center gap-4 px-2">
+                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                            <Zap size={14} className="text-amber-400 fill-amber-400/20" />
+                        </div>
+                        <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-300">IA Asset Studio</h3>
+                        <button
+                            onClick={() => setShowSafeArea(v => !v)}
+                            className={`px-3 h-7 rounded-xl border transition-all text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 ${showSafeArea ? "bg-amber-500/20 border-amber-500/40 text-amber-400" : "bg-white/5 border-white/10 text-neutral-600 hover:text-amber-400 hover:border-amber-500/25"}`}
+                        >
+                            <Maximize size={11} /> Safe area
+                        </button>
                     </div>
-                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-300">IA Asset Studio</h3>
-                    <button
-                        onClick={() => setShowSafeArea(v => !v)}
-                        className={`px-3 h-7 rounded-xl border transition-all text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 ${showSafeArea ? "bg-amber-500/20 border-amber-500/40 text-amber-400" : "bg-white/5 border-white/10 text-neutral-600 hover:text-amber-400 hover:border-amber-500/25"}`}
-                    >
-                        <Maximize size={11} /> Safe area
-                    </button>
+                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                 </div>
-                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                {/* ─── LEFT CARD: Controls ─── */}
-                <div className="relative rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
-                    <div className="absolute -top-24 -right-24 w-64 h-64 bg-amber-500/5 blur-[90px] pointer-events-none rounded-full" />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                    {/* ─── LEFT CARD: Controls ─── */}
+                    <div className="relative rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+                        <div className="absolute -top-24 -right-24 w-64 h-64 bg-amber-500/5 blur-[90px] pointer-events-none rounded-full" />
 
-                    {/* ── 01 MODELO & FORMATO ── */}
-                    <div className="p-6 space-y-4 relative z-10">
-                        <div className="flex items-center gap-3">
-                            <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-[9px] font-black text-neutral-500 flex items-center justify-center shrink-0">01</span>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Modelo & Formato</p>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {/* Model picker */}
-                            <div className="space-y-2">
-                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600 ml-1">Modelo I.A.</label>
-                                <div className="relative">
-                                    <button ref={modelPickerBtnRef} type="button"
-                                        onClick={() => {
-                                            modelPickerRectRef.current = modelPickerBtnRef.current?.getBoundingClientRect() ?? null;
-                                            setShowModelPicker(v => !v);
-                                            setShowDimPicker(false);
-                                        }}
-                                        className="w-full h-12 bg-white/4 border border-white/8 rounded-2xl px-3.5 flex items-center gap-3 hover:bg-white/7 hover:border-white/14 transition-all focus:outline-none"
-                                    >
-                                        <div className={`w-2 h-2 rounded-full bg-${pColor}-400 shrink-0 shadow-[0_0_8px_2px] shadow-${pColor}-400/40`} />
-                                        <div className="flex-1 min-w-0 text-left">
-                                            <p className="text-sm font-bold text-white truncate leading-tight">{currentModel?.name}</p>
-                                            <p className="text-[9px] text-neutral-500 truncate leading-tight">{currentModel?.provider} · {currentModel?.type}</p>
-                                        </div>
-                                        <ChevronDown size={14} className={`text-neutral-600 shrink-0 transition-transform duration-200 ${showModelPicker ? "rotate-180" : ""}`} />
-                                    </button>
-                                    {showModelPicker && modelPickerRectRef.current && createPortal(
-                                        <>
-                                            <div className="fixed inset-0 z-[9998]" onClick={() => setShowModelPicker(false)} />
-                                            <div
-                                                className="fixed z-[9999] bg-[#111111] border border-white/12 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.9)] overflow-hidden"
-                                                style={{
-                                                    top: modelPickerRectRef.current.bottom + 6,
-                                                    left: modelPickerRectRef.current.left,
-                                                    width: modelPickerRectRef.current.width,
-                                                    maxHeight: "288px",
-                                                    overflowY: "auto",
-                                                }}
-                                            >
-                                                {AI_MODELS.map(m => {
-                                                    const mColor = providerColor[m.provider] || "neutral";
-                                                    return (
-                                                        <button key={m.id} type="button"
-                                                            onClick={() => { setSelectedModel(m.id); setShowModelPicker(false); }}
-                                                            className={`w-full px-4 py-3 flex items-center gap-3 transition-all text-left border-b border-white/5 last:border-0 ${selectedModel === m.id ? "bg-white/10" : "hover:bg-white/6"}`}
-                                                        >
-                                                            <div className={`w-2 h-2 rounded-full bg-${mColor}-400 shrink-0`} />
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-sm font-bold text-white leading-tight">{m.name}</p>
-                                                                <p className="text-[10px] text-neutral-500 leading-tight mt-0.5">{m.provider} · {m.type}</p>
-                                                            </div>
-                                                            {selectedModel === m.id && <Check size={14} className="text-emerald-400 shrink-0" />}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </>,
-                                        document.body
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Dimension picker */}
-                            <div className="space-y-2">
-                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600 ml-1">Dimensiones</label>
-                                <div className="grid grid-cols-4 gap-1.5 mb-2">
-                                    {AI_DIMENSIONS.filter(d => ["sq", "pt", "p23", "p34"].includes(d.id)).map(d => (
-                                        <button key={d.id} type="button" onClick={() => setSelectedDim(d.id)}
-                                            className={`h-10 rounded-xl border flex flex-col items-center justify-center gap-0.5 transition-all ${selectedDim === d.id ? "bg-white text-black border-white shadow-[0_4px_12px_rgba(255,255,255,0.15)]" : "bg-white/4 border-white/8 text-neutral-500 hover:bg-white/7"}`}
-                                        >
-                                            {d.id === "sq" ? <Monitor size={11} /> : <Maximize size={11} />}
-                                            <span className="text-[8px] font-black uppercase">{d.ratio}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                                <div className="relative">
-                                    <button ref={dimPickerBtnRef} type="button"
-                                        onClick={() => {
-                                            dimPickerRectRef.current = dimPickerBtnRef.current?.getBoundingClientRect() ?? null;
-                                            setShowDimPicker(v => !v);
-                                            setShowModelPicker(false);
-                                        }}
-                                        className="w-full h-10 bg-white/4 border border-white/8 rounded-2xl px-3.5 flex items-center justify-between gap-3 hover:bg-white/7 transition-all focus:outline-none"
-                                    >
-                                        <div className="flex-1 min-w-0 text-left">
-                                            <p className="text-sm font-bold text-white truncate leading-tight">{currentDim?.name} <span className="font-normal text-neutral-500">({currentDim?.ratio})</span></p>
-                                            <p className="text-[9px] text-neutral-600 leading-tight">{currentDim?.width}×{currentDim?.height}px</p>
-                                        </div>
-                                        <ChevronDown size={14} className={`text-neutral-600 shrink-0 transition-transform duration-200 ${showDimPicker ? "rotate-180" : ""}`} />
-                                    </button>
-                                    {showDimPicker && dimPickerRectRef.current && createPortal(
-                                        <>
-                                            <div className="fixed inset-0 z-[9998]" onClick={() => setShowDimPicker(false)} />
-                                            <div
-                                                className="fixed z-[9999] bg-[#111111] border border-white/12 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.9)] overflow-hidden"
-                                                style={{
-                                                    top: dimPickerRectRef.current.bottom + 6,
-                                                    left: dimPickerRectRef.current.left,
-                                                    width: dimPickerRectRef.current.width,
-                                                    maxHeight: "256px",
-                                                    overflowY: "auto",
-                                                }}
-                                            >
-                                                {AI_DIMENSIONS.map(d => (
-                                                    <button key={d.id} type="button"
-                                                        onClick={() => { setSelectedDim(d.id); setShowDimPicker(false); }}
-                                                        className={`w-full px-4 py-3 flex items-center gap-3 transition-all text-left border-b border-white/5 last:border-0 ${selectedDim === d.id ? "bg-white/6" : "hover:bg-white/3"}`}
-                                                    >
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="text-sm font-bold text-white leading-tight">{d.name} <span className="font-normal text-neutral-500">({d.ratio})</span></p>
-                                                            <p className="text-[10px] text-neutral-500 leading-tight mt-0.5">{d.width}×{d.height}px</p>
-                                                        </div>
-                                                        {selectedDim === d.id && <Check size={14} className="text-emerald-400 shrink-0" />}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </>,
-                                        document.body
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="h-px bg-gradient-to-r from-transparent via-white/8 to-transparent mx-6" />
-
-                    {/* ── 02 PROMPT ── */}
-                    <div className="p-6 space-y-4 relative z-10">
-                        <div className="flex items-center justify-between gap-3">
+                        {/* ── 01 MODELO & FORMATO ── */}
+                        <div className="p-6 space-y-4 relative z-10">
                             <div className="flex items-center gap-3">
-                                <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-[9px] font-black text-neutral-500 flex items-center justify-center shrink-0">02</span>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Prompt del Activo</p>
+                                <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-[9px] font-black text-neutral-500 flex items-center justify-center shrink-0">01</span>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Modelo & Formato</p>
                             </div>
-                            {imagePrompt && (
-                                <div className="flex items-center gap-1.5">
-                                    <button type="button"
-                                        onClick={() => navigator.clipboard.writeText(imagePrompt).then(() => toast.success("Prompt copiado"))}
-                                        className="p-1.5 rounded-lg bg-white/5 text-neutral-600 hover:text-white hover:bg-white/10 transition-all border border-white/8" title="Copiar">
-                                        <Copy size={10} />
-                                    </button>
-                                    <button type="button"
-                                        onClick={() => { setSavePromptName(""); setSavePromptCategory("General"); setShowSavePromptDialog(true); }}
-                                        className="p-1.5 rounded-lg bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition-all border border-violet-500/20" title="Guardar en biblioteca">
-                                        <BookMarked size={10} />
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                        <div className="space-y-2">
-                            <input value={promptTheme} onChange={e => setPromptTheme(e.target.value)}
-                                placeholder="Temática · Ej: Vintage botanical illustration"
-                                className="w-full h-10 bg-white/4 border border-white/8 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/25 focus:bg-white/6 transition-all font-medium"
-                            />
-                            <input value={promptSpecs} onChange={e => setPromptSpecs(e.target.value)}
-                                placeholder="Especificaciones · Ej: watercolor style, high detail"
-                                className="w-full h-10 bg-white/4 border border-white/8 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/25 focus:bg-white/6 transition-all font-medium"
-                            />
-                            <input value={promptDetails} onChange={e => setPromptDetails(e.target.value)}
-                                placeholder="Detalles · Ej: lavender field, soft pastel palette"
-                                className="w-full h-10 bg-white/4 border border-white/8 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/25 focus:bg-white/6 transition-all font-medium"
-                            />
-                            <div className="relative">
-                                <input value={promptParticulars} onChange={e => setPromptParticulars(e.target.value)}
-                                    placeholder="Particularidades · editado por IA en catálogo"
-                                    className="w-full h-10 bg-violet-500/[0.06] border border-violet-500/20 rounded-xl px-4 pr-20 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/40 focus:bg-violet-500/[0.09] transition-all font-medium"
-                                />
-                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black uppercase tracking-widest text-violet-500/50 pointer-events-none flex items-center gap-1">
-                                    <Sparkles size={7} className="animate-pulse" /> IA
-                                </span>
-                            </div>
-                        </div>
-                        {imagePrompt && (
-                            <p className="text-[9px] text-neutral-700 font-mono truncate px-1" title={imagePrompt}>{imagePrompt}</p>
-                        )}
-                    </div>
-
-                    <div className="h-px bg-gradient-to-r from-transparent via-white/8 to-transparent mx-6" />
-
-                    {/* ── 03 OPCIONES AVANZADAS ── */}
-                    <div className="relative z-10">
-                        <button type="button"
-                            onClick={() => setShowAdvancedOptions(v => !v)}
-                            className="w-full px-6 py-4 flex items-center gap-3 hover:bg-white/2 transition-colors group"
-                        >
-                            <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-[9px] font-black text-neutral-500 flex items-center justify-center shrink-0">03</span>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 group-hover:text-neutral-200 transition-colors flex-1 text-left">Opciones avanzadas</p>
-                            <ChevronDown size={13} className={`text-neutral-600 transition-transform duration-300 ${showAdvancedOptions ? "rotate-180" : ""}`} />
-                        </button>
-
-                        {showAdvancedOptions && (() => {
-                            const prov = currentModel?.provider;
-                            return (
-                                <div className="px-6 pb-5 space-y-4">
-                                    <div className="space-y-2">
-                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Prompt negativo</label>
-                                        <input value={negativePrompt} onChange={e => setNegativePrompt(e.target.value)}
-                                            placeholder="Ej: ugly, deformed, blurry, watermark"
-                                            className="w-full h-10 bg-white/4 border border-white/8 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-rose-500/25 transition-all"
-                                        />
-                                    </div>
-                                    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 space-y-3">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Imagen de referencia</p>
-                                            <p className="text-[9px] text-neutral-700 italic">Ctrl/⌘+V o arrastra</p>
-                                        </div>
-                                        <div className="grid grid-cols-[96px_1fr] gap-3 items-start">
-                                            <div
-                                                className="rounded-xl border border-dashed border-white/12 bg-black/20 w-24 aspect-square flex items-center justify-center text-center focus:outline-none overflow-hidden cursor-pointer"
-                                                tabIndex={0}
-                                                onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
-                                                onDrop={e => { e.preventDefault(); e.stopPropagation(); const file = e.dataTransfer.files?.[0]; if (file) void setInitImageFromFile(file); }}
-                                                onPaste={e => { const items = Array.from(e.clipboardData?.items || []); const imageItem = items.find(it => it.kind === "file" && it.type.startsWith("image/")); const file = imageItem?.getAsFile() || null; if (file) void setInitImageFromFile(file); }}
-                                            >
-                                                {initImageDataUrl ? (
-                                                    <img src={initImageDataUrl} alt="Referencia" className="w-full h-full object-cover" />
-                                                ) : (
-                                                    <div className="space-y-1 p-2">
-                                                        <Camera size={18} className="text-neutral-600 mx-auto" />
-                                                        <p className="text-[8px] text-neutral-700 italic">Pegar</p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <div className="space-y-3">
-                                                <p className="text-[9px] text-neutral-600 italic">Enviada junto al prompt (Gemini / Leonardo).</p>
-                                                {initImageDataUrl && (
-                                                    <>
-                                                        <Button onClick={() => setInitImageDataUrl(null)} variant="outline"
-                                                            className="h-8 rounded-xl border-white/10 bg-white/5 text-[9px] font-black uppercase text-neutral-400 hover:text-white">
-                                                            Quitar imagen
-                                                        </Button>
-                                                        <div className="space-y-1.5">
-                                                            <div className="flex justify-between">
-                                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Fuerza</label>
-                                                                <span className="text-[9px] font-mono text-amber-400">{initImageStrength.toFixed(2)}</span>
-                                                            </div>
-                                                            <input type="range" min={0.1} max={0.9} step={0.05} value={initImageStrength}
-                                                                onChange={e => setInitImageStrength(Number(e.target.value))}
-                                                                className="w-full accent-amber-500 h-1" />
-                                                        </div>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {(prov === "Hugging Face" || prov === "Leonardo") && (
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between items-center">
-                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Pasos de inferencia</label>
-                                                <span className="text-[10px] font-mono text-amber-400">{inferenceSteps}</span>
-                                            </div>
-                                            <input type="range" min={10} max={50} step={1} value={inferenceSteps} onChange={e => setInferenceSteps(Number(e.target.value))} className="w-full accent-amber-500 h-1" />
-                                            <div className="flex justify-between text-[8px] text-neutral-700 font-mono"><span>10 rápido</span><span>50 calidad</span></div>
-                                        </div>
-                                    )}
-                                    {(prov === "Hugging Face" || prov === "Leonardo") && (
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between items-center">
-                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Guidance Scale (CFG)</label>
-                                                <span className="text-[10px] font-mono text-amber-400">{guidanceScale.toFixed(1)}</span>
-                                            </div>
-                                            <input type="range" min={1} max={20} step={0.5} value={guidanceScale} onChange={e => setGuidanceScale(Number(e.target.value))} className="w-full accent-amber-500 h-1" />
-                                            <div className="flex justify-between text-[8px] text-neutral-700 font-mono"><span>1 creativo</span><span>20 fiel</span></div>
-                                        </div>
-                                    )}
-                                    <div className="space-y-2">
-                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Seed fijo (vacío = aleatorio)</label>
-                                        <input type="text" inputMode="numeric" value={fixedSeed}
-                                            onChange={e => setFixedSeed(e.target.value.replace(/\D/g, ""))}
-                                            placeholder="Ej: 42069"
-                                            className="w-full h-9 bg-white/4 border border-white/8 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/25 transition-all font-mono"
-                                        />
-                                    </div>
-                                    {prov === "Ideogram" && (
-                                        <div className="space-y-2">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Estilo Ideogram</label>
-                                            <KdpSelect accent="amber" value={ideogramStyle} onChange={setIdeogramStyle}
-                                                options={["AUTO", "REALISTIC", "DESIGN", "RENDER_3D", "ANIME"].map(s => ({ value: s, label: s }))} />
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })()}
-                    </div>
-
-                    <div className="h-px bg-gradient-to-r from-transparent via-white/8 to-transparent mx-6" />
-
-                    {/* ── GENERATE BUTTON ── */}
-                    <div className="px-6 pb-6 pt-1 relative z-10 space-y-3">
-                        {(() => {
-                            const running = iaCatalogs.filter(c => c.status === "running" || c.status === "pending");
-                            const queued = iaCatalogs.filter(c => c.status === "queued");
-                            const isCatalogActive = running.length > 0 || queued.length > 0;
-                            return (
-                                <>
-                                    <Button
-                                        onClick={() => handleGenerateImage()}
-                                        disabled={isGenerating || !imagePrompt.trim() || isCatalogActive}
-                                        className={`w-full h-14 rounded-2xl font-black uppercase tracking-widest text-[11px] transition-all duration-500 ${isGenerating
-                                            ? "bg-amber-500/15 text-amber-400 border border-amber-500/25"
-                                            : isCatalogActive
-                                                ? "bg-white/4 text-neutral-500 border border-white/8 cursor-not-allowed"
-                                                : "bg-amber-500 text-black hover:bg-amber-400 hover:scale-[1.02] active:scale-[0.98] shadow-[0_8px_30px_rgba(245,158,11,0.25)]"
-                                        }`}
-                                    >
-                                        {isGenerating ? (
-                                            <><Loader2 size={18} className="mr-3 animate-spin" /> Procesando Activo Visual...</>
-                                        ) : isCatalogActive ? (
-                                            <><Layers size={18} className="mr-3" /> Catálogo en progreso...</>
-                                        ) : (
-                                            <><Zap size={18} className="mr-3 fill-current" /> Lanzar Generación I.A.</>
-                                        )}
-                                    </Button>
-
-                                    {/* Estado de cola — siempre visible cuando hay actividad */}
-                                    {isCatalogActive && (
-                                        <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-violet-500/[0.06] border border-violet-500/20">
-                                            <div className="relative shrink-0">
-                                                <div className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
-                                                <div className="absolute inset-0 rounded-full bg-violet-400/40 animate-ping" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-[10px] font-black text-violet-300 leading-tight">
-                                                    {running.length > 0 ? `Generando — ${running[0]?.name || "catálogo"}` : `En cola — ${queued[0]?.name || "catálogo"}`}
-                                                </p>
-                                                <p className="text-[9px] text-neutral-600 mt-0.5">
-                                                    {running.length > 0 && `${running[0]?.images?.length ?? 0}/${running[0]?.totalImages ?? "?"} imágenes`}
-                                                    {running.length > 0 && queued.length > 0 && " · "}
-                                                    {queued.length > 0 && `${queued.length} en cola`}
-                                                </p>
-                                            </div>
-                                            <button
-                                                onClick={() => setShowCatalogAccordion(true)}
-                                                className="text-[9px] font-black uppercase tracking-widest text-violet-400/60 hover:text-violet-300 transition-colors shrink-0"
-                                            >
-                                                Ver
-                                            </button>
-                                        </div>
-                                    )}
-                                </>
-                            );
-                        })()}
-                    </div>
-
-                    {/* ── 04 CATÁLOGO IA (accordion) ── */}
-                    <div className="border-t border-white/6 relative z-10">
-                        <button type="button"
-                            onClick={() => setShowCatalogAccordion(v => !v)}
-                            className="w-full px-6 py-4 flex items-center gap-3 hover:bg-white/2 transition-colors group"
-                        >
-                            <span className="w-6 h-6 rounded-full bg-violet-500/10 border border-violet-500/20 text-[9px] font-black text-violet-400 flex items-center justify-center shrink-0">04</span>
-                            <div className="flex-1 text-left">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 group-hover:text-neutral-200 transition-colors">Generar catálogo</p>
-                                <p className="text-[9px] text-neutral-600 mt-0.5">Producción masiva con estos ajustes</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                {iaCatalogs.some(c => c.status === "running" || c.status === "queued") && (
-                                    <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
-                                )}
-                                <ChevronDown size={13} className={`text-neutral-600 transition-transform duration-300 ${showCatalogAccordion ? "rotate-180" : ""}`} />
-                            </div>
-                        </button>
-                        {showCatalogAccordion && (
-                            <div className="px-6 pb-6 space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {/* Model picker */}
                                 <div className="space-y-2">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Tipo de producto</p>
-                                    <div className="flex gap-1.5">
-                                        {([
-                                            { id: "coloring-book" as const, label: "Colorear", desc: "B&W line art" },
-                                            { id: "printable-poster" as const, label: "Poster", desc: "Alta calidad" },
-                                            { id: "other" as const, label: "Otro", desc: "Sin modificar" },
-                                        ]).map(pt => (
-                                            <button key={pt.id} onClick={() => setCatalogProductType(pt.id)}
-                                                className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 px-2 rounded-xl border transition-all ${catalogProductType === pt.id ? "border-violet-500/40 bg-violet-500/[0.08] text-violet-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600 ml-1">Modelo I.A.</label>
+                                    <div className="relative">
+                                        <button ref={modelPickerBtnRef} type="button"
+                                            onClick={() => {
+                                                modelPickerRectRef.current = modelPickerBtnRef.current?.getBoundingClientRect() ?? null;
+                                                setShowModelPicker(v => !v);
+                                                setShowDimPicker(false);
+                                            }}
+                                            className="w-full h-12 bg-white/4 border border-white/8 rounded-2xl px-3.5 flex items-center gap-3 hover:bg-white/7 hover:border-white/14 transition-all focus:outline-none"
+                                        >
+                                            <div className={`w-2 h-2 rounded-full bg-${pColor}-400 shrink-0 shadow-[0_0_8px_2px] shadow-${pColor}-400/40`} />
+                                            <div className="flex-1 min-w-0 text-left">
+                                                <p className="text-sm font-bold text-white truncate leading-tight">{currentModel?.name}</p>
+                                                <p className="text-[9px] text-neutral-500 truncate leading-tight">{currentModel?.provider} · {currentModel?.type}</p>
+                                            </div>
+                                            <ChevronDown size={14} className={`text-neutral-600 shrink-0 transition-transform duration-200 ${showModelPicker ? "rotate-180" : ""}`} />
+                                        </button>
+                                        {showModelPicker && modelPickerRectRef.current && createPortal(
+                                            <>
+                                                <div className="fixed inset-0 z-[9998]" onClick={() => setShowModelPicker(false)} />
+                                                <div
+                                                    className="fixed z-[9999] bg-[#111111] border border-white/12 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.9)] overflow-hidden"
+                                                    style={{
+                                                        top: modelPickerRectRef.current.bottom + 6,
+                                                        left: modelPickerRectRef.current.left,
+                                                        width: modelPickerRectRef.current.width,
+                                                        maxHeight: "288px",
+                                                        overflowY: "auto",
+                                                    }}
+                                                >
+                                                    {AI_MODELS.map(m => {
+                                                        const mColor = providerColor[m.provider] || "neutral";
+                                                        return (
+                                                            <button key={m.id} type="button"
+                                                                onClick={() => { setSelectedModel(m.id); setShowModelPicker(false); }}
+                                                                className={`w-full px-4 py-3 flex items-center gap-3 transition-all text-left border-b border-white/5 last:border-0 ${selectedModel === m.id ? "bg-white/10" : "hover:bg-white/6"}`}
+                                                            >
+                                                                <div className={`w-2 h-2 rounded-full bg-${mColor}-400 shrink-0`} />
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-sm font-bold text-white leading-tight">{m.name}</p>
+                                                                    <p className="text-[10px] text-neutral-500 leading-tight mt-0.5">{m.provider} · {m.type}</p>
+                                                                </div>
+                                                                {selectedModel === m.id && <Check size={14} className="text-emerald-400 shrink-0" />}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </>,
+                                            document.body
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Dimension picker */}
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600 ml-1">Dimensiones</label>
+                                    <div className="grid grid-cols-4 gap-1.5 mb-2">
+                                        {AI_DIMENSIONS.filter(d => ["sq", "pt", "p23", "p34"].includes(d.id)).map(d => (
+                                            <button key={d.id} type="button" onClick={() => setSelectedDim(d.id)}
+                                                className={`h-10 rounded-xl border flex flex-col items-center justify-center gap-0.5 transition-all ${selectedDim === d.id ? "bg-white text-black border-white shadow-[0_4px_12px_rgba(255,255,255,0.15)]" : "bg-white/4 border-white/8 text-neutral-500 hover:bg-white/7"}`}
                                             >
-                                                <span className="text-[9px] font-black uppercase tracking-wide">{pt.label}</span>
-                                                <span className={`text-[8px] ${catalogProductType === pt.id ? "text-violet-500/60" : "text-neutral-700"}`}>{pt.desc}</span>
+                                                {d.id === "sq" ? <Monitor size={11} /> : <Maximize size={11} />}
+                                                <span className="text-[8px] font-black uppercase">{d.ratio}</span>
                                             </button>
                                         ))}
                                     </div>
+                                    <div className="relative">
+                                        <button ref={dimPickerBtnRef} type="button"
+                                            onClick={() => {
+                                                dimPickerRectRef.current = dimPickerBtnRef.current?.getBoundingClientRect() ?? null;
+                                                setShowDimPicker(v => !v);
+                                                setShowModelPicker(false);
+                                            }}
+                                            className="w-full h-10 bg-white/4 border border-white/8 rounded-2xl px-3.5 flex items-center justify-between gap-3 hover:bg-white/7 transition-all focus:outline-none"
+                                        >
+                                            <div className="flex-1 min-w-0 text-left">
+                                                <p className="text-sm font-bold text-white truncate leading-tight">{currentDim?.name} <span className="font-normal text-neutral-500">({currentDim?.ratio})</span></p>
+                                                <p className="text-[9px] text-neutral-600 leading-tight">{currentDim?.width}×{currentDim?.height}px</p>
+                                            </div>
+                                            <ChevronDown size={14} className={`text-neutral-600 shrink-0 transition-transform duration-200 ${showDimPicker ? "rotate-180" : ""}`} />
+                                        </button>
+                                        {showDimPicker && dimPickerRectRef.current && createPortal(
+                                            <>
+                                                <div className="fixed inset-0 z-[9998]" onClick={() => setShowDimPicker(false)} />
+                                                <div
+                                                    className="fixed z-[9999] bg-[#111111] border border-white/12 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.9)] overflow-hidden"
+                                                    style={{
+                                                        top: dimPickerRectRef.current.bottom + 6,
+                                                        left: dimPickerRectRef.current.left,
+                                                        width: dimPickerRectRef.current.width,
+                                                        maxHeight: "256px",
+                                                        overflowY: "auto",
+                                                    }}
+                                                >
+                                                    {AI_DIMENSIONS.map(d => (
+                                                        <button key={d.id} type="button"
+                                                            onClick={() => { setSelectedDim(d.id); setShowDimPicker(false); }}
+                                                            className={`w-full px-4 py-3 flex items-center gap-3 transition-all text-left border-b border-white/5 last:border-0 ${selectedDim === d.id ? "bg-white/6" : "hover:bg-white/3"}`}
+                                                        >
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-sm font-bold text-white leading-tight">{d.name} <span className="font-normal text-neutral-500">({d.ratio})</span></p>
+                                                                <p className="text-[10px] text-neutral-500 leading-tight mt-0.5">{d.width}×{d.height}px</p>
+                                                            </div>
+                                                            {selectedDim === d.id && <Check size={14} className="text-emerald-400 shrink-0" />}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </>,
+                                            document.body
+                                        )}
+                                    </div>
                                 </div>
-                                {catalogProductType === "coloring-book" && (
-                                    <div className="space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Prompt negativo adicional</p>
-                                            <span className="text-[8px] text-neutral-700 italic">Auto: sombreado, color…</span>
+                            </div>
+                        </div>
+
+                        <div className="h-px bg-gradient-to-r from-transparent via-white/8 to-transparent mx-6" />
+
+                        {/* ── 02 PROMPT ── */}
+                        <div className="p-6 space-y-4 relative z-10">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                    <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-[9px] font-black text-neutral-500 flex items-center justify-center shrink-0">02</span>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Prompt del Activo</p>
+                                </div>
+                                {imagePrompt && (
+                                    <div className="flex items-center gap-1.5">
+                                        <button type="button"
+                                            onClick={() => navigator.clipboard.writeText(imagePrompt).then(() => toast.success("Prompt copiado"))}
+                                            className="p-1.5 rounded-lg bg-white/5 text-neutral-600 hover:text-white hover:bg-white/10 transition-all border border-white/8" title="Copiar">
+                                            <Copy size={10} />
+                                        </button>
+                                        <button type="button"
+                                            onClick={() => { setSavePromptName(""); setSavePromptCategory("General"); setShowSavePromptDialog(true); }}
+                                            className="p-1.5 rounded-lg bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition-all border border-violet-500/20" title="Guardar en biblioteca">
+                                            <BookMarked size={10} />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="space-y-2">
+                                <input value={promptTheme} onChange={e => setPromptTheme(e.target.value)}
+                                    placeholder="Temática · Ej: Vintage botanical illustration"
+                                    className="w-full h-10 bg-white/4 border border-white/8 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/25 focus:bg-white/6 transition-all font-medium"
+                                />
+                                <input value={promptSpecs} onChange={e => setPromptSpecs(e.target.value)}
+                                    placeholder="Especificaciones · Ej: watercolor style, high detail"
+                                    className="w-full h-10 bg-white/4 border border-white/8 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/25 focus:bg-white/6 transition-all font-medium"
+                                />
+                                <input value={promptDetails} onChange={e => setPromptDetails(e.target.value)}
+                                    placeholder="Detalles · Ej: lavender field, soft pastel palette"
+                                    className="w-full h-10 bg-white/4 border border-white/8 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/25 focus:bg-white/6 transition-all font-medium"
+                                />
+                                <div className="relative">
+                                    <input value={promptParticulars} onChange={e => setPromptParticulars(e.target.value)}
+                                        placeholder="Particularidades · editado por IA en catálogo"
+                                        className="w-full h-10 bg-violet-500/[0.06] border border-violet-500/20 rounded-xl px-4 pr-20 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/40 focus:bg-violet-500/[0.09] transition-all font-medium"
+                                    />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black uppercase tracking-widest text-violet-500/50 pointer-events-none flex items-center gap-1">
+                                        <Sparkles size={7} className="animate-pulse" /> IA
+                                    </span>
+                                </div>
+                            </div>
+                            {imagePrompt && (
+                                <p className="text-[9px] text-neutral-700 font-mono truncate px-1" title={imagePrompt}>{imagePrompt}</p>
+                            )}
+                        </div>
+
+                        <div className="h-px bg-gradient-to-r from-transparent via-white/8 to-transparent mx-6" />
+
+                        {/* ── 03 OPCIONES AVANZADAS ── */}
+                        <div className="relative z-10">
+                            <button type="button"
+                                onClick={() => setShowAdvancedOptions(v => !v)}
+                                className="w-full px-6 py-4 flex items-center gap-3 hover:bg-white/2 transition-colors group"
+                            >
+                                <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-[9px] font-black text-neutral-500 flex items-center justify-center shrink-0">03</span>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 group-hover:text-neutral-200 transition-colors flex-1 text-left">Opciones avanzadas</p>
+                                <ChevronDown size={13} className={`text-neutral-600 transition-transform duration-300 ${showAdvancedOptions ? "rotate-180" : ""}`} />
+                            </button>
+
+                            {showAdvancedOptions && (() => {
+                                const prov = currentModel?.provider;
+                                return (
+                                    <div className="px-6 pb-5 space-y-4">
+                                        <div className="space-y-2">
+                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Prompt negativo</label>
+                                            <input value={negativePrompt} onChange={e => setNegativePrompt(e.target.value)}
+                                                placeholder="Ej: ugly, deformed, blurry, watermark"
+                                                className="w-full h-10 bg-white/4 border border-white/8 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-rose-500/25 transition-all"
+                                            />
                                         </div>
-                                        <input value={catalogNegativePrompt} onChange={e => setCatalogNegativePrompt(e.target.value)}
-                                            placeholder="Ej: cartoon, hands, text, watermark…"
-                                            className="w-full h-9 bg-white/4 border border-white/8 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-rose-500/25 transition-all"
-                                        />
-                                        <div className="flex flex-wrap gap-1">
-                                            {["shading", "gray tones", "gradients", "color", "sepia"].map(t => (
-                                                <span key={t} className="text-[8px] px-1.5 py-0.5 rounded-full bg-rose-500/6 border border-rose-500/12 text-rose-400/50 font-mono">{t}</span>
+                                        <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 space-y-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Imagen de referencia</p>
+                                                <p className="text-[9px] text-neutral-700 italic">Ctrl/⌘+V o arrastra</p>
+                                            </div>
+                                            <div className="grid grid-cols-[96px_1fr] gap-3 items-start">
+                                                <div
+                                                    className="rounded-xl border border-dashed border-white/12 bg-black/20 w-24 aspect-square flex items-center justify-center text-center focus:outline-none overflow-hidden cursor-pointer"
+                                                    tabIndex={0}
+                                                    onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                                                    onDrop={e => { e.preventDefault(); e.stopPropagation(); const file = e.dataTransfer.files?.[0]; if (file) void setInitImageFromFile(file); }}
+                                                    onPaste={e => { const items = Array.from(e.clipboardData?.items || []); const imageItem = items.find(it => it.kind === "file" && it.type.startsWith("image/")); const file = imageItem?.getAsFile() || null; if (file) void setInitImageFromFile(file); }}
+                                                >
+                                                    {initImageDataUrl ? (
+                                                        <img src={initImageDataUrl} alt="Referencia" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="space-y-1 p-2">
+                                                            <Camera size={18} className="text-neutral-600 mx-auto" />
+                                                            <p className="text-[8px] text-neutral-700 italic">Pegar</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="space-y-3">
+                                                    <p className="text-[9px] text-neutral-600 italic">Enviada junto al prompt (Gemini / Leonardo).</p>
+                                                    {initImageDataUrl && (
+                                                        <>
+                                                            <Button onClick={() => setInitImageDataUrl(null)} variant="outline"
+                                                                className="h-8 rounded-xl border-white/10 bg-white/5 text-[9px] font-black uppercase text-neutral-400 hover:text-white">
+                                                                Quitar imagen
+                                                            </Button>
+                                                            <div className="space-y-1.5">
+                                                                <div className="flex justify-between">
+                                                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Fuerza</label>
+                                                                    <span className="text-[9px] font-mono text-amber-400">{initImageStrength.toFixed(2)}</span>
+                                                                </div>
+                                                                <input type="range" min={0.1} max={0.9} step={0.05} value={initImageStrength}
+                                                                    onChange={e => setInitImageStrength(Number(e.target.value))}
+                                                                    className="w-full accent-amber-500 h-1" />
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {(prov === "Hugging Face" || prov === "Leonardo") && (
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between items-center">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Pasos de inferencia</label>
+                                                    <span className="text-[10px] font-mono text-amber-400">{inferenceSteps}</span>
+                                                </div>
+                                                <input type="range" min={10} max={50} step={1} value={inferenceSteps} onChange={e => setInferenceSteps(Number(e.target.value))} className="w-full accent-amber-500 h-1" />
+                                                <div className="flex justify-between text-[8px] text-neutral-700 font-mono"><span>10 rápido</span><span>50 calidad</span></div>
+                                            </div>
+                                        )}
+                                        {(prov === "Hugging Face" || prov === "Leonardo") && (
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between items-center">
+                                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Guidance Scale (CFG)</label>
+                                                    <span className="text-[10px] font-mono text-amber-400">{guidanceScale.toFixed(1)}</span>
+                                                </div>
+                                                <input type="range" min={1} max={20} step={0.5} value={guidanceScale} onChange={e => setGuidanceScale(Number(e.target.value))} className="w-full accent-amber-500 h-1" />
+                                                <div className="flex justify-between text-[8px] text-neutral-700 font-mono"><span>1 creativo</span><span>20 fiel</span></div>
+                                            </div>
+                                        )}
+                                        <div className="space-y-2">
+                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Seed fijo (vacío = aleatorio)</label>
+                                            <input type="text" inputMode="numeric" value={fixedSeed}
+                                                onChange={e => setFixedSeed(e.target.value.replace(/\D/g, ""))}
+                                                placeholder="Ej: 42069"
+                                                className="w-full h-9 bg-white/4 border border-white/8 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/25 transition-all font-mono"
+                                            />
+                                        </div>
+                                        {prov === "Ideogram" && (
+                                            <div className="space-y-2">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Estilo Ideogram</label>
+                                                <KdpSelect accent="amber" value={ideogramStyle} onChange={setIdeogramStyle}
+                                                    options={["AUTO", "REALISTIC", "DESIGN", "RENDER_3D", "ANIME"].map(s => ({ value: s, label: s }))} />
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+
+                        <div className="h-px bg-gradient-to-r from-transparent via-white/8 to-transparent mx-6" />
+
+                        {/* ── GENERATE BUTTON ── */}
+                        <div className="px-6 pb-6 pt-1 relative z-10 space-y-3">
+                            {(() => {
+                                const running = iaCatalogs.filter(c => c.status === "running" || c.status === "pending");
+                                const queued = iaCatalogs.filter(c => c.status === "queued");
+                                const isCatalogActive = running.length > 0 || queued.length > 0;
+                                return (
+                                    <>
+                                        <Button
+                                            onClick={() => handleGenerateImage()}
+                                            disabled={isGenerating || !imagePrompt.trim() || isCatalogActive}
+                                            className={`w-full h-14 rounded-2xl font-black uppercase tracking-widest text-[11px] transition-all duration-500 ${isGenerating
+                                                ? "bg-amber-500/15 text-amber-400 border border-amber-500/25"
+                                                : isCatalogActive
+                                                    ? "bg-white/4 text-neutral-500 border border-white/8 cursor-not-allowed"
+                                                    : "bg-amber-500 text-black hover:bg-amber-400 hover:scale-[1.02] active:scale-[0.98] shadow-[0_8px_30px_rgba(245,158,11,0.25)]"
+                                                }`}
+                                        >
+                                            {isGenerating ? (
+                                                <><Loader2 size={18} className="mr-3 animate-spin" /> Procesando Activo Visual...</>
+                                            ) : isCatalogActive ? (
+                                                <><Layers size={18} className="mr-3" /> Catálogo en progreso...</>
+                                            ) : (
+                                                <><Zap size={18} className="mr-3 fill-current" /> Lanzar Generación I.A.</>
+                                            )}
+                                        </Button>
+
+                                        {/* Estado de cola — siempre visible cuando hay actividad */}
+                                        {isCatalogActive && (
+                                            <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-violet-500/[0.06] border border-violet-500/20">
+                                                <div className="relative shrink-0">
+                                                    <div className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+                                                    <div className="absolute inset-0 rounded-full bg-violet-400/40 animate-ping" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[10px] font-black text-violet-300 leading-tight">
+                                                        {running.length > 0 ? `Generando — ${running[0]?.name || "catálogo"}` : `En cola — ${queued[0]?.name || "catálogo"}`}
+                                                    </p>
+                                                    <p className="text-[9px] text-neutral-600 mt-0.5">
+                                                        {running.length > 0 && `${running[0]?.images?.length ?? 0}/${running[0]?.totalImages ?? "?"} imágenes`}
+                                                        {running.length > 0 && queued.length > 0 && " · "}
+                                                        {queued.length > 0 && `${queued.length} en cola`}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    onClick={() => setShowCatalogAccordion(true)}
+                                                    className="text-[9px] font-black uppercase tracking-widest text-violet-400/60 hover:text-violet-300 transition-colors shrink-0"
+                                                >
+                                                    Ver
+                                                </button>
+                                            </div>
+                                        )}
+                                    </>
+                                );
+                            })()}
+                        </div>
+
+                        {/* ── 04 CATÁLOGO IA (accordion) ── */}
+                        <div className="border-t border-white/6 relative z-10">
+                            <button type="button"
+                                onClick={() => setShowCatalogAccordion(v => !v)}
+                                className="w-full px-6 py-4 flex items-center gap-3 hover:bg-white/2 transition-colors group"
+                            >
+                                <span className="w-6 h-6 rounded-full bg-violet-500/10 border border-violet-500/20 text-[9px] font-black text-violet-400 flex items-center justify-center shrink-0">04</span>
+                                <div className="flex-1 text-left">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 group-hover:text-neutral-200 transition-colors">Generar catálogo</p>
+                                    <p className="text-[9px] text-neutral-600 mt-0.5">Producción masiva con estos ajustes</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {iaCatalogs.some(c => c.status === "running" || c.status === "queued") && (
+                                        <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+                                    )}
+                                    <ChevronDown size={13} className={`text-neutral-600 transition-transform duration-300 ${showCatalogAccordion ? "rotate-180" : ""}`} />
+                                </div>
+                            </button>
+                            {showCatalogAccordion && (
+                                <div className="px-6 pb-6 space-y-4">
+                                    <div className="space-y-2">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Tipo de producto</p>
+                                        <div className="flex gap-1.5">
+                                            {([
+                                                { id: "coloring-book" as const, label: "Colorear", desc: "B&W line art" },
+                                                { id: "printable-poster" as const, label: "Poster", desc: "Alta calidad" },
+                                                { id: "other" as const, label: "Otro", desc: "Sin modificar" },
+                                            ]).map(pt => (
+                                                <button key={pt.id} onClick={() => setCatalogProductType(pt.id)}
+                                                    className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 px-2 rounded-xl border transition-all ${catalogProductType === pt.id ? "border-violet-500/40 bg-violet-500/[0.08] text-violet-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}
+                                                >
+                                                    <span className="text-[9px] font-black uppercase tracking-wide">{pt.label}</span>
+                                                    <span className={`text-[8px] ${catalogProductType === pt.id ? "text-violet-500/60" : "text-neutral-700"}`}>{pt.desc}</span>
+                                                </button>
                                             ))}
                                         </div>
                                     </div>
-                                )}
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Variación IA</p>
-                                        <span className={`text-[9px] font-black tabular-nums ${catalogCreativity <= 10 ? "text-neutral-700" : catalogCreativity <= 35 ? "text-sky-400/70" : catalogCreativity <= 65 ? "text-violet-400/70" : catalogCreativity <= 85 ? "text-amber-400/70" : "text-rose-400/70"}`}>
-                                            {catalogCreativity <= 10 ? "Sin variación" : catalogCreativity <= 35 ? "Sutil" : catalogCreativity <= 65 ? "Moderada" : catalogCreativity <= 85 ? "Alta" : "Máxima"}
-                                        </span>
+                                    {catalogProductType === "coloring-book" && (
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Prompt negativo adicional</p>
+                                                <span className="text-[8px] text-neutral-700 italic">Auto: sombreado, color…</span>
+                                            </div>
+                                            <input value={catalogNegativePrompt} onChange={e => setCatalogNegativePrompt(e.target.value)}
+                                                placeholder="Ej: cartoon, hands, text, watermark…"
+                                                className="w-full h-9 bg-white/4 border border-white/8 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-rose-500/25 transition-all"
+                                            />
+                                            <div className="flex flex-wrap gap-1">
+                                                {["shading", "gray tones", "gradients", "color", "sepia"].map(t => (
+                                                    <span key={t} className="text-[8px] px-1.5 py-0.5 rounded-full bg-rose-500/6 border border-rose-500/12 text-rose-400/50 font-mono">{t}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Variación IA</p>
+                                            <span className={`text-[9px] font-black tabular-nums ${catalogCreativity <= 10 ? "text-neutral-700" : catalogCreativity <= 35 ? "text-sky-400/70" : catalogCreativity <= 65 ? "text-violet-400/70" : catalogCreativity <= 85 ? "text-amber-400/70" : "text-rose-400/70"}`}>
+                                                {catalogCreativity <= 10 ? "Sin variación" : catalogCreativity <= 35 ? "Sutil" : catalogCreativity <= 65 ? "Moderada" : catalogCreativity <= 85 ? "Alta" : "Máxima"}
+                                            </span>
+                                        </div>
+                                        <input type="range" min={0} max={100} step={5} value={catalogCreativity}
+                                            onChange={e => setCatalogCreativity(Number(e.target.value))}
+                                            className="w-full accent-violet-500 h-1.5 rounded-full cursor-pointer" />
+                                        <div className="flex justify-between text-[8px] text-neutral-700"><span>Idénticas</span><span>Diferentes</span></div>
                                     </div>
-                                    <input type="range" min={0} max={100} step={5} value={catalogCreativity}
-                                        onChange={e => setCatalogCreativity(Number(e.target.value))}
-                                        className="w-full accent-violet-500 h-1.5 rounded-full cursor-pointer" />
-                                    <div className="flex justify-between text-[8px] text-neutral-700"><span>Idénticas</span><span>Diferentes</span></div>
-                                </div>
-                                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                                    <input value={catalogFormName} onChange={e => setCatalogFormName(e.target.value)}
-                                        placeholder="Nombre del catálogo (opcional)"
-                                        className="flex-1 min-w-0 h-10 bg-white/4 border border-white/8 rounded-xl px-3 text-sm text-white outline-none focus:border-violet-500/30 transition-all placeholder:text-neutral-700"
-                                    />
-                                    <div className="flex gap-2">
-                                        <input type="text" inputMode="numeric" pattern="[0-9]*" placeholder="5"
-                                            value={catalogFormCount === 0 ? "" : String(catalogFormCount)}
-                                            onChange={e => { const raw = e.target.value.replace(/\D/g, ""); setCatalogFormCount(raw === "" ? 0 : Math.min(50, Number(raw))); }}
-                                            className="w-14 h-10 bg-white/4 border border-white/8 rounded-xl px-2 text-sm font-bold text-white outline-none focus:border-violet-500/30 transition-all text-center"
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                                        <input value={catalogFormName} onChange={e => setCatalogFormName(e.target.value)}
+                                            placeholder="Nombre del catálogo (opcional)"
+                                            className="flex-1 min-w-0 h-10 bg-white/4 border border-white/8 rounded-xl px-3 text-sm text-white outline-none focus:border-violet-500/30 transition-all placeholder:text-neutral-700"
                                         />
-                                        <button onClick={() => void createCatalogFromStudio()}
-                                            disabled={isCreatingCatalog || !promptTheme.trim()}
-                                            className="flex-1 sm:flex-none h-10 px-5 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_4px_20px_rgba(139,92,246,0.2)]"
-                                        >
-                                            {isCreatingCatalog ? <Loader2 size={13} className="animate-spin" /> : <><Layers size={13} />Crear</>}
-                                        </button>
-                                    </div>
-                                </div>
-                                {(() => {
-                                    const running = iaCatalogs.filter(c => c.status === "running" || c.status === "pending");
-                                    const queued = iaCatalogs.filter(c => c.status === "queued");
-                                    if (running.length === 0 && queued.length === 0) return null;
-                                    return (
-                                        <p className="text-[10px] text-amber-500/70 italic flex items-center gap-1.5">
-                                            <Loader2 size={9} className="animate-spin" />
-                                            {running.length > 0 ? `${running.length} en progreso` : ""}
-                                            {running.length > 0 && queued.length > 0 ? " · " : ""}
-                                            {queued.length > 0 ? `${queued.length} en cola` : ""}
-                                            {" · el nuevo se añadirá a la cola"}
-                                        </p>
-                                    );
-                                })()}
-                                <p className="text-[9px] text-neutral-700 italic">
-                                    ~{Math.ceil(catalogFormCount * 1.5)} min · {catalogFormCount} imágenes · {currentModel?.name} · {currentDim?.ratio}
-                                </p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Right Column */}
-                <div className="flex flex-col gap-6">
-                {/* Preview Area */}
-                <Card
-                    variant="glass"
-                    className="relative border-white/5 bg-white/[0.01] overflow-hidden h-[280px] flex items-center justify-center group rounded-[40px] focus:outline-none focus:ring-2 focus:ring-amber-500/40"
-                    tabIndex={0}
-                    onClick={(e) => (e.currentTarget as HTMLElement).focus()}
-                    onDragOver={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                    }}
-                    onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const file = e.dataTransfer.files?.[0];
-                        if (!file) return;
-                        if (generatedImage) setGeneratedImageFromFile(file);
-                        else addImageFileToVault(file);
-                    }}
-                    onPaste={(e) => {
-                        const items = Array.from(e.clipboardData?.items || []);
-                        const imageItem = items.find((it) => it.kind === "file" && it.type.startsWith("image/"));
-                        const file = imageItem?.getAsFile() || null;
-                        if (!file) return;
-                        if (generatedImage) setGeneratedImageFromFile(file);
-                        else addImageFileToVault(file);
-                    }}
-                >
-                    {generatedImage ? (
-                        <div className="relative w-full h-full animate-in fade-in zoom-in duration-700">
-
-                            <img
-                                src={generatedImage}
-                                alt="AI Generated"
-                                className={`w-full h-full object-cover transition-opacity duration-700 ${isImageLoading ? 'opacity-0' : 'opacity-100'} ${!isImageLoading ? 'cursor-zoom-in' : ''}`}
-                                onLoad={() => setIsImageLoading(false)}
-                                onClick={() => {
-                                    if (!isImageLoading) setPreviewImage(generatedImage);
-                                }}
-                            />
-
-                            {isImageLoading && (
-                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0a0a0a]/60 backdrop-blur-xl gap-4">
-                                    <div className="relative">
-                                        <div className="w-16 h-16 rounded-full border-2 border-amber-500/20 border-t-amber-500 animate-spin" />
-                                        <Zap size={20} className="absolute inset-0 m-auto text-amber-500 animate-pulse" />
-                                    </div>
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-500">Renderizando Arte...</p>
-                                </div>
-                            )}
-
-                            {showSafeArea && !isImageLoading && (
-                                <div className="absolute inset-0 pointer-events-none">
-                                    <div className="absolute inset-[3%] border border-dashed border-amber-400/50 rounded-md" />
-                                    <div className="absolute inset-[9%] border border-dashed border-amber-300/25 rounded-sm" />
-                                    <div className="absolute top-[3%] left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-amber-500/70 backdrop-blur-sm text-[8px] font-black text-black uppercase tracking-widest whitespace-nowrap">Bleed · Trim</div>
-                                    <div className="absolute bottom-[9%] left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-black/50 backdrop-blur-sm text-[8px] font-black text-amber-300/80 uppercase tracking-widest whitespace-nowrap">Safe area</div>
-                                </div>
-                            )}
-                            {!isImageLoading && (
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/40 p-8 flex flex-col justify-between">
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex flex-col gap-2">
-                                            <Badge className="bg-amber-500 text-black font-black text-[10px] uppercase tracking-widest px-3 border-none">Master Draft</Badge>
-                                            <div className="px-3 py-1.5 rounded-xl bg-black/40 backdrop-blur-md border border-white/10 text-[9px] font-bold text-neutral-300 w-fit">
-                                                {AI_MODELS.find(m => m.id === selectedModel)?.name} • {AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio}
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={() => {
-                                                    const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
-                                                    const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
-                                                    downloadPng(generatedImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
-                                                }}
-                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
-                                                aria-label="Descargar imagen"
-                                                title="Descargar"
+                                        <div className="flex gap-2">
+                                            <input type="text" inputMode="numeric" pattern="[0-9]*" placeholder="5"
+                                                value={catalogFormCount === 0 ? "" : String(catalogFormCount)}
+                                                onChange={e => { const raw = e.target.value.replace(/\D/g, ""); setCatalogFormCount(raw === "" ? 0 : Math.min(50, Number(raw))); }}
+                                                className="w-14 h-10 bg-white/4 border border-white/8 rounded-xl px-2 text-sm font-bold text-white outline-none focus:border-violet-500/30 transition-all text-center"
+                                            />
+                                            <button onClick={() => void createCatalogFromStudio()}
+                                                disabled={isCreatingCatalog || !promptTheme.trim()}
+                                                className="flex-1 sm:flex-none h-10 px-5 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_4px_20px_rgba(139,92,246,0.2)]"
                                             >
-                                                <Download size={18} />
-                                            </button>
-                                            <button
-                                                onClick={() => setGeneratedImage(null)}
-                                                className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
-                                                aria-label="Cerrar"
-                                                title="Cerrar"
-                                            >
-                                                <X size={18} />
+                                                {isCreatingCatalog ? <Loader2 size={13} className="animate-spin" /> : <><Layers size={13} />Crear</>}
                                             </button>
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <Button
-                                            onClick={() => setGeneratedImage(null)}
-                                            variant="outline"
-                                            className="h-14 rounded-2xl border-white/10 bg-white/5 backdrop-blur-md text-[10px] font-black uppercase tracking-widest text-white hover:bg-white/10"
-                                        >
-                                            <X size={16} className="mr-2" /> Descartar
-                                        </Button>
-                                        <Button
-                                            onClick={handleKeepImage}
-                                            className="h-14 rounded-2xl bg-white text-black text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all shadow-2xl shadow-white/10"
-                                        >
-                                            <Check size={16} className="mr-2" /> Conservar Activo
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    ) : isGenerating ? (
-                        /* Full-card skeleton while generating */
-                        <div className="absolute inset-0 overflow-hidden flex flex-col">
-                            {/* Shimmer background */}
-                            <div className="absolute inset-0 bg-gradient-to-br from-[#0d0d0d] via-neutral-900/40 to-[#0d0d0d] animate-pulse" />
-                            {/* Center content */}
-                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 p-8">
-                                <div className="relative">
-                                    <div className="absolute inset-0 scale-[2] blur-3xl bg-amber-500/10 animate-pulse rounded-full" />
-                                    <div className="w-20 h-20 rounded-[28px] border border-amber-500/20 bg-amber-500/[0.04] flex items-center justify-center relative">
-                                        <Zap size={30} className="text-amber-500/50 animate-bounce" />
-                                    </div>
-                                </div>
-                                <div className="space-y-2.5 w-full max-w-[180px] flex flex-col items-center">
-                                    <div className="h-2 w-full rounded-full bg-white/[0.06] animate-pulse" />
-                                    <div className="h-2 w-4/5 rounded-full bg-white/[0.04] animate-pulse" />
-                                    <div className="h-2 w-3/5 rounded-full bg-white/[0.03] animate-pulse" />
-                                </div>
-                                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-500/40 animate-pulse">
-                                    {AI_MODELS.find(m => m.id === selectedModel)?.name}
-                                </p>
-                            </div>
-                            {/* Bottom skeleton (mimics the keep/discard buttons) */}
-                            <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/60 to-transparent space-y-3 pointer-events-none">
-                                <div className="flex justify-between">
-                                    <div className="h-6 w-28 rounded-xl bg-amber-500/[0.05] animate-pulse" />
-                                    <div className="flex gap-2">
-                                        <div className="w-11 h-11 rounded-2xl bg-white/[0.04] animate-pulse" />
-                                        <div className="w-11 h-11 rounded-2xl bg-white/[0.04] animate-pulse" />
-                                        <div className="w-11 h-11 rounded-2xl bg-white/[0.04] animate-pulse" />
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="h-12 rounded-2xl bg-white/[0.03] animate-pulse" />
-                                    <div className="h-12 rounded-2xl bg-white/[0.05] animate-pulse" />
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col items-center justify-center text-center p-12 space-y-6">
-                            <div className="space-y-5 opacity-30 group-hover:opacity-60 transition-all duration-500">
-                                <div className="w-24 h-24 rounded-[36px] border-2 border-dashed border-white/10 flex items-center justify-center mx-auto bg-white/5">
-                                    <Camera size={36} strokeWidth={1.5} className="text-neutral-400" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <p className="text-xs font-black uppercase tracking-widest text-white">Visual Engine Ready</p>
-                                    <p className="text-[10px] text-neutral-600 font-medium italic">Arrastra o pega (Ctrl/⌘+V) una imagen</p>
-                                    <p className="text-[10px] text-amber-500/50 font-black uppercase tracking-widest">→ va directo al vault</p>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </Card>
-
-                {/* Saved Prompts Library */}
-                <div className="space-y-4">
-                    {/* ── IA Prompt Generator ─────────────────────────────────── */}
-                    <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.03] p-4 space-y-3">
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-xl bg-violet-500/15 border border-violet-500/25 flex items-center justify-center shrink-0">
-                                <Wand2 size={14} className="text-violet-400" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className="text-[11px] font-black text-white tracking-tight">Generador de prompt con IA</p>
-                                <p className="text-[9px] text-neutral-600">Describe tu producto y la IA crea el prompt ideal para guardar en biblioteca</p>
-                            </div>
-                        </div>
-                        <div className="flex gap-2">
-                            <input
-                                value={contentNiche}
-                                onChange={e => setContentNiche(e.target.value)}
-                                onKeyDown={e => { if (e.key === "Enter") void generateImagePromptSuggestion(); }}
-                                placeholder="Ej: libro de colorear de mandalas zen para adultos…"
-                                className="flex-1 h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all"
-                            />
-                            <button
-                                onClick={() => void generateImagePromptSuggestion()}
-                                disabled={isGeneratingImagePrompt || !contentNiche.trim()}
-                                className="h-10 px-4 rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[10px] font-black uppercase tracking-wider flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
-                                {isGeneratingImagePrompt ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                                {isGeneratingImagePrompt ? "..." : "Generar"}
-                            </button>
-                        </div>
-                        {isGeneratingImagePrompt && (
-                            <div className="h-12 rounded-xl bg-white/5 border border-white/8 animate-pulse flex items-center justify-center">
-                                <Loader2 size={12} className="animate-spin text-violet-400" />
-                            </div>
-                        )}
-                        {imagePromptSuggestion && !isGeneratingImagePrompt && (
-                            <div className="space-y-2">
-                                <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2.5 space-y-1.5">
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-[8px] font-black uppercase tracking-widest text-amber-400/70">Prompt generado</p>
-                                        <button onClick={() => copyText(imagePromptSuggestion)} className="p-1 rounded text-neutral-700 hover:text-white transition-colors"><Copy size={8} /></button>
-                                    </div>
-                                    <p className="text-[10px] text-neutral-300 leading-relaxed font-mono">{imagePromptSuggestion}</p>
-                                </div>
-                                <div className="flex gap-2 flex-wrap">
-                                    <button
-                                        onClick={() => { setPromptTheme(imagePromptSuggestion); toast.success("Prompt aplicado al formulario"); }}
-                                        className="flex-1 h-9 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 hover:bg-amber-500 hover:text-black text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]">
-                                        <ArrowRight size={11} /> Aplicar al formulario
-                                    </button>
-                                    <button
-                                        onClick={() => saveImagePromptToLibrary(imagePromptSuggestion)}
-                                        className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]">
-                                        <BookMarked size={11} /> Guardar
-                                    </button>
-                                    <button onClick={() => void generateImagePromptSuggestion()}
-                                        className="h-9 px-3 rounded-xl border border-white/10 bg-white/5 text-neutral-500 hover:text-white text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-colors">
-                                        <Sparkles size={10} /> Regenerar
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="flex items-center gap-4 px-2">
-                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                        <div className="flex items-center gap-3">
-                            <BookMarked size={14} className="text-violet-400" />
-                            <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Biblioteca de Prompts</h3>
-                        </div>
-                        <button onClick={() => void fetchSavedPrompts()} disabled={isLoadingSavedPrompts} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
-                            {isLoadingSavedPrompts ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                        </button>
-                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                    </div>
-
-                    {savedPrompts.length > 0 && (
-                        <div className="flex gap-2 flex-wrap px-2">
-                            <button
-                                onClick={() => setPromptCategoryFilter("all")}
-                                className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === "all" ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
-                            >
-                                Todos ({savedPrompts.length})
-                            </button>
-                            {Array.from(new Set(savedPrompts.map(p => p.category))).map(cat => (
-                                <button
-                                    key={cat}
-                                    onClick={() => setPromptCategoryFilter(cat)}
-                                    className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === cat ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
-                                >
-                                    {cat} ({savedPrompts.filter(p => p.category === cat).length})
-                                </button>
-                            ))}
-                        </div>
-                    )}
-
-                    {savedPrompts.length === 0 && !isLoadingSavedPrompts ? (
-                        <div className="flex flex-col items-center gap-3 py-10 opacity-40">
-                            <BookMarked size={28} strokeWidth={1.2} className="text-neutral-600" />
-                            <p className="text-[11px] font-black uppercase tracking-widest text-neutral-600">Sin prompts guardados aún</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {savedPrompts
-                                .filter(p => promptCategoryFilter === "all" || p.category === promptCategoryFilter)
-                                .map(p => {
-                                    const isFullEdit = fullEditingPromptId === p._id;
-                                    const fe = isFullEdit ? fullEditingPrompt : {};
-                                    return (
-                                    <div key={p._id}
-                                        className="group relative rounded-2xl border border-white/8 bg-white/[0.03] hover:border-violet-500/25 hover:bg-white/[0.05] transition-all overflow-hidden">
-                                        <div className="h-0.5 w-full bg-gradient-to-r from-violet-500/60 via-violet-400/30 to-transparent" />
-                                        <div className="p-4 space-y-3">
-                                            <div className="flex items-start gap-2">
-                                                <div className="flex-1 min-w-0">
-                                                    {isFullEdit ? (
-                                                        <input autoFocus value={(fe.name ?? p.name)} onChange={e => setFullEditingPrompt(prev => ({ ...prev, name: e.target.value }))}
-                                                            className="w-full bg-white/5 border border-violet-500/40 rounded-lg px-2 py-1 text-[12px] font-black text-white outline-none mb-1" />
-                                                    ) : (
-                                                        <p className="text-[12px] font-black text-white truncate leading-tight">{p.name}</p>
-                                                    )}
-                                                    <div className="flex items-center gap-1 flex-wrap mt-0.5">
-                                                        <span className="px-2 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-[8px] font-black uppercase tracking-widest text-violet-400">{p.category}</span>
-                                                        {p.aiModel?.name && (
-                                                            <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[8px] text-neutral-500 font-black uppercase truncate max-w-[120px]" title={p.aiModel.name}>
-                                                                {p.aiModel.provider} · {p.aiModel.name.split(" ").slice(0, 2).join(" ")}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
-                                                    {isFullEdit ? null : (
-                                                        <button onClick={() => { setFullEditingPromptId(p._id); setFullEditingPrompt({ name: p.name, category: p.category, promptParts: { ...p.promptParts }, aiModel: p.aiModel }); }}
-                                                            className="p-1.5 rounded-lg text-neutral-600 hover:text-violet-400 hover:bg-violet-500/10 transition-all">
-                                                            <Pencil size={12} />
-                                                        </button>
-                                                    )}
-                                                    <button onClick={() => void deleteSavedPrompt(p._id)}
-                                                        className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all">
-                                                        <Trash2 size={12} />
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {isFullEdit ? (
-                                                <div className="space-y-2">
-                                                    <textarea value={(fe.promptParts?.theme ?? p.promptParts.theme)}
-                                                        onChange={e => setFullEditingPrompt(prev => ({ ...prev, promptParts: { ...(prev.promptParts ?? p.promptParts), theme: e.target.value } }))}
-                                                        rows={3} placeholder="Temática / prompt principal…"
-                                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none font-mono" />
-                                                    <select value={(fe.aiModel?.id ?? p.aiModel?.id ?? "")}
-                                                        onChange={e => {
-                                                            const m = AI_MODELS.find(m => m.id === e.target.value);
-                                                            setFullEditingPrompt(prev => ({ ...prev, aiModel: m ? { id: m.id, name: m.name, provider: m.provider, modelId: m.modelId } : undefined }));
-                                                        }}
-                                                        className="w-full h-8 bg-white/5 border border-white/10 rounded-xl px-3 text-[10px] text-white focus:outline-none focus:border-violet-500/40">
-                                                        <option value="">Sin modelo asociado</option>
-                                                        {AI_MODELS.map(m => <option key={m.id} value={m.id}>{m.provider} · {m.name}</option>)}
-                                                    </select>
-                                                    <div className="flex gap-2">
-                                                        <button onClick={() => setFullEditingPromptId(null)}
-                                                            className="flex-1 h-8 rounded-xl bg-white/5 border border-white/10 text-[9px] font-black uppercase text-neutral-400 hover:text-white transition-all">
-                                                            Cancelar
-                                                        </button>
-                                                        <button onClick={() => {
-                                                            void updateSavedPrompt(p._id, {
-                                                                name: fe.name ?? p.name,
-                                                                category: fe.category ?? p.category,
-                                                                promptParts: fe.promptParts ?? p.promptParts,
-                                                                aiModel: fe.aiModel,
-                                                            });
-                                                            setFullEditingPromptId(null);
-                                                            toast.success("Prompt actualizado");
-                                                        }}
-                                                            className="flex-1 h-8 rounded-xl bg-violet-500 text-white text-[9px] font-black uppercase tracking-widest hover:bg-violet-400 transition-all flex items-center justify-center gap-1.5">
-                                                            <Save size={10} /> Guardar
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <>
-                                                    <p className="text-[10px] text-neutral-500 line-clamp-2 leading-relaxed italic">
-                                                        {p.promptParts.theme || <span className="opacity-40">Sin temática</span>}
-                                                    </p>
-                                                    <button
-                                                        onClick={() => loadSavedPrompt(p)}
-                                                        className="w-full h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[10px] font-black uppercase tracking-widest hover:bg-violet-500 hover:text-white hover:border-violet-500 transition-all flex items-center justify-center gap-1.5">
-                                                        <ArrowRight size={11} />Cargar prompt
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                    );
-                                })}
-                        </div>
-                    )}
-                </div>
-                </div>
-            </div>
-
-            {/* ── BOOK FACTORY CARD ── */}
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
-                    {/* Ambient glow */}
-                    <div className="absolute -top-16 -right-16 w-48 h-48 bg-amber-500/8 blur-[60px] pointer-events-none" />
-                    <div className="p-5 space-y-4">
-                        {/* Header */}
-                        <div className="flex items-center gap-3">
-                            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/20 flex items-center justify-center shadow-lg shadow-amber-500/10 shrink-0">
-                                <BookOpen size={19} className="text-amber-400" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Book Factory</h4>
-                                <p className="text-[10px] text-neutral-500 font-medium">
-                                    {bookPages.length === 0 ? "Sin páginas todavía" : `${bookPages.length} página${bookPages.length !== 1 ? "s" : ""} en el libro`}
-                                </p>
-                            </div>
-                        </div>
-                        {/* Action buttons — own row, full width on mobile */}
-                        <div className="flex items-center gap-2">
-                            {bookPages.length > 0 && (
-                                confirmClearBook ? (
-                                    <>
-                                        <button
-                                            onClick={() => { setBookPages([]); setSelectedPageId(null); setConfirmClearBook(false); void deleteBookDraft(); }}
-                                            className="h-9 px-3 rounded-xl bg-red-500 text-white text-[10px] font-black uppercase active:scale-95 transition-all">
-                                            Sí, borrar
-                                        </button>
-                                        <button
-                                            onClick={() => setConfirmClearBook(false)}
-                                            className="h-9 px-3 rounded-xl border border-white/10 text-neutral-400 text-[10px] font-black uppercase active:scale-95 transition-all">
-                                            Cancelar
-                                        </button>
-                                    </>
-                                ) : (
-                                    <button onClick={() => setConfirmClearBook(true)} className="h-9 px-4 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 transition-all text-[10px] font-black uppercase active:scale-95">
-                                        Borrar
-                                    </button>
-                                )
-                            )}
-                            {!confirmClearBook && (
-                                <>
-                                <Button
-                                    onClick={() => {
-                                        if (vaultImages.length > 0 && bookPages.length === 0) {
-                                            const pages: BookPage[] = vaultImages.map(v => ({ id: genPageId(), type: "image" as const, image: { url: v.url, scale: 1, label: v.model }, text: defaultTextStyle() }));
-                                            setBookPages(pages);
-                                            setSelectedPageId(pages[0]?.id ?? null);
-                                        }
-                                        setBookEditorOpen(true);
-                                    }}
-                                    className="h-9 px-4 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_20px_rgba(245,158,11,0.3)] active:scale-95"
-                                >
-                                    <Pencil size={13} />
-                                    {bookPages.length === 0 ? "Crear" : "Editar"}
-                                </Button>
-                                <button
-                                    onClick={() => openKdpTemplateSelector()}
-                                    className="h-9 px-4 rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500 hover:text-white hover:border-violet-500 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 active:scale-95"
-                                    title="Selecciona imágenes del vault y catálogos para la plantilla KDP"
-                                >
-                                    <BookOpen size={13} />
-                                    Plantilla KDP
-                                </button>
-                                </>
-                            )}
-                        </div>
-
-                        {/* Page thumbnails preview or empty state */}
-                        {bookPages.length === 0 ? (
-                            <div className="space-y-2">
-                                <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/6">
-                                    <div className="flex gap-1.5">
-                                        {[0,1,2,3].map(i => (
-                                            <div key={i} className="w-8 h-11 rounded-md bg-white/5 border border-dashed border-white/10" style={{ opacity: 1 - i * 0.2 }} />
-                                        ))}
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Libro vacío</p>
-                                        <p className="text-[9px] text-neutral-700">Pulsa "Crear" para empezar o importa las imágenes del vault automáticamente</p>
-                                    </div>
-                                </div>
-                                {/* KDP template preview */}
-                                <div className="rounded-2xl border border-violet-500/15 bg-violet-500/[0.03] p-3 space-y-2">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/70">Plantilla KDP — Libro de colorear</p>
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                        {[
-                                            { label: "Título", color: "bg-amber-500/30 border-amber-500/40 text-amber-300" },
-                                            { label: "Blanco", color: "bg-white/5 border-white/10 text-neutral-600" },
-                                            { label: "Imagen", color: "bg-violet-500/20 border-violet-500/30 text-violet-300" },
-                                            { label: "Blanco", color: "bg-white/5 border-white/10 text-neutral-600" },
-                                            { label: "Imagen", color: "bg-violet-500/20 border-violet-500/30 text-violet-300" },
-                                            { label: "…", color: "bg-transparent border-white/5 text-neutral-700" },
-                                        ].map((p, i) => (
-                                            <div key={i} className={`flex flex-col items-center justify-center w-9 h-12 rounded-lg border text-[7px] font-black uppercase ${p.color}`}>
-                                                {p.label}
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <p className="text-[8px] text-neutral-700">Usa las imágenes del vault · página en blanco detrás de cada imagen para evitar sangrado de tinta</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="space-y-2">
-                                {/* Mini thumbnail strip */}
-                                <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
-                                    {bookPages.map((page, idx) => (
-                                        <div key={page.id} className="shrink-0 w-9 h-[50px] rounded-lg overflow-hidden bg-white/5 border border-white/10 relative">
-                                            {page.image
-                                                ? <img src={page.image.url} alt="" className="w-full h-full object-cover" />
-                                                : <div className="w-full h-full flex items-center justify-center"><Type size={10} className="text-neutral-700" /></div>
-                                            }
-                                            <div className="absolute bottom-0 inset-x-0 h-3 bg-gradient-to-t from-black/70 to-transparent flex items-end justify-end px-0.5">
-                                                <span className="text-[5px] font-mono text-white/50">{idx+1}</span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    <button onClick={() => { setBookEditorTab("editor"); setBookEditorOpen(true); }}
-                                        className="shrink-0 w-9 h-[50px] rounded-lg border border-dashed border-amber-500/30 text-amber-500/50 hover:border-amber-500/60 hover:text-amber-400 flex items-center justify-center transition-all">
-                                        <Plus size={12} />
-                                    </button>
-                                </div>
-                                {/* Quick stats */}
-                                <div className="flex items-center gap-3">
-                                    {[
-                                        ["Imágenes", bookPages.filter(p => p.image).length],
-                                        ["Texto", bookPages.filter(p => p.text.content.trim()).length],
-                                        ["En blanco", bookPages.filter(p => !p.image && !p.text.content.trim()).length],
-                                    ].map(([label, count]) => (
-                                        <div key={label as string} className="flex items-center gap-1">
-                                            <span className="text-[9px] font-black text-neutral-400">{count as number}</span>
-                                            <span className="text-[9px] text-neutral-600">{label as string}</span>
-                                        </div>
-                                    ))}
-                                    <div className="ml-auto flex items-center gap-1.5">
-                                        <span className="text-[9px] text-neutral-600">Nombre:</span>
-                                        <input value={bookFileName} onChange={e => setBookFileName(e.target.value)}
-                                            className="h-5 w-24 rounded-md bg-white/5 border border-white/10 px-1.5 text-[9px] text-white outline-none focus:border-amber-500/40"
-                                            placeholder="libro-kdp" />
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </Card>
-            </div>
-
-            {/* Asset Vault / Carousel — always visible */}
-            <div className="space-y-6 animate-in fade-in slide-in-from-left-8 duration-700 pb-4">
-                <div className="flex items-center px-2 gap-3">
-                    <div className="flex items-center gap-3 flex-1">
-                        <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/5">
-                            <Box size={16} />
-                        </div>
-                        <div>
-                            <h4 className="text-[11px] font-black uppercase tracking-widest text-neutral-400">Vault de Activos Digitales</h4>
-                            <p className="text-[10px] text-neutral-600 font-medium italic">Sesión actual: {vaultImages.length} activos conservados</p>
-                        </div>
-                    </div>
-                    {vaultImages.length > 0 && (
-                        <button
-                            onClick={() => { setIsVaultSelectMode(v => !v); setSelectedImageUrls(new Set()); }}
-                            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${isVaultSelectMode ? "bg-amber-500/20 border-amber-500/40 text-amber-400" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white hover:border-white/20"}`}
-                        >
-                            {isVaultSelectMode ? "Cancelar" : "Seleccionar"}
-                        </button>
-                    )}
-                    {isVaultSelectMode && selectedImageUrls.size > 0 && (
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <button
-                                onClick={() => { addSelectedAsPages(); setIsVaultSelectMode(false); }}
-                                className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-amber-500 text-black hover:bg-amber-400 transition-all border border-amber-500/50 flex items-center gap-1.5"
-                            >
-                                <Plus size={11} />
-                                {selectedImageUrls.size} al libro
-                            </button>
-                            <select
-                                value={kdpPdfSize}
-                                onChange={e => setKdpPdfSize(e.target.value as typeof kdpPdfSize)}
-                                className="h-7 bg-neutral-900 border border-white/10 rounded-xl px-2 text-[10px] font-black text-white outline-none focus:border-violet-500/40"
-                            >
-                                <option value="6x9">6"×9"</option>
-                                <option value="8x10">8"×10"</option>
-                                <option value="8.5x11">8.5"×11"</option>
-                                <option value="a4">A4</option>
-                            </select>
-                            <button
-                                onClick={() => void exportKdpPdf()}
-                                disabled={isExportingKdpPdf}
-                                className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-violet-600 hover:bg-violet-500 text-white transition-all border border-violet-500/50 flex items-center gap-1.5 disabled:opacity-40"
-                            >
-                                {isExportingKdpPdf ? <Loader2 size={11} className="animate-spin" /> : <FileText size={11} />}
-                                PDF KDP
-                            </button>
-                        </div>
-                    )}
-                </div>
-
-                {vaultImages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-10 text-center space-y-3 opacity-40">
-                        <Box size={32} className="text-neutral-600" strokeWidth={1.5} />
-                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">
-                            Vault vacío · Genera y conserva imágenes para crear libros PDF
-                        </p>
-                    </div>
-                ) : (
-                <div
-                    ref={vaultScrollRef}
-                    className={`flex gap-5 overflow-x-auto pb-4 pt-2 no-scrollbar px-2 ${isVaultSelectMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"} select-none`}
-                    onMouseDown={(e) => {
-                        if (isVaultSelectMode) return;
-                        if (!vaultScrollRef.current) return;
-                        vaultDragMoved.current = false;
-                        vaultDrag.current = { x: e.clientX, scrollLeft: vaultScrollRef.current.scrollLeft };
-                    }}
-                    onMouseMove={(e) => {
-                        if (isVaultSelectMode) return;
-                        if (!vaultDrag.current || !vaultScrollRef.current) return;
-                        const dx = e.clientX - vaultDrag.current.x;
-                        if (Math.abs(dx) > 4) vaultDragMoved.current = true;
-                        vaultScrollRef.current.scrollLeft = vaultDrag.current.scrollLeft - dx;
-                    }}
-                    onMouseUp={() => { vaultDrag.current = null; }}
-                    onMouseLeave={() => { vaultDrag.current = null; }}
-                    onTouchStart={(e) => {
-                        if (isVaultSelectMode) return;
-                        if (!vaultScrollRef.current) return;
-                        vaultDragMoved.current = false;
-                        vaultDrag.current = { x: e.touches[0].clientX, scrollLeft: vaultScrollRef.current.scrollLeft };
-                    }}
-                    onTouchMove={(e) => {
-                        if (isVaultSelectMode) return;
-                        if (!vaultDrag.current || !vaultScrollRef.current) return;
-                        const dx = e.touches[0].clientX - vaultDrag.current.x;
-                        if (Math.abs(dx) > 4) vaultDragMoved.current = true;
-                        vaultScrollRef.current.scrollLeft = vaultDrag.current.scrollLeft - dx;
-                    }}
-                    onTouchEnd={() => { vaultDrag.current = null; }}
-                >
-                    {vaultImages.map((img, i) => {
-                        const isSelected = selectedImageUrls.has(img.url);
-                        return (
-                        <div
-                            key={i}
-                            className={`shrink-0 w-56 h-64 md:w-64 md:h-80 rounded-[32px] overflow-hidden border transition-all shadow-2xl relative bg-neutral-900
-                                ${isVaultSelectMode
-                                    ? isSelected
-                                        ? "border-amber-500 scale-[0.97] ring-2 ring-amber-500/50"
-                                        : "border-white/20 hover:border-amber-500/60"
-                                    : usedImageUrls.has(img.url)
-                                        ? "border-emerald-500/50 hover:border-emerald-400 cursor-zoom-in"
-                                        : "border-white/10 hover:border-amber-500/50 cursor-zoom-in"}`}
-                            onClick={() => {
-                                if (isVaultSelectMode) { toggleImageSelect(img.url); return; }
-                                if (vaultDragMoved.current) return;
-                                openVaultImagePreview(i);
-                            }}
-                        >
-                            <img
-                                src={img.url}
-                                alt={`Vault ${i}`}
-                                className="w-full h-full object-cover"
-                            />
-                            {isVaultSelectMode && (
-                                <div className={`absolute top-3 right-3 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? "bg-amber-500 border-amber-500" : "bg-black/40 border-white/40 backdrop-blur-sm"}`}>
-                                    {isSelected && <Check size={13} className="text-black" strokeWidth={3} />}
-                                </div>
-                            )}
-                            {!isVaultSelectMode && usedImageUrls.has(img.url) && (
-                                <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-xl bg-emerald-500/90 backdrop-blur-sm pointer-events-none">
-                                    <FileText size={10} className="text-white" />
-                                    <span className="text-[9px] font-black text-white uppercase tracking-wide">En PDF</span>
-                                </div>
-                            )}
-                            {!isVaultSelectMode && favorites.has(img.url) && (
-                                <div className="absolute top-2 left-2 p-1.5 rounded-xl bg-black/60 text-rose-400 pointer-events-none">
-                                    <Heart size={11} className="fill-rose-400" />
-                                </div>
-                            )}
-                            {isVaultSelectMode && isSelected && (
-                                <div className="absolute inset-0 bg-amber-500/15 pointer-events-none" />
-                            )}
-                        </div>
-                        );
-                    })}
-                    </div>
-                )}
-            </div>
-
-            {/* Cloudinary Persistent Gallery */}
-            <div className="space-y-4 pb-4">
-                {/* Header */}
-                <div className="flex items-center gap-3 px-2">
-                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                    <div className="flex items-center gap-3">
-                        <Cloud size={14} className="text-cyan-400" />
-                        <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Cloudinary · Almacén Persistente</h3>
-                    </div>
-                    {cloudinaryImages.length > 0 && (
-                        <button
-                            onClick={() => {
-                                setIsCloudSelectMode(v => {
-                                    if (v) setSelectedCloudUrls(new Set());
-                                    return !v;
-                                });
-                            }}
-                            className={`h-7 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${isCloudSelectMode ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white hover:border-white/20"}`}
-                        >
-                            {isCloudSelectMode ? "Cancelar" : "Seleccionar"}
-                        </button>
-                    )}
-                    <button
-                        onClick={() => void fetchCloudinaryImages()}
-                        disabled={isLoadingCloudinary}
-                        className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-cyan-400 hover:border-cyan-500/30 transition-all disabled:opacity-40"
-                        title="Actualizar galería"
-                    >
-                        {isLoadingCloudinary ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                    </button>
-                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                </div>
-
-                {/* Selection action bar */}
-                {isCloudSelectMode && selectedCloudUrls.size > 0 && (
-                    <div className="mx-2 flex items-center gap-3 px-4 py-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/20">
-                        <span className="text-[11px] font-black text-cyan-300 flex-1">{selectedCloudUrls.size} imagen{selectedCloudUrls.size !== 1 ? "es" : ""} seleccionada{selectedCloudUrls.size !== 1 ? "s" : ""}</span>
-                        <button
-                            onClick={() => setSelectedCloudUrls(new Set(cloudinaryImages.map(i => i.url)))}
-                            className="text-[10px] font-bold text-cyan-400 hover:text-cyan-200 transition-colors"
-                        >Selec. todo</button>
-                        <button
-                            onClick={() => {
-                                setCustomCatalogName(`Catálogo Cloudinary ${new Date().toLocaleDateString("es-ES")}`);
-                                setShowCustomCatalogModal(true);
-                            }}
-                            className="h-8 px-4 rounded-xl bg-cyan-500 text-black text-[11px] font-black hover:bg-cyan-400 transition-all flex items-center gap-2"
-                        >
-                            <Layers size={12} />
-                            Crear Catálogo
-                        </button>
-                    </div>
-                )}
-
-                {/* Search */}
-                {cloudinaryImages.length > 0 && (
-                    <div className="px-2">
-                        <input
-                            value={cloudSearch}
-                            onChange={e => setCloudSearch(e.target.value)}
-                            placeholder="Buscar por nombre de archivo…"
-                            className="w-full h-8 bg-white/5 border border-white/10 rounded-xl px-3 text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-cyan-500/40 transition-all"
-                        />
-                    </div>
-                )}
-
-                {cloudinaryImages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-10 text-center space-y-3 opacity-40">
-                        <Cloud size={32} className="text-neutral-600" strokeWidth={1.5} />
-                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">
-                            {isLoadingCloudinary ? "Cargando..." : "Sin imágenes en Cloudinary · Sube assets desde el vault"}
-                        </p>
-                    </div>
-                ) : (
-                    <div className="flex gap-4 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
-                        {cloudinaryImages.filter(img => !cloudSearch.trim() || img.publicId.toLowerCase().includes(cloudSearch.toLowerCase())).map((img, cldIdx) => {
-                            const isCloudSel = selectedCloudUrls.has(img.url);
-                            const isFav = favorites.has(img.url);
-                            return (
-                                <div
-                                    key={img.publicId}
-                                    className={`shrink-0 w-44 h-52 md:w-52 md:h-64 rounded-[28px] overflow-hidden border transition-all shadow-xl relative bg-neutral-900 group ${isCloudSelectMode ? "cursor-pointer" : "cursor-zoom-in"} ${isCloudSel ? "border-cyan-500/70 ring-2 ring-cyan-500/30" : "border-white/10 hover:border-cyan-500/40"}`}
-                                    onClick={() => {
-                                        if (isCloudSelectMode) {
-                                            setSelectedCloudUrls(prev => {
-                                                const next = new Set(prev);
-                                                next.has(img.url) ? next.delete(img.url) : next.add(img.url);
-                                                return next;
-                                            });
-                                        } else {
-                                            openCloudinaryImagePreview(cldIdx);
-                                        }
-                                    }}
-                                >
-                                    <img src={img.url} alt={img.publicId} className="w-full h-full object-cover" />
-
-                                    {/* Selection overlay */}
-                                    {isCloudSelectMode && (
-                                        <>
-                                            <div className={`absolute top-3 right-3 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isCloudSel ? "bg-cyan-500 border-cyan-500" : "bg-black/40 border-white/40 backdrop-blur-sm"}`}>
-                                                {isCloudSel && <Check size={13} className="text-black" strokeWidth={3} />}
-                                            </div>
-                                            {isCloudSel && <div className="absolute inset-0 bg-cyan-500/10 pointer-events-none" />}
-                                        </>
-                                    )}
-
-                                    {/* Heart button: always top-left; rose filled when fav */}
-                                    {!isCloudSelectMode && (
-                                        <button
-                                            onClick={e => { e.stopPropagation(); toggleFavorite(img.url, { label: img.publicId.split("/").pop() ?? "", source: "cloudinary" }); }}
-                                            className={`absolute top-2 left-2 p-1.5 rounded-xl backdrop-blur-sm transition-all ${isFav ? "bg-rose-500/80 text-white opacity-100" : "bg-black/50 text-neutral-400 opacity-0 group-hover:opacity-100 hover:text-rose-400"}`}
-                                        >
-                                            <Heart size={11} className={isFav ? "fill-white" : ""} />
-                                        </button>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-            </div>
-
-            {/* IA Catalog list */}
-            <div ref={catalogsListRef}>
-            {/* Skeleton while loading initial list */}
-            {isLoadingCatalogs && iaCatalogs.length === 0 && (
-                <div className="space-y-4">
-                    <div className="flex items-center gap-4 px-2">
-                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                        <div className="flex items-center gap-3">
-                            <Layers size={14} className="text-violet-400" />
-                            <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Catálogos IA</h3>
-                        </div>
-                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                    </div>
-                    <div className="space-y-3">
-                        {[0, 1, 2].map(i => (
-                            <div key={i} className="rounded-2xl border border-white/5 bg-white/[0.01] overflow-hidden animate-pulse">
-                                <div className="h-px w-full bg-white/10" />
-                                <div className="p-4 space-y-3">
-                                    <div className="flex items-start justify-between gap-4">
-                                        <div className="space-y-2 flex-1">
-                                            <div className="h-4 w-1/3 bg-white/5 rounded-lg" />
-                                            <div className="h-3 w-2/3 bg-white/5 rounded-lg" />
-                                        </div>
-                                        <div className="h-5 w-20 bg-white/5 rounded-full" />
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <div className="h-7 w-36 bg-white/5 rounded-xl" />
-                                        <div className="h-4 w-20 bg-white/5 rounded-lg" />
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-            {iaCatalogs.length > 0 && (() => {
-                const activeCatalogs = iaCatalogs.filter(c => c.status === "running" || c.status === "pending" || c.status === "queued");
-                const doneCatalogs = iaCatalogs.filter(c => c.status === "completed" || c.status === "failed" || c.status === "cancelled");
-                const totalImages = iaCatalogs.reduce((sum, c) => sum + c.images.length, 0);
-
-                const renderCard = (catalog: IACatalogFE) => {
-                    const progress = catalog.totalImages > 0 ? (catalog.images.length / catalog.totalImages) * 100 : 0;
-                    const isActive = catalog.status === "running" || catalog.status === "pending" || catalog.status === "queued";
-                    const queuedList = iaCatalogs.filter(c => c.status === "queued");
-                    const queuePos = catalog.status === "queued" ? queuedList.indexOf(catalog) + 1 : 0;
-                    const remainingImages = Math.max(0, catalog.totalImages - catalog.images.length - (catalog.skippedImages ?? 0));
-                    const estMin = Math.round(remainingImages * 1.5);
-                    const timeStr = estMin > 60 ? `~${Math.floor(estMin / 60)}h ${estMin % 60}m` : estMin > 0 ? `~${estMin}m` : "";
-                    const providerColor = catalog.aiModel?.provider === "Google" ? { bar: "bg-blue-500/50", badge: "bg-blue-500/10 border-blue-500/20 text-blue-300", dot: "bg-blue-400" }
-                        : catalog.aiModel?.provider === "Leonardo" ? { bar: "bg-amber-500/50", badge: "bg-amber-500/10 border-amber-500/20 text-amber-300", dot: "bg-amber-400" }
-                        : catalog.aiModel?.provider === "Pollinations" ? { bar: "bg-emerald-500/50", badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300", dot: "bg-emerald-400" }
-                        : { bar: "bg-violet-500/50", badge: "bg-violet-500/10 border-violet-500/20 text-violet-300", dot: "bg-violet-400" };
-                    const isDraggable = catalog.status === "queued";
-                    const isDragOver = dragOverId === catalog._id;
-                    return (
-                        <Card
-                            key={catalog._id}
-                            variant="outline"
-                            draggable={isDraggable}
-                            onDragStart={() => isDraggable && setDraggingId(catalog._id)}
-                            onDragEnd={() => { setDraggingId(null); setDragOverId(null); }}
-                            onDragOver={(e: React.DragEvent) => { if (isDraggable && draggingId) { e.preventDefault(); setDragOverId(catalog._id); } }}
-                            onDrop={(e: React.DragEvent) => { e.preventDefault(); if (draggingId && isDraggable) void handleQueueReorder(draggingId, catalog._id); setDraggingId(null); setDragOverId(null); }}
-                            className={`border-white/5 bg-white/[0.01] overflow-hidden transition-all duration-300 hover:border-white/10 ${isDraggable ? "cursor-grab active:cursor-grabbing" : ""} ${isDragOver ? "ring-1 ring-orange-500/50 border-orange-500/30" : ""} ${draggingId === catalog._id ? "opacity-50" : ""}`}
-                        >
-                            {/* Provider accent bar */}
-                            <div className={`h-px w-full ${providerColor.bar}`} />
-                            <div className="p-4 space-y-3">
-                                {/* Header */}
-                                <div className="flex items-start justify-between gap-4">
-                                    <div className="min-w-0 space-y-1">
-                                        <div className="flex items-center gap-2">
-                                            {isDraggable && <GripVertical size={12} className="text-neutral-700 shrink-0" />}
-                                            <h4 className="font-black text-white text-sm leading-tight truncate">{catalog.name}</h4>
-                                        </div>
-                                        <p className="text-[10px] text-neutral-500 line-clamp-1 leading-relaxed">{catalog.prompt}</p>
-                                    </div>
-                                    <div className="flex flex-col items-end gap-1.5 shrink-0">
-                                        {statusBadge(catalog.status)}
-                                        <span className="text-[9px] text-neutral-600 font-mono">{new Date(catalog.createdAt).toLocaleDateString("es-ES")}</span>
-                                    </div>
-                                </div>
-                                {/* Model badge + meta */}
-                                <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border ${providerColor.badge}`}>
-                                        <div className={`w-2 h-2 rounded-full ${providerColor.dot} shrink-0`} />
-                                        <span className="text-[10px] font-black leading-none truncate max-w-[200px]">{catalog.aiModel?.name}</span>
-                                        <span className="text-[9px] opacity-60 shrink-0">{catalog.aiModel?.provider}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 text-[9px] font-mono text-neutral-600">
-                                        <span>{catalog.width}×{catalog.height}</span>
-                                        <span className="text-neutral-700">·</span>
-                                        <span className="font-black text-neutral-400">{catalog.images.length}/{catalog.totalImages}</span>
-                                        {isActive && catalog.status !== "queued" && <Loader2 size={9} className="text-blue-400 animate-spin" />}
-                                        {(catalog.skippedImages ?? 0) > 0 && <span className="text-amber-500/70 not-mono">· {catalog.skippedImages} omit.</span>}
-                                        {isActive && catalog.status === "running" && timeStr && <span className="text-violet-400/70 not-mono">· {timeStr}</span>}
-                                    </div>
-                                </div>
-                                {/* Error */}
-                                {catalog.lastError && (
-                                    <p className="text-[9px] text-red-400/70 font-mono break-all leading-relaxed bg-red-500/5 border border-red-500/10 rounded-lg px-2 py-1.5">
-                                        ⚠ {catalog.lastError.length > 100 ? catalog.lastError.slice(0, 100) + "…" : catalog.lastError}
+                                    {(() => {
+                                        const running = iaCatalogs.filter(c => c.status === "running" || c.status === "pending");
+                                        const queued = iaCatalogs.filter(c => c.status === "queued");
+                                        if (running.length === 0 && queued.length === 0) return null;
+                                        return (
+                                            <p className="text-[10px] text-amber-500/70 italic flex items-center gap-1.5">
+                                                <Loader2 size={9} className="animate-spin" />
+                                                {running.length > 0 ? `${running.length} en progreso` : ""}
+                                                {running.length > 0 && queued.length > 0 ? " · " : ""}
+                                                {queued.length > 0 ? `${queued.length} en cola` : ""}
+                                                {" · el nuevo se añadirá a la cola"}
+                                            </p>
+                                        );
+                                    })()}
+                                    <p className="text-[9px] text-neutral-700 italic">
+                                        ~{Math.ceil(catalogFormCount * 1.5)} min · {catalogFormCount} imágenes · {currentModel?.name} · {currentDim?.ratio}
                                     </p>
-                                )}
-                                {/* Action buttons */}
-                                <div className="flex items-center justify-end gap-2">
-                                    <button
-                                        onClick={() => {
-                                            if (catalog.promptParts?.theme) {
-                                                setPromptTheme(catalog.promptParts.theme);
-                                                setPromptSpecs(catalog.promptParts.specs ?? "");
-                                                setPromptDetails(catalog.promptParts.details ?? "");
-                                                setPromptParticulars(catalog.promptParts.particulars ?? "");
-                                            } else {
-                                                // Old catalog without parts — strip the composed prefix so
-                                                // imagePrompt doesn't double-wrap it
-                                                const prefix = "Genera una imagen con la siguiente temática: ";
-                                                let raw = catalog.prompt;
-                                                if (raw.startsWith(prefix)) raw = raw.slice(prefix.length);
-                                                // Strip style suffix added by coloring-book modifier
-                                                const styleIdx = raw.indexOf(". Style:");
-                                                if (styleIdx >= 0) raw = raw.slice(0, styleIdx);
-                                                // Take only up to the first sub-clause separator
-                                                const cutAt = [
-                                                    raw.indexOf(", que tenga las siguientes especificaciones:"),
-                                                    raw.indexOf(", con los siguientes detalles:"),
-                                                    raw.indexOf(", y las siguientes particularidades:"),
-                                                ].filter(i => i >= 0).sort((a, b) => a - b)[0] ?? -1;
-                                                setPromptTheme(cutAt >= 0 ? raw.slice(0, cutAt) : raw);
-                                                setPromptSpecs(""); setPromptDetails(""); setPromptParticulars("");
-                                            }
-                                            const matchModel = AI_MODELS.find(m => m.id === catalog.aiModel?.id);
-                                            if (matchModel) setSelectedModel(matchModel.id);
-                                            const matchDim = AI_DIMENSIONS.find(d => d.width === catalog.width && d.height === catalog.height);
-                                            if (matchDim) setSelectedDim(matchDim.id);
-                                            if (catalog.productType) setCatalogProductType(catalog.productType);
-                                            if (catalog.creativity !== undefined) setCatalogCreativity(catalog.creativity);
-                                            if (catalog.negativePrompt !== undefined) setCatalogNegativePrompt(catalog.negativePrompt);
-                                            toast.success("Prompt, modelo y resolución cargados");
-                                        }}
-                                        title="Cargar prompt, modelo y resolución"
-                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-white transition-all border border-white/10 text-[9px] font-black uppercase tracking-widest"
-                                    >
-                                        <Copy size={11} /> Reusar
-                                    </button>
-                                    {catalog.images.length > 0 && (
-                                        <button
-                                            onClick={() => { const pages: BookPage[] = catalog.images.map((img, i) => ({ id: genPageId(), type: "image" as const, image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` }, text: defaultTextStyle() })); setBookPages(pages); setSelectedPageId(pages[0]?.id ?? null); setBookEditorOpen(true); }}
-                                            title="Editar PDF"
-                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-[9px] font-black uppercase tracking-widest"
-                                        >
-                                            <FileText size={11} /> PDF
-                                        </button>
-                                    )}
-                                    {(catalog.skippedImages ?? 0) > 0 && !isActive && (
-                                        <button
-                                            onClick={() => void retryFailedSlots(catalog._id)}
-                                            disabled={retryingCatalogId === catalog._id}
-                                            title={`Reintentar ${catalog.skippedImages} slot${(catalog.skippedImages ?? 0) > 1 ? "s" : ""} fallados`}
-                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20 text-[9px] font-black uppercase tracking-widest disabled:opacity-50"
-                                        >
-                                            {retryingCatalogId === catalog._id ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                                            {catalog.skippedImages} fallidos
-                                        </button>
-                                    )}
-                                    {catalog.images.length > 0 && (
-                                        <button
-                                            onClick={() => setCompareSel(prev => {
-                                                const next = new Set(prev);
-                                                next.has(catalog._id) ? next.delete(catalog._id) : next.add(catalog._id);
-                                                return next;
-                                            })}
-                                            title="Seleccionar para comparar"
-                                            className={`flex items-center gap-1 h-8 px-2.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${compareSel.has(catalog._id) ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-white/5 border-white/10 text-neutral-600 hover:text-sky-400 hover:border-sky-500/30"}`}
-                                        >
-                                            <Copy size={10} />
-                                        </button>
-                                    )}
-                                    {isActive && (
-                                        <button
-                                            onClick={() => void cancelCatalog(catalog._id)}
-                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all text-[9px] font-black uppercase tracking-widest"
-                                        >
-                                            <StopCircle size={11} /> Detener
-                                        </button>
-                                    )}
-                                    <button onClick={() => setConfirmDeleteCatalogId(catalog._id)} disabled={deletingCatalogId === catalog._id} title="Eliminar" className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 disabled:opacity-50">
-                                        {deletingCatalogId === catalog._id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                                    </button>
-                                </div>
-                            </div>
-                            {/* Progress bar */}
-                            {isActive && (
-                                <div className="px-4 pb-3 space-y-1.5 border-t border-white/5 pt-3">
-                                    <div className="flex justify-between text-[9px] uppercase tracking-widest text-neutral-600">
-                                        <span className="flex items-center gap-1.5"><Loader2 size={8} className="animate-spin text-blue-400" />{catalog.status === "queued" ? `En cola · posición ${queuePos}` : catalog.status === "pending" ? "Iniciando..." : "Generando"}</span>
-                                        {catalog.status !== "queued" && <span className="font-black text-neutral-400">{Math.round(progress)}% {timeStr && <span className="text-violet-400/80 normal-case">{timeStr}</span>}</span>}
-                                    </div>
-                                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                                        {catalog.status === "queued"
-                                            ? <div className="h-full w-1/3 bg-gradient-to-r from-orange-500/30 to-orange-400/60 rounded-full animate-pulse" />
-                                            : <div className="h-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
-                                        }
-                                    </div>
                                 </div>
                             )}
-                            {/* Image grid */}
-                            {catalog.images.length > 0 && (
-                                <div className="px-4 pb-4 border-t border-white/5 pt-3">
-                                    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
-                                        {catalog.images.map((img, imgIdx) => {
-                                            const isCatSelected = selectedImageUrls.has(img.url);
-                                            return (
-                                                <div
-                                                    key={img.publicId}
-                                                    className={`aspect-square rounded-lg overflow-hidden bg-white/5 border transition-all relative ${isVaultSelectMode ? (isCatSelected ? "border-violet-500 ring-1 ring-violet-500/50 cursor-pointer" : "border-white/10 hover:border-violet-500/50 cursor-pointer") : "border-white/5 cursor-zoom-in hover:border-violet-500/40"}`}
-                                                    onClick={() => isVaultSelectMode ? toggleImageSelect(img.url) : openCatalogImagePreview(catalog.images, imgIdx, catalog._id)}
-                                                >
-                                                    <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                                                    {isVaultSelectMode && (
-                                                        <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isCatSelected ? "bg-violet-500 border-violet-500" : "bg-black/50 border-white/30 backdrop-blur-sm"}`}>
-                                                            {isCatSelected && <Check size={9} className="text-white" strokeWidth={3} />}
-                                                        </div>
-                                                    )}
-                                                    {!isVaultSelectMode && favorites.has(img.url) && (
-                                                        <div className="absolute top-0.5 left-0.5 p-0.5 rounded-md bg-black/60 text-rose-400 pointer-events-none">
-                                                            <Heart size={8} className="fill-rose-400" />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                        {isActive && Array.from({ length: catalog.totalImages - catalog.images.length }).map((_, i) => (
-                                            <div key={`ph-${i}`} className="aspect-square rounded-lg bg-white/[0.02] border border-dashed border-white/10 flex items-center justify-center">
-                                                <Loader2 size={10} className="text-neutral-700 animate-spin" />
+                        </div>
+                    </div>
+
+                    {/* Right Column */}
+                    <div className="flex flex-col gap-6">
+                        {/* Preview Area */}
+                        <Card
+                            variant="glass"
+                            className="relative border-white/5 bg-white/[0.01] overflow-hidden h-[280px] flex items-center justify-center group rounded-[40px] focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                            tabIndex={0}
+                            onClick={(e) => (e.currentTarget as HTMLElement).focus()}
+                            onDragOver={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                            }}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const file = e.dataTransfer.files?.[0];
+                                if (!file) return;
+                                if (generatedImage) setGeneratedImageFromFile(file);
+                                else addImageFileToVault(file);
+                            }}
+                            onPaste={(e) => {
+                                const items = Array.from(e.clipboardData?.items || []);
+                                const imageItem = items.find((it) => it.kind === "file" && it.type.startsWith("image/"));
+                                const file = imageItem?.getAsFile() || null;
+                                if (!file) return;
+                                if (generatedImage) setGeneratedImageFromFile(file);
+                                else addImageFileToVault(file);
+                            }}
+                        >
+                            {generatedImage ? (
+                                <div className="relative w-full h-full animate-in fade-in zoom-in duration-700">
+
+                                    <img
+                                        src={generatedImage}
+                                        alt="AI Generated"
+                                        className={`w-full h-full object-cover transition-opacity duration-700 ${isImageLoading ? 'opacity-0' : 'opacity-100'} ${!isImageLoading ? 'cursor-zoom-in' : ''}`}
+                                        onLoad={() => setIsImageLoading(false)}
+                                        onClick={() => {
+                                            if (!isImageLoading) setPreviewImage(generatedImage);
+                                        }}
+                                    />
+
+                                    {isImageLoading && (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0a0a0a]/60 backdrop-blur-xl gap-4">
+                                            <div className="relative">
+                                                <div className="w-16 h-16 rounded-full border-2 border-amber-500/20 border-t-amber-500 animate-spin" />
+                                                <Zap size={20} className="absolute inset-0 m-auto text-amber-500 animate-pulse" />
                                             </div>
-                                        ))}
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-amber-500">Renderizando Arte...</p>
+                                        </div>
+                                    )}
+
+                                    {showSafeArea && !isImageLoading && (
+                                        <div className="absolute inset-0 pointer-events-none">
+                                            <div className="absolute inset-[3%] border border-dashed border-amber-400/50 rounded-md" />
+                                            <div className="absolute inset-[9%] border border-dashed border-amber-300/25 rounded-sm" />
+                                            <div className="absolute top-[3%] left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-amber-500/70 backdrop-blur-sm text-[8px] font-black text-black uppercase tracking-widest whitespace-nowrap">Bleed · Trim</div>
+                                            <div className="absolute bottom-[9%] left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-black/50 backdrop-blur-sm text-[8px] font-black text-amber-300/80 uppercase tracking-widest whitespace-nowrap">Safe area</div>
+                                        </div>
+                                    )}
+                                    {!isImageLoading && (
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/40 p-8 flex flex-col justify-between">
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex flex-col gap-2">
+                                                    <Badge className="bg-amber-500 text-black font-black text-[10px] uppercase tracking-widest px-3 border-none">Master Draft</Badge>
+                                                    <div className="px-3 py-1.5 rounded-xl bg-black/40 backdrop-blur-md border border-white/10 text-[9px] font-bold text-neutral-300 w-fit">
+                                                        {AI_MODELS.find(m => m.id === selectedModel)?.name} • {AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
+                                                            const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
+                                                            downloadPng(generatedImage, `${modelName}-${dimName}`.replaceAll(" ", "_"));
+                                                        }}
+                                                        className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-white/10 transition-all border border-white/10"
+                                                        aria-label="Descargar imagen"
+                                                        title="Descargar"
+                                                    >
+                                                        <Download size={18} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setGeneratedImage(null)}
+                                                        className="p-3 rounded-2xl bg-black/40 backdrop-blur-md text-white hover:bg-rose-500 transition-all border border-white/10"
+                                                        aria-label="Cerrar"
+                                                        title="Cerrar"
+                                                    >
+                                                        <X size={18} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <Button
+                                                    onClick={() => setGeneratedImage(null)}
+                                                    variant="outline"
+                                                    className="h-14 rounded-2xl border-white/10 bg-white/5 backdrop-blur-md text-[10px] font-black uppercase tracking-widest text-white hover:bg-white/10"
+                                                >
+                                                    <X size={16} className="mr-2" /> Descartar
+                                                </Button>
+                                                <Button
+                                                    onClick={handleKeepImage}
+                                                    className="h-14 rounded-2xl bg-white text-black text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all shadow-2xl shadow-white/10"
+                                                >
+                                                    <Check size={16} className="mr-2" /> Conservar Activo
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : isGenerating ? (
+                                /* Full-card skeleton while generating */
+                                <div className="absolute inset-0 overflow-hidden flex flex-col">
+                                    {/* Shimmer background */}
+                                    <div className="absolute inset-0 bg-gradient-to-br from-[#0d0d0d] via-neutral-900/40 to-[#0d0d0d] animate-pulse" />
+                                    {/* Center content */}
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 p-8">
+                                        <div className="relative">
+                                            <div className="absolute inset-0 scale-[2] blur-3xl bg-amber-500/10 animate-pulse rounded-full" />
+                                            <div className="w-20 h-20 rounded-[28px] border border-amber-500/20 bg-amber-500/[0.04] flex items-center justify-center relative">
+                                                <Zap size={30} className="text-amber-500/50 animate-bounce" />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2.5 w-full max-w-[180px] flex flex-col items-center">
+                                            <div className="h-2 w-full rounded-full bg-white/[0.06] animate-pulse" />
+                                            <div className="h-2 w-4/5 rounded-full bg-white/[0.04] animate-pulse" />
+                                            <div className="h-2 w-3/5 rounded-full bg-white/[0.03] animate-pulse" />
+                                        </div>
+                                        <p className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-500/40 animate-pulse">
+                                            {AI_MODELS.find(m => m.id === selectedModel)?.name}
+                                        </p>
+                                    </div>
+                                    {/* Bottom skeleton (mimics the keep/discard buttons) */}
+                                    <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/60 to-transparent space-y-3 pointer-events-none">
+                                        <div className="flex justify-between">
+                                            <div className="h-6 w-28 rounded-xl bg-amber-500/[0.05] animate-pulse" />
+                                            <div className="flex gap-2">
+                                                <div className="w-11 h-11 rounded-2xl bg-white/[0.04] animate-pulse" />
+                                                <div className="w-11 h-11 rounded-2xl bg-white/[0.04] animate-pulse" />
+                                                <div className="w-11 h-11 rounded-2xl bg-white/[0.04] animate-pulse" />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="h-12 rounded-2xl bg-white/[0.03] animate-pulse" />
+                                            <div className="h-12 rounded-2xl bg-white/[0.05] animate-pulse" />
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center text-center p-12 space-y-6">
+                                    <div className="space-y-5 opacity-30 group-hover:opacity-60 transition-all duration-500">
+                                        <div className="w-24 h-24 rounded-[36px] border-2 border-dashed border-white/10 flex items-center justify-center mx-auto bg-white/5">
+                                            <Camera size={36} strokeWidth={1.5} className="text-neutral-400" />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <p className="text-xs font-black uppercase tracking-widest text-white">Visual Engine Ready</p>
+                                            <p className="text-[10px] text-neutral-600 font-medium italic">Arrastra o pega (Ctrl/⌘+V) una imagen</p>
+                                            <p className="text-[10px] text-amber-500/50 font-black uppercase tracking-widest">→ va directo al vault</p>
+                                        </div>
                                     </div>
                                 </div>
                             )}
                         </Card>
-                    );
-                };
 
-                return (
-                    <div className="space-y-4">
-                        {/* Header with counter + controls */}
-                        <div className="flex items-center gap-4 px-2">
-                            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                            <div className="flex items-center gap-3">
-                                <Layers size={14} className="text-violet-400" />
-                                <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Catálogos IA</h3>
-                                {totalImages > 0 && (
-                                    <span className="text-[9px] font-black text-violet-400/60 tabular-nums">{totalImages} imgs</span>
+                        {/* Saved Prompts Library */}
+                        <div className="space-y-4">
+                            {/* ── IA Prompt Generator ─────────────────────────────────── */}
+                            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.03] p-4 space-y-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-xl bg-violet-500/15 border border-violet-500/25 flex items-center justify-center shrink-0">
+                                        <Wand2 size={14} className="text-violet-400" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[11px] font-black text-white tracking-tight">Generador de prompt con IA</p>
+                                        <p className="text-[9px] text-neutral-600">Describe tu producto y la IA crea el prompt ideal para guardar en biblioteca</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <input
+                                        value={contentNiche}
+                                        onChange={e => setContentNiche(e.target.value)}
+                                        onKeyDown={e => { if (e.key === "Enter") void generateImagePromptSuggestion(); }}
+                                        placeholder="Ej: libro de colorear de mandalas zen para adultos…"
+                                        className="flex-1 h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all"
+                                    />
+                                    <button
+                                        onClick={() => void generateImagePromptSuggestion()}
+                                        disabled={isGeneratingImagePrompt || !contentNiche.trim()}
+                                        className="h-10 px-4 rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[10px] font-black uppercase tracking-wider flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
+                                        {isGeneratingImagePrompt ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                        {isGeneratingImagePrompt ? "..." : "Generar"}
+                                    </button>
+                                </div>
+                                {isGeneratingImagePrompt && (
+                                    <div className="h-12 rounded-xl bg-white/5 border border-white/8 animate-pulse flex items-center justify-center">
+                                        <Loader2 size={12} className="animate-spin text-violet-400" />
+                                    </div>
                                 )}
-                            </div>
-                            <button onClick={() => void fetchCatalogs()} disabled={isLoadingCatalogs} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
-                                {isLoadingCatalogs ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                            </button>
-                            {compareSel.size >= 2 && (
-                                <button onClick={() => setCompareOpen(true)}
-                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-300 text-[9px] font-black uppercase tracking-widest hover:bg-sky-500/25 transition-all">
-                                    <Copy size={10} /> Comparar ({compareSel.size})
-                                </button>
-                            )}
-                            {compareSel.size > 0 && (
-                                <button onClick={() => setCompareSel(new Set())} className="text-[9px] text-neutral-600 hover:text-white transition-colors uppercase font-black">Limpiar</button>
-                            )}
-                            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                        </div>
-
-                        {/* Active catalogs (always visible) */}
-                        {activeCatalogs.length > 0 && (
-                            <div className="space-y-3">
-                                {activeCatalogs.map(renderCard)}
-                            </div>
-                        )}
-
-                        {/* Done catalogs with collapse toggle */}
-                        {doneCatalogs.length > 0 && (
-                            <div className="space-y-3">
-                                <button
-                                    onClick={() => setCollapsedCompleted(v => !v)}
-                                    className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all text-left"
-                                >
-                                    <ChevronDown size={12} className={`text-neutral-600 transition-transform duration-300 ${collapsedCompleted ? "" : "rotate-180"}`} />
-                                    <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">
-                                        {collapsedCompleted ? `Ver ${doneCatalogs.length} catálogo${doneCatalogs.length > 1 ? "s" : ""} finalizado${doneCatalogs.length > 1 ? "s" : ""}` : `Ocultar finalizados`}
-                                    </span>
-                                    <span className="ml-auto text-[9px] text-neutral-700 font-mono">{doneCatalogs.reduce((s, c) => s + c.images.length, 0)} imgs</span>
-                                </button>
-                                {!collapsedCompleted && (
-                                    <div className="space-y-3">
-                                        {doneCatalogs.map(renderCard)}
+                                {imagePromptSuggestion && !isGeneratingImagePrompt && (
+                                    <div className="space-y-2">
+                                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2.5 space-y-1.5">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[8px] font-black uppercase tracking-widest text-amber-400/70">Prompt generado</p>
+                                                <button onClick={() => copyText(imagePromptSuggestion)} className="p-1 rounded text-neutral-700 hover:text-white transition-colors"><Copy size={8} /></button>
+                                            </div>
+                                            <p className="text-[10px] text-neutral-300 leading-relaxed font-mono">{imagePromptSuggestion}</p>
+                                        </div>
+                                        <div className="flex gap-2 flex-wrap">
+                                            <button
+                                                onClick={() => { setPromptTheme(imagePromptSuggestion); toast.success("Prompt aplicado al formulario"); }}
+                                                className="flex-1 h-9 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 hover:bg-amber-500 hover:text-black text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]">
+                                                <ArrowRight size={11} /> Aplicar al formulario
+                                            </button>
+                                            <button
+                                                onClick={() => saveImagePromptToLibrary(imagePromptSuggestion)}
+                                                className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]">
+                                                <BookMarked size={11} /> Guardar
+                                            </button>
+                                            <button onClick={() => void generateImagePromptSuggestion()}
+                                                className="h-9 px-3 rounded-xl border border-white/10 bg-white/5 text-neutral-500 hover:text-white text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-colors">
+                                                <Sparkles size={10} /> Regenerar
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </div>
+
+                            <div className="flex items-center gap-4 px-2">
+                                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                                <div className="flex items-center gap-3">
+                                    <BookMarked size={14} className="text-violet-400" />
+                                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Biblioteca de Prompts</h3>
+                                </div>
+                                <button onClick={() => void fetchSavedPrompts()} disabled={isLoadingSavedPrompts} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
+                                    {isLoadingSavedPrompts ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                                </button>
+                                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                            </div>
+
+                            {savedPrompts.length > 0 && (
+                                <div className="flex gap-2 flex-wrap px-2">
+                                    <button
+                                        onClick={() => setPromptCategoryFilter("all")}
+                                        className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === "all" ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                                    >
+                                        Todos ({savedPrompts.length})
+                                    </button>
+                                    {Array.from(new Set(savedPrompts.map(p => p.category))).map(cat => (
+                                        <button
+                                            key={cat}
+                                            onClick={() => setPromptCategoryFilter(cat)}
+                                            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === cat ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                                        >
+                                            {cat} ({savedPrompts.filter(p => p.category === cat).length})
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {savedPrompts.length === 0 && !isLoadingSavedPrompts ? (
+                                <div className="flex flex-col items-center gap-3 py-10 opacity-40">
+                                    <BookMarked size={28} strokeWidth={1.2} className="text-neutral-600" />
+                                    <p className="text-[11px] font-black uppercase tracking-widest text-neutral-600">Sin prompts guardados aún</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    {savedPrompts
+                                        .filter(p => promptCategoryFilter === "all" || p.category === promptCategoryFilter)
+                                        .map(p => {
+                                            const isFullEdit = fullEditingPromptId === p._id;
+                                            const fe = isFullEdit ? fullEditingPrompt : {};
+                                            return (
+                                                <div key={p._id}
+                                                    className="group relative rounded-2xl border border-white/8 bg-white/[0.03] hover:border-violet-500/25 hover:bg-white/[0.05] transition-all overflow-hidden">
+                                                    <div className="h-0.5 w-full bg-gradient-to-r from-violet-500/60 via-violet-400/30 to-transparent" />
+                                                    <div className="p-4 space-y-3">
+                                                        <div className="flex items-start gap-2">
+                                                            <div className="flex-1 min-w-0">
+                                                                {isFullEdit ? (
+                                                                    <input autoFocus value={(fe.name ?? p.name)} onChange={e => setFullEditingPrompt(prev => ({ ...prev, name: e.target.value }))}
+                                                                        className="w-full bg-white/5 border border-violet-500/40 rounded-lg px-2 py-1 text-[12px] font-black text-white outline-none mb-1" />
+                                                                ) : (
+                                                                    <p className="text-[12px] font-black text-white truncate leading-tight">{p.name}</p>
+                                                                )}
+                                                                <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                                                                    <span className="px-2 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-[8px] font-black uppercase tracking-widest text-violet-400">{p.category}</span>
+                                                                    {p.aiModel?.name && (
+                                                                        <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[8px] text-neutral-500 font-black uppercase truncate max-w-[120px]" title={p.aiModel.name}>
+                                                                            {p.aiModel.provider} · {p.aiModel.name.split(" ").slice(0, 2).join(" ")}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
+                                                                {isFullEdit ? null : (
+                                                                    <button onClick={() => { setFullEditingPromptId(p._id); setFullEditingPrompt({ name: p.name, category: p.category, promptParts: { ...p.promptParts }, aiModel: p.aiModel }); }}
+                                                                        className="p-1.5 rounded-lg text-neutral-600 hover:text-violet-400 hover:bg-violet-500/10 transition-all">
+                                                                        <Pencil size={12} />
+                                                                    </button>
+                                                                )}
+                                                                <button onClick={() => void deleteSavedPrompt(p._id)}
+                                                                    className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all">
+                                                                    <Trash2 size={12} />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        {isFullEdit ? (
+                                                            <div className="space-y-2">
+                                                                <textarea value={(fe.promptParts?.theme ?? p.promptParts.theme)}
+                                                                    onChange={e => setFullEditingPrompt(prev => ({ ...prev, promptParts: { ...(prev.promptParts ?? p.promptParts), theme: e.target.value } }))}
+                                                                    rows={3} placeholder="Temática / prompt principal…"
+                                                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none font-mono" />
+                                                                <select value={(fe.aiModel?.id ?? p.aiModel?.id ?? "")}
+                                                                    onChange={e => {
+                                                                        const m = AI_MODELS.find(m => m.id === e.target.value);
+                                                                        setFullEditingPrompt(prev => ({ ...prev, aiModel: m ? { id: m.id, name: m.name, provider: m.provider, modelId: m.modelId } : undefined }));
+                                                                    }}
+                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-xl px-3 text-[10px] text-white focus:outline-none focus:border-violet-500/40">
+                                                                    <option value="">Sin modelo asociado</option>
+                                                                    {AI_MODELS.map(m => <option key={m.id} value={m.id}>{m.provider} · {m.name}</option>)}
+                                                                </select>
+                                                                <div className="flex gap-2">
+                                                                    <button onClick={() => setFullEditingPromptId(null)}
+                                                                        className="flex-1 h-8 rounded-xl bg-white/5 border border-white/10 text-[9px] font-black uppercase text-neutral-400 hover:text-white transition-all">
+                                                                        Cancelar
+                                                                    </button>
+                                                                    <button onClick={() => {
+                                                                        void updateSavedPrompt(p._id, {
+                                                                            name: fe.name ?? p.name,
+                                                                            category: fe.category ?? p.category,
+                                                                            promptParts: fe.promptParts ?? p.promptParts,
+                                                                            aiModel: fe.aiModel,
+                                                                        });
+                                                                        setFullEditingPromptId(null);
+                                                                        toast.success("Prompt actualizado");
+                                                                    }}
+                                                                        className="flex-1 h-8 rounded-xl bg-violet-500 text-white text-[9px] font-black uppercase tracking-widest hover:bg-violet-400 transition-all flex items-center justify-center gap-1.5">
+                                                                        <Save size={10} /> Guardar
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                <p className="text-[10px] text-neutral-500 line-clamp-2 leading-relaxed italic">
+                                                                    {p.promptParts.theme || <span className="opacity-40">Sin temática</span>}
+                                                                </p>
+                                                                <button
+                                                                    onClick={() => loadSavedPrompt(p)}
+                                                                    className="w-full h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[10px] font-black uppercase tracking-widest hover:bg-violet-500 hover:text-white hover:border-violet-500 transition-all flex items-center justify-center gap-1.5">
+                                                                    <ArrowRight size={11} />Cargar prompt
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* ── BOOK FACTORY CARD ── */}
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
+                        {/* Ambient glow */}
+                        <div className="absolute -top-16 -right-16 w-48 h-48 bg-amber-500/8 blur-[60px] pointer-events-none" />
+                        <div className="p-5 space-y-4">
+                            {/* Header */}
+                            <div className="flex items-center gap-3">
+                                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/20 flex items-center justify-center shadow-lg shadow-amber-500/10 shrink-0">
+                                    <BookOpen size={19} className="text-amber-400" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Book Factory</h4>
+                                    <p className="text-[10px] text-neutral-500 font-medium">
+                                        {bookPages.length === 0 ? "Sin páginas todavía" : `${bookPages.length} página${bookPages.length !== 1 ? "s" : ""} en el libro`}
+                                    </p>
+                                </div>
+                            </div>
+                            {/* Action buttons — own row, full width on mobile */}
+                            <div className="flex items-center gap-2">
+                                {bookPages.length > 0 && (
+                                    confirmClearBook ? (
+                                        <>
+                                            <button
+                                                onClick={() => { setBookPages([]); setSelectedPageId(null); setConfirmClearBook(false); void deleteBookDraft(); }}
+                                                className="h-9 px-3 rounded-xl bg-red-500 text-white text-[10px] font-black uppercase active:scale-95 transition-all">
+                                                Sí, borrar
+                                            </button>
+                                            <button
+                                                onClick={() => setConfirmClearBook(false)}
+                                                className="h-9 px-3 rounded-xl border border-white/10 text-neutral-400 text-[10px] font-black uppercase active:scale-95 transition-all">
+                                                Cancelar
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <button onClick={() => setConfirmClearBook(true)} className="h-9 px-4 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 transition-all text-[10px] font-black uppercase active:scale-95">
+                                            Borrar
+                                        </button>
+                                    )
+                                )}
+                                {!confirmClearBook && (
+                                    <>
+                                        <Button
+                                            onClick={() => {
+                                                if (vaultImages.length > 0 && bookPages.length === 0) {
+                                                    const pages: BookPage[] = vaultImages.map(v => ({ id: genPageId(), type: "image" as const, image: { url: v.url, scale: 1, label: v.model }, text: defaultTextStyle() }));
+                                                    setBookPages(pages);
+                                                    setSelectedPageId(pages[0]?.id ?? null);
+                                                }
+                                                setBookEditorOpen(true);
+                                            }}
+                                            className="h-9 px-4 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_20px_rgba(245,158,11,0.3)] active:scale-95"
+                                        >
+                                            <Pencil size={13} />
+                                            {bookPages.length === 0 ? "Crear" : "Editar"}
+                                        </Button>
+                                        <button
+                                            onClick={() => openKdpTemplateSelector()}
+                                            className="h-9 px-4 rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500 hover:text-white hover:border-violet-500 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 active:scale-95"
+                                            title="Selecciona imágenes del vault y catálogos para la plantilla KDP"
+                                        >
+                                            <BookOpen size={13} />
+                                            Plantilla KDP
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Page thumbnails preview or empty state */}
+                            {bookPages.length === 0 ? (
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/6">
+                                        <div className="flex gap-1.5">
+                                            {[0, 1, 2, 3].map(i => (
+                                                <div key={i} className="w-8 h-11 rounded-md bg-white/5 border border-dashed border-white/10" style={{ opacity: 1 - i * 0.2 }} />
+                                            ))}
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Libro vacío</p>
+                                            <p className="text-[9px] text-neutral-700">Pulsa "Crear" para empezar o importa las imágenes del vault automáticamente</p>
+                                        </div>
+                                    </div>
+                                    {/* KDP template preview */}
+                                    <div className="rounded-2xl border border-violet-500/15 bg-violet-500/[0.03] p-3 space-y-2">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/70">Plantilla KDP — Libro de colorear</p>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            {[
+                                                { label: "Título", color: "bg-amber-500/30 border-amber-500/40 text-amber-300" },
+                                                { label: "Blanco", color: "bg-white/5 border-white/10 text-neutral-600" },
+                                                { label: "Imagen", color: "bg-violet-500/20 border-violet-500/30 text-violet-300" },
+                                                { label: "Blanco", color: "bg-white/5 border-white/10 text-neutral-600" },
+                                                { label: "Imagen", color: "bg-violet-500/20 border-violet-500/30 text-violet-300" },
+                                                { label: "…", color: "bg-transparent border-white/5 text-neutral-700" },
+                                            ].map((p, i) => (
+                                                <div key={i} className={`flex flex-col items-center justify-center w-9 h-12 rounded-lg border text-[7px] font-black uppercase ${p.color}`}>
+                                                    {p.label}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <p className="text-[8px] text-neutral-700">Usa las imágenes del vault · página en blanco detrás de cada imagen para evitar sangrado de tinta</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {/* Mini thumbnail strip */}
+                                    <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                                        {bookPages.map((page, idx) => (
+                                            <div key={page.id} className="shrink-0 w-9 h-[50px] rounded-lg overflow-hidden bg-white/5 border border-white/10 relative">
+                                                {page.image
+                                                    ? <img src={page.image.url} alt="" className="w-full h-full object-cover" />
+                                                    : <div className="w-full h-full flex items-center justify-center"><Type size={10} className="text-neutral-700" /></div>
+                                                }
+                                                <div className="absolute bottom-0 inset-x-0 h-3 bg-gradient-to-t from-black/70 to-transparent flex items-end justify-end px-0.5">
+                                                    <span className="text-[5px] font-mono text-white/50">{idx + 1}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <button onClick={() => { setBookEditorTab("editor"); setBookEditorOpen(true); }}
+                                            className="shrink-0 w-9 h-[50px] rounded-lg border border-dashed border-amber-500/30 text-amber-500/50 hover:border-amber-500/60 hover:text-amber-400 flex items-center justify-center transition-all">
+                                            <Plus size={12} />
+                                        </button>
+                                    </div>
+                                    {/* Quick stats */}
+                                    <div className="flex items-center gap-3">
+                                        {[
+                                            ["Imágenes", bookPages.filter(p => p.image).length],
+                                            ["Texto", bookPages.filter(p => p.text.content.trim()).length],
+                                            ["En blanco", bookPages.filter(p => !p.image && !p.text.content.trim()).length],
+                                        ].map(([label, count]) => (
+                                            <div key={label as string} className="flex items-center gap-1">
+                                                <span className="text-[9px] font-black text-neutral-400">{count as number}</span>
+                                                <span className="text-[9px] text-neutral-600">{label as string}</span>
+                                            </div>
+                                        ))}
+                                        <div className="ml-auto flex items-center gap-1.5">
+                                            <span className="text-[9px] text-neutral-600">Nombre:</span>
+                                            <input value={bookFileName} onChange={e => setBookFileName(e.target.value)}
+                                                className="h-5 w-24 rounded-md bg-white/5 border border-white/10 px-1.5 text-[9px] text-white outline-none focus:border-amber-500/40"
+                                                placeholder="libro-kdp" />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </Card>
+                </div>
+
+                {/* ── ZIP FACTORY CARD ── */}
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
+                        <div className="absolute -top-16 -right-16 w-48 h-48 bg-emerald-500/8 blur-[60px] pointer-events-none" />
+                        <div className="p-5 space-y-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/20 flex items-center justify-center shadow-lg shadow-emerald-500/10 shrink-0">
+                                    <Archive size={19} className="text-emerald-400" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Zip Factory</h4>
+                                    <p className="text-[10px] text-neutral-500 font-medium">Selecciona imágenes y descárgalas comprimidas</p>
+                                </div>
+                                <Button
+                                    onClick={() => setZipFactoryOpen(true)}
+                                    className="h-9 px-4 rounded-xl bg-emerald-500 text-black hover:bg-emerald-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_20px_rgba(16,185,129,0.3)] active:scale-95 shrink-0"
+                                >
+                                    <FolderArchive size={13} />
+                                    Abrir
+                                </Button>
+                            </div>
+                            <div className="flex items-center gap-3 text-[10px] text-neutral-600">
+                                <span className="flex items-center gap-1"><Box size={10} className="text-emerald-600" />{vaultImages.length} vault</span>
+                                <span className="flex items-center gap-1"><Layers size={10} className="text-emerald-600" />{iaCatalogs.reduce((s, c) => s + c.images.length, 0)} catálogos</span>
+                                <span className="flex items-center gap-1"><Cloud size={10} className="text-emerald-600" />{cloudinaryImages.length} cloud</span>
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+
+                {/* Asset Vault / Carousel — always visible */}
+                <div className="space-y-6 animate-in fade-in slide-in-from-left-8 duration-700 pb-4">
+                    <div className="flex items-center px-2 gap-3">
+                        <div className="flex items-center gap-3 flex-1">
+                            <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/5">
+                                <Box size={16} />
+                            </div>
+                            <div>
+                                <h4 className="text-[11px] font-black uppercase tracking-widest text-neutral-400">Vault de Activos Digitales</h4>
+                                <p className="text-[10px] text-neutral-600 font-medium italic">Sesión actual: {vaultImages.length} activos conservados</p>
+                            </div>
+                        </div>
+                        {vaultImages.length > 0 && (
+                            <button
+                                onClick={() => { setIsVaultSelectMode(v => !v); setSelectedImageUrls(new Set()); }}
+                                className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${isVaultSelectMode ? "bg-amber-500/20 border-amber-500/40 text-amber-400" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white hover:border-white/20"}`}
+                            >
+                                {isVaultSelectMode ? "Cancelar" : "Seleccionar"}
+                            </button>
+                        )}
+                        {isVaultSelectMode && selectedImageUrls.size > 0 && (
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                    onClick={() => { addSelectedAsPages(); setIsVaultSelectMode(false); }}
+                                    className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-amber-500 text-black hover:bg-amber-400 transition-all border border-amber-500/50 flex items-center gap-1.5"
+                                >
+                                    <Plus size={11} />
+                                    {selectedImageUrls.size} al libro
+                                </button>
+                                <select
+                                    value={kdpPdfSize}
+                                    onChange={e => setKdpPdfSize(e.target.value as typeof kdpPdfSize)}
+                                    className="h-7 bg-neutral-900 border border-white/10 rounded-xl px-2 text-[10px] font-black text-white outline-none focus:border-violet-500/40"
+                                >
+                                    <option value="6x9">6"×9"</option>
+                                    <option value="8x10">8"×10"</option>
+                                    <option value="8.5x11">8.5"×11"</option>
+                                    <option value="a4">A4</option>
+                                </select>
+                                <button
+                                    onClick={() => void exportKdpPdf()}
+                                    disabled={isExportingKdpPdf}
+                                    className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-violet-600 hover:bg-violet-500 text-white transition-all border border-violet-500/50 flex items-center gap-1.5 disabled:opacity-40"
+                                >
+                                    {isExportingKdpPdf ? <Loader2 size={11} className="animate-spin" /> : <FileText size={11} />}
+                                    PDF KDP
+                                </button>
+                            </div>
                         )}
                     </div>
-                );
-            })()}
 
-            {iaCatalogs.length === 0 && !isLoadingCatalogs && (
-                <div className="flex items-center gap-4 px-2 opacity-30">
-                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-600 flex items-center gap-2"><Layers size={12} />Sin catálogos aún</span>
-                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                    {vaultImages.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-10 text-center space-y-3 opacity-40">
+                            <Box size={32} className="text-neutral-600" strokeWidth={1.5} />
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">
+                                Vault vacío · Genera y conserva imágenes para crear libros PDF
+                            </p>
+                        </div>
+                    ) : (
+                        <div
+                            ref={vaultScrollRef}
+                            className={`flex gap-5 overflow-x-auto pb-4 pt-2 no-scrollbar px-2 ${isVaultSelectMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"} select-none`}
+                            onMouseDown={(e) => {
+                                if (isVaultSelectMode) return;
+                                if (!vaultScrollRef.current) return;
+                                vaultDragMoved.current = false;
+                                vaultDrag.current = { x: e.clientX, scrollLeft: vaultScrollRef.current.scrollLeft };
+                            }}
+                            onMouseMove={(e) => {
+                                if (isVaultSelectMode) return;
+                                if (!vaultDrag.current || !vaultScrollRef.current) return;
+                                const dx = e.clientX - vaultDrag.current.x;
+                                if (Math.abs(dx) > 4) vaultDragMoved.current = true;
+                                vaultScrollRef.current.scrollLeft = vaultDrag.current.scrollLeft - dx;
+                            }}
+                            onMouseUp={() => { vaultDrag.current = null; }}
+                            onMouseLeave={() => { vaultDrag.current = null; }}
+                            onTouchStart={(e) => {
+                                if (isVaultSelectMode) return;
+                                if (!vaultScrollRef.current) return;
+                                vaultDragMoved.current = false;
+                                vaultDrag.current = { x: e.touches[0].clientX, scrollLeft: vaultScrollRef.current.scrollLeft };
+                            }}
+                            onTouchMove={(e) => {
+                                if (isVaultSelectMode) return;
+                                if (!vaultDrag.current || !vaultScrollRef.current) return;
+                                const dx = e.touches[0].clientX - vaultDrag.current.x;
+                                if (Math.abs(dx) > 4) vaultDragMoved.current = true;
+                                vaultScrollRef.current.scrollLeft = vaultDrag.current.scrollLeft - dx;
+                            }}
+                            onTouchEnd={() => { vaultDrag.current = null; }}
+                        >
+                            {vaultImages.map((img, i) => {
+                                const isSelected = selectedImageUrls.has(img.url);
+                                return (
+                                    <div
+                                        key={i}
+                                        className={`shrink-0 w-56 h-64 md:w-64 md:h-80 rounded-[32px] overflow-hidden border transition-all shadow-2xl relative bg-neutral-900
+                                ${isVaultSelectMode
+                                                ? isSelected
+                                                    ? "border-amber-500 scale-[0.97] ring-2 ring-amber-500/50"
+                                                    : "border-white/20 hover:border-amber-500/60"
+                                                : usedImageUrls.has(img.url)
+                                                    ? "border-emerald-500/50 hover:border-emerald-400 cursor-zoom-in"
+                                                    : "border-white/10 hover:border-amber-500/50 cursor-zoom-in"}`}
+                                        onClick={() => {
+                                            if (isVaultSelectMode) { toggleImageSelect(img.url); return; }
+                                            if (vaultDragMoved.current) return;
+                                            openVaultImagePreview(i);
+                                        }}
+                                    >
+                                        <img
+                                            src={img.url}
+                                            alt={`Vault ${i}`}
+                                            className="w-full h-full object-cover"
+                                        />
+                                        {isVaultSelectMode && (
+                                            <div className={`absolute top-3 right-3 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? "bg-amber-500 border-amber-500" : "bg-black/40 border-white/40 backdrop-blur-sm"}`}>
+                                                {isSelected && <Check size={13} className="text-black" strokeWidth={3} />}
+                                            </div>
+                                        )}
+                                        {!isVaultSelectMode && usedImageUrls.has(img.url) && (
+                                            <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-xl bg-emerald-500/90 backdrop-blur-sm pointer-events-none">
+                                                <FileText size={10} className="text-white" />
+                                                <span className="text-[9px] font-black text-white uppercase tracking-wide">En PDF</span>
+                                            </div>
+                                        )}
+                                        {!isVaultSelectMode && favorites.has(img.url) && (
+                                            <div className="absolute top-2 left-2 p-1.5 rounded-xl bg-black/60 text-rose-400 pointer-events-none">
+                                                <Heart size={11} className="fill-rose-400" />
+                                            </div>
+                                        )}
+                                        {isVaultSelectMode && isSelected && (
+                                            <div className="absolute inset-0 bg-amber-500/15 pointer-events-none" />
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
-            )}
-            </div>
 
-        </div>
-    );
+                {/* Cloudinary Persistent Gallery */}
+                <div className="space-y-4 pb-4">
+                    {/* Header */}
+                    <div className="flex items-center gap-3 px-2">
+                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                        <div className="flex items-center gap-3">
+                            <Cloud size={14} className="text-cyan-400" />
+                            <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Cloudinary · Almacén Persistente</h3>
+                        </div>
+                        {cloudinaryImages.length > 0 && (
+                            <button
+                                onClick={() => {
+                                    setIsCloudSelectMode(v => {
+                                        if (v) setSelectedCloudUrls(new Set());
+                                        return !v;
+                                    });
+                                }}
+                                className={`h-7 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${isCloudSelectMode ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white hover:border-white/20"}`}
+                            >
+                                {isCloudSelectMode ? "Cancelar" : "Seleccionar"}
+                            </button>
+                        )}
+                        <button
+                            onClick={() => void fetchCloudinaryImages()}
+                            disabled={isLoadingCloudinary}
+                            className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-cyan-400 hover:border-cyan-500/30 transition-all disabled:opacity-40"
+                            title="Actualizar galería"
+                        >
+                            {isLoadingCloudinary ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                        </button>
+                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                    </div>
+
+                    {/* Selection action bar */}
+                    {isCloudSelectMode && selectedCloudUrls.size > 0 && (
+                        <div className="mx-2 flex items-center gap-3 px-4 py-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/20">
+                            <span className="text-[11px] font-black text-cyan-300 flex-1">{selectedCloudUrls.size} imagen{selectedCloudUrls.size !== 1 ? "es" : ""} seleccionada{selectedCloudUrls.size !== 1 ? "s" : ""}</span>
+                            <button
+                                onClick={() => setSelectedCloudUrls(new Set(cloudinaryImages.map(i => i.url)))}
+                                className="text-[10px] font-bold text-cyan-400 hover:text-cyan-200 transition-colors"
+                            >Selec. todo</button>
+                            <button
+                                onClick={() => {
+                                    setCustomCatalogName(`Catálogo Cloudinary ${new Date().toLocaleDateString("es-ES")}`);
+                                    setShowCustomCatalogModal(true);
+                                }}
+                                className="h-8 px-4 rounded-xl bg-cyan-500 text-black text-[11px] font-black hover:bg-cyan-400 transition-all flex items-center gap-2"
+                            >
+                                <Layers size={12} />
+                                Crear Catálogo
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Search */}
+                    {cloudinaryImages.length > 0 && (
+                        <div className="px-2">
+                            <input
+                                value={cloudSearch}
+                                onChange={e => setCloudSearch(e.target.value)}
+                                placeholder="Buscar por nombre de archivo…"
+                                className="w-full h-8 bg-white/5 border border-white/10 rounded-xl px-3 text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-cyan-500/40 transition-all"
+                            />
+                        </div>
+                    )}
+
+                    {cloudinaryImages.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-10 text-center space-y-3 opacity-40">
+                            <Cloud size={32} className="text-neutral-600" strokeWidth={1.5} />
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">
+                                {isLoadingCloudinary ? "Cargando..." : "Sin imágenes en Cloudinary · Sube assets desde el vault"}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="flex gap-4 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
+                            {cloudinaryImages.filter(img => !cloudSearch.trim() || img.publicId.toLowerCase().includes(cloudSearch.toLowerCase())).map((img, cldIdx) => {
+                                const isCloudSel = selectedCloudUrls.has(img.url);
+                                const isFav = favorites.has(img.url);
+                                return (
+                                    <div
+                                        key={img.publicId}
+                                        className={`shrink-0 w-44 h-52 md:w-52 md:h-64 rounded-[28px] overflow-hidden border transition-all shadow-xl relative bg-neutral-900 group ${isCloudSelectMode ? "cursor-pointer" : "cursor-zoom-in"} ${isCloudSel ? "border-cyan-500/70 ring-2 ring-cyan-500/30" : "border-white/10 hover:border-cyan-500/40"}`}
+                                        onClick={() => {
+                                            if (isCloudSelectMode) {
+                                                setSelectedCloudUrls(prev => {
+                                                    const next = new Set(prev);
+                                                    next.has(img.url) ? next.delete(img.url) : next.add(img.url);
+                                                    return next;
+                                                });
+                                            } else {
+                                                openCloudinaryImagePreview(cldIdx);
+                                            }
+                                        }}
+                                    >
+                                        <img src={img.url} alt={img.publicId} className="w-full h-full object-cover" />
+
+                                        {/* Selection overlay */}
+                                        {isCloudSelectMode && (
+                                            <>
+                                                <div className={`absolute top-3 right-3 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isCloudSel ? "bg-cyan-500 border-cyan-500" : "bg-black/40 border-white/40 backdrop-blur-sm"}`}>
+                                                    {isCloudSel && <Check size={13} className="text-black" strokeWidth={3} />}
+                                                </div>
+                                                {isCloudSel && <div className="absolute inset-0 bg-cyan-500/10 pointer-events-none" />}
+                                            </>
+                                        )}
+
+                                        {/* Heart button: always top-left; rose filled when fav */}
+                                        {!isCloudSelectMode && (
+                                            <button
+                                                onClick={e => { e.stopPropagation(); toggleFavorite(img.url, { label: img.publicId.split("/").pop() ?? "", source: "cloudinary" }); }}
+                                                className={`absolute top-2 left-2 p-1.5 rounded-xl backdrop-blur-sm transition-all ${isFav ? "bg-rose-500/80 text-white opacity-100" : "bg-black/50 text-neutral-400 opacity-0 group-hover:opacity-100 hover:text-rose-400"}`}
+                                            >
+                                                <Heart size={11} className={isFav ? "fill-white" : ""} />
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+
+                {/* IA Catalog list */}
+                <div ref={catalogsListRef}>
+                    {/* Skeleton while loading initial list */}
+                    {isLoadingCatalogs && iaCatalogs.length === 0 && (
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-4 px-2">
+                                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                                <div className="flex items-center gap-3">
+                                    <Layers size={14} className="text-violet-400" />
+                                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Catálogos IA</h3>
+                                </div>
+                                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                            </div>
+                            <div className="space-y-3">
+                                {[0, 1, 2].map(i => (
+                                    <div key={i} className="rounded-2xl border border-white/5 bg-white/[0.01] overflow-hidden animate-pulse">
+                                        <div className="h-px w-full bg-white/10" />
+                                        <div className="p-4 space-y-3">
+                                            <div className="flex items-start justify-between gap-4">
+                                                <div className="space-y-2 flex-1">
+                                                    <div className="h-4 w-1/3 bg-white/5 rounded-lg" />
+                                                    <div className="h-3 w-2/3 bg-white/5 rounded-lg" />
+                                                </div>
+                                                <div className="h-5 w-20 bg-white/5 rounded-full" />
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <div className="h-7 w-36 bg-white/5 rounded-xl" />
+                                                <div className="h-4 w-20 bg-white/5 rounded-lg" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {iaCatalogs.length > 0 && (() => {
+                        const activeCatalogs = iaCatalogs.filter(c => c.status === "running" || c.status === "pending" || c.status === "queued");
+                        const doneCatalogs = iaCatalogs.filter(c => c.status === "completed" || c.status === "failed" || c.status === "cancelled");
+                        const totalImages = iaCatalogs.reduce((sum, c) => sum + c.images.length, 0);
+
+                        const renderCard = (catalog: IACatalogFE) => {
+                            const progress = catalog.totalImages > 0 ? (catalog.images.length / catalog.totalImages) * 100 : 0;
+                            const isActive = catalog.status === "running" || catalog.status === "pending" || catalog.status === "queued";
+                            const queuedList = iaCatalogs.filter(c => c.status === "queued");
+                            const queuePos = catalog.status === "queued" ? queuedList.indexOf(catalog) + 1 : 0;
+                            const remainingImages = Math.max(0, catalog.totalImages - catalog.images.length - (catalog.skippedImages ?? 0));
+                            const estMin = Math.round(remainingImages * 1.5);
+                            const timeStr = estMin > 60 ? `~${Math.floor(estMin / 60)}h ${estMin % 60}m` : estMin > 0 ? `~${estMin}m` : "";
+                            const providerColor = catalog.aiModel?.provider === "Google" ? { bar: "bg-blue-500/50", badge: "bg-blue-500/10 border-blue-500/20 text-blue-300", dot: "bg-blue-400" }
+                                : catalog.aiModel?.provider === "Leonardo" ? { bar: "bg-amber-500/50", badge: "bg-amber-500/10 border-amber-500/20 text-amber-300", dot: "bg-amber-400" }
+                                    : catalog.aiModel?.provider === "Pollinations" ? { bar: "bg-emerald-500/50", badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300", dot: "bg-emerald-400" }
+                                        : { bar: "bg-violet-500/50", badge: "bg-violet-500/10 border-violet-500/20 text-violet-300", dot: "bg-violet-400" };
+                            const isDraggable = catalog.status === "queued";
+                            const isDragOver = dragOverId === catalog._id;
+                            return (
+                                <Card
+                                    key={catalog._id}
+                                    variant="outline"
+                                    draggable={isDraggable}
+                                    onDragStart={() => isDraggable && setDraggingId(catalog._id)}
+                                    onDragEnd={() => { setDraggingId(null); setDragOverId(null); }}
+                                    onDragOver={(e: React.DragEvent) => { if (isDraggable && draggingId) { e.preventDefault(); setDragOverId(catalog._id); } }}
+                                    onDrop={(e: React.DragEvent) => { e.preventDefault(); if (draggingId && isDraggable) void handleQueueReorder(draggingId, catalog._id); setDraggingId(null); setDragOverId(null); }}
+                                    className={`border-white/5 bg-white/[0.01] overflow-hidden transition-all duration-300 hover:border-white/10 ${isDraggable ? "cursor-grab active:cursor-grabbing" : ""} ${isDragOver ? "ring-1 ring-orange-500/50 border-orange-500/30" : ""} ${draggingId === catalog._id ? "opacity-50" : ""}`}
+                                >
+                                    {/* Provider accent bar */}
+                                    <div className={`h-px w-full ${providerColor.bar}`} />
+                                    <div className="p-4 space-y-3">
+                                        {/* Header */}
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="min-w-0 space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    {isDraggable && <GripVertical size={12} className="text-neutral-700 shrink-0" />}
+                                                    <h4 className="font-black text-white text-sm leading-tight truncate">{catalog.name}</h4>
+                                                </div>
+                                                <p className="text-[10px] text-neutral-500 line-clamp-1 leading-relaxed">{catalog.prompt}</p>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                                {statusBadge(catalog.status)}
+                                                <span className="text-[9px] text-neutral-600 font-mono">{new Date(catalog.createdAt).toLocaleDateString("es-ES")}</span>
+                                            </div>
+                                        </div>
+                                        {/* Model badge + meta */}
+                                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                                            <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border ${providerColor.badge}`}>
+                                                <div className={`w-2 h-2 rounded-full ${providerColor.dot} shrink-0`} />
+                                                <span className="text-[10px] font-black leading-none truncate max-w-[200px]">{catalog.aiModel?.name}</span>
+                                                <span className="text-[9px] opacity-60 shrink-0">{catalog.aiModel?.provider}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 text-[9px] font-mono text-neutral-600">
+                                                <span>{catalog.width}×{catalog.height}</span>
+                                                <span className="text-neutral-700">·</span>
+                                                <span className="font-black text-neutral-400">{catalog.images.length}/{catalog.totalImages}</span>
+                                                {isActive && catalog.status !== "queued" && <Loader2 size={9} className="text-blue-400 animate-spin" />}
+                                                {(catalog.skippedImages ?? 0) > 0 && <span className="text-amber-500/70 not-mono">· {catalog.skippedImages} omit.</span>}
+                                                {isActive && catalog.status === "running" && timeStr && <span className="text-violet-400/70 not-mono">· {timeStr}</span>}
+                                            </div>
+                                        </div>
+                                        {/* Error */}
+                                        {catalog.lastError && (
+                                            <p className="text-[9px] text-red-400/70 font-mono break-all leading-relaxed bg-red-500/5 border border-red-500/10 rounded-lg px-2 py-1.5">
+                                                ⚠ {catalog.lastError.length > 100 ? catalog.lastError.slice(0, 100) + "…" : catalog.lastError}
+                                            </p>
+                                        )}
+                                        {/* Action buttons */}
+                                        <div className="flex items-center justify-end gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    if (catalog.promptParts?.theme) {
+                                                        setPromptTheme(catalog.promptParts.theme);
+                                                        setPromptSpecs(catalog.promptParts.specs ?? "");
+                                                        setPromptDetails(catalog.promptParts.details ?? "");
+                                                        setPromptParticulars(catalog.promptParts.particulars ?? "");
+                                                    } else {
+                                                        // Old catalog without parts — strip the composed prefix so
+                                                        // imagePrompt doesn't double-wrap it
+                                                        const prefix = "Genera una imagen con la siguiente temática: ";
+                                                        let raw = catalog.prompt;
+                                                        if (raw.startsWith(prefix)) raw = raw.slice(prefix.length);
+                                                        // Strip style suffix added by coloring-book modifier
+                                                        const styleIdx = raw.indexOf(". Style:");
+                                                        if (styleIdx >= 0) raw = raw.slice(0, styleIdx);
+                                                        // Take only up to the first sub-clause separator
+                                                        const cutAt = [
+                                                            raw.indexOf(", que tenga las siguientes especificaciones:"),
+                                                            raw.indexOf(", con los siguientes detalles:"),
+                                                            raw.indexOf(", y las siguientes particularidades:"),
+                                                        ].filter(i => i >= 0).sort((a, b) => a - b)[0] ?? -1;
+                                                        setPromptTheme(cutAt >= 0 ? raw.slice(0, cutAt) : raw);
+                                                        setPromptSpecs(""); setPromptDetails(""); setPromptParticulars("");
+                                                    }
+                                                    const matchModel = AI_MODELS.find(m => m.id === catalog.aiModel?.id);
+                                                    if (matchModel) setSelectedModel(matchModel.id);
+                                                    const matchDim = AI_DIMENSIONS.find(d => d.width === catalog.width && d.height === catalog.height);
+                                                    if (matchDim) setSelectedDim(matchDim.id);
+                                                    if (catalog.productType) setCatalogProductType(catalog.productType);
+                                                    if (catalog.creativity !== undefined) setCatalogCreativity(catalog.creativity);
+                                                    if (catalog.negativePrompt !== undefined) setCatalogNegativePrompt(catalog.negativePrompt);
+                                                    toast.success("Prompt, modelo y resolución cargados");
+                                                }}
+                                                title="Cargar prompt, modelo y resolución"
+                                                className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-white transition-all border border-white/10 text-[9px] font-black uppercase tracking-widest"
+                                            >
+                                                <Copy size={11} /> Reusar
+                                            </button>
+                                            {catalog.images.length > 0 && (
+                                                <button
+                                                    onClick={() => { const pages: BookPage[] = catalog.images.map((img, i) => ({ id: genPageId(), type: "image" as const, image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` }, text: defaultTextStyle() })); setBookPages(pages); setSelectedPageId(pages[0]?.id ?? null); setBookEditorOpen(true); }}
+                                                    title="Editar PDF"
+                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-[9px] font-black uppercase tracking-widest"
+                                                >
+                                                    <FileText size={11} /> PDF
+                                                </button>
+                                            )}
+                                            {(catalog.skippedImages ?? 0) > 0 && !isActive && (
+                                                <button
+                                                    onClick={() => void retryFailedSlots(catalog._id)}
+                                                    disabled={retryingCatalogId === catalog._id}
+                                                    title={`Reintentar ${catalog.skippedImages} slot${(catalog.skippedImages ?? 0) > 1 ? "s" : ""} fallados`}
+                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20 text-[9px] font-black uppercase tracking-widest disabled:opacity-50"
+                                                >
+                                                    {retryingCatalogId === catalog._id ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                                                    {catalog.skippedImages} fallidos
+                                                </button>
+                                            )}
+                                            {catalog.images.length > 0 && (
+                                                <button
+                                                    onClick={() => setCompareSel(prev => {
+                                                        const next = new Set(prev);
+                                                        next.has(catalog._id) ? next.delete(catalog._id) : next.add(catalog._id);
+                                                        return next;
+                                                    })}
+                                                    title="Seleccionar para comparar"
+                                                    className={`flex items-center gap-1 h-8 px-2.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${compareSel.has(catalog._id) ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-white/5 border-white/10 text-neutral-600 hover:text-sky-400 hover:border-sky-500/30"}`}
+                                                >
+                                                    <Copy size={10} />
+                                                </button>
+                                            )}
+                                            {isActive && (
+                                                <button
+                                                    onClick={() => void cancelCatalog(catalog._id)}
+                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all text-[9px] font-black uppercase tracking-widest"
+                                                >
+                                                    <StopCircle size={11} /> Detener
+                                                </button>
+                                            )}
+                                            <button onClick={() => setConfirmDeleteCatalogId(catalog._id)} disabled={deletingCatalogId === catalog._id} title="Eliminar" className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 disabled:opacity-50">
+                                                {deletingCatalogId === catalog._id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {/* Progress bar */}
+                                    {isActive && (
+                                        <div className="px-4 pb-3 space-y-1.5 border-t border-white/5 pt-3">
+                                            <div className="flex justify-between text-[9px] uppercase tracking-widest text-neutral-600">
+                                                <span className="flex items-center gap-1.5"><Loader2 size={8} className="animate-spin text-blue-400" />{catalog.status === "queued" ? `En cola · posición ${queuePos}` : catalog.status === "pending" ? "Iniciando..." : "Generando"}</span>
+                                                {catalog.status !== "queued" && <span className="font-black text-neutral-400">{Math.round(progress)}% {timeStr && <span className="text-violet-400/80 normal-case">{timeStr}</span>}</span>}
+                                            </div>
+                                            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                                                {catalog.status === "queued"
+                                                    ? <div className="h-full w-1/3 bg-gradient-to-r from-orange-500/30 to-orange-400/60 rounded-full animate-pulse" />
+                                                    : <div className="h-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
+                                                }
+                                            </div>
+                                        </div>
+                                    )}
+                                    {/* Image grid */}
+                                    {catalog.images.length > 0 && (
+                                        <div className="px-4 pb-4 border-t border-white/5 pt-3">
+                                            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
+                                                {catalog.images.map((img, imgIdx) => {
+                                                    const isCatSelected = selectedImageUrls.has(img.url);
+                                                    return (
+                                                        <div
+                                                            key={img.publicId}
+                                                            className={`aspect-square rounded-lg overflow-hidden bg-white/5 border transition-all relative group ${isVaultSelectMode ? (isCatSelected ? "border-violet-500 ring-1 ring-violet-500/50 cursor-pointer" : "border-white/10 hover:border-violet-500/50 cursor-pointer") : "border-white/5 cursor-zoom-in hover:border-violet-500/40"}`}
+                                                            onClick={() => isVaultSelectMode ? toggleImageSelect(img.url) : openCatalogImagePreview(catalog.images, imgIdx, catalog._id)}
+                                                        >
+                                                            <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                                                            {isVaultSelectMode && (
+                                                                <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isCatSelected ? "bg-violet-500 border-violet-500" : "bg-black/50 border-white/30 backdrop-blur-sm"}`}>
+                                                                    {isCatSelected && <Check size={9} className="text-white" strokeWidth={3} />}
+                                                                </div>
+                                                            )}
+                                                            {!isVaultSelectMode && (
+                                                                <button
+                                                                    onClick={e => { e.stopPropagation(); toggleFavorite(img.url, { label: `${catalog.name} #${imgIdx + 1}`, source: "catalog" }); }}
+                                                                    className={`absolute top-0.5 left-0.5 p-0.5 rounded-md backdrop-blur-sm transition-all ${favorites.has(img.url) ? "bg-rose-500/80 text-white opacity-100" : "bg-black/50 text-neutral-400 opacity-0 group-hover:opacity-100 hover:text-rose-400"}`}
+                                                                >
+                                                                    <Heart size={8} className={favorites.has(img.url) ? "fill-white" : ""} />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                                {isActive && Array.from({ length: catalog.totalImages - catalog.images.length }).map((_, i) => (
+                                                    <div key={`ph-${i}`} className="aspect-square rounded-lg bg-white/[0.02] border border-dashed border-white/10 flex items-center justify-center">
+                                                        <Loader2 size={10} className="text-neutral-700 animate-spin" />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </Card>
+                            );
+                        };
+
+                        return (
+                            <div className="space-y-4">
+                                {/* Header with counter + controls */}
+                                <div className="flex items-center gap-4 px-2">
+                                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                                    <div className="flex items-center gap-3">
+                                        <Layers size={14} className="text-violet-400" />
+                                        <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Catálogos IA</h3>
+                                        {totalImages > 0 && (
+                                            <span className="text-[9px] font-black text-violet-400/60 tabular-nums">{totalImages} imgs</span>
+                                        )}
+                                    </div>
+                                    <button onClick={() => void fetchCatalogs()} disabled={isLoadingCatalogs} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
+                                        {isLoadingCatalogs ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                                    </button>
+                                    {compareSel.size >= 2 && (
+                                        <button onClick={() => setCompareOpen(true)}
+                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-300 text-[9px] font-black uppercase tracking-widest hover:bg-sky-500/25 transition-all">
+                                            <Copy size={10} /> Comparar ({compareSel.size})
+                                        </button>
+                                    )}
+                                    {compareSel.size > 0 && (
+                                        <button onClick={() => setCompareSel(new Set())} className="text-[9px] text-neutral-600 hover:text-white transition-colors uppercase font-black">Limpiar</button>
+                                    )}
+                                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                                </div>
+
+                                {/* Active catalogs (always visible) */}
+                                {activeCatalogs.length > 0 && (
+                                    <div className="space-y-3">
+                                        {activeCatalogs.map(renderCard)}
+                                    </div>
+                                )}
+
+                                {/* Done catalogs with collapse toggle */}
+                                {doneCatalogs.length > 0 && (
+                                    <div className="space-y-3">
+                                        <button
+                                            onClick={() => setCollapsedCompleted(v => !v)}
+                                            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all text-left"
+                                        >
+                                            <ChevronDown size={12} className={`text-neutral-600 transition-transform duration-300 ${collapsedCompleted ? "" : "rotate-180"}`} />
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">
+                                                {collapsedCompleted ? `Ver ${doneCatalogs.length} catálogo${doneCatalogs.length > 1 ? "s" : ""} finalizado${doneCatalogs.length > 1 ? "s" : ""}` : `Ocultar finalizados`}
+                                            </span>
+                                            <span className="ml-auto text-[9px] text-neutral-700 font-mono">{doneCatalogs.reduce((s, c) => s + c.images.length, 0)} imgs</span>
+                                        </button>
+                                        {!collapsedCompleted && (
+                                            <div className="space-y-3">
+                                                {doneCatalogs.map(renderCard)}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+
+                    {iaCatalogs.length === 0 && !isLoadingCatalogs && (
+                        <div className="flex items-center gap-4 px-2 opacity-30">
+                            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-600 flex items-center gap-2"><Layers size={12} />Sin catálogos aún</span>
+                            <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                        </div>
+                    )}
+                </div>
+
+            </div>
+        );
     };
 
     const renderCreation = () => (
@@ -3667,12 +3766,12 @@ export function KdpFactoryApp() {
 
     const statusBadge = (status: IACatalogFE["status"]) => {
         const map: Record<IACatalogFE["status"], { label: string; cls: string }> = {
-            queued:    { label: "En espera",     cls: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
-            pending:   { label: "Iniciando...",  cls: "bg-neutral-500/10 text-neutral-400 border-neutral-500/20" },
-            running:   { label: "Generando...",  cls: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
-            completed: { label: "Completado",    cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
-            failed:    { label: "Error",         cls: "bg-red-500/10 text-red-400 border-red-500/20" },
-            cancelled: { label: "Cancelado",     cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+            queued: { label: "En espera", cls: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
+            pending: { label: "Iniciando...", cls: "bg-neutral-500/10 text-neutral-400 border-neutral-500/20" },
+            running: { label: "Generando...", cls: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+            completed: { label: "Completado", cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+            failed: { label: "Error", cls: "bg-red-500/10 text-red-400 border-red-500/20" },
+            cancelled: { label: "Cancelado", cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
         };
         const { label, cls } = map[status] ?? { label: status, cls: "bg-white/5 text-neutral-400 border-white/10" };
         return <Badge variant="neutral" className={`text-[9px] font-black uppercase ${cls}`}>{label}</Badge>;
@@ -3799,7 +3898,7 @@ export function KdpFactoryApp() {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                         <KdpSelect accent="amber" value={trendsPlatform} onChange={v => setTrendsPlatform(v as any)}
-                            options={[{value:"all",label:"Todas las plataformas"},{value:"kdp",label:"Amazon KDP"},{value:"etsy",label:"Etsy"},{value:"printify",label:"Printify"}]} />
+                            options={[{ value: "all", label: "Todas las plataformas" }, { value: "kdp", label: "Amazon KDP" }, { value: "etsy", label: "Etsy" }, { value: "printify", label: "Printify" }]} />
                         <KdpSelect accent="amber" value={trendsCategory} onChange={v => setTrendsCategory(v)}
                             options={TREND_CATEGORIES.map(c => ({ value: c, label: c === "all" ? "Todas las categorías" : c }))} />
                     </div>
@@ -3892,51 +3991,51 @@ export function KdpFactoryApp() {
             {/* ══ MIS NICHOS + CONTENIDO ══ */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
 
-            {/* ── MIS NICHOS ── */}
-            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
-                <div className="h-px w-full bg-gradient-to-r from-violet-500/60 via-violet-400/20 to-transparent rounded-t-3xl" />
-                <div className="p-6 space-y-4">
-                    {/* Header */}
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-1">
-                            <h2 className="text-xl font-black text-white flex items-center gap-2.5">
-                                <Target size={20} className="text-violet-400" /> Mis Nichos
-                            </h2>
-                            <p className="text-xs text-neutral-500">Pipeline de nichos · fases y generación de contenido</p>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                            <button onClick={() => void fetchNiches()} disabled={isLoadingNiches} className="p-2.5 rounded-xl bg-white/5 border border-white/8 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
-                                {isLoadingNiches ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-                            </button>
-                            <button onClick={() => openNicheForm()} className="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_4px_12px_rgba(139,92,246,0.3)]">
-                                <Plus size={13} /> Nuevo
-                            </button>
-                        </div>
-                    </div>
-                    {/* Segmented filter */}
-                    <div className="flex p-1.5 bg-white/[0.03] border border-white/8 rounded-2xl gap-0.5">
-                        {(["all", "found", "research", "active", "archived"] as const).map(s => {
-                            const cnt = s === "all" ? niches.length : niches.filter(n => n.status === s).length;
-                            const isAct = nicheStatusFilter === s;
-                            const dot: Record<string, string> = { found: "bg-blue-400", research: "bg-amber-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
-                            return (
-                                <button key={s} onClick={() => setNicheStatusFilter(s)}
-                                    className={`flex-1 h-8 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${isAct ? "bg-white/10 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                    {s !== "all" && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot[s]}`} />}
-                                    <span className="truncate">{s === "all" ? "Todo" : STATUS_LABELS[s].label}</span>
-                                    {cnt > 0 && <span className={`text-[8px] tabular-nums ${isAct ? "text-white/50" : "text-neutral-700"}`}>{cnt}</span>}
+                {/* ── MIS NICHOS ── */}
+                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+                    <div className="h-px w-full bg-gradient-to-r from-violet-500/60 via-violet-400/20 to-transparent rounded-t-3xl" />
+                    <div className="p-6 space-y-4">
+                        {/* Header */}
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                                <h2 className="text-xl font-black text-white flex items-center gap-2.5">
+                                    <Target size={20} className="text-violet-400" /> Mis Nichos
+                                </h2>
+                                <p className="text-xs text-neutral-500">Pipeline de nichos · fases y generación de contenido</p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button onClick={() => void fetchNiches()} disabled={isLoadingNiches} className="p-2.5 rounded-xl bg-white/5 border border-white/8 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
+                                    {isLoadingNiches ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                                 </button>
-                            );
-                        })}
-                        <button onClick={() => setNicheSortBy(p => p === "score" ? "date" : "score")}
-                            className="ml-1 h-8 px-3 rounded-xl bg-white/5 border border-white/8 text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-all shrink-0">
-                            {nicheSortBy === "score" ? "★" : "↓"}
-                        </button>
-                    </div>
+                                <button onClick={() => openNicheForm()} className="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_4px_12px_rgba(139,92,246,0.3)]">
+                                    <Plus size={13} /> Nuevo
+                                </button>
+                            </div>
+                        </div>
+                        {/* Segmented filter */}
+                        <div className="flex p-1.5 bg-white/[0.03] border border-white/8 rounded-2xl gap-0.5">
+                            {(["all", "found", "research", "active", "archived"] as const).map(s => {
+                                const cnt = s === "all" ? niches.length : niches.filter(n => n.status === s).length;
+                                const isAct = nicheStatusFilter === s;
+                                const dot: Record<string, string> = { found: "bg-blue-400", research: "bg-amber-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
+                                return (
+                                    <button key={s} onClick={() => setNicheStatusFilter(s)}
+                                        className={`flex-1 h-8 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${isAct ? "bg-white/10 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                        {s !== "all" && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot[s]}`} />}
+                                        <span className="truncate">{s === "all" ? "Todo" : STATUS_LABELS[s].label}</span>
+                                        {cnt > 0 && <span className={`text-[8px] tabular-nums ${isAct ? "text-white/50" : "text-neutral-700"}`}>{cnt}</span>}
+                                    </button>
+                                );
+                            })}
+                            <button onClick={() => setNicheSortBy(p => p === "score" ? "date" : "score")}
+                                className="ml-1 h-8 px-3 rounded-xl bg-white/5 border border-white/8 text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-all shrink-0">
+                                {nicheSortBy === "score" ? "★" : "↓"}
+                            </button>
+                        </div>
                         {/* Loading */}
                         {isLoadingNiches && (
                             <div className="space-y-2">
-                                {[1,2].map(i => <div key={i} className="h-20 rounded-2xl bg-white/[0.03] animate-pulse border border-white/5" />)}
+                                {[1, 2].map(i => <div key={i} className="h-20 rounded-2xl bg-white/[0.03] animate-pulse border border-white/5" />)}
                             </div>
                         )}
                         {/* Empty */}
@@ -3955,417 +4054,415 @@ export function KdpFactoryApp() {
                                     .slice()
                                     .sort((a, b) => nicheSortBy === "score" ? nicheScore(b) - nicheScore(a) : 0)
                                     .map(niche => {
-                                    const score = nicheScore(niche);
-                                    const scoreColor = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-amber-400" : "text-neutral-500";
-                                    const PHASES: { id: NicheFE["phase"]; label: string }[] = [
-                                        { id: "niche", label: "Nicho" },
-                                        { id: "catalog", label: "Catálogo" },
-                                        { id: "pdf", label: "PDF" },
-                                        { id: "published", label: "Publicado" },
-                                    ];
-                                    const phaseIdx = PHASES.findIndex(p => p.id === (niche.phase ?? "niche"));
-                                    const statusDot: Record<string, string> = { found: "bg-blue-400", research: "bg-amber-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
-                                    return (
-                                    <div key={niche._id} className="group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] hover:border-white/14 hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden">
-                                        {/* Glass shimmer line */}
-                                        <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-                                        <div className="p-4 space-y-4 relative">
-                                            {/* Header */}
-                                            <div className="flex items-start gap-2">
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                        <span className="text-sm font-bold text-white leading-tight">{niche.name}</span>
-                                                        <span className="flex items-center gap-1.5">
-                                                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[niche.status] ?? "bg-neutral-600"}`} />
-                                                            <span className="text-[10px] text-neutral-500">{STATUS_LABELS[niche.status].label}</span>
-                                                        </span>
-                                                        <span className={`text-xs font-bold tabular-nums ${scoreColor}`}>★ {score}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                                                        <span className="text-xs text-neutral-600">
-                                                            {NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType}
-                                                        </span>
-                                                        <span className="text-xs text-neutral-700">·</span>
-                                                        <span className="text-xs text-neutral-600">
-                                                            {NICHE_STYLE_OPTIONS.find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory}
-                                                        </span>
-                                                    </div>
-                                                    {niche.description && <p className="text-xs text-neutral-600 mt-1 line-clamp-1">{niche.description}</p>}
-                                                </div>
-                                                <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    {niche.generatedPrompt && (
-                                                        <button onClick={() => saveNichePromptToLibrary(niche)} title="Guardar prompt"
-                                                            className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all">
-                                                            <BookMarked size={13} />
-                                                        </button>
-                                                    )}
-                                                    <button onClick={() => openNicheForm(niche)} className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Pencil size={13} /></button>
-                                                    <button onClick={() => setNicheDeleteId(niche._id)} className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all"><Trash2 size={13} /></button>
-                                                </div>
-                                            </div>
-
-                                            {/* Pipeline timeline */}
-                                            <div className="relative">
-                                                {/* Background track */}
-                                                <div className="absolute top-[10px] left-4 right-4 h-px bg-white/[0.08]" />
-                                                {/* Completed track */}
-                                                {phaseIdx > 0 && (
-                                                    <div
-                                                        className="absolute top-[10px] left-4 h-px bg-gradient-to-r from-white/30 to-white/15 transition-all"
-                                                        style={{ width: `calc(${(phaseIdx / (PHASES.length - 1)) * 100}% - 32px)` }}
-                                                    />
-                                                )}
-                                                <div className="flex items-start justify-between relative">
-                                                    {PHASES.map((ph, i) => {
-                                                        const done = i <= phaseIdx;
-                                                        const isCurrent = i === phaseIdx;
-                                                        const isNext = i === phaseIdx + 1;
-                                                        return (
-                                                            <button key={ph.id}
-                                                                onClick={() => {
-                                                                    if (isNext) void advanceNichePhase(niche);
-                                                                    else if (done && !isCurrent) void setNichePhase(niche, ph.id);
-                                                                }}
-                                                                title={isCurrent ? ph.label : isNext ? `Avanzar → ${ph.label}` : done ? `Volver a ${ph.label}` : ph.label}
-                                                                className={`flex flex-col items-center gap-1.5 transition-all ${isCurrent ? "cursor-default" : (done || isNext) ? "cursor-pointer group/step" : "cursor-default"}`}
-                                                            >
-                                                                {/* Dot */}
-                                                                <span className={`relative flex items-center justify-center w-5 h-5 rounded-full transition-all ${
-                                                                    isCurrent
-                                                                        ? "bg-white shadow-[0_0_0_3px_rgba(255,255,255,0.15),0_0_12px_rgba(255,255,255,0.35)]"
-                                                                        : done
-                                                                        ? "bg-white/20 border border-white/20 group-hover/step:bg-white/30"
-                                                                        : isNext
-                                                                        ? "bg-transparent border border-dashed border-white/25 group-hover/step:border-white/50"
-                                                                        : "bg-transparent border border-white/8"
-                                                                }`}>
-                                                                    {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-white/30" />}
-                                                                    {done && !isCurrent && <Check size={9} className="text-white/60" />}
+                                        const score = nicheScore(niche);
+                                        const scoreColor = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-amber-400" : "text-neutral-500";
+                                        const PHASES: { id: NicheFE["phase"]; label: string }[] = [
+                                            { id: "niche", label: "Nicho" },
+                                            { id: "catalog", label: "Catálogo" },
+                                            { id: "pdf", label: "PDF" },
+                                            { id: "published", label: "Publicado" },
+                                        ];
+                                        const phaseIdx = PHASES.findIndex(p => p.id === (niche.phase ?? "niche"));
+                                        const statusDot: Record<string, string> = { found: "bg-blue-400", research: "bg-amber-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
+                                        return (
+                                            <div key={niche._id} className="group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] hover:border-white/14 hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden">
+                                                {/* Glass shimmer line */}
+                                                <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+                                                <div className="p-4 space-y-4 relative">
+                                                    {/* Header */}
+                                                    <div className="flex items-start gap-2">
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <span className="text-sm font-bold text-white leading-tight">{niche.name}</span>
+                                                                <span className="flex items-center gap-1.5">
+                                                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[niche.status] ?? "bg-neutral-600"}`} />
+                                                                    <span className="text-[10px] text-neutral-500">{STATUS_LABELS[niche.status].label}</span>
                                                                 </span>
-                                                                {/* Label */}
-                                                                <span className={`text-[10px] font-semibold whitespace-nowrap transition-all ${
-                                                                    isCurrent ? "text-white"
-                                                                    : done ? "text-neutral-500 group-hover/step:text-neutral-300"
-                                                                    : isNext ? "text-neutral-600 group-hover/step:text-neutral-400"
-                                                                    : "text-neutral-800"
-                                                                }`}>{ph.label}</span>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
+                                                                <span className={`text-xs font-bold tabular-nums ${scoreColor}`}>★ {score}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                                <span className="text-xs text-neutral-600">
+                                                                    {NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType}
+                                                                </span>
+                                                                <span className="text-xs text-neutral-700">·</span>
+                                                                <span className="text-xs text-neutral-600">
+                                                                    {NICHE_STYLE_OPTIONS.find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory}
+                                                                </span>
+                                                            </div>
+                                                            {niche.description && <p className="text-xs text-neutral-600 mt-1 line-clamp-1">{niche.description}</p>}
+                                                        </div>
+                                                        <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            {niche.generatedPrompt && (
+                                                                <button onClick={() => saveNichePromptToLibrary(niche)} title="Guardar prompt"
+                                                                    className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all">
+                                                                    <BookMarked size={13} />
+                                                                </button>
+                                                            )}
+                                                            <button onClick={() => openNicheForm(niche)} className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Pencil size={13} /></button>
+                                                            <button onClick={() => setNicheDeleteId(niche._id)} className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all"><Trash2 size={13} /></button>
+                                                        </div>
+                                                    </div>
 
-                                            {/* Footer: meta + action */}
-                                            <div className="flex items-center gap-2 justify-between pt-0.5">
-                                                <div className="flex items-center gap-2 flex-wrap min-w-0">
-                                                    {niche.competition !== "unknown" && (
-                                                        <span className="text-[10px] text-neutral-600">
-                                                            Comp <span className={`font-bold ${COMPETITION_LABELS[niche.competition].color.split(" ")[0]}`}>{COMPETITION_LABELS[niche.competition].label}</span>
-                                                        </span>
-                                                    )}
-                                                    {niche.demand !== "unknown" && (
-                                                        <span className="text-[10px] text-neutral-600">
-                                                            · Dem <span className={`font-bold ${DEMAND_LABELS[niche.demand].color.split(" ")[0]}`}>{DEMAND_LABELS[niche.demand].label}</span>
-                                                        </span>
-                                                    )}
-                                                    {(niche.catalogIds?.length ?? 0) > 0 && (
-                                                        <span className="text-[10px] font-bold text-emerald-500">✓ {niche.catalogIds!.length} cat.</span>
-                                                    )}
-                                                    {niche.tags.slice(0, 1).map(tag => (
-                                                        <span key={tag} className="text-[10px] text-neutral-700">#{tag}</span>
-                                                    ))}
+                                                    {/* Pipeline timeline */}
+                                                    <div className="relative">
+                                                        {/* Background track */}
+                                                        <div className="absolute top-[10px] left-4 right-4 h-px bg-white/[0.08]" />
+                                                        {/* Completed track */}
+                                                        {phaseIdx > 0 && (
+                                                            <div
+                                                                className="absolute top-[10px] left-4 h-px bg-gradient-to-r from-white/30 to-white/15 transition-all"
+                                                                style={{ width: `calc(${(phaseIdx / (PHASES.length - 1)) * 100}% - 32px)` }}
+                                                            />
+                                                        )}
+                                                        <div className="flex items-start justify-between relative">
+                                                            {PHASES.map((ph, i) => {
+                                                                const done = i <= phaseIdx;
+                                                                const isCurrent = i === phaseIdx;
+                                                                const isNext = i === phaseIdx + 1;
+                                                                return (
+                                                                    <button key={ph.id}
+                                                                        onClick={() => {
+                                                                            if (isNext) void advanceNichePhase(niche);
+                                                                            else if (done && !isCurrent) void setNichePhase(niche, ph.id);
+                                                                        }}
+                                                                        title={isCurrent ? ph.label : isNext ? `Avanzar → ${ph.label}` : done ? `Volver a ${ph.label}` : ph.label}
+                                                                        className={`flex flex-col items-center gap-1.5 transition-all ${isCurrent ? "cursor-default" : (done || isNext) ? "cursor-pointer group/step" : "cursor-default"}`}
+                                                                    >
+                                                                        {/* Dot */}
+                                                                        <span className={`relative flex items-center justify-center w-5 h-5 rounded-full transition-all ${isCurrent
+                                                                                ? "bg-white shadow-[0_0_0_3px_rgba(255,255,255,0.15),0_0_12px_rgba(255,255,255,0.35)]"
+                                                                                : done
+                                                                                    ? "bg-white/20 border border-white/20 group-hover/step:bg-white/30"
+                                                                                    : isNext
+                                                                                        ? "bg-transparent border border-dashed border-white/25 group-hover/step:border-white/50"
+                                                                                        : "bg-transparent border border-white/8"
+                                                                            }`}>
+                                                                            {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-white/30" />}
+                                                                            {done && !isCurrent && <Check size={9} className="text-white/60" />}
+                                                                        </span>
+                                                                        {/* Label */}
+                                                                        <span className={`text-[10px] font-semibold whitespace-nowrap transition-all ${isCurrent ? "text-white"
+                                                                                : done ? "text-neutral-500 group-hover/step:text-neutral-300"
+                                                                                    : isNext ? "text-neutral-600 group-hover/step:text-neutral-400"
+                                                                                        : "text-neutral-800"
+                                                                            }`}>{ph.label}</span>
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Footer: meta + action */}
+                                                    <div className="flex items-center gap-2 justify-between pt-0.5">
+                                                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                                            {niche.competition !== "unknown" && (
+                                                                <span className="text-[10px] text-neutral-600">
+                                                                    Comp <span className={`font-bold ${COMPETITION_LABELS[niche.competition].color.split(" ")[0]}`}>{COMPETITION_LABELS[niche.competition].label}</span>
+                                                                </span>
+                                                            )}
+                                                            {niche.demand !== "unknown" && (
+                                                                <span className="text-[10px] text-neutral-600">
+                                                                    · Dem <span className={`font-bold ${DEMAND_LABELS[niche.demand].color.split(" ")[0]}`}>{DEMAND_LABELS[niche.demand].label}</span>
+                                                                </span>
+                                                            )}
+                                                            {(niche.catalogIds?.length ?? 0) > 0 && (
+                                                                <span className="text-[10px] font-bold text-emerald-500">✓ {niche.catalogIds!.length} cat.</span>
+                                                            )}
+                                                            {niche.tags.slice(0, 1).map(tag => (
+                                                                <span key={tag} className="text-[10px] text-neutral-700">#{tag}</span>
+                                                            ))}
+                                                        </div>
+                                                        <button
+                                                            onClick={() => void generateNicheContent(niche)}
+                                                            disabled={nicheGeneratingId === niche._id}
+                                                            className="flex items-center gap-1.5 px-3 h-7 rounded-xl bg-white/[0.05] border border-white/10 text-[10px] font-black text-neutral-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                                                        >
+                                                            {nicheGeneratingId === niche._id
+                                                                ? <><Loader2 size={10} className="animate-spin" /> IA...</>
+                                                                : <><Sparkles size={10} /> Generar</>}
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <button
-                                                    onClick={() => void generateNicheContent(niche)}
-                                                    disabled={nicheGeneratingId === niche._id}
-                                                    className="flex items-center gap-1.5 px-3 h-7 rounded-xl bg-white/[0.05] border border-white/10 text-[10px] font-black text-neutral-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-                                                >
-                                                    {nicheGeneratingId === niche._id
-                                                        ? <><Loader2 size={10} className="animate-spin" /> IA...</>
-                                                        : <><Sparkles size={10} /> Generar</>}
-                                                </button>
                                             </div>
-                                        </div>
-                                    </div>
-                                    );
-                                })}
+                                        );
+                                    })}
                             </div>
                         )}
+                    </div>
                 </div>
-            </div>
 
-            {/* ── CONTENIDO ── */}
-            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
-                <div className="h-px w-full bg-gradient-to-r from-amber-500/40 via-violet-400/20 to-transparent rounded-t-3xl" />
-                <div className="p-6 space-y-4">
-                    <div className="space-y-1">
-                        <h2 className="text-xl font-black bg-gradient-to-r from-amber-400 to-violet-400 bg-clip-text text-transparent flex items-center gap-2.5">
-                            <Sparkles size={20} className="text-amber-400" /> Generador de Contenido
-                        </h2>
-                        <p className="text-xs text-neutral-500">Metadatos listos para publicar en KDP y Etsy</p>
-                    </div>
-
-                    {/* ── KDP Physical Book — primary card ── */}
-                    <button
-                        onClick={() => { setContentType("kdp-physical-book"); setContentResult(null); }}
-                        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-all text-left ${contentType === "kdp-physical-book" ? "border-amber-500/40 bg-amber-500/[0.07]" : "border-white/8 bg-white/[0.02] hover:border-white/12 hover:bg-white/[0.03]"}`}>
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all ${contentType === "kdp-physical-book" ? "bg-amber-500/20" : "bg-white/5"}`}>
-                            <BookOpen size={16} className={contentType === "kdp-physical-book" ? "text-amber-400" : "text-neutral-600"} />
+                {/* ── CONTENIDO ── */}
+                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+                    <div className="h-px w-full bg-gradient-to-r from-amber-500/40 via-violet-400/20 to-transparent rounded-t-3xl" />
+                    <div className="p-6 space-y-4">
+                        <div className="space-y-1">
+                            <h2 className="text-xl font-black bg-gradient-to-r from-amber-400 to-violet-400 bg-clip-text text-transparent flex items-center gap-2.5">
+                                <Sparkles size={20} className="text-amber-400" /> Generador de Contenido
+                            </h2>
+                            <p className="text-xs text-neutral-500">Metadatos listos para publicar en KDP y Etsy</p>
                         </div>
-                        <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-black leading-tight ${contentType === "kdp-physical-book" ? "text-amber-300" : "text-neutral-400"}`}>Libro físico KDP</p>
-                            <p className="text-[10px] text-neutral-600 mt-0.5">Título · Subtítulo · Descripción · 7 palabras clave</p>
-                        </div>
-                        {contentType === "kdp-physical-book" && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                        )}
-                    </button>
 
-                    {/* ── Secondary types ── */}
-                    <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-                        {CONTENT_TYPES_SECONDARY.map(ct => (
-                            <button key={ct.id} onClick={() => { setContentType(ct.id as any); setContentResult(null); }}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all shrink-0 ${contentType === ct.id ? "border-white/25 bg-white/10 text-white" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}>
-                                {ct.icon}
-                                <span className="text-[9px] font-bold whitespace-nowrap">{ct.label}</span>
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* ── Inputs — adapt by type ── */}
-                    {contentType === "kdp-physical-book" ? (
-                        <div className="space-y-3">
-                            <textarea
-                                value={contentNiche} onChange={e => setContentNiche(e.target.value)} rows={3}
-                                placeholder="Describe tu libro: temática, género, público objetivo, estilo visual…&#10;ej: libro de colorear de mandalas zen para adultos, estilo minimalista"
-                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none leading-relaxed transition-all" />
-                            <div className="flex items-center gap-3">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 shrink-0">Idioma del listing</p>
-                                <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl">
-                                    {(["en", "es"] as const).map(lang => (
-                                        <button key={lang} onClick={() => setContentLanguage(lang)}
-                                            className={`px-4 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
-                                            {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
-                                        </button>
-                                    ))}
-                                </div>
+                        {/* ── KDP Physical Book — primary card ── */}
+                        <button
+                            onClick={() => { setContentType("kdp-physical-book"); setContentResult(null); }}
+                            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-all text-left ${contentType === "kdp-physical-book" ? "border-amber-500/40 bg-amber-500/[0.07]" : "border-white/8 bg-white/[0.02] hover:border-white/12 hover:bg-white/[0.03]"}`}>
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all ${contentType === "kdp-physical-book" ? "bg-amber-500/20" : "bg-white/5"}`}>
+                                <BookOpen size={16} className={contentType === "kdp-physical-book" ? "text-amber-400" : "text-neutral-600"} />
                             </div>
+                            <div className="flex-1 min-w-0">
+                                <p className={`text-sm font-black leading-tight ${contentType === "kdp-physical-book" ? "text-amber-300" : "text-neutral-400"}`}>Libro físico KDP</p>
+                                <p className="text-[10px] text-neutral-600 mt-0.5">Título · Subtítulo · Descripción · 7 palabras clave</p>
+                            </div>
+                            {contentType === "kdp-physical-book" && (
+                                <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                            )}
+                        </button>
+
+                        {/* ── Secondary types ── */}
+                        <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+                            {CONTENT_TYPES_SECONDARY.map(ct => (
+                                <button key={ct.id} onClick={() => { setContentType(ct.id as any); setContentResult(null); }}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all shrink-0 ${contentType === ct.id ? "border-white/25 bg-white/10 text-white" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}>
+                                    {ct.icon}
+                                    <span className="text-[9px] font-bold whitespace-nowrap">{ct.label}</span>
+                                </button>
+                            ))}
                         </div>
-                    ) : (
-                        <div className="space-y-3">
-                            <input value={contentNiche} onChange={e => setContentNiche(e.target.value)}
-                                placeholder="Nicho / Tema — ej: zen mandalas, cats for beginners..."
-                                onKeyDown={e => { if (e.key === "Enter") void generateContent(); }}
-                                className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 transition-all" />
-                            <div className="grid grid-cols-2 gap-2">
-                                <div className="space-y-1.5">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Tipo de producto</p>
-                                    <KdpSelect accent="amber" value={contentProductType} onChange={setContentProductType}
-                                        options={CONTENT_PRODUCT_TYPES.map(pt => ({ value: pt, label: pt }))} />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Idioma</p>
-                                    <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl h-[38px]">
+
+                        {/* ── Inputs — adapt by type ── */}
+                        {contentType === "kdp-physical-book" ? (
+                            <div className="space-y-3">
+                                <textarea
+                                    value={contentNiche} onChange={e => setContentNiche(e.target.value)} rows={3}
+                                    placeholder="Describe tu libro: temática, género, público objetivo, estilo visual…&#10;ej: libro de colorear de mandalas zen para adultos, estilo minimalista"
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none leading-relaxed transition-all" />
+                                <div className="flex items-center gap-3">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 shrink-0">Idioma del listing</p>
+                                    <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl">
                                         {(["en", "es"] as const).map(lang => (
                                             <button key={lang} onClick={() => setContentLanguage(lang)}
-                                                className={`flex-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                                className={`px-4 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
                                                 {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
                             </div>
-                            <textarea value={contentExtras} onChange={e => setContentExtras(e.target.value)} rows={2}
-                                placeholder="Contexto adicional: estilo, audiencia, ocasión... (opcional)"
-                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none transition-all" />
-                        </div>
-                    )}
-
-                    {/* ── Generate button ── */}
-                    <div className="space-y-1.5">
-                        <button onClick={() => void generateContent()} disabled={isGeneratingContent || !contentNiche.trim()}
-                            className="w-full h-11 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500">
-                            {isGeneratingContent ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><Sparkles size={13} /> Generar con IA</>}
-                        </button>
-                        <p className="text-center text-[9px] text-neutral-700 flex items-center justify-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/60 inline-block" />
-                            <span className="font-mono">gemini-2.5-flash</span> · gratuito
-                        </p>
-                    </div>
-
-                    {isGeneratingContent && (
-                        <div className="flex flex-col items-center justify-center py-10 gap-3">
-                            <div className="relative">
-                                <Loader2 size={24} className="animate-spin text-amber-400" />
+                        ) : (
+                            <div className="space-y-3">
+                                <input value={contentNiche} onChange={e => setContentNiche(e.target.value)}
+                                    placeholder="Nicho / Tema — ej: zen mandalas, cats for beginners..."
+                                    onKeyDown={e => { if (e.key === "Enter") void generateContent(); }}
+                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 transition-all" />
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1.5">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Tipo de producto</p>
+                                        <KdpSelect accent="amber" value={contentProductType} onChange={setContentProductType}
+                                            options={CONTENT_PRODUCT_TYPES.map(pt => ({ value: pt, label: pt }))} />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Idioma</p>
+                                        <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl h-[38px]">
+                                            {(["en", "es"] as const).map(lang => (
+                                                <button key={lang} onClick={() => setContentLanguage(lang)}
+                                                    className={`flex-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                                    {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <textarea value={contentExtras} onChange={e => setContentExtras(e.target.value)} rows={2}
+                                    placeholder="Contexto adicional: estilo, audiencia, ocasión... (opcional)"
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none transition-all" />
                             </div>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Generando con IA...</p>
-                        </div>
-                    )}
-                    {!contentResult && !isGeneratingContent && (
-                        <div className="flex flex-col items-center justify-center py-10 text-center space-y-2 opacity-20">
-                            <Wand2 size={24} strokeWidth={1.5} className="text-neutral-600" />
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">El resultado aparecerá aquí</p>
-                        </div>
-                    )}
-                    {contentResult && !isGeneratingContent && (
-                        <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
+                        )}
 
-                            {/* ── KDP Physical Book result ── */}
-                            {contentType === "kdp-physical-book" && typeof contentResult === "object" && (
-                                <div className="space-y-2.5">
-                                    {/* Copy all listing */}
-                                    {(contentResult.title || contentResult.description || contentResult.keywords?.length) && (
-                                        <button
-                                            onClick={() => {
-                                                const parts: string[] = [];
-                                                if (contentResult.title) parts.push(`TÍTULO: ${contentResult.title}${contentResult.subtitle ? `\nSUBTÍTULO: ${contentResult.subtitle}` : ""}`);
-                                                if (contentResult.description) parts.push(`\nDESCRIPCIÓN:\n${contentResult.description}`);
-                                                if (Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0) parts.push(`\nKEYWORDS: ${contentResult.keywords.join(", ")}`);
-                                                copyText(parts.join("\n"));
-                                            }}
-                                            className="w-full flex items-center justify-center gap-2 h-9 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest"
-                                        >
-                                            <Copy size={12} /> Copiar listing completo
+                        {/* ── Generate button ── */}
+                        <div className="space-y-1.5">
+                            <button onClick={() => void generateContent()} disabled={isGeneratingContent || !contentNiche.trim()}
+                                className="w-full h-11 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500">
+                                {isGeneratingContent ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><Sparkles size={13} /> Generar con IA</>}
+                            </button>
+                            <p className="text-center text-[9px] text-neutral-700 flex items-center justify-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/60 inline-block" />
+                                <span className="font-mono">gemini-2.5-flash</span> · gratuito
+                            </p>
+                        </div>
+
+                        {isGeneratingContent && (
+                            <div className="flex flex-col items-center justify-center py-10 gap-3">
+                                <div className="relative">
+                                    <Loader2 size={24} className="animate-spin text-amber-400" />
+                                </div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Generando con IA...</p>
+                            </div>
+                        )}
+                        {!contentResult && !isGeneratingContent && (
+                            <div className="flex flex-col items-center justify-center py-10 text-center space-y-2 opacity-20">
+                                <Wand2 size={24} strokeWidth={1.5} className="text-neutral-600" />
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">El resultado aparecerá aquí</p>
+                            </div>
+                        )}
+                        {contentResult && !isGeneratingContent && (
+                            <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
+
+                                {/* ── KDP Physical Book result ── */}
+                                {contentType === "kdp-physical-book" && typeof contentResult === "object" && (
+                                    <div className="space-y-2.5">
+                                        {/* Copy all listing */}
+                                        {(contentResult.title || contentResult.description || contentResult.keywords?.length) && (
+                                            <button
+                                                onClick={() => {
+                                                    const parts: string[] = [];
+                                                    if (contentResult.title) parts.push(`TÍTULO: ${contentResult.title}${contentResult.subtitle ? `\nSUBTÍTULO: ${contentResult.subtitle}` : ""}`);
+                                                    if (contentResult.description) parts.push(`\nDESCRIPCIÓN:\n${contentResult.description}`);
+                                                    if (Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0) parts.push(`\nKEYWORDS: ${contentResult.keywords.join(", ")}`);
+                                                    copyText(parts.join("\n"));
+                                                }}
+                                                className="w-full flex items-center justify-center gap-2 h-9 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest"
+                                            >
+                                                <Copy size={12} /> Copiar listing completo
+                                            </button>
+                                        )}
+                                        {/* Title + Subtitle */}
+                                        {contentResult.title && (
+                                            <div className="bg-amber-500/[0.04] border border-amber-500/15 rounded-2xl p-4 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Título</p>
+                                                    <button onClick={() => copyText(`${contentResult.title}${contentResult.subtitle ? `: ${contentResult.subtitle}` : ""}`)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
+                                                </div>
+                                                <p className="text-[15px] font-black text-white leading-tight">{contentResult.title}</p>
+                                                {contentResult.subtitle && (
+                                                    <p className="text-[11px] text-amber-200/60 leading-snug border-t border-amber-500/10 pt-2">{contentResult.subtitle}</p>
+                                                )}
+                                            </div>
+                                        )}
+                                        {/* Description */}
+                                        {contentResult.description && (
+                                            <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/80">Descripción</p>
+                                                    <button onClick={() => copyText(contentResult.description)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
+                                                </div>
+                                                <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
+                                            </div>
+                                        )}
+                                        {/* 7 Keywords */}
+                                        {Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0 && (
+                                            <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2.5">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/80">
+                                                        {contentResult.keywords.length} Palabras clave
+                                                    </p>
+                                                    <button onClick={() => copyText(contentResult.keywords.join("\n"))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar todo</button>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    {contentResult.keywords.map((k: string, i: number) => (
+                                                        <div key={i} className="flex items-center gap-2 group">
+                                                            <span className="text-[9px] font-black text-amber-500/50 w-4 shrink-0 tabular-nums">{i + 1}</span>
+                                                            <p className="flex-1 text-[10px] text-neutral-300">{k}</p>
+                                                            <button onClick={() => copyText(k)} className="opacity-0 group-hover:opacity-100 p-1 rounded text-neutral-600 hover:text-white transition-all"><Copy size={9} /></button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Regenerate hint */}
+                                        <button onClick={() => void generateContent()} className="w-full flex items-center justify-center gap-1.5 py-2 text-[9px] font-black uppercase tracking-widest text-neutral-700 hover:text-neutral-400 transition-colors">
+                                            <Sparkles size={9} /> Regenerar
                                         </button>
-                                    )}
-                                    {/* Title + Subtitle */}
-                                    {contentResult.title && (
-                                        <div className="bg-amber-500/[0.04] border border-amber-500/15 rounded-2xl p-4 space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Título</p>
-                                                <button onClick={() => copyText(`${contentResult.title}${contentResult.subtitle ? `: ${contentResult.subtitle}` : ""}`)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
-                                            </div>
-                                            <p className="text-[15px] font-black text-white leading-tight">{contentResult.title}</p>
-                                            {contentResult.subtitle && (
-                                                <p className="text-[11px] text-amber-200/60 leading-snug border-t border-amber-500/10 pt-2">{contentResult.subtitle}</p>
-                                            )}
-                                        </div>
-                                    )}
-                                    {/* Description */}
-                                    {contentResult.description && (
-                                        <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/80">Descripción</p>
-                                                <button onClick={() => copyText(contentResult.description)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
-                                            </div>
-                                            <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
-                                        </div>
-                                    )}
-                                    {/* 7 Keywords */}
-                                    {Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0 && (
-                                        <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2.5">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/80">
-                                                    {contentResult.keywords.length} Palabras clave
-                                                </p>
-                                                <button onClick={() => copyText(contentResult.keywords.join("\n"))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar todo</button>
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                {contentResult.keywords.map((k: string, i: number) => (
-                                                    <div key={i} className="flex items-center gap-2 group">
-                                                        <span className="text-[9px] font-black text-amber-500/50 w-4 shrink-0 tabular-nums">{i + 1}</span>
-                                                        <p className="flex-1 text-[10px] text-neutral-300">{k}</p>
-                                                        <button onClick={() => copyText(k)} className="opacity-0 group-hover:opacity-100 p-1 rounded text-neutral-600 hover:text-white transition-all"><Copy size={9} /></button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                    {/* Regenerate hint */}
-                                    <button onClick={() => void generateContent()} className="w-full flex items-center justify-center gap-1.5 py-2 text-[9px] font-black uppercase tracking-widest text-neutral-700 hover:text-neutral-400 transition-colors">
-                                        <Sparkles size={9} /> Regenerar
-                                    </button>
-                                </div>
-                            )}
+                                    </div>
+                                )}
 
-                            {contentType === "full-listing" && typeof contentResult === "object" && (
-                                <>
-                                    {contentResult.title && (
-                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Título</p><button onClick={() => copyText(contentResult.title)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
-                                            <p className="text-sm text-white font-medium">{contentResult.title}</p>
-                                            {contentResult.subtitle && <p className="text-[10px] text-neutral-500">{contentResult.subtitle}</p>}
-                                        </div>
-                                    )}
-                                    {contentResult.description && (
-                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
-                                            <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
-                                        </div>
-                                    )}
-                                    {Array.isArray(contentResult.bullets) && contentResult.bullets.length > 0 && (
-                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Bullets</p>
-                                            <ul className="space-y-0.5">{contentResult.bullets.map((b: string, i: number) => <li key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-violet-400 shrink-0">▸</span>{b}</li>)}</ul>
-                                        </div>
-                                    )}
-                                    {Array.isArray(contentResult.keywords) && (
-                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
-                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Keywords ({contentResult.keywords.length})</p><button onClick={() => copyText(contentResult.keywords.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button></div>
-                                            <div className="flex flex-wrap gap-1">{contentResult.keywords.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[8px] px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 hover:bg-violet-500/20 transition-colors">{k}</button>)}</div>
-                                        </div>
-                                    )}
-                                    {contentResult.price_suggestion_usd && (
-                                        <div className="flex items-center gap-3 px-3 py-2 bg-emerald-500/5 border border-emerald-500/15 rounded-xl">
-                                            <DollarSign size={13} className="text-emerald-400 shrink-0" />
-                                            <div><p className="text-[8px] text-neutral-600 uppercase">Precio sugerido</p><p className="text-sm font-black text-emerald-400">${contentResult.price_suggestion_usd}</p></div>
-                                            {contentResult.series_name && <div className="ml-auto"><p className="text-[8px] text-neutral-600 uppercase">Serie</p><p className="text-[10px] text-neutral-300">{contentResult.series_name}</p></div>}
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                            {contentType === "titles" && Array.isArray(contentResult) && (
-                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Títulos ({contentResult.length})</p>
-                                    {contentResult.map((t: string, i: number) => (
-                                        <div key={i} className="flex items-center gap-2 py-1.5 border-b border-white/5 last:border-0">
-                                            <span className="text-[9px] text-neutral-700 w-4">{i + 1}.</span>
-                                            <p className="text-[11px] text-neutral-200 flex-1">{t}</p>
-                                            <button onClick={() => copyText(t)} className="p-1 rounded text-neutral-600 hover:text-white shrink-0"><Copy size={10} /></button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            {contentType === "description" && typeof contentResult === "object" && (
-                                <>
-                                    {contentResult.description && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div><p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p></div>}
-                                    {Array.isArray(contentResult.bullets) && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Bullets</p>{contentResult.bullets.map((b: string, i: number) => <p key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-violet-400 shrink-0">▸</span>{b}</p>)}</div>}
-                                </>
-                            )}
-                            {contentType === "keywords" && Array.isArray(contentResult) && (
-                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-2">
-                                    <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Keywords ({contentResult.length})</p><button onClick={() => copyText(contentResult.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px]"><Copy size={9} /> Copiar todos</button></div>
-                                    <div className="flex flex-wrap gap-1.5">{contentResult.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[9px] px-2 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 hover:bg-violet-500/20 transition-colors">{k}</button>)}</div>
-                                </div>
-                            )}
-                            {contentType === "back-cover" && typeof contentResult === "object" && contentResult.back_cover && (
-                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
-                                    <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Contraportada</p><button onClick={() => copyText(contentResult.back_cover)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
-                                    <p className="text-[11px] text-neutral-200 leading-relaxed whitespace-pre-line">{contentResult.back_cover}</p>
-                                </div>
-                            )}
-                            {contentType === "series" && typeof contentResult === "object" && contentResult.series_name && (
-                                <div className="space-y-2">
-                                    <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Serie</p><p className="text-base font-black text-white mt-0.5">{contentResult.series_name}</p>{contentResult.concept && <p className="text-[10px] text-neutral-400 mt-0.5">{contentResult.concept}</p>}</div>
-                                    {Array.isArray(contentResult.volumes) && contentResult.volumes.map((v: any, i: number) => (
-                                        <div key={i} className="bg-white/[0.02] border border-white/5 rounded-xl p-2.5 flex gap-2">
-                                            <span className="text-[9px] font-black text-violet-400 w-4 shrink-0 mt-0.5">{i + 1}</span>
-                                            <div><p className="text-[11px] font-bold text-white">{v.title}</p><p className="text-[9px] text-neutral-500">{v.theme} — {v.angle}</p></div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            {typeof contentResult === "string" && (
-                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3">
-                                    <div className="flex justify-end mb-1"><button onClick={() => copyText(contentResult)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
-                                    <p className="text-[10px] text-neutral-300 whitespace-pre-wrap">{contentResult}</p>
-                                </div>
-                            )}
-                        </div>
-                    )}
+                                {contentType === "full-listing" && typeof contentResult === "object" && (
+                                    <>
+                                        {contentResult.title && (
+                                            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
+                                                <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Título</p><button onClick={() => copyText(contentResult.title)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
+                                                <p className="text-sm text-white font-medium">{contentResult.title}</p>
+                                                {contentResult.subtitle && <p className="text-[10px] text-neutral-500">{contentResult.subtitle}</p>}
+                                            </div>
+                                        )}
+                                        {contentResult.description && (
+                                            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
+                                                <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
+                                                <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
+                                            </div>
+                                        )}
+                                        {Array.isArray(contentResult.bullets) && contentResult.bullets.length > 0 && (
+                                            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Bullets</p>
+                                                <ul className="space-y-0.5">{contentResult.bullets.map((b: string, i: number) => <li key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-violet-400 shrink-0">▸</span>{b}</li>)}</ul>
+                                            </div>
+                                        )}
+                                        {Array.isArray(contentResult.keywords) && (
+                                            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
+                                                <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Keywords ({contentResult.keywords.length})</p><button onClick={() => copyText(contentResult.keywords.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button></div>
+                                                <div className="flex flex-wrap gap-1">{contentResult.keywords.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[8px] px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 hover:bg-violet-500/20 transition-colors">{k}</button>)}</div>
+                                            </div>
+                                        )}
+                                        {contentResult.price_suggestion_usd && (
+                                            <div className="flex items-center gap-3 px-3 py-2 bg-emerald-500/5 border border-emerald-500/15 rounded-xl">
+                                                <DollarSign size={13} className="text-emerald-400 shrink-0" />
+                                                <div><p className="text-[8px] text-neutral-600 uppercase">Precio sugerido</p><p className="text-sm font-black text-emerald-400">${contentResult.price_suggestion_usd}</p></div>
+                                                {contentResult.series_name && <div className="ml-auto"><p className="text-[8px] text-neutral-600 uppercase">Serie</p><p className="text-[10px] text-neutral-300">{contentResult.series_name}</p></div>}
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                                {contentType === "titles" && Array.isArray(contentResult) && (
+                                    <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Títulos ({contentResult.length})</p>
+                                        {contentResult.map((t: string, i: number) => (
+                                            <div key={i} className="flex items-center gap-2 py-1.5 border-b border-white/5 last:border-0">
+                                                <span className="text-[9px] text-neutral-700 w-4">{i + 1}.</span>
+                                                <p className="text-[11px] text-neutral-200 flex-1">{t}</p>
+                                                <button onClick={() => copyText(t)} className="p-1 rounded text-neutral-600 hover:text-white shrink-0"><Copy size={10} /></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {contentType === "description" && typeof contentResult === "object" && (
+                                    <>
+                                        {contentResult.description && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div><p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p></div>}
+                                        {Array.isArray(contentResult.bullets) && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Bullets</p>{contentResult.bullets.map((b: string, i: number) => <p key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-violet-400 shrink-0">▸</span>{b}</p>)}</div>}
+                                    </>
+                                )}
+                                {contentType === "keywords" && Array.isArray(contentResult) && (
+                                    <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-2">
+                                        <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Keywords ({contentResult.length})</p><button onClick={() => copyText(contentResult.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px]"><Copy size={9} /> Copiar todos</button></div>
+                                        <div className="flex flex-wrap gap-1.5">{contentResult.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[9px] px-2 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 hover:bg-violet-500/20 transition-colors">{k}</button>)}</div>
+                                    </div>
+                                )}
+                                {contentType === "back-cover" && typeof contentResult === "object" && contentResult.back_cover && (
+                                    <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
+                                        <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Contraportada</p><button onClick={() => copyText(contentResult.back_cover)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
+                                        <p className="text-[11px] text-neutral-200 leading-relaxed whitespace-pre-line">{contentResult.back_cover}</p>
+                                    </div>
+                                )}
+                                {contentType === "series" && typeof contentResult === "object" && contentResult.series_name && (
+                                    <div className="space-y-2">
+                                        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Serie</p><p className="text-base font-black text-white mt-0.5">{contentResult.series_name}</p>{contentResult.concept && <p className="text-[10px] text-neutral-400 mt-0.5">{contentResult.concept}</p>}</div>
+                                        {Array.isArray(contentResult.volumes) && contentResult.volumes.map((v: any, i: number) => (
+                                            <div key={i} className="bg-white/[0.02] border border-white/5 rounded-xl p-2.5 flex gap-2">
+                                                <span className="text-[9px] font-black text-violet-400 w-4 shrink-0 mt-0.5">{i + 1}</span>
+                                                <div><p className="text-[11px] font-bold text-white">{v.title}</p><p className="text-[9px] text-neutral-500">{v.theme} — {v.angle}</p></div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {typeof contentResult === "string" && (
+                                    <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3">
+                                        <div className="flex justify-end mb-1"><button onClick={() => copyText(contentResult)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
+                                        <p className="text-[10px] text-neutral-300 whitespace-pre-wrap">{contentResult}</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
+                    </div>
                 </div>
-            </div>
             </div>
         </div>
     );
@@ -4409,170 +4506,170 @@ export function KdpFactoryApp() {
                 const favLabel = previewContext?.vaultCtx
                     ? (vaultImages[previewContext.index]?.model ?? "")
                     : previewContext?.cloudinaryCtx
-                    ? (cloudinaryImages[previewContext.index]?.publicId?.split("/").pop() ?? "")
-                    : previewContext?.catalogCtx
-                    ? (previewContext.catalogCtx.images[previewContext.index]?.publicId?.split("/").pop() ?? "")
-                    : "";
+                        ? (cloudinaryImages[previewContext.index]?.publicId?.split("/").pop() ?? "")
+                        : previewContext?.catalogCtx
+                            ? (previewContext.catalogCtx.images[previewContext.index]?.publicId?.split("/").pop() ?? "")
+                            : "";
                 const favSource: FavoriteImage["source"] = previewContext?.vaultCtx ? "vault"
                     : previewContext?.cloudinaryCtx ? "cloudinary"
-                    : previewContext?.catalogCtx ? "catalog"
-                    : "generated";
+                        : previewContext?.catalogCtx ? "catalog"
+                            : "generated";
                 const vaultIdx = previewContext?.vaultCtx ? previewContext.index : -1;
                 const vaultImg = vaultIdx >= 0 ? vaultImages[vaultIdx] : null;
                 const cldImg = previewContext?.cloudinaryCtx ? cloudinaryImages[previewContext.index] : null;
                 const catalogImg = previewContext?.catalogCtx?.images[previewContext.index] ?? null;
                 return (
-                <div
-                    className="fixed inset-0 z-[100] bg-black/96"
-                    onClick={closePreview}
-                    role="dialog"
-                    aria-modal="true"
-                >
-                    {/* Image — centered, bottom padding leaves room for toolbar */}
                     <div
-                        className="absolute inset-x-0 top-0 flex items-center justify-center px-4 pt-4"
-                        style={{ bottom: "calc(env(safe-area-inset-bottom) + 160px)" }}
+                        className="fixed inset-0 z-[100] bg-black/96"
                         onClick={closePreview}
+                        role="dialog"
+                        aria-modal="true"
                     >
+                        {/* Image — centered, bottom padding leaves room for toolbar */}
                         <div
-                            className="relative flex items-center justify-center w-full max-w-6xl h-full gap-3"
+                            className="absolute inset-x-0 top-0 flex items-center justify-center px-4 pt-4"
+                            style={{ bottom: "calc(env(safe-area-inset-bottom) + 160px)" }}
+                            onClick={closePreview}
+                        >
+                            <div
+                                className="relative flex items-center justify-center w-full max-w-6xl h-full gap-3"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                {previewContext && previewContext.index > 0 ? (
+                                    <button onClick={() => navigatePreview(-1)}
+                                        className="shrink-0 w-11 h-11 rounded-2xl bg-black/60 backdrop-blur-md text-white border border-white/10 hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center">
+                                        <ChevronLeft size={20} />
+                                    </button>
+                                ) : previewContext ? <div className="shrink-0 w-11" /> : null}
+                                <img
+                                    key={previewImage}
+                                    src={previewImage}
+                                    alt="Vista previa"
+                                    className="flex-1 min-w-0 max-w-full max-h-full w-auto h-auto object-contain rounded-2xl"
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                                {previewContext && previewContext.index < previewContext.urls.length - 1 ? (
+                                    <button onClick={() => navigatePreview(1)}
+                                        className="shrink-0 w-11 h-11 rounded-2xl bg-black/60 backdrop-blur-md text-white border border-white/10 hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center">
+                                        <ChevronRight size={20} />
+                                    </button>
+                                ) : previewContext ? <div className="shrink-0 w-11" /> : null}
+                            </div>
+                        </div>
+
+                        {/* Toolbar — gradient overlay anchored at bottom, safe-area aware */}
+                        <div
+                            className="absolute left-0 right-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent flex flex-col items-center gap-2.5 pt-10"
+                            style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 56px)" }}
                             onClick={(e) => e.stopPropagation()}
                         >
-                            {previewContext && previewContext.index > 0 ? (
-                                <button onClick={() => navigatePreview(-1)}
-                                    className="shrink-0 w-11 h-11 rounded-2xl bg-black/60 backdrop-blur-md text-white border border-white/10 hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center">
-                                    <ChevronLeft size={20} />
+                            {previewContext && (
+                                <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">
+                                    {previewContext.index + 1} / {previewContext.urls.length}
+                                </span>
+                            )}
+                            <div className="flex items-center gap-2 flex-wrap justify-center px-4">
+                                {/* Favorite */}
+                                <button
+                                    onClick={() => toggleFavorite(previewImage, { label: favLabel, source: favSource })}
+                                    className={`p-2.5 rounded-2xl backdrop-blur-md transition-all active:scale-90 border ${favorites.has(previewImage) ? "text-rose-400 border-rose-500/40 bg-rose-500/15" : "text-white border-white/15 bg-black/50"}`}
+                                    title={favorites.has(previewImage) ? "Quitar de favoritos" : "Marcar como favorita"}
+                                >
+                                    <Heart size={18} className={favorites.has(previewImage) ? "fill-rose-400" : ""} />
                                 </button>
-                            ) : previewContext ? <div className="shrink-0 w-11" /> : null}
-                            <img
-                                key={previewImage}
-                                src={previewImage}
-                                alt="Vista previa"
-                                className="flex-1 min-w-0 max-w-full max-h-full w-auto h-auto object-contain rounded-2xl"
-                                onClick={(e) => e.stopPropagation()}
-                            />
-                            {previewContext && previewContext.index < previewContext.urls.length - 1 ? (
-                                <button onClick={() => navigatePreview(1)}
-                                    className="shrink-0 w-11 h-11 rounded-2xl bg-black/60 backdrop-blur-md text-white border border-white/10 hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center">
-                                    <ChevronRight size={20} />
+                                {/* Download */}
+                                <button
+                                    onClick={() => {
+                                        let fname = "imagen-kdp";
+                                        if (vaultImg) fname = `vault-${vaultImg.model || "image"}`.replaceAll(" ", "_");
+                                        else if (cldImg) fname = cldImg.publicId?.split("/").pop() ?? "cloudinary-image";
+                                        else if (catalogImg) fname = catalogImg.publicId?.split("/").pop() ?? "catalog-image";
+                                        else {
+                                            const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
+                                            const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
+                                            fname = `${modelName}-${dimName}`.replaceAll(" ", "_");
+                                        }
+                                        downloadPng(previewImage, fname);
+                                    }}
+                                    className="p-2.5 rounded-2xl bg-black/50 backdrop-blur-md text-white active:scale-90 transition-all border border-white/15"
+                                    title="Descargar"
+                                >
+                                    <Download size={18} />
                                 </button>
-                            ) : previewContext ? <div className="shrink-0 w-11" /> : null}
+                                {/* Vault-specific */}
+                                {vaultImg && (
+                                    <>
+                                        <button
+                                            onClick={() => void uploadToCloudinary(vaultIdx)}
+                                            disabled={uploadingToCloud === vaultIdx}
+                                            className="p-2.5 rounded-2xl bg-cyan-500/15 backdrop-blur-md text-cyan-400 active:scale-90 transition-all border border-cyan-500/25 disabled:opacity-40"
+                                            title="Guardar en Cloudinary"
+                                        >
+                                            {uploadingToCloud === vaultIdx ? <Loader2 size={18} className="animate-spin" /> : <UploadCloud size={18} />}
+                                        </button>
+                                        <button
+                                            onClick={() => setConfirmDeleteVaultIndex(vaultIdx)}
+                                            className="p-2.5 rounded-2xl bg-rose-500/15 backdrop-blur-md text-rose-400 active:scale-90 transition-all border border-rose-500/25"
+                                            title="Eliminar del vault"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </>
+                                )}
+                                {/* Cloudinary-specific */}
+                                {cldImg && (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                const ratio = cldImg.width && cldImg.height ? `${cldImg.width}×${cldImg.height}` : "1:1";
+                                                setVaultImages(prev => [{ url: cldImg.url, model: "Cloudinary", dim: ratio }, ...prev]);
+                                                toast.success("Añadida al vault");
+                                            }}
+                                            className="p-2.5 rounded-2xl bg-amber-500/15 backdrop-blur-md text-amber-400 active:scale-90 transition-all border border-amber-500/25"
+                                            title="Añadir al Vault"
+                                        >
+                                            <Plus size={18} />
+                                        </button>
+                                        <button
+                                            onClick={() => setConfirmDeleteCloudinaryId(cldImg.publicId)}
+                                            disabled={deletingFromCloud === cldImg.publicId}
+                                            className="p-2.5 rounded-2xl bg-rose-500/15 backdrop-blur-md text-rose-400 active:scale-90 transition-all border border-rose-500/25 disabled:opacity-40"
+                                            title="Eliminar de Cloudinary"
+                                        >
+                                            {deletingFromCloud === cldImg.publicId ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
+                                        </button>
+                                    </>
+                                )}
+                                {/* Catalog-specific */}
+                                {catalogImg && (
+                                    <>
+                                        <button
+                                            onClick={() => addCatalogImageToVault(catalogImg)}
+                                            className="p-2.5 rounded-2xl bg-emerald-500/15 backdrop-blur-md text-emerald-400 active:scale-90 transition-all border border-emerald-500/25"
+                                            title="Añadir al Vault"
+                                        >
+                                            <ImagePlus size={18} />
+                                        </button>
+                                        <button
+                                            onClick={() => setConfirmDeleteImageInfo({ catalogId: previewContext!.catalogCtx!.id, publicId: catalogImg.publicId })}
+                                            className="p-2.5 rounded-2xl bg-rose-500/15 backdrop-blur-md text-rose-400 active:scale-90 transition-all border border-rose-500/25"
+                                            title="Eliminar imagen del catálogo"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
+                                    </>
+                                )}
+                                {/* Close */}
+                                <button
+                                    onClick={closePreview}
+                                    className="p-2.5 rounded-2xl bg-black/50 backdrop-blur-md text-neutral-400 hover:text-white hover:bg-rose-500/80 active:scale-90 transition-all border border-white/15"
+                                    title="Cerrar"
+                                >
+                                    <X size={18} />
+                                </button>
+                            </div>
                         </div>
                     </div>
-
-                    {/* Toolbar — gradient overlay anchored at bottom, safe-area aware */}
-                    <div
-                        className="absolute left-0 right-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent flex flex-col items-center gap-2.5 pt-10"
-                        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 56px)" }}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {previewContext && (
-                            <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">
-                                {previewContext.index + 1} / {previewContext.urls.length}
-                            </span>
-                        )}
-                        <div className="flex items-center gap-2 flex-wrap justify-center px-4">
-                            {/* Favorite */}
-                            <button
-                                onClick={() => toggleFavorite(previewImage, { label: favLabel, source: favSource })}
-                                className={`p-2.5 rounded-2xl backdrop-blur-md transition-all active:scale-90 border ${favorites.has(previewImage) ? "text-rose-400 border-rose-500/40 bg-rose-500/15" : "text-white border-white/15 bg-black/50"}`}
-                                title={favorites.has(previewImage) ? "Quitar de favoritos" : "Marcar como favorita"}
-                            >
-                                <Heart size={18} className={favorites.has(previewImage) ? "fill-rose-400" : ""} />
-                            </button>
-                            {/* Download */}
-                            <button
-                                onClick={() => {
-                                    let fname = "imagen-kdp";
-                                    if (vaultImg) fname = `vault-${vaultImg.model || "image"}`.replaceAll(" ", "_");
-                                    else if (cldImg) fname = cldImg.publicId?.split("/").pop() ?? "cloudinary-image";
-                                    else if (catalogImg) fname = catalogImg.publicId?.split("/").pop() ?? "catalog-image";
-                                    else {
-                                        const modelName = AI_MODELS.find(m => m.id === selectedModel)?.name || "ai-image";
-                                        const dimName = AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio || "1x1";
-                                        fname = `${modelName}-${dimName}`.replaceAll(" ", "_");
-                                    }
-                                    downloadPng(previewImage, fname);
-                                }}
-                                className="p-2.5 rounded-2xl bg-black/50 backdrop-blur-md text-white active:scale-90 transition-all border border-white/15"
-                                title="Descargar"
-                            >
-                                <Download size={18} />
-                            </button>
-                            {/* Vault-specific */}
-                            {vaultImg && (
-                                <>
-                                    <button
-                                        onClick={() => void uploadToCloudinary(vaultIdx)}
-                                        disabled={uploadingToCloud === vaultIdx}
-                                        className="p-2.5 rounded-2xl bg-cyan-500/15 backdrop-blur-md text-cyan-400 active:scale-90 transition-all border border-cyan-500/25 disabled:opacity-40"
-                                        title="Guardar en Cloudinary"
-                                    >
-                                        {uploadingToCloud === vaultIdx ? <Loader2 size={18} className="animate-spin" /> : <UploadCloud size={18} />}
-                                    </button>
-                                    <button
-                                        onClick={() => setConfirmDeleteVaultIndex(vaultIdx)}
-                                        className="p-2.5 rounded-2xl bg-rose-500/15 backdrop-blur-md text-rose-400 active:scale-90 transition-all border border-rose-500/25"
-                                        title="Eliminar del vault"
-                                    >
-                                        <Trash2 size={18} />
-                                    </button>
-                                </>
-                            )}
-                            {/* Cloudinary-specific */}
-                            {cldImg && (
-                                <>
-                                    <button
-                                        onClick={() => {
-                                            const ratio = cldImg.width && cldImg.height ? `${cldImg.width}×${cldImg.height}` : "1:1";
-                                            setVaultImages(prev => [{ url: cldImg.url, model: "Cloudinary", dim: ratio }, ...prev]);
-                                            toast.success("Añadida al vault");
-                                        }}
-                                        className="p-2.5 rounded-2xl bg-amber-500/15 backdrop-blur-md text-amber-400 active:scale-90 transition-all border border-amber-500/25"
-                                        title="Añadir al Vault"
-                                    >
-                                        <Plus size={18} />
-                                    </button>
-                                    <button
-                                        onClick={() => setConfirmDeleteCloudinaryId(cldImg.publicId)}
-                                        disabled={deletingFromCloud === cldImg.publicId}
-                                        className="p-2.5 rounded-2xl bg-rose-500/15 backdrop-blur-md text-rose-400 active:scale-90 transition-all border border-rose-500/25 disabled:opacity-40"
-                                        title="Eliminar de Cloudinary"
-                                    >
-                                        {deletingFromCloud === cldImg.publicId ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
-                                    </button>
-                                </>
-                            )}
-                            {/* Catalog-specific */}
-                            {catalogImg && (
-                                <>
-                                    <button
-                                        onClick={() => addCatalogImageToVault(catalogImg)}
-                                        className="p-2.5 rounded-2xl bg-emerald-500/15 backdrop-blur-md text-emerald-400 active:scale-90 transition-all border border-emerald-500/25"
-                                        title="Añadir al Vault"
-                                    >
-                                        <ImagePlus size={18} />
-                                    </button>
-                                    <button
-                                        onClick={() => setConfirmDeleteImageInfo({ catalogId: previewContext!.catalogCtx!.id, publicId: catalogImg.publicId })}
-                                        className="p-2.5 rounded-2xl bg-rose-500/15 backdrop-blur-md text-rose-400 active:scale-90 transition-all border border-rose-500/25"
-                                        title="Eliminar imagen del catálogo"
-                                    >
-                                        <Trash2 size={18} />
-                                    </button>
-                                </>
-                            )}
-                            {/* Close */}
-                            <button
-                                onClick={closePreview}
-                                className="p-2.5 rounded-2xl bg-black/50 backdrop-blur-md text-neutral-400 hover:text-white hover:bg-rose-500/80 active:scale-90 transition-all border border-white/15"
-                                title="Cerrar"
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
-                    </div>
-                </div>
                 );
             })()}
 
@@ -4629,7 +4726,7 @@ export function KdpFactoryApp() {
                         {/* Tabs */}
                         <div className="shrink-0 flex border-b border-white/8 bg-black/20">
                             {([["editor", "Editar", Pencil], ["preview", "Vista previa", FileText]] as [string, string, React.ElementType][]).map(([tab, label, Icon]) => (
-                                <button key={tab} onClick={() => setBookEditorTab(tab as "editor"|"preview")}
+                                <button key={tab} onClick={() => setBookEditorTab(tab as "editor" | "preview")}
                                     className={`flex-1 flex items-center justify-center gap-1.5 h-12 text-[11px] font-black uppercase tracking-widest border-b-2 transition-all ${bookEditorTab === tab ? "border-amber-500 text-amber-400 bg-amber-500/5" : "border-transparent text-neutral-600 hover:text-neutral-400"}`}>
                                     <Icon size={13} />{label}
                                 </button>
@@ -4661,16 +4758,16 @@ export function KdpFactoryApp() {
                                                         ${selectedPageId === page.id
                                                             ? "border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.4)]"
                                                             : bookDragOverIdx === idx && bookDragIdx !== idx
-                                                            ? "border-amber-500/40 scale-105"
-                                                            : bookDragIdx === idx
-                                                            ? "border-white/10 opacity-25"
-                                                            : "border-white/10 hover:border-white/30"}`}>
+                                                                ? "border-amber-500/40 scale-105"
+                                                                : bookDragIdx === idx
+                                                                    ? "border-white/10 opacity-25"
+                                                                    : "border-white/10 hover:border-white/30"}`}>
                                                     <div className="w-full h-full bg-[#1a1a1a]">
                                                         {page.image
                                                             ? <img src={page.image.url} alt="" className="w-full h-full object-cover" />
                                                             : <div className="w-full h-full flex flex-col items-center justify-center gap-0.5">
                                                                 <Type size={14} className="text-neutral-700" />
-                                                              </div>}
+                                                            </div>}
                                                     </div>
                                                     {/* Page number */}
                                                     <div className="absolute bottom-0 inset-x-0 h-5 bg-gradient-to-t from-black/80 to-transparent flex items-end px-1 pb-0.5">
@@ -4746,8 +4843,8 @@ export function KdpFactoryApp() {
                                                     <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600 pl-2 shrink-0">Tipo:</span>
                                                     {([
                                                         ["image", "Solo imagen", ImageIcon],
-                                                        ["text",  "Solo texto",  Type],
-                                                        ["both",  "Img + Texto", Layers],
+                                                        ["text", "Solo texto", Type],
+                                                        ["both", "Img + Texto", Layers],
                                                     ] as [BookPage["type"], string, React.ElementType][]).map(([type, label, Icon]) => (
                                                         <button key={type} onClick={() => updatePageType(selectedPage.id, type)}
                                                             className={`flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl border text-[10px] font-black transition-all
@@ -4868,8 +4965,8 @@ export function KdpFactoryApp() {
                                                                                     ${selectedPage.image?.url === src.url
                                                                                         ? "border-amber-500 scale-[0.97]"
                                                                                         : src.inPdf && selectedPage.image?.url !== src.url
-                                                                                        ? "border-emerald-500/50"
-                                                                                        : "border-white/10 hover:border-amber-500/60"}`}>
+                                                                                            ? "border-emerald-500/50"
+                                                                                            : "border-white/10 hover:border-amber-500/60"}`}>
                                                                                 <img src={src.url} alt="" className="w-full h-full object-cover" />
                                                                                 {selectedPage.image?.url === src.url && (
                                                                                     <div className="absolute inset-0 bg-amber-500/30 flex items-center justify-center">
@@ -4901,8 +4998,8 @@ export function KdpFactoryApp() {
                                                     const cssFontFamily = selectedPage.text.fontFamily === "times"
                                                         ? "Georgia, serif"
                                                         : selectedPage.text.fontFamily === "courier"
-                                                        ? "'Courier New', monospace"
-                                                        : "Helvetica, Arial, sans-serif";
+                                                            ? "'Courier New', monospace"
+                                                            : "Helvetica, Arial, sans-serif";
                                                     return (
                                                         <div className="space-y-3">
                                                             <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Texto</p>
@@ -4972,7 +5069,7 @@ export function KdpFactoryApp() {
 
                                                                 {/* A4 page mock */}
                                                                 <div className="relative w-full rounded-xl overflow-hidden border border-white/15 shadow-2xl"
-                                                                     style={{ aspectRatio: "595/842" }}>
+                                                                    style={{ aspectRatio: "595/842" }}>
                                                                     {/* Page background */}
                                                                     <div className="absolute inset-0 bg-white" />
                                                                     {(selectedPage.type === "both" && selectedPage.image) && (() => {
@@ -4990,17 +5087,15 @@ export function KdpFactoryApp() {
                                                                     {(["top", "middle", "bottom"] as PageTextStyle["verticalAlign"][]).map(v => (
                                                                         <button key={v} type="button"
                                                                             onClick={() => updatePageText(selectedPage.id, { verticalAlign: v })}
-                                                                            className={`absolute inset-x-0 h-1/3 transition-all ${
-                                                                                v === "top" ? "top-0" : v === "middle" ? "top-1/3" : "top-2/3"
-                                                                            } ${vAlign === v ? "ring-2 ring-inset ring-amber-400/70 bg-amber-500/10" : "hover:bg-amber-500/5"}`}
+                                                                            className={`absolute inset-x-0 h-1/3 transition-all ${v === "top" ? "top-0" : v === "middle" ? "top-1/3" : "top-2/3"
+                                                                                } ${vAlign === v ? "ring-2 ring-inset ring-amber-400/70 bg-amber-500/10" : "hover:bg-amber-500/5"}`}
                                                                         />
                                                                     ))}
 
                                                                     {/* Text rendered in position */}
-                                                                    <div className={`absolute inset-[5%] pointer-events-none flex flex-col ${
-                                                                        vAlign === "top" ? "justify-start" :
-                                                                        vAlign === "middle" ? "justify-center" : "justify-end"
-                                                                    }`} style={{ textAlign: selectedPage.text.align }}>
+                                                                    <div className={`absolute inset-[5%] pointer-events-none flex flex-col ${vAlign === "top" ? "justify-start" :
+                                                                            vAlign === "middle" ? "justify-center" : "justify-end"
+                                                                        }`} style={{ textAlign: selectedPage.text.align }}>
                                                                         <p style={{
                                                                             fontFamily: cssFontFamily,
                                                                             fontSize: `${Math.max(5, selectedPage.text.fontSize * 0.44)}px`,
@@ -5075,7 +5170,7 @@ export function KdpFactoryApp() {
                                             </div>
                                         )}
                                         {page.image && (
-                                            <div className="absolute" style={{ left:`${mH}%`, right:`${mH}%`, top:`${mV}%`, bottom:`${mV}%` }}>
+                                            <div className="absolute" style={{ left: `${mH}%`, right: `${mH}%`, top: `${mV}%`, bottom: `${mV}%` }}>
                                                 <img src={page.image.url} alt="" className="w-full h-full object-contain" />
                                             </div>
                                         )}
@@ -5098,145 +5193,145 @@ export function KdpFactoryApp() {
                             };
 
                             return (
-                            <div className="flex-1 flex flex-col min-h-0 bg-[#0f0f11]">
+                                <div className="flex-1 flex flex-col min-h-0 bg-[#0f0f11]">
 
-                                {/* ── Top bar ── */}
-                                <div className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06]">
-                                    <span className="text-[11px] text-neutral-500 font-medium truncate max-w-[120px]">{bookFileName || "Sin título"}</span>
-                                    {/* Mode pills */}
-                                    <div className="flex items-center gap-0.5 p-1 rounded-full bg-white/[0.07]">
-                                        <button onClick={() => setBookPreviewMode("single")} title="Una página"
-                                            className={`w-8 h-6 rounded-full flex items-center justify-center transition-all ${bookPreviewMode === "single" ? "bg-white/20 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                            <FileText size={10} />
-                                        </button>
-                                        <button onClick={() => setBookPreviewMode("spread")} title="Doble página"
-                                            className={`w-8 h-6 rounded-full flex items-center justify-center transition-all ${bookPreviewMode === "spread" ? "bg-white/20 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                            <BookOpen size={10} />
-                                        </button>
-                                    </div>
-                                    {/* PDF button */}
-                                    <button onClick={() => void buildBookPdf()} disabled={isBuildingPdf || bookPages.length === 0}
-                                        className="h-7 px-3 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase flex items-center gap-1.5 hover:bg-amber-400 active:scale-95 transition-all disabled:opacity-40">
-                                        {isBuildingPdf ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
-                                        <span>PDF</span>
-                                    </button>
-                                </div>
-
-                                {bookPages.length === 0 ? (
-                                    <div className="flex-1 flex flex-col items-center justify-center gap-4 opacity-30">
-                                        <FileText size={44} className="text-neutral-600" strokeWidth={1} />
-                                        <p className="text-[11px] font-medium text-neutral-600 uppercase tracking-widest">Sin páginas</p>
-                                    </div>
-                                ) : bookPreviewMode === "single" ? (
-                                    /* ── Focused single-page reader ── */
-                                    <div className="flex-1 flex flex-col min-h-0">
-                                        {/* Page viewport */}
-                                        <div className="flex-1 flex items-center justify-center px-3 py-3 gap-2 min-h-0">
-                                            {/* Prev */}
-                                            <button
-                                                onClick={() => curIdx > 0 && setSelectedPageId(bookPages[curIdx - 1].id)}
-                                                disabled={curIdx === 0}
-                                                className="shrink-0 w-9 h-9 rounded-full bg-white/[0.07] border border-white/10 text-neutral-400 hover:text-white hover:bg-white/15 disabled:opacity-20 flex items-center justify-center transition-all">
-                                                <ChevronLeft size={16} />
+                                    {/* ── Top bar ── */}
+                                    <div className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06]">
+                                        <span className="text-[11px] text-neutral-500 font-medium truncate max-w-[120px]">{bookFileName || "Sin título"}</span>
+                                        {/* Mode pills */}
+                                        <div className="flex items-center gap-0.5 p-1 rounded-full bg-white/[0.07]">
+                                            <button onClick={() => setBookPreviewMode("single")} title="Una página"
+                                                className={`w-8 h-6 rounded-full flex items-center justify-center transition-all ${bookPreviewMode === "single" ? "bg-white/20 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                                <FileText size={10} />
                                             </button>
-
-                                            {/* A4 page — width from viewport calc, height from aspect-ratio */}
-                                            <div className="flex-1 flex items-center justify-center min-w-0">
-                                                <div
-                                                    className="relative overflow-hidden rounded-xl shadow-[0_16px_64px_rgba(0,0,0,0.8)] transition-all cursor-pointer group"
-                                                    style={{ aspectRatio: "595/842", width: "min(100%, calc((min(90vh, 100dvh) - 280px) * 595 / 842))", height: "auto" }}
-                                                    onClick={() => { setBookEditorTab("editor"); setShowInlineImagePicker(false); }}
-                                                >
-                                                    {curPage && renderPageInner(curPage, 0.5)}
-                                                    {/* Edit hint */}
-                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                                        <span className="bg-black/60 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border border-white/20">
-                                                            Editar página
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Next */}
-                                            <button
-                                                onClick={() => curIdx < bookPages.length - 1 && setSelectedPageId(bookPages[curIdx + 1].id)}
-                                                disabled={curIdx === bookPages.length - 1}
-                                                className="shrink-0 w-9 h-9 rounded-full bg-white/[0.07] border border-white/10 text-neutral-400 hover:text-white hover:bg-white/15 disabled:opacity-20 flex items-center justify-center transition-all">
-                                                <ChevronRight size={16} />
+                                            <button onClick={() => setBookPreviewMode("spread")} title="Doble página"
+                                                className={`w-8 h-6 rounded-full flex items-center justify-center transition-all ${bookPreviewMode === "spread" ? "bg-white/20 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                                <BookOpen size={10} />
                                             </button>
                                         </div>
-
-                                        {/* Page counter + thumbnail strip */}
-                                        <div className="shrink-0 pb-3 pt-1 flex flex-col items-center gap-2.5 border-t border-white/[0.05]">
-                                            <span className="text-[10px] font-medium text-neutral-600 tabular-nums pt-2">
-                                                {curIdx + 1} / {bookPages.length}
-                                            </span>
-                                            {/* Thumbnail filmstrip */}
-                                            <div className="w-full px-4 overflow-x-auto no-scrollbar">
-                                                <div className="flex gap-2 justify-center min-w-max mx-auto">
-                                                    {bookPages.map((page, idx) => {
-                                                        const isActive = idx === curIdx;
-                                                        const brd = page.image?.border;
-                                                        return (
-                                                            <button
-                                                                key={page.id}
-                                                                onClick={() => setSelectedPageId(page.id)}
-                                                                className={`shrink-0 w-10 relative rounded-md overflow-hidden transition-all ${isActive ? "ring-2 ring-amber-500 ring-offset-1 ring-offset-[#0f0f11] scale-105" : "opacity-50 hover:opacity-80"}`}
-                                                                style={{ aspectRatio: "595/842" }}
-                                                            >
-                                                                <div className="w-full h-full bg-white relative"
-                                                                    style={brd ? { boxShadow: `inset 0 0 0 1px ${brd.color}` } : {}}>
-                                                                    {page.image
-                                                                        ? <img src={page.image.url} alt="" className="w-full h-full object-contain" />
-                                                                        : <div className="w-full h-full flex items-center justify-center"><FileText size={8} className="text-neutral-300" /></div>
-                                                                    }
-                                                                </div>
-                                                                <span className="absolute bottom-0 inset-x-0 text-center text-[6px] font-mono text-white bg-black/50 leading-[1.6]">{idx + 1}</span>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        </div>
+                                        {/* PDF button */}
+                                        <button onClick={() => void buildBookPdf()} disabled={isBuildingPdf || bookPages.length === 0}
+                                            className="h-7 px-3 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase flex items-center gap-1.5 hover:bg-amber-400 active:scale-95 transition-all disabled:opacity-40">
+                                            {isBuildingPdf ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
+                                            <span>PDF</span>
+                                        </button>
                                     </div>
-                                ) : (
-                                    /* ── Spread (double page) view ── */
-                                    <div className="flex-1 overflow-y-auto px-3 py-5 space-y-8">
-                                        {Array.from({ length: Math.ceil(bookPages.length / 2) }).map((_, spreadIdx) => {
-                                            const left = bookPages[spreadIdx * 2];
-                                            const right = bookPages[spreadIdx * 2 + 1];
-                                            const renderSpreadPage = (page: BookPage | undefined, absIdx: number) => {
-                                                if (!page) return (
-                                                    <div className="flex-1 aspect-[595/842] bg-white/[0.03] rounded-lg border border-dashed border-white/8 flex items-center justify-center">
-                                                        <span className="text-[8px] text-neutral-700">—</span>
-                                                    </div>
-                                                );
-                                                return (
-                                                    <div className="flex-1 cursor-pointer group" onClick={() => { setSelectedPageId(page.id); setBookEditorTab("editor"); }}>
-                                                        <div className="w-full aspect-[595/842] relative overflow-hidden rounded-l-sm rounded-r-sm shadow-[0_4px_20px_rgba(0,0,0,0.5)] group-hover:shadow-[0_4px_28px_rgba(0,0,0,0.7)] transition-shadow">
-                                                            {renderPageInner(page, 0.3)}
+
+                                    {bookPages.length === 0 ? (
+                                        <div className="flex-1 flex flex-col items-center justify-center gap-4 opacity-30">
+                                            <FileText size={44} className="text-neutral-600" strokeWidth={1} />
+                                            <p className="text-[11px] font-medium text-neutral-600 uppercase tracking-widest">Sin páginas</p>
+                                        </div>
+                                    ) : bookPreviewMode === "single" ? (
+                                        /* ── Focused single-page reader ── */
+                                        <div className="flex-1 flex flex-col min-h-0">
+                                            {/* Page viewport */}
+                                            <div className="flex-1 flex items-center justify-center px-3 py-3 gap-2 min-h-0">
+                                                {/* Prev */}
+                                                <button
+                                                    onClick={() => curIdx > 0 && setSelectedPageId(bookPages[curIdx - 1].id)}
+                                                    disabled={curIdx === 0}
+                                                    className="shrink-0 w-9 h-9 rounded-full bg-white/[0.07] border border-white/10 text-neutral-400 hover:text-white hover:bg-white/15 disabled:opacity-20 flex items-center justify-center transition-all">
+                                                    <ChevronLeft size={16} />
+                                                </button>
+
+                                                {/* A4 page — width from viewport calc, height from aspect-ratio */}
+                                                <div className="flex-1 flex items-center justify-center min-w-0">
+                                                    <div
+                                                        className="relative overflow-hidden rounded-xl shadow-[0_16px_64px_rgba(0,0,0,0.8)] transition-all cursor-pointer group"
+                                                        style={{ aspectRatio: "595/842", width: "min(100%, calc((min(90vh, 100dvh) - 280px) * 595 / 842))", height: "auto" }}
+                                                        onClick={() => { setBookEditorTab("editor"); setShowInlineImagePicker(false); }}
+                                                    >
+                                                        {curPage && renderPageInner(curPage, 0.5)}
+                                                        {/* Edit hint */}
+                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                            <span className="bg-black/60 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border border-white/20">
+                                                                Editar página
+                                                            </span>
                                                         </div>
-                                                        <p className="text-[8px] font-mono text-neutral-700 text-center mt-1.5">{absIdx + 1}</p>
-                                                    </div>
-                                                );
-                                            };
-                                            return (
-                                                <div key={spreadIdx} className="w-full max-w-sm mx-auto">
-                                                    <p className="text-[9px] font-medium text-neutral-700 text-center mb-2 tracking-widest uppercase">
-                                                        {spreadIdx * 2 + 1}{right ? ` · ${spreadIdx * 2 + 2}` : ""}
-                                                    </p>
-                                                    <div className="flex rounded-sm overflow-hidden shadow-[0_8px_48px_rgba(0,0,0,0.7)]">
-                                                        <div className="flex-1">{renderSpreadPage(left, spreadIdx * 2)}</div>
-                                                        {/* Spine */}
-                                                        <div className="w-[2px] bg-gradient-to-b from-black/60 via-black/20 to-black/60 shrink-0" />
-                                                        <div className="flex-1">{renderSpreadPage(right, spreadIdx * 2 + 1)}</div>
                                                     </div>
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
+
+                                                {/* Next */}
+                                                <button
+                                                    onClick={() => curIdx < bookPages.length - 1 && setSelectedPageId(bookPages[curIdx + 1].id)}
+                                                    disabled={curIdx === bookPages.length - 1}
+                                                    className="shrink-0 w-9 h-9 rounded-full bg-white/[0.07] border border-white/10 text-neutral-400 hover:text-white hover:bg-white/15 disabled:opacity-20 flex items-center justify-center transition-all">
+                                                    <ChevronRight size={16} />
+                                                </button>
+                                            </div>
+
+                                            {/* Page counter + thumbnail strip */}
+                                            <div className="shrink-0 pb-3 pt-1 flex flex-col items-center gap-2.5 border-t border-white/[0.05]">
+                                                <span className="text-[10px] font-medium text-neutral-600 tabular-nums pt-2">
+                                                    {curIdx + 1} / {bookPages.length}
+                                                </span>
+                                                {/* Thumbnail filmstrip */}
+                                                <div className="w-full px-4 overflow-x-auto no-scrollbar">
+                                                    <div className="flex gap-2 justify-center min-w-max mx-auto">
+                                                        {bookPages.map((page, idx) => {
+                                                            const isActive = idx === curIdx;
+                                                            const brd = page.image?.border;
+                                                            return (
+                                                                <button
+                                                                    key={page.id}
+                                                                    onClick={() => setSelectedPageId(page.id)}
+                                                                    className={`shrink-0 w-10 relative rounded-md overflow-hidden transition-all ${isActive ? "ring-2 ring-amber-500 ring-offset-1 ring-offset-[#0f0f11] scale-105" : "opacity-50 hover:opacity-80"}`}
+                                                                    style={{ aspectRatio: "595/842" }}
+                                                                >
+                                                                    <div className="w-full h-full bg-white relative"
+                                                                        style={brd ? { boxShadow: `inset 0 0 0 1px ${brd.color}` } : {}}>
+                                                                        {page.image
+                                                                            ? <img src={page.image.url} alt="" className="w-full h-full object-contain" />
+                                                                            : <div className="w-full h-full flex items-center justify-center"><FileText size={8} className="text-neutral-300" /></div>
+                                                                        }
+                                                                    </div>
+                                                                    <span className="absolute bottom-0 inset-x-0 text-center text-[6px] font-mono text-white bg-black/50 leading-[1.6]">{idx + 1}</span>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        /* ── Spread (double page) view ── */
+                                        <div className="flex-1 overflow-y-auto px-3 py-5 space-y-8">
+                                            {Array.from({ length: Math.ceil(bookPages.length / 2) }).map((_, spreadIdx) => {
+                                                const left = bookPages[spreadIdx * 2];
+                                                const right = bookPages[spreadIdx * 2 + 1];
+                                                const renderSpreadPage = (page: BookPage | undefined, absIdx: number) => {
+                                                    if (!page) return (
+                                                        <div className="flex-1 aspect-[595/842] bg-white/[0.03] rounded-lg border border-dashed border-white/8 flex items-center justify-center">
+                                                            <span className="text-[8px] text-neutral-700">—</span>
+                                                        </div>
+                                                    );
+                                                    return (
+                                                        <div className="flex-1 cursor-pointer group" onClick={() => { setSelectedPageId(page.id); setBookEditorTab("editor"); }}>
+                                                            <div className="w-full aspect-[595/842] relative overflow-hidden rounded-l-sm rounded-r-sm shadow-[0_4px_20px_rgba(0,0,0,0.5)] group-hover:shadow-[0_4px_28px_rgba(0,0,0,0.7)] transition-shadow">
+                                                                {renderPageInner(page, 0.3)}
+                                                            </div>
+                                                            <p className="text-[8px] font-mono text-neutral-700 text-center mt-1.5">{absIdx + 1}</p>
+                                                        </div>
+                                                    );
+                                                };
+                                                return (
+                                                    <div key={spreadIdx} className="w-full max-w-sm mx-auto">
+                                                        <p className="text-[9px] font-medium text-neutral-700 text-center mb-2 tracking-widest uppercase">
+                                                            {spreadIdx * 2 + 1}{right ? ` · ${spreadIdx * 2 + 2}` : ""}
+                                                        </p>
+                                                        <div className="flex rounded-sm overflow-hidden shadow-[0_8px_48px_rgba(0,0,0,0.7)]">
+                                                            <div className="flex-1">{renderSpreadPage(left, spreadIdx * 2)}</div>
+                                                            {/* Spine */}
+                                                            <div className="w-[2px] bg-gradient-to-b from-black/60 via-black/20 to-black/60 shrink-0" />
+                                                            <div className="flex-1">{renderSpreadPage(right, spreadIdx * 2 + 1)}</div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
                             );
                         })()}
 
@@ -5804,6 +5899,148 @@ export function KdpFactoryApp() {
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* ── ZIP FACTORY PANEL ── */}
+            {zipFactoryOpen && (() => {
+                const allImages: { url: string; label: string; source: "vault" | "catalog" | "cloudinary" }[] = [
+                    ...vaultImages.map(v => ({ url: v.url, label: v.model || "Vault", source: "vault" as const })),
+                    ...iaCatalogs.flatMap(c => c.images.map(img => ({ url: img.url, label: c.name, source: "catalog" as const }))),
+                    ...cloudinaryImages.map(img => ({ url: img.url, label: img.publicId.split("/").pop() ?? "Cloud", source: "cloudinary" as const })),
+                ];
+                const filtered = allImages.filter(img => {
+                    if (zipSource === "all") return true;
+                    if (zipSource === "favorites") return favorites.has(img.url);
+                    return img.source === zipSource;
+                });
+                const allSel = filtered.length > 0 && filtered.every(img => zipSelection.has(img.url));
+                return (
+                    <div
+                        className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
+                        onClick={() => setZipFactoryOpen(false)}
+                        role="dialog"
+                        aria-modal="true"
+                    >
+                        <div
+                            className="relative w-full max-w-4xl h-[100dvh] sm:h-[90vh] rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            {/* Header */}
+                            <div className="shrink-0 border-b border-white/8">
+                                <div className="px-3 sm:px-4 pt-3 sm:pt-4 pb-3 flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                                        <Archive size={15} className="text-emerald-400" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-neutral-400">Zip Factory</p>
+                                        <p className="text-[10px] sm:text-[11px] text-neutral-600">{zipSelection.size} seleccionada{zipSelection.size !== 1 ? "s" : ""} · {allImages.length} total</p>
+                                    </div>
+                                    {/* ZIP name — desktop */}
+                                    <input
+                                        value={zipName}
+                                        onChange={e => setZipName(e.target.value)}
+                                        className="hidden sm:block w-36 h-9 rounded-xl bg-white/5 border border-white/10 px-2.5 text-[11px] text-white outline-none focus:border-emerald-500/40 shrink-0"
+                                        placeholder="imagenes-kdp"
+                                    />
+                                    <button
+                                        onClick={() => void downloadZip()}
+                                        disabled={zipSelection.size === 0 || isDownloadingZip}
+                                        className="h-9 px-3 sm:px-4 rounded-xl bg-emerald-500 text-black font-black text-[10px] sm:text-[11px] uppercase tracking-widest hover:bg-emerald-400 transition-all disabled:opacity-40 flex items-center gap-1.5 shadow-[0_4px_20px_rgba(16,185,129,0.3)]"
+                                    >
+                                        {isDownloadingZip ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                                        <span className="hidden sm:inline">{isDownloadingZip ? "Generando…" : `Descargar ZIP (${zipSelection.size})`}</span>
+                                        <span className="sm:hidden">{isDownloadingZip ? "…" : `ZIP (${zipSelection.size})`}</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setZipFactoryOpen(false)}
+                                        className="w-9 h-9 rounded-xl bg-white/5 text-neutral-400 hover:bg-rose-500 hover:text-white transition-all border border-white/10 shrink-0 flex items-center justify-center"
+                                    >
+                                        <X size={15} />
+                                    </button>
+                                </div>
+                                {/* ZIP name — mobile */}
+                                <div className="sm:hidden px-3 pb-2.5">
+                                    <input
+                                        value={zipName}
+                                        onChange={e => setZipName(e.target.value)}
+                                        className="w-full h-9 rounded-xl bg-white/5 border border-white/10 px-3 text-[12px] text-white outline-none focus:border-emerald-500/40"
+                                        placeholder="Nombre del ZIP…"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Source filter tabs */}
+                            <div className="shrink-0 flex items-center gap-1.5 px-3 sm:px-4 py-2.5 border-b border-white/6 overflow-x-auto no-scrollbar bg-black/20">
+                                {([
+                                    { id: "all", label: "Todo", count: allImages.length },
+                                    { id: "vault", label: "Vault", count: vaultImages.length },
+                                    { id: "catalogs", label: "Catálogos", count: iaCatalogs.reduce((s, c) => s + c.images.length, 0) },
+                                    { id: "cloudinary", label: "Cloud", count: cloudinaryImages.length },
+                                    { id: "favorites", label: "❤️", count: [...favorites.values()].filter(f => allImages.some(i => i.url === f.url)).length },
+                                ] as const).map(tab => (
+                                    <button key={tab.id} onClick={() => setZipSource(tab.id)}
+                                        className={`shrink-0 h-7 px-3 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${zipSource === tab.id ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-300" : "bg-white/[0.03] border border-white/8 text-neutral-500 hover:text-white"}`}>
+                                        {tab.label}
+                                        {tab.count > 0 && <span className={`text-[9px] tabular-nums ${zipSource === tab.id ? "text-emerald-400/70" : "text-neutral-700"}`}>{tab.count}</span>}
+                                    </button>
+                                ))}
+                                <div className="ml-auto shrink-0 flex items-center gap-1.5">
+                                    <button
+                                        onClick={() => {
+                                            if (allSel) {
+                                                setZipSelection(prev => { const next = new Set(prev); filtered.forEach(i => next.delete(i.url)); return next; });
+                                            } else {
+                                                setZipSelection(prev => { const next = new Set(prev); filtered.forEach(i => next.add(i.url)); return next; });
+                                            }
+                                        }}
+                                        className="h-7 px-3 rounded-lg bg-white/5 border border-white/10 text-[9px] font-black text-neutral-400 hover:text-white transition-all"
+                                    >
+                                        {allSel ? "Desel. todo" : "Sel. todo"}
+                                    </button>
+                                    {zipSelection.size > 0 && (
+                                        <button onClick={() => setZipSelection(new Set())} className="h-7 px-3 rounded-lg bg-white/5 border border-white/10 text-[9px] font-black text-neutral-500 hover:text-rose-400 transition-all">
+                                            Limpiar
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Image grid */}
+                            <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+                                {filtered.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-full space-y-4 opacity-40">
+                                        <Archive size={40} className="text-neutral-700" strokeWidth={1.5} />
+                                        <p className="text-[11px] font-black uppercase tracking-widest text-neutral-600">Sin imágenes en esta fuente</p>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-9 xl:grid-cols-11 gap-1.5 sm:gap-2">
+                                        {filtered.map(img => {
+                                            const isSel = zipSelection.has(img.url);
+                                            const isFav = favorites.has(img.url);
+                                            return (
+                                                <div
+                                                    key={img.url}
+                                                    onClick={() => setZipSelection(prev => { const next = new Set(prev); isSel ? next.delete(img.url) : next.add(img.url); return next; })}
+                                                    className={`aspect-square rounded-xl overflow-hidden relative cursor-pointer group border transition-all ${isSel ? "border-emerald-500/70 ring-2 ring-emerald-500/25" : "border-white/8 hover:border-emerald-500/40"}`}
+                                                >
+                                                    <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                                                    <div className={`absolute top-1 right-1 w-4 h-4 sm:w-5 sm:h-5 rounded-full border-2 flex items-center justify-center transition-all ${isSel ? "bg-emerald-500 border-emerald-500" : "bg-black/40 border-white/30 opacity-0 group-hover:opacity-100"}`}>
+                                                        {isSel && <Check size={9} className="text-black" strokeWidth={3} />}
+                                                    </div>
+                                                    {isFav && <div className="absolute top-1 left-1 p-0.5 rounded-md bg-rose-500/80"><Heart size={7} className="fill-white text-white" /></div>}
+                                                    {isSel && <div className="absolute inset-0 bg-emerald-500/10 pointer-events-none" />}
+                                                    <div className="absolute bottom-0 inset-x-0 py-1 px-1 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <p className="text-[7px] sm:text-[8px] font-bold text-white/70 truncate">{img.label}</p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 );

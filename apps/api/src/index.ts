@@ -18,6 +18,7 @@ import { registerCloudinaryRoutes } from "./routes/cloudinary.js";
 import { registerCatalogRoutes } from "./routes/catalogs.js";
 import { registerSavedPromptsRoutes } from "./routes/savedPrompts.js";
 import { registerNicheRoutes } from "./routes/niches.js";
+import { registerZipRoutes } from "./routes/zip.js";
 import { Settings } from "./models/settings.js";
 
 const env = loadEnv(process.env);
@@ -45,6 +46,7 @@ await registerCloudinaryRoutes(app);
 await registerCatalogRoutes(app, { io });
 await registerSavedPromptsRoutes(app);
 await registerNicheRoutes(app);
+await registerZipRoutes(app);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {
