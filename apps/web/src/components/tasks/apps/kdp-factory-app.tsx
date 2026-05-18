@@ -503,8 +503,6 @@ export function KdpFactoryApp() {
     // Feature: retry failed slots
     const [retryingCatalogId, setRetryingCatalogId] = useState<string | null>(null);
     // Feature: compare catalogs
-    const [compareSel, setCompareSel] = useState<Set<string>>(new Set());
-    const [compareOpen, setCompareOpen] = useState(false);
     // Feature: Zip Factory
     const [zipFactoryOpen, setZipFactoryOpen] = useState(false);
     const [zipSource, setZipSource] = useState<"all" | "vault" | "catalogs" | "cloudinary" | "favorites">("all");
@@ -2149,6 +2147,166 @@ export function KdpFactoryApp() {
                     </div>
                 </Card>
             </section>
+
+            {/* ── NICHE ANALYTICS ── */}
+            {niches.length > 0 && (
+                <section className="space-y-5">
+                    <div className="flex items-center gap-3">
+                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/25 to-transparent" />
+                        <div className="flex items-center gap-2">
+                            <Target size={11} className="text-violet-400" />
+                            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-neutral-500">Análisis de Nichos</p>
+                        </div>
+                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/25 to-transparent" />
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        {/* Score Distribution */}
+                        <Card variant="glass" className="lg:col-span-2 p-6 border-white/5 bg-white/[0.01] space-y-5 relative overflow-hidden hover:shadow-[0_0_40px_rgba(139,92,246,0.08)] transition-all duration-500">
+                            <div className="absolute -right-6 -top-6 w-24 h-24 bg-violet-500/8 blur-3xl rounded-full" />
+                            <div className="flex items-start justify-between relative">
+                                <div className="space-y-0.5">
+                                    <h3 className="text-[11px] font-black uppercase tracking-widest text-neutral-300 flex items-center gap-2">
+                                        <BarChart size={13} className="text-violet-400" /> Score por Nicho
+                                    </h3>
+                                    <p className="text-[9px] text-neutral-600">Puntuación de mercado · máx. 90 pts</p>
+                                </div>
+                                <span className="text-[9px] font-mono text-neutral-700">{niches.length} nichos</span>
+                            </div>
+                            <div className="space-y-2.5 relative">
+                                {[...niches].sort((a, b) => nicheScore(b) - nicheScore(a)).slice(0, 7).map(n => {
+                                    const score = nicheScore(n);
+                                    const pct = Math.max(2, (score / 90) * 100);
+                                    const bar = score >= 70 ? "from-emerald-500 to-cyan-400" : score >= 40 ? "from-amber-500 to-orange-400" : "from-indigo-500 to-violet-400";
+                                    const txt = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-amber-400" : "text-violet-400";
+                                    const linked = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
+                                    return (
+                                        <div key={n._id} className="space-y-1">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${n.status === "active" ? "bg-emerald-400" : n.status === "research" ? "bg-blue-400" : n.status === "found" ? "bg-violet-400" : "bg-neutral-600"}`} />
+                                                    <span className="text-[10px] text-neutral-400 truncate">{n.name}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    {linked.length > 0 && <span className="text-[8px] text-neutral-700 font-mono">{linked.length} cat.</span>}
+                                                    <span className={`text-[11px] font-black tabular-nums ${txt}`}>{score}</span>
+                                                </div>
+                                            </div>
+                                            <div className="h-1.5 w-full bg-white/[0.04] rounded-full overflow-hidden">
+                                                <div className={`h-full bg-gradient-to-r ${bar} rounded-full transition-all duration-700`} style={{ width: `${pct}%` }} />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </Card>
+
+                        {/* Pipeline + Stats */}
+                        <Card variant="glass" className="p-6 border-white/5 bg-white/[0.01] space-y-5 relative overflow-hidden hover:shadow-[0_0_40px_rgba(99,102,241,0.08)] transition-all duration-500">
+                            <div className="absolute -left-6 -bottom-6 w-20 h-20 bg-indigo-500/8 blur-2xl rounded-full" />
+                            <h3 className="text-[11px] font-black uppercase tracking-widest text-neutral-300 flex items-center gap-2 relative">
+                                <Activity size={13} className="text-indigo-400" /> Pipeline
+                            </h3>
+
+                            {(() => {
+                                const counts = {
+                                    active: niches.filter(n => n.status === "active").length,
+                                    research: niches.filter(n => n.status === "research").length,
+                                    found: niches.filter(n => n.status === "found").length,
+                                    archived: niches.filter(n => n.status === "archived").length,
+                                };
+                                const total = niches.length;
+                                const stages = [
+                                    { key: "active", label: "Activo", count: counts.active, bar: "bg-emerald-500", dot: "bg-emerald-400" },
+                                    { key: "research", label: "Investigando", count: counts.research, bar: "bg-blue-500", dot: "bg-blue-400" },
+                                    { key: "found", label: "Encontrado", count: counts.found, bar: "bg-violet-500", dot: "bg-violet-400" },
+                                    { key: "archived", label: "Archivado", count: counts.archived, bar: "bg-neutral-700", dot: "bg-neutral-600" },
+                                ];
+                                return (
+                                    <div className="space-y-3 relative">
+                                        <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
+                                            {stages.filter(s => s.count > 0).map(s => (
+                                                <div key={s.key} className={`${s.bar} h-full transition-all duration-700`} style={{ width: `${(s.count / total) * 100}%` }} title={`${s.label}: ${s.count}`} />
+                                            ))}
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                                            {stages.map(s => (
+                                                <div key={s.key} className="flex items-center gap-1.5">
+                                                    <div className={`w-1.5 h-1.5 rounded-full ${s.dot} shrink-0`} />
+                                                    <span className="text-[9px] text-neutral-600 truncate">{s.label}</span>
+                                                    <span className="text-[10px] font-black text-neutral-400 ml-auto tabular-nums">{s.count}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
+                            <div className="border-t border-white/5 pt-4 space-y-2 relative">
+                                {[
+                                    { label: "Catálogos vinculados", value: iaCatalogs.filter(c => (c.nicheIds?.length ?? 0) > 0).length, color: "text-violet-400" },
+                                    { label: "Imágenes generadas", value: iaCatalogs.filter(c => (c.nicheIds?.length ?? 0) > 0).reduce((s, c) => s + c.images.length, 0), color: "text-blue-400" },
+                                    { label: "Score promedio", value: niches.length > 0 ? Math.round(niches.reduce((s, n) => s + nicheScore(n), 0) / niches.length) : 0, color: "text-amber-400" },
+                                ].map(stat => (
+                                    <div key={stat.label} className="flex items-center justify-between gap-2">
+                                        <span className="text-[9px] text-neutral-600">{stat.label}</span>
+                                        <span className={`text-[13px] font-black tabular-nums ${stat.color}`}>{stat.value}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </Card>
+                    </div>
+
+                    {/* Top niches by output */}
+                    {iaCatalogs.some(c => (c.nicheIds?.length ?? 0) > 0 && c.images.length > 0) && (
+                        <Card variant="glass" className="p-6 border-white/5 bg-white/[0.01] space-y-4 relative overflow-hidden hover:shadow-[0_0_30px_rgba(99,102,241,0.06)] transition-all duration-500">
+                            <h3 className="text-[11px] font-black uppercase tracking-widest text-neutral-300 flex items-center gap-2">
+                                <Star size={13} className="text-amber-400" /> Top Nichos por Producción
+                            </h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                {[...niches]
+                                    .map(n => ({ n, imgs: iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).reduce((s, c) => s + c.images.length, 0), cats: iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).length }))
+                                    .filter(x => x.imgs > 0)
+                                    .sort((a, b) => b.imgs - a.imgs)
+                                    .slice(0, 4)
+                                    .map(({ n, imgs, cats }) => {
+                                        const score = nicheScore(n);
+                                        const gradFrom = score >= 70 ? "#10b981" : score >= 40 ? "#f59e0b" : "#6366f1";
+                                        const gradTo = score >= 70 ? "#22d3ee" : score >= 40 ? "#fb923c" : "#8b5cf6";
+                                        return (
+                                            <div key={n._id} className="rounded-2xl bg-white/[0.02] border border-white/[0.06] p-4 space-y-3 hover:border-white/10 transition-all">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <p className="text-[11px] font-bold text-white leading-tight line-clamp-2 flex-1">{n.name}</p>
+                                                    <div className="relative shrink-0 w-9 h-9">
+                                                        <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                                                            <defs>
+                                                                <linearGradient id={`top-grad-${n._id}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                                                                    <stop offset="0%" stopColor={gradFrom} />
+                                                                    <stop offset="100%" stopColor={gradTo} />
+                                                                </linearGradient>
+                                                            </defs>
+                                                            <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="3.5" />
+                                                            <circle cx="18" cy="18" r="14" fill="none" stroke={`url(#top-grad-${n._id})`} strokeWidth="3.5" strokeLinecap="round"
+                                                                strokeDasharray={`${Math.min((score / 90) * 88, 88)} 88`} />
+                                                        </svg>
+                                                        <span className="absolute inset-0 flex items-center justify-center text-[9px] font-black text-neutral-300">{score}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center justify-between text-[9px]">
+                                                    <span className="text-neutral-600">{cats} cat.</span>
+                                                    <span className="font-black text-white tabular-nums">{imgs} imgs</span>
+                                                </div>
+                                                <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                                                    <div className="h-full rounded-full" style={{ width: `${Math.min((imgs / 50) * 100, 100)}%`, background: `linear-gradient(to right, ${gradFrom}, ${gradTo})` }} />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+                        </Card>
+                    )}
+                </section>
+            )}
         </div>
     );
 
@@ -2258,28 +2416,33 @@ export function KdpFactoryApp() {
         const pColor = providerColor[currentModel?.provider || ""] || "neutral";
 
         return (
-            <div className="lg:col-span-12 space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-200 mt-8 pb-12">
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
                 {/* Header */}
-                <div className="flex items-center gap-4 px-2">
-                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-                            <Zap size={14} className="text-amber-400 fill-amber-400/20" />
+                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                    <div className="h-px w-full bg-gradient-to-r from-amber-500/80 via-orange-400/40 to-transparent" />
+                    <div className="px-6 py-5 flex items-center justify-between gap-4">
+                        <div className="space-y-1">
+                            <h2 className="text-2xl font-black bg-gradient-to-r from-amber-300 via-orange-300 to-amber-400 bg-clip-text text-transparent flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-2xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
+                                    <Zap size={18} className="text-amber-400" />
+                                </div>
+                                IA Asset Studio
+                            </h2>
+                            <p className="text-xs text-neutral-500 pl-12">Genera imágenes únicas · Gestiona catálogos · Vault de activos</p>
                         </div>
-                        <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-300">IA Asset Studio</h3>
                         <button
                             onClick={() => setShowSafeArea(v => !v)}
-                            className={`px-3 h-7 rounded-xl border transition-all text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5 ${showSafeArea ? "bg-amber-500/20 border-amber-500/40 text-amber-400" : "bg-white/5 border-white/10 text-neutral-600 hover:text-amber-400 hover:border-amber-500/25"}`}
+                            className={`flex items-center gap-2 h-9 px-4 rounded-2xl border transition-all text-[10px] font-black uppercase tracking-wider shrink-0 ${showSafeArea ? "bg-amber-500/20 border-amber-500/40 text-amber-400 shadow-[0_0_16px_rgba(245,158,11,0.2)]" : "bg-white/5 border-white/10 text-neutral-500 hover:text-amber-400 hover:border-amber-500/30"}`}
                         >
                             <Maximize size={11} /> Safe area
                         </button>
                     </div>
-                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                     {/* ─── LEFT CARD: Controls ─── */}
-                    <div className="relative rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+                    <div className="relative rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                        <div className="h-px w-full bg-gradient-to-r from-amber-500/50 via-orange-400/20 to-transparent" />
                         <div className="absolute -top-24 -right-24 w-64 h-64 bg-amber-500/5 blur-[90px] pointer-events-none rounded-full" />
 
                         {/* ── 01 MODELO & FORMATO ── */}
@@ -2424,7 +2587,7 @@ export function KdpFactoryApp() {
                                         </button>
                                         <button type="button"
                                             onClick={() => { setSavePromptName(""); setSavePromptCategory("General"); setShowSavePromptDialog(true); }}
-                                            className="p-1.5 rounded-lg bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition-all border border-violet-500/20" title="Guardar en biblioteca">
+                                            className="p-1.5 rounded-lg bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-all border border-sky-500/20" title="Guardar en biblioteca">
                                             <BookMarked size={10} />
                                         </button>
                                     </div>
@@ -2446,9 +2609,9 @@ export function KdpFactoryApp() {
                                 <div className="relative">
                                     <input value={promptParticulars} onChange={e => setPromptParticulars(e.target.value)}
                                         placeholder="Particularidades · editado por IA en catálogo"
-                                        className="w-full h-10 bg-violet-500/[0.06] border border-violet-500/20 rounded-xl px-4 pr-20 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/40 focus:bg-violet-500/[0.09] transition-all font-medium"
+                                        className="w-full h-10 bg-sky-500/[0.06] border border-sky-500/20 rounded-xl px-4 pr-20 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-sky-500/40 focus:bg-sky-500/[0.09] transition-all font-medium"
                                     />
-                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black uppercase tracking-widest text-violet-500/50 pointer-events-none flex items-center gap-1">
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black uppercase tracking-widest text-sky-400/60 pointer-events-none flex items-center gap-1">
                                         <Sparkles size={7} className="animate-pulse" /> IA
                                     </span>
                                 </div>
@@ -2597,13 +2760,13 @@ export function KdpFactoryApp() {
 
                                         {/* Estado de cola — siempre visible cuando hay actividad */}
                                         {isCatalogActive && (
-                                            <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-violet-500/[0.06] border border-violet-500/20">
+                                            <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-sky-500/[0.06] border border-sky-500/20">
                                                 <div className="relative shrink-0">
-                                                    <div className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
-                                                    <div className="absolute inset-0 rounded-full bg-violet-400/40 animate-ping" />
+                                                    <div className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
+                                                    <div className="absolute inset-0 rounded-full bg-sky-400/40 animate-ping" />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
-                                                    <p className="text-[10px] font-black text-violet-300 leading-tight">
+                                                    <p className="text-[10px] font-black text-sky-300 leading-tight">
                                                         {running.length > 0 ? `Generando — ${running[0]?.name || "catálogo"}` : `En cola — ${queued[0]?.name || "catálogo"}`}
                                                     </p>
                                                     <p className="text-[9px] text-neutral-600 mt-0.5">
@@ -2614,7 +2777,7 @@ export function KdpFactoryApp() {
                                                 </div>
                                                 <button
                                                     onClick={() => setShowCatalogAccordion(true)}
-                                                    className="text-[9px] font-black uppercase tracking-widest text-violet-400/60 hover:text-violet-300 transition-colors shrink-0"
+                                                    className="text-[9px] font-black uppercase tracking-widest text-sky-400/60 hover:text-sky-300 transition-colors shrink-0"
                                                 >
                                                     Ver
                                                 </button>
@@ -2631,14 +2794,14 @@ export function KdpFactoryApp() {
                                 onClick={() => setShowCatalogAccordion(v => !v)}
                                 className="w-full px-6 py-4 flex items-center gap-3 hover:bg-white/2 transition-colors group"
                             >
-                                <span className="w-6 h-6 rounded-full bg-violet-500/10 border border-violet-500/20 text-[9px] font-black text-violet-400 flex items-center justify-center shrink-0">04</span>
+                                <span className="w-6 h-6 rounded-full bg-sky-500/10 border border-sky-500/20 text-[9px] font-black text-sky-400 flex items-center justify-center shrink-0">04</span>
                                 <div className="flex-1 text-left">
                                     <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 group-hover:text-neutral-200 transition-colors">Generar catálogo</p>
                                     <p className="text-[9px] text-neutral-600 mt-0.5">Producción masiva con estos ajustes</p>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     {iaCatalogs.some(c => c.status === "running" || c.status === "queued") && (
-                                        <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+                                        <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
                                     )}
                                     <ChevronDown size={13} className={`text-neutral-600 transition-transform duration-300 ${showCatalogAccordion ? "rotate-180" : ""}`} />
                                 </div>
@@ -2654,10 +2817,10 @@ export function KdpFactoryApp() {
                                                 { id: "other" as const, label: "Otro", desc: "Sin modificar" },
                                             ]).map(pt => (
                                                 <button key={pt.id} onClick={() => setCatalogProductType(pt.id)}
-                                                    className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 px-2 rounded-xl border transition-all ${catalogProductType === pt.id ? "border-violet-500/40 bg-violet-500/[0.08] text-violet-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}
+                                                    className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 px-2 rounded-xl border transition-all ${catalogProductType === pt.id ? "border-sky-500/40 bg-sky-500/[0.08] text-sky-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}
                                                 >
                                                     <span className="text-[9px] font-black uppercase tracking-wide">{pt.label}</span>
-                                                    <span className={`text-[8px] ${catalogProductType === pt.id ? "text-violet-500/60" : "text-neutral-700"}`}>{pt.desc}</span>
+                                                    <span className={`text-[8px] ${catalogProductType === pt.id ? "text-sky-500/60" : "text-neutral-700"}`}>{pt.desc}</span>
                                                 </button>
                                             ))}
                                         </div>
@@ -2682,29 +2845,29 @@ export function KdpFactoryApp() {
                                     <div className="space-y-2">
                                         <div className="flex items-center justify-between">
                                             <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Variación IA</p>
-                                            <span className={`text-[9px] font-black tabular-nums ${catalogCreativity <= 10 ? "text-neutral-700" : catalogCreativity <= 35 ? "text-sky-400/70" : catalogCreativity <= 65 ? "text-violet-400/70" : catalogCreativity <= 85 ? "text-amber-400/70" : "text-rose-400/70"}`}>
+                                            <span className={`text-[9px] font-black tabular-nums ${catalogCreativity <= 10 ? "text-neutral-700" : catalogCreativity <= 35 ? "text-sky-400/70" : catalogCreativity <= 65 ? "text-emerald-400/70" : catalogCreativity <= 85 ? "text-amber-400/70" : "text-orange-400/70"}`}>
                                                 {catalogCreativity <= 10 ? "Sin variación" : catalogCreativity <= 35 ? "Sutil" : catalogCreativity <= 65 ? "Moderada" : catalogCreativity <= 85 ? "Alta" : "Máxima"}
                                             </span>
                                         </div>
                                         <input type="range" min={0} max={100} step={5} value={catalogCreativity}
                                             onChange={e => setCatalogCreativity(Number(e.target.value))}
-                                            className="w-full accent-violet-500 h-1.5 rounded-full cursor-pointer" />
+                                            className="w-full accent-sky-500 h-1.5 rounded-full cursor-pointer" />
                                         <div className="flex justify-between text-[8px] text-neutral-700"><span>Idénticas</span><span>Diferentes</span></div>
                                     </div>
                                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                                         <input value={catalogFormName} onChange={e => setCatalogFormName(e.target.value)}
                                             placeholder="Nombre del catálogo (opcional)"
-                                            className="flex-1 min-w-0 h-10 bg-white/4 border border-white/8 rounded-xl px-3 text-sm text-white outline-none focus:border-violet-500/30 transition-all placeholder:text-neutral-700"
+                                            className="flex-1 min-w-0 h-10 bg-white/4 border border-white/8 rounded-xl px-3 text-sm text-white outline-none focus:border-sky-500/30 transition-all placeholder:text-neutral-700"
                                         />
                                         <div className="flex gap-2">
                                             <input type="text" inputMode="numeric" pattern="[0-9]*" placeholder="5"
                                                 value={catalogFormCount === 0 ? "" : String(catalogFormCount)}
                                                 onChange={e => { const raw = e.target.value.replace(/\D/g, ""); setCatalogFormCount(raw === "" ? 0 : Math.min(50, Number(raw))); }}
-                                                className="w-14 h-10 bg-white/4 border border-white/8 rounded-xl px-2 text-sm font-bold text-white outline-none focus:border-violet-500/30 transition-all text-center"
+                                                className="w-14 h-10 bg-white/4 border border-white/8 rounded-xl px-2 text-sm font-bold text-white outline-none focus:border-sky-500/30 transition-all text-center"
                                             />
                                             <button onClick={() => void createCatalogFromStudio()}
                                                 disabled={isCreatingCatalog || !promptTheme.trim()}
-                                                className="flex-1 sm:flex-none h-10 px-5 bg-violet-600/80 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_4px_20px_rgba(139,92,246,0.2)]"
+                                                className="flex-1 sm:flex-none h-10 px-5 bg-sky-600/80 hover:bg-sky-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_4px_20px_rgba(14,165,233,0.2)]"
                                             >
                                                 {isCreatingCatalog ? <Loader2 size={13} className="animate-spin" /> : <><Layers size={13} />Crear</>}
                                             </button>
@@ -2899,10 +3062,10 @@ export function KdpFactoryApp() {
                         {/* Saved Prompts Library */}
                         <div className="space-y-4">
                             {/* ── IA Prompt Generator ─────────────────────────────────── */}
-                            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.03] p-4 space-y-3">
+                            <div className="rounded-2xl border border-sky-500/20 bg-sky-500/[0.03] p-4 space-y-3">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-xl bg-violet-500/15 border border-violet-500/25 flex items-center justify-center shrink-0">
-                                        <Wand2 size={14} className="text-violet-400" />
+                                    <div className="w-8 h-8 rounded-xl bg-sky-500/15 border border-sky-500/25 flex items-center justify-center shrink-0">
+                                        <Wand2 size={14} className="text-sky-400" />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <p className="text-[11px] font-black text-white tracking-tight">Generador de prompt con IA</p>
@@ -2915,19 +3078,19 @@ export function KdpFactoryApp() {
                                         onChange={e => setContentNiche(e.target.value)}
                                         onKeyDown={e => { if (e.key === "Enter") void generateImagePromptSuggestion(); }}
                                         placeholder="Ej: libro de colorear de mandalas zen para adultos…"
-                                        className="flex-1 h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all"
+                                        className="flex-1 h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all"
                                     />
                                     <button
                                         onClick={() => void generateImagePromptSuggestion()}
                                         disabled={isGeneratingImagePrompt || !contentNiche.trim()}
-                                        className="h-10 px-4 rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20 text-[10px] font-black uppercase tracking-wider flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
+                                        className="h-10 px-4 rounded-xl border border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 text-[10px] font-black uppercase tracking-wider flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
                                         {isGeneratingImagePrompt ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                                         {isGeneratingImagePrompt ? "..." : "Generar"}
                                     </button>
                                 </div>
                                 {isGeneratingImagePrompt && (
                                     <div className="h-12 rounded-xl bg-white/5 border border-white/8 animate-pulse flex items-center justify-center">
-                                        <Loader2 size={12} className="animate-spin text-violet-400" />
+                                        <Loader2 size={12} className="animate-spin text-sky-400" />
                                     </div>
                                 )}
                                 {imagePromptSuggestion && !isGeneratingImagePrompt && (
@@ -2947,7 +3110,7 @@ export function KdpFactoryApp() {
                                             </button>
                                             <button
                                                 onClick={() => saveImagePromptToLibrary(imagePromptSuggestion)}
-                                                className="flex-1 h-9 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]">
+                                                className="flex-1 h-9 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]">
                                                 <BookMarked size={11} /> Guardar
                                             </button>
                                             <button onClick={() => void generateImagePromptSuggestion()}
@@ -2962,10 +3125,10 @@ export function KdpFactoryApp() {
                             <div className="flex items-center gap-4 px-2">
                                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                 <div className="flex items-center gap-3">
-                                    <BookMarked size={14} className="text-violet-400" />
+                                    <BookMarked size={14} className="text-sky-400" />
                                     <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Biblioteca de Prompts</h3>
                                 </div>
-                                <button onClick={() => void fetchSavedPrompts()} disabled={isLoadingSavedPrompts} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
+                                <button onClick={() => void fetchSavedPrompts()} disabled={isLoadingSavedPrompts} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-sky-400 hover:border-sky-500/30 transition-all disabled:opacity-40">
                                     {isLoadingSavedPrompts ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                                 </button>
                                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
@@ -2975,7 +3138,7 @@ export function KdpFactoryApp() {
                                 <div className="flex gap-2 flex-wrap px-2">
                                     <button
                                         onClick={() => setPromptCategoryFilter("all")}
-                                        className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === "all" ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                                        className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === "all" ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
                                     >
                                         Todos ({savedPrompts.length})
                                     </button>
@@ -2983,7 +3146,7 @@ export function KdpFactoryApp() {
                                         <button
                                             key={cat}
                                             onClick={() => setPromptCategoryFilter(cat)}
-                                            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === cat ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                                            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === cat ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
                                         >
                                             {cat} ({savedPrompts.filter(p => p.category === cat).length})
                                         </button>
@@ -3005,19 +3168,19 @@ export function KdpFactoryApp() {
                                             const fe = isFullEdit ? fullEditingPrompt : {};
                                             return (
                                                 <div key={p._id}
-                                                    className="group relative rounded-2xl border border-white/8 bg-white/[0.03] hover:border-violet-500/25 hover:bg-white/[0.05] transition-all overflow-hidden">
-                                                    <div className="h-0.5 w-full bg-gradient-to-r from-violet-500/60 via-violet-400/30 to-transparent" />
+                                                    className="group relative rounded-2xl border border-white/8 bg-white/[0.03] hover:border-sky-500/25 hover:bg-white/[0.05] transition-all overflow-hidden">
+                                                    <div className="h-0.5 w-full bg-gradient-to-r from-sky-500/60 via-sky-400/30 to-transparent" />
                                                     <div className="p-4 space-y-3">
                                                         <div className="flex items-start gap-2">
                                                             <div className="flex-1 min-w-0">
                                                                 {isFullEdit ? (
                                                                     <input autoFocus value={(fe.name ?? p.name)} onChange={e => setFullEditingPrompt(prev => ({ ...prev, name: e.target.value }))}
-                                                                        className="w-full bg-white/5 border border-violet-500/40 rounded-lg px-2 py-1 text-[12px] font-black text-white outline-none mb-1" />
+                                                                        className="w-full bg-white/5 border border-sky-500/40 rounded-lg px-2 py-1 text-[12px] font-black text-white outline-none mb-1" />
                                                                 ) : (
                                                                     <p className="text-[12px] font-black text-white truncate leading-tight">{p.name}</p>
                                                                 )}
                                                                 <div className="flex items-center gap-1 flex-wrap mt-0.5">
-                                                                    <span className="px-2 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-[8px] font-black uppercase tracking-widest text-violet-400">{p.category}</span>
+                                                                    <span className="px-2 py-0.5 rounded-md bg-sky-500/10 border border-sky-500/20 text-[8px] font-black uppercase tracking-widest text-sky-400">{p.category}</span>
                                                                     {p.aiModel?.name && (
                                                                         <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[8px] text-neutral-500 font-black uppercase truncate max-w-[120px]" title={p.aiModel.name}>
                                                                             {p.aiModel.provider} · {p.aiModel.name.split(" ").slice(0, 2).join(" ")}
@@ -3028,7 +3191,7 @@ export function KdpFactoryApp() {
                                                             <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
                                                                 {isFullEdit ? null : (
                                                                     <button onClick={() => { setFullEditingPromptId(p._id); setFullEditingPrompt({ name: p.name, category: p.category, promptParts: { ...p.promptParts }, aiModel: p.aiModel }); }}
-                                                                        className="p-1.5 rounded-lg text-neutral-600 hover:text-violet-400 hover:bg-violet-500/10 transition-all">
+                                                                        className="p-1.5 rounded-lg text-neutral-600 hover:text-sky-400 hover:bg-sky-500/10 transition-all">
                                                                         <Pencil size={12} />
                                                                     </button>
                                                                 )}
@@ -3044,13 +3207,13 @@ export function KdpFactoryApp() {
                                                                 <textarea value={(fe.promptParts?.theme ?? p.promptParts.theme)}
                                                                     onChange={e => setFullEditingPrompt(prev => ({ ...prev, promptParts: { ...(prev.promptParts ?? p.promptParts), theme: e.target.value } }))}
                                                                     rows={3} placeholder="Temática / prompt principal…"
-                                                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none font-mono" />
+                                                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 resize-none font-mono" />
                                                                 <select value={(fe.aiModel?.id ?? p.aiModel?.id ?? "")}
                                                                     onChange={e => {
                                                                         const m = AI_MODELS.find(m => m.id === e.target.value);
                                                                         setFullEditingPrompt(prev => ({ ...prev, aiModel: m ? { id: m.id, name: m.name, provider: m.provider, modelId: m.modelId } : undefined }));
                                                                     }}
-                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-xl px-3 text-[10px] text-white focus:outline-none focus:border-violet-500/40">
+                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-xl px-3 text-[10px] text-white focus:outline-none focus:border-sky-500/40">
                                                                     <option value="">Sin modelo asociado</option>
                                                                     {AI_MODELS.map(m => <option key={m.id} value={m.id}>{m.provider} · {m.name}</option>)}
                                                                 </select>
@@ -3069,7 +3232,7 @@ export function KdpFactoryApp() {
                                                                         setFullEditingPromptId(null);
                                                                         toast.success("Prompt actualizado");
                                                                     }}
-                                                                        className="flex-1 h-8 rounded-xl bg-violet-500 text-white text-[9px] font-black uppercase tracking-widest hover:bg-violet-400 transition-all flex items-center justify-center gap-1.5">
+                                                                        className="flex-1 h-8 rounded-xl bg-sky-600 text-white text-[9px] font-black uppercase tracking-widest hover:bg-sky-500 transition-all flex items-center justify-center gap-1.5">
                                                                         <Save size={10} /> Guardar
                                                                     </button>
                                                                 </div>
@@ -3081,7 +3244,7 @@ export function KdpFactoryApp() {
                                                                 </p>
                                                                 <button
                                                                     onClick={() => loadSavedPrompt(p)}
-                                                                    className="w-full h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[10px] font-black uppercase tracking-widest hover:bg-violet-500 hover:text-white hover:border-violet-500 transition-all flex items-center justify-center gap-1.5">
+                                                                    className="w-full h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[10px] font-black uppercase tracking-widest hover:bg-sky-600 hover:text-white hover:border-sky-600 transition-all flex items-center justify-center gap-1.5">
                                                                     <ArrowRight size={11} />Cargar prompt
                                                                 </button>
                                                             </>
@@ -3115,7 +3278,7 @@ export function KdpFactoryApp() {
                                 <div className="flex items-center gap-1.5 shrink-0">
                                     <button
                                         onClick={() => openKdpTemplateSelector()}
-                                        className="h-8 px-3 rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500 hover:text-white hover:border-violet-500 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 active:scale-95"
+                                        className="h-8 px-3 rounded-xl border border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-600 hover:text-white hover:border-sky-600 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 active:scale-95"
                                     >
                                         <BookOpen size={11} /> Plantilla
                                     </button>
@@ -3245,7 +3408,7 @@ export function KdpFactoryApp() {
                                 <select
                                     value={kdpPdfSize}
                                     onChange={e => setKdpPdfSize(e.target.value as typeof kdpPdfSize)}
-                                    className="h-7 bg-neutral-900 border border-white/10 rounded-xl px-2 text-[10px] font-black text-white outline-none focus:border-violet-500/40"
+                                    className="h-7 bg-neutral-900 border border-white/10 rounded-xl px-2 text-[10px] font-black text-white outline-none focus:border-sky-500/40"
                                 >
                                     <option value="6x9">6"×9"</option>
                                     <option value="8x10">8"×10"</option>
@@ -3255,7 +3418,7 @@ export function KdpFactoryApp() {
                                 <button
                                     onClick={() => void exportKdpPdf()}
                                     disabled={isExportingKdpPdf}
-                                    className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-violet-600 hover:bg-violet-500 text-white transition-all border border-violet-500/50 flex items-center gap-1.5 disabled:opacity-40"
+                                    className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-sky-600/80 hover:bg-sky-500 text-white transition-all border border-sky-500/50 flex items-center gap-1.5 disabled:opacity-40"
                                 >
                                     {isExportingKdpPdf ? <Loader2 size={11} className="animate-spin" /> : <FileText size={11} />}
                                     PDF KDP
@@ -3576,7 +3739,7 @@ export function KdpFactoryApp() {
                                                 <span className="font-black text-neutral-400">{catalog.images.length}/{catalog.totalImages}</span>
                                                 {isActive && catalog.status !== "queued" && <Loader2 size={9} className="text-blue-400 animate-spin" />}
                                                 {(catalog.skippedImages ?? 0) > 0 && <span className="text-amber-500/70 not-mono">· {catalog.skippedImages} omit.</span>}
-                                                {isActive && catalog.status === "running" && timeStr && <span className="text-violet-400/70 not-mono">· {timeStr}</span>}
+                                                {isActive && catalog.status === "running" && timeStr && <span className="text-sky-400/70 not-mono">· {timeStr}</span>}
                                             </div>
                                         </div>
                                         {/* Niche tags */}
@@ -3659,19 +3822,6 @@ export function KdpFactoryApp() {
                                                     {catalog.skippedImages} fallidos
                                                 </button>
                                             )}
-                                            {catalog.images.length > 0 && (
-                                                <button
-                                                    onClick={() => setCompareSel(prev => {
-                                                        const next = new Set(prev);
-                                                        next.has(catalog._id) ? next.delete(catalog._id) : next.add(catalog._id);
-                                                        return next;
-                                                    })}
-                                                    title="Seleccionar para comparar"
-                                                    className={`flex items-center gap-1 h-8 px-2.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${compareSel.has(catalog._id) ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-white/5 border-white/10 text-neutral-600 hover:text-sky-400 hover:border-sky-500/30"}`}
-                                                >
-                                                    <Copy size={10} />
-                                                </button>
-                                            )}
                                             {isActive && (
                                                 <button
                                                     onClick={() => void cancelCatalog(catalog._id)}
@@ -3697,12 +3847,12 @@ export function KdpFactoryApp() {
                                         <div className="px-4 pb-3 space-y-1.5 border-t border-white/5 pt-3">
                                             <div className="flex justify-between text-[9px] uppercase tracking-widest text-neutral-600">
                                                 <span className="flex items-center gap-1.5"><Loader2 size={8} className="animate-spin text-blue-400" />{catalog.status === "queued" ? `En cola · posición ${queuePos}` : catalog.status === "pending" ? "Iniciando..." : "Generando"}</span>
-                                                {catalog.status !== "queued" && <span className="font-black text-neutral-400">{Math.round(progress)}% {timeStr && <span className="text-violet-400/80 normal-case">{timeStr}</span>}</span>}
+                                                {catalog.status !== "queued" && <span className="font-black text-neutral-400">{Math.round(progress)}% {timeStr && <span className="text-sky-400/80 normal-case">{timeStr}</span>}</span>}
                                             </div>
                                             <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
                                                 {catalog.status === "queued"
                                                     ? <div className="h-full w-1/3 bg-gradient-to-r from-orange-500/30 to-orange-400/60 rounded-full animate-pulse" />
-                                                    : <div className="h-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
+                                                    : <div className="h-full bg-gradient-to-r from-sky-500 to-blue-400 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
                                                 }
                                             </div>
                                         </div>
@@ -3723,6 +3873,19 @@ export function KdpFactoryApp() {
                                                                 const cur = catalog.nicheIds ?? [];
                                                                 const next = assigned ? cur.filter(id => id !== n._id) : [...cur, n._id];
                                                                 setIaCatalogs(prev => prev.map(c => c._id === catalog._id ? { ...c, nicheIds: next } : c));
+                                                                // Update niches local state bidirectionally
+                                                                setNiches(prev => prev.map(nx => {
+                                                                    if (nx._id === n._id) {
+                                                                        const cats = nx.catalogIds ?? [];
+                                                                        return {
+                                                                            ...nx,
+                                                                            catalogIds: assigned
+                                                                                ? cats.filter(cid => cid !== catalog._id)
+                                                                                : cats.includes(catalog._id) ? cats : [...cats, catalog._id],
+                                                                        };
+                                                                    }
+                                                                    return nx;
+                                                                }));
                                                                 fetch(`${API_BASE_URL}/catalogs/${catalog._id}`, {
                                                                     method: "PATCH",
                                                                     headers: { "Content-Type": "application/json" },
@@ -3751,12 +3914,12 @@ export function KdpFactoryApp() {
                                                     return (
                                                         <div
                                                             key={img.publicId}
-                                                            className={`aspect-square rounded-lg overflow-hidden bg-white/5 border transition-all relative group ${isVaultSelectMode ? (isCatSelected ? "border-violet-500 ring-1 ring-violet-500/50 cursor-pointer" : "border-white/10 hover:border-violet-500/50 cursor-pointer") : "border-white/5 cursor-zoom-in hover:border-violet-500/40"}`}
+                                                            className={`aspect-square rounded-lg overflow-hidden bg-white/5 border transition-all relative group ${isVaultSelectMode ? (isCatSelected ? "border-sky-500 ring-1 ring-sky-500/50 cursor-pointer" : "border-white/10 hover:border-sky-500/50 cursor-pointer") : "border-white/5 cursor-zoom-in hover:border-sky-500/40"}`}
                                                             onClick={() => isVaultSelectMode ? toggleImageSelect(img.url) : openCatalogImagePreview(catalog.images, imgIdx, catalog._id)}
                                                         >
                                                             <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
                                                             {isVaultSelectMode && (
-                                                                <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isCatSelected ? "bg-violet-500 border-violet-500" : "bg-black/50 border-white/30 backdrop-blur-sm"}`}>
+                                                                <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isCatSelected ? "bg-sky-500 border-sky-500" : "bg-black/50 border-white/30 backdrop-blur-sm"}`}>
                                                                     {isCatSelected && <Check size={9} className="text-white" strokeWidth={3} />}
                                                                 </div>
                                                             )}
@@ -3789,24 +3952,15 @@ export function KdpFactoryApp() {
                                 <div className="flex items-center gap-4 px-2">
                                     <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                     <div className="flex items-center gap-3">
-                                        <Layers size={14} className="text-violet-400" />
+                                        <Layers size={14} className="text-sky-400" />
                                         <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Catálogos IA</h3>
                                         {totalImages > 0 && (
-                                            <span className="text-[9px] font-black text-violet-400/60 tabular-nums">{totalImages} imgs</span>
+                                            <span className="text-[9px] font-black text-sky-400/60 tabular-nums">{totalImages} imgs</span>
                                         )}
                                     </div>
-                                    <button onClick={() => void fetchCatalogs()} disabled={isLoadingCatalogs} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
+                                    <button onClick={() => void fetchCatalogs()} disabled={isLoadingCatalogs} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-sky-400 hover:border-sky-500/30 transition-all disabled:opacity-40">
                                         {isLoadingCatalogs ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                                     </button>
-                                    {compareSel.size >= 2 && (
-                                        <button onClick={() => setCompareOpen(true)}
-                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-300 text-[9px] font-black uppercase tracking-widest hover:bg-sky-500/25 transition-all">
-                                            <Copy size={10} /> Comparar ({compareSel.size})
-                                        </button>
-                                    )}
-                                    {compareSel.size > 0 && (
-                                        <button onClick={() => setCompareSel(new Set())} className="text-[9px] text-neutral-600 hover:text-white transition-colors uppercase font-black">Limpiar</button>
-                                    )}
                                     <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                 </div>
 
@@ -3818,11 +3972,11 @@ export function KdpFactoryApp() {
                                             <button
                                                 onClick={() => setCatalogNicheFilter(null)}
                                                 className={`flex items-center gap-2 h-9 px-4 rounded-2xl border text-[10px] font-black whitespace-nowrap shrink-0 transition-all ${!catalogNicheFilter
-                                                    ? "bg-violet-500/20 border-violet-500/40 text-violet-300 shadow-[0_0_16px_rgba(139,92,246,0.25)]"
+                                                    ? "bg-sky-500/20 border-sky-500/40 text-sky-300 shadow-[0_0_16px_rgba(14,165,233,0.25)]"
                                                     : "border-white/10 bg-white/[0.02] text-neutral-500 hover:text-neutral-300 hover:border-white/20 hover:bg-white/[0.04]"}`}>
-                                                <Layers size={12} className={!catalogNicheFilter ? "text-violet-400" : "text-neutral-600"} />
+                                                <Layers size={12} className={!catalogNicheFilter ? "text-sky-400" : "text-neutral-600"} />
                                                 Todos los catálogos
-                                                <span className={`text-[9px] tabular-nums font-black ${!catalogNicheFilter ? "text-violet-400/70" : "text-neutral-700"}`}>{iaCatalogs.length}</span>
+                                                <span className={`text-[9px] tabular-nums font-black ${!catalogNicheFilter ? "text-sky-400/70" : "text-neutral-700"}`}>{iaCatalogs.length}</span>
                                             </button>
                                             {/* Per-niche pills */}
                                             {niches.map(n => {
@@ -4030,115 +4184,6 @@ export function KdpFactoryApp() {
     const renderStudio = () => (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6">
 
-            {/* ══ RADAR IA ══ */}
-            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
-                <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent rounded-t-3xl" />
-                <div className="p-6 space-y-5">
-                    <div className="flex items-start justify-between gap-4">
-                        <div className="space-y-1">
-                            <h2 className="text-xl font-black bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent flex items-center gap-2.5">
-                                <TrendingUp size={20} className="text-amber-400" /> Radar de Nichos
-                            </h2>
-                            <p className="text-xs text-neutral-500">Tendencias de mercado analizadas con IA para KDP, Etsy y Printify</p>
-                        </div>
-                        <button onClick={() => void fetchTrends()} disabled={isLoadingTrends}
-                            className="h-10 px-5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 text-black text-[10px] font-black uppercase tracking-wider flex items-center gap-2 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity shrink-0">
-                            {isLoadingTrends ? <Loader2 size={13} className="animate-spin" /> : <TrendingUp size={13} />}
-                            {isLoadingTrends ? "Analizando..." : "Analizar"}
-                        </button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <KdpSelect accent="amber" value={trendsPlatform} onChange={v => setTrendsPlatform(v as any)}
-                            options={[{ value: "all", label: "Todas las plataformas" }, { value: "kdp", label: "Amazon KDP" }, { value: "etsy", label: "Etsy" }, { value: "printify", label: "Printify" }]} />
-                        <KdpSelect accent="amber" value={trendsCategory} onChange={v => setTrendsCategory(v)}
-                            options={TREND_CATEGORIES.map(c => ({ value: c, label: c === "all" ? "Todas las categorías" : c }))} />
-                    </div>
-                    {isLoadingTrends && (
-                        <div className="flex flex-col items-center justify-center py-16 space-y-3">
-                            <Loader2 size={28} className="animate-spin text-amber-400" />
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Analizando mercado con IA...</p>
-                        </div>
-                    )}
-                    {!isLoadingTrends && !trendsData && (
-                        <div className="flex flex-col items-center justify-center py-16 text-center space-y-2 opacity-25">
-                            <TrendingUp size={32} strokeWidth={1.5} className="text-neutral-600" />
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Pulsa Analizar para ver tendencias</p>
-                        </div>
-                    )}
-                    {trendsData && !isLoadingTrends && (
-                        <div className="space-y-3">
-                            {trendsData.summary && (
-                                <div className="flex items-start gap-2.5 p-3 bg-amber-500/5 border border-amber-500/15 rounded-xl">
-                                    <Newspaper size={13} className="text-amber-400 shrink-0 mt-0.5" />
-                                    <p className="text-[10px] text-neutral-400 leading-relaxed">{trendsData.summary}</p>
-                                </div>
-                            )}
-                            <div className="space-y-1.5 max-h-[600px] overflow-y-auto pr-1">
-                                {(trendsData.trends ?? []).map((t: any) => {
-                                    const isHot = trendsData.hot_picks?.includes(t.id);
-                                    const isSelected = selectedTrend?.id === t.id;
-                                    return (
-                                        <button key={t.id} onClick={() => setSelectedTrend(isSelected ? null : t)}
-                                            className={`w-full text-left p-3 rounded-xl border transition-all ${isSelected ? "border-amber-500/40 bg-amber-500/8" : "border-white/5 bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.03]"}`}>
-                                            <div className="flex items-start gap-2">
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                        <span className="text-[12px] font-bold text-white">{t.niche}</span>
-                                                        {isHot && <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-black uppercase border border-amber-500/30 shrink-0">🔥 Hot</span>}
-                                                        <span className={`text-[8px] px-1.5 py-0.5 rounded-full border font-black uppercase shrink-0 ${COMPETITION_COLORS[t.competition] ?? "text-neutral-400 bg-white/5 border-white/10"}`}>{t.competition}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 mt-0.5">
-                                                        <span className="text-[9px] text-neutral-600">{t.category}</span>
-                                                        {DEMAND_ICONS[t.demand_trend] && <span className="flex items-center gap-0.5 ml-1">{DEMAND_ICONS[t.demand_trend]}<span className="text-[9px] text-neutral-600">{t.demand_trend}</span></span>}
-                                                    </div>
-                                                </div>
-                                                <div className="text-right shrink-0">
-                                                    <div className="flex items-center gap-0.5 justify-end">
-                                                        <Star size={9} className="text-amber-400" />
-                                                        <span className="text-[11px] font-black text-amber-400">{t.trend_score}</span>
-                                                    </div>
-                                                    <p className="text-[8px] text-neutral-600">${t.avg_price_usd}</p>
-                                                </div>
-                                            </div>
-                                            {isSelected && (
-                                                <div className="mt-2.5 pt-2.5 border-t border-white/5 space-y-2" onClick={e => e.stopPropagation()}>
-                                                    {t.angle && <p className="text-[10px] text-neutral-400 italic">{t.angle}</p>}
-                                                    {Array.isArray(t.product_ideas) && (
-                                                        <ul className="space-y-0.5">
-                                                            {t.product_ideas.map((idea: string, i: number) => (
-                                                                <li key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-amber-400 shrink-0">▸</span>{idea}</li>
-                                                            ))}
-                                                        </ul>
-                                                    )}
-                                                    {Array.isArray(t.keywords) && (
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {t.keywords.map((k: string, i: number) => (
-                                                                <span key={i} className="text-[8px] px-1.5 py-0.5 rounded-full bg-white/5 border border-white/8 text-neutral-500">{k}</span>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                    <div className="flex gap-1.5 pt-0.5">
-                                                        <button onClick={() => { setContentNiche(t.niche); toast.success("Nicho cargado en Contenido →"); }}
-                                                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[9px] font-black uppercase hover:bg-violet-500/20 transition-colors">
-                                                            <Send size={9} /> Usar en Contenido →
-                                                        </button>
-                                                        <button onClick={() => { setPromptTheme(t.niche); changeTab("creation"); toast.success("Cargado en Imágenes"); }}
-                                                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[9px] font-black uppercase hover:bg-amber-500/20 transition-colors">
-                                                            <ImageIcon size={9} /> Imágenes
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                </div>
-            </div>
-
             {/* ══ MIS NICHOS ══ */}
             <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
                 <div className="h-px w-full bg-gradient-to-r from-violet-500/80 via-fuchsia-400/40 to-transparent" />
@@ -4275,8 +4320,7 @@ export function KdpFactoryApp() {
                                 .sort((a, b) => nicheSortBy === "score" ? nicheScore(b) - nicheScore(a) : 0)
                                 .map(niche => {
                                     const score = nicheScore(niche);
-                                    const scoreColor = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-amber-400" : "text-neutral-500";
-                                    const scoreStroke = score >= 70 ? "#10b981" : score >= 40 ? "#f59e0b" : "#525252";
+                                    const scoreColor = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-amber-400" : "text-violet-400";
                                     const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
                                     const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
                                     const statusDotMap: Record<NicheStatus, string> = { found: "bg-violet-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
@@ -4287,12 +4331,21 @@ export function KdpFactoryApp() {
 
                                                 {/* ─ Card header ─ */}
                                                 <div className="flex items-start gap-3">
-                                                    {/* Score ring */}
+                                                    {/* Score ring with gradient */}
                                                     <div className="shrink-0 relative w-14 h-14">
                                                         <svg className="w-full h-full -rotate-90" viewBox="0 0 44 44">
-                                                            <circle cx="22" cy="22" r="17" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="4.5" />
+                                                            <defs>
+                                                                <linearGradient id={`ring-grad-${niche._id}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                                                                    {score >= 70
+                                                                        ? <><stop offset="0%" stopColor="#10b981" /><stop offset="100%" stopColor="#22d3ee" /></>
+                                                                        : score >= 40
+                                                                            ? <><stop offset="0%" stopColor="#f59e0b" /><stop offset="100%" stopColor="#fb923c" /></>
+                                                                            : <><stop offset="0%" stopColor="#6366f1" /><stop offset="50%" stopColor="#8b5cf6" /><stop offset="100%" stopColor="#a78bfa" /></>}
+                                                                </linearGradient>
+                                                            </defs>
+                                                            <circle cx="22" cy="22" r="17" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4.5" />
                                                             <circle cx="22" cy="22" r="17" fill="none"
-                                                                stroke={scoreStroke} strokeWidth="4.5" strokeLinecap="round"
+                                                                stroke={`url(#ring-grad-${niche._id})`} strokeWidth="4.5" strokeLinecap="round"
                                                                 strokeDasharray={`${Math.min((score / 90) * 107, 107)} 107`} />
                                                         </svg>
                                                         <span className={`absolute inset-0 flex items-center justify-center text-[12px] font-black ${scoreColor}`}>{score}</span>
@@ -4433,10 +4486,10 @@ export function KdpFactoryApp() {
 
             {/* ══ CONTENIDO ══ */}
             <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
-                <div className="h-px w-full bg-gradient-to-r from-amber-500/40 via-violet-400/20 to-transparent rounded-t-3xl" />
+                <div className="h-px w-full bg-gradient-to-r from-amber-500/40 via-orange-400/20 to-transparent rounded-t-3xl" />
                 <div className="p-6 space-y-4">
                     <div className="space-y-1">
-                        <h2 className="text-xl font-black bg-gradient-to-r from-amber-400 to-violet-400 bg-clip-text text-transparent flex items-center gap-2.5">
+                        <h2 className="text-xl font-black bg-gradient-to-r from-amber-400 to-orange-300 bg-clip-text text-transparent flex items-center gap-2.5">
                             <Sparkles size={20} className="text-amber-400" /> Generador de Contenido
                         </h2>
                         <p className="text-xs text-neutral-500">Metadatos listos para publicar en KDP y Etsy</p>
@@ -4582,7 +4635,7 @@ export function KdpFactoryApp() {
                                     {contentResult.description && (
                                         <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2">
                                             <div className="flex items-center justify-between">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/80">Descripción</p>
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Descripción</p>
                                                 <button onClick={() => copyText(contentResult.description)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
                                             </div>
                                             <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
@@ -4592,7 +4645,7 @@ export function KdpFactoryApp() {
                                     {Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0 && (
                                         <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2.5">
                                             <div className="flex items-center justify-between">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/80">
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">
                                                     {contentResult.keywords.length} Palabras clave
                                                 </p>
                                                 <button onClick={() => copyText(contentResult.keywords.join("\n"))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar todo</button>
@@ -4619,27 +4672,27 @@ export function KdpFactoryApp() {
                                 <>
                                     {contentResult.title && (
                                         <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Título</p><button onClick={() => copyText(contentResult.title)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
+                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Título</p><button onClick={() => copyText(contentResult.title)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
                                             <p className="text-sm text-white font-medium">{contentResult.title}</p>
                                             {contentResult.subtitle && <p className="text-[10px] text-neutral-500">{contentResult.subtitle}</p>}
                                         </div>
                                     )}
                                     {contentResult.description && (
                                         <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
+                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
                                             <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
                                         </div>
                                     )}
                                     {Array.isArray(contentResult.bullets) && contentResult.bullets.length > 0 && (
                                         <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Bullets</p>
-                                            <ul className="space-y-0.5">{contentResult.bullets.map((b: string, i: number) => <li key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-violet-400 shrink-0">▸</span>{b}</li>)}</ul>
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Bullets</p>
+                                            <ul className="space-y-0.5">{contentResult.bullets.map((b: string, i: number) => <li key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-amber-400/60 shrink-0">▸</span>{b}</li>)}</ul>
                                         </div>
                                     )}
                                     {Array.isArray(contentResult.keywords) && (
                                         <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
-                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Keywords ({contentResult.keywords.length})</p><button onClick={() => copyText(contentResult.keywords.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button></div>
-                                            <div className="flex flex-wrap gap-1">{contentResult.keywords.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[8px] px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 hover:bg-violet-500/20 transition-colors">{k}</button>)}</div>
+                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Keywords ({contentResult.keywords.length})</p><button onClick={() => copyText(contentResult.keywords.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button></div>
+                                            <div className="flex flex-wrap gap-1">{contentResult.keywords.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[8px] px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 transition-colors">{k}</button>)}</div>
                                         </div>
                                     )}
                                     {contentResult.price_suggestion_usd && (
@@ -4653,7 +4706,7 @@ export function KdpFactoryApp() {
                             )}
                             {contentType === "titles" && Array.isArray(contentResult) && (
                                 <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Títulos ({contentResult.length})</p>
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Títulos ({contentResult.length})</p>
                                     {contentResult.map((t: string, i: number) => (
                                         <div key={i} className="flex items-center gap-2 py-1.5 border-b border-white/5 last:border-0">
                                             <span className="text-[9px] text-neutral-700 w-4">{i + 1}.</span>
@@ -4665,28 +4718,28 @@ export function KdpFactoryApp() {
                             )}
                             {contentType === "description" && typeof contentResult === "object" && (
                                 <>
-                                    {contentResult.description && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div><p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p></div>}
-                                    {Array.isArray(contentResult.bullets) && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Bullets</p>{contentResult.bullets.map((b: string, i: number) => <p key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-violet-400 shrink-0">▸</span>{b}</p>)}</div>}
+                                    {contentResult.description && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div><p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p></div>}
+                                    {Array.isArray(contentResult.bullets) && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Bullets</p>{contentResult.bullets.map((b: string, i: number) => <p key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-amber-400/60 shrink-0">▸</span>{b}</p>)}</div>}
                                 </>
                             )}
                             {contentType === "keywords" && Array.isArray(contentResult) && (
                                 <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-2">
-                                    <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Keywords ({contentResult.length})</p><button onClick={() => copyText(contentResult.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px]"><Copy size={9} /> Copiar todos</button></div>
-                                    <div className="flex flex-wrap gap-1.5">{contentResult.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[9px] px-2 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 hover:bg-violet-500/20 transition-colors">{k}</button>)}</div>
+                                    <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Keywords ({contentResult.length})</p><button onClick={() => copyText(contentResult.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px]"><Copy size={9} /> Copiar todos</button></div>
+                                    <div className="flex flex-wrap gap-1.5">{contentResult.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[9px] px-2 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 transition-colors">{k}</button>)}</div>
                                 </div>
                             )}
                             {contentType === "back-cover" && typeof contentResult === "object" && contentResult.back_cover && (
                                 <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
-                                    <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Contraportada</p><button onClick={() => copyText(contentResult.back_cover)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
+                                    <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Contraportada</p><button onClick={() => copyText(contentResult.back_cover)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
                                     <p className="text-[11px] text-neutral-200 leading-relaxed whitespace-pre-line">{contentResult.back_cover}</p>
                                 </div>
                             )}
                             {contentType === "series" && typeof contentResult === "object" && contentResult.series_name && (
                                 <div className="space-y-2">
-                                    <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Serie</p><p className="text-base font-black text-white mt-0.5">{contentResult.series_name}</p>{contentResult.concept && <p className="text-[10px] text-neutral-400 mt-0.5">{contentResult.concept}</p>}</div>
+                                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Serie</p><p className="text-base font-black text-white mt-0.5">{contentResult.series_name}</p>{contentResult.concept && <p className="text-[10px] text-neutral-400 mt-0.5">{contentResult.concept}</p>}</div>
                                     {Array.isArray(contentResult.volumes) && contentResult.volumes.map((v: any, i: number) => (
                                         <div key={i} className="bg-white/[0.02] border border-white/5 rounded-xl p-2.5 flex gap-2">
-                                            <span className="text-[9px] font-black text-violet-400 w-4 shrink-0 mt-0.5">{i + 1}</span>
+                                            <span className="text-[9px] font-black text-amber-400 w-4 shrink-0 mt-0.5">{i + 1}</span>
                                             <div><p className="text-[11px] font-bold text-white">{v.title}</p><p className="text-[9px] text-neutral-500">{v.theme} — {v.angle}</p></div>
                                         </div>
                                     ))}
@@ -4701,6 +4754,43 @@ export function KdpFactoryApp() {
                         </div>
                     )}
 
+                </div>
+            </div>
+
+            {/* ══ RADAR DE NICHOS — Próximamente ══ */}
+            <div className="relative rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                <div className="absolute inset-0 z-10 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center gap-4 rounded-3xl">
+                    <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                        <TrendingUp size={24} className="text-amber-400/60" />
+                    </div>
+                    <div className="text-center space-y-1.5">
+                        <span className="inline-block text-[9px] font-black uppercase tracking-[0.3em] text-amber-400/80 bg-amber-500/10 border border-amber-500/20 px-4 py-1.5 rounded-full">Próximamente</span>
+                        <p className="text-[12px] font-black text-neutral-300">Radar de Nichos</p>
+                        <p className="text-[10px] text-neutral-600 max-w-xs">El radar de tendencias de mercado con IA estará disponible pronto</p>
+                    </div>
+                </div>
+                <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent" />
+                <div className="p-6 space-y-5 opacity-20 pointer-events-none select-none">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1">
+                            <h2 className="text-xl font-black bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent flex items-center gap-2.5">
+                                <TrendingUp size={20} className="text-amber-400" /> Radar de Nichos
+                            </h2>
+                            <p className="text-xs text-neutral-500">Tendencias de mercado analizadas con IA para KDP, Etsy y Printify</p>
+                        </div>
+                        <button className="h-10 px-5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 text-black text-[10px] font-black uppercase tracking-wider flex items-center gap-2">
+                            <TrendingUp size={13} /> Analizar
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="h-10 rounded-xl bg-white/5 border border-white/8" />
+                        <div className="h-10 rounded-xl bg-white/5 border border-white/8" />
+                    </div>
+                    <div className="space-y-1.5">
+                        {[1, 2, 3].map(i => (
+                            <div key={i} className="h-14 rounded-xl bg-white/[0.02] border border-white/5" />
+                        ))}
+                    </div>
                 </div>
             </div>
         </div>
@@ -5736,7 +5826,7 @@ export function KdpFactoryApp() {
                                     value={savePromptName}
                                     onChange={e => setSavePromptName(e.target.value)}
                                     placeholder="Ej: Mandalas florales pastel"
-                                    className="w-full h-11 rounded-2xl bg-white/5 border border-white/10 px-4 text-sm text-white outline-none focus:border-violet-500/40 transition-all placeholder:text-neutral-700"
+                                    className="w-full h-11 rounded-2xl bg-white/5 border border-white/10 px-4 text-sm text-white outline-none focus:border-sky-500/40 transition-all placeholder:text-neutral-700"
                                     autoFocus
                                     onKeyDown={e => { if (e.key === "Enter") void saveCurrentPrompt(); }}
                                 />
@@ -5744,7 +5834,7 @@ export function KdpFactoryApp() {
 
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Categoría</label>
-                                <KdpSelect accent="violet"
+                                <KdpSelect accent="white"
                                     value={savePromptCategory}
                                     onChange={setSavePromptCategory}
                                     options={[
@@ -5757,7 +5847,7 @@ export function KdpFactoryApp() {
                                             value={newCategoryInput}
                                             onChange={e => setNewCategoryInput(e.target.value)}
                                             placeholder="Nombre de la nueva categoría"
-                                            className="flex-1 h-9 rounded-xl bg-white/5 border border-white/10 px-3 text-sm text-white outline-none focus:border-violet-500/40 transition-all placeholder:text-neutral-700"
+                                            className="flex-1 h-9 rounded-xl bg-white/5 border border-white/10 px-3 text-sm text-white outline-none focus:border-sky-500/40 transition-all placeholder:text-neutral-700"
                                             autoFocus
                                             onKeyDown={e => {
                                                 if (e.key === "Enter" && newCategoryInput.trim()) {
@@ -5769,7 +5859,7 @@ export function KdpFactoryApp() {
                                         <button
                                             type="button"
                                             onClick={() => { if (newCategoryInput.trim()) { setSavePromptCategory(newCategoryInput.trim()); setNewCategoryInput(""); } }}
-                                            className="h-9 px-3 rounded-xl bg-violet-500/20 border border-violet-500/30 text-violet-400 text-[9px] font-black uppercase hover:bg-violet-500/30 transition-all"
+                                            className="h-9 px-3 rounded-xl bg-sky-500/20 border border-sky-500/30 text-sky-400 text-[9px] font-black uppercase hover:bg-sky-500/30 transition-all"
                                         >
                                             Crear
                                         </button>
@@ -5788,7 +5878,7 @@ export function KdpFactoryApp() {
                             <button
                                 onClick={() => void saveCurrentPrompt()}
                                 disabled={isSavingPrompt || !savePromptName.trim()}
-                                className="flex-1 h-11 rounded-2xl bg-violet-500 text-white text-sm font-black hover:bg-violet-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                className="flex-1 h-11 rounded-2xl bg-sky-600 text-white text-sm font-black hover:bg-sky-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
                                 {isSavingPrompt ? <Loader2 size={14} className="animate-spin" /> : <BookMarked size={14} />}
                                 Guardar
@@ -6075,6 +6165,47 @@ export function KdpFactoryApp() {
                                 </div>
                             )}
 
+                            {/* ── Añadir nicho entero de golpe ── */}
+                            {niches.length > 0 && iaCatalogs.some(c => c.status === "completed" && c.images.length > 0 && (c.nicheIds?.length ?? 0) > 0) && (
+                                <div className="space-y-2.5">
+                                    <div className="flex items-center gap-2">
+                                        <div className="h-px flex-1 bg-white/8" />
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5">
+                                            <Target size={10} className="text-violet-400" /> Añadir nicho entero
+                                        </p>
+                                        <div className="h-px flex-1 bg-white/8" />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {niches.filter(n => iaCatalogs.some(c => c.status === "completed" && c.images.length > 0 && (c.nicheIds ?? []).includes(n._id))).map(n => {
+                                            const nicheCats = iaCatalogs.filter(c => c.status === "completed" && c.images.length > 0 && (c.nicheIds ?? []).includes(n._id));
+                                            const nicheImgs = nicheCats.reduce((s, c) => s + c.images.length, 0);
+                                            const allSel = nicheCats.every(c => kdpTemplateCatalogSel.has(c._id));
+                                            const someSel = nicheCats.some(c => kdpTemplateCatalogSel.has(c._id));
+                                            return (
+                                                <button key={n._id}
+                                                    onClick={() => {
+                                                        setKdpTemplateCatalogSel(prev => {
+                                                            const next = new Set(prev);
+                                                            if (allSel) nicheCats.forEach(c => next.delete(c._id));
+                                                            else nicheCats.forEach(c => next.add(c._id));
+                                                            return next;
+                                                        });
+                                                    }}
+                                                    className={`flex items-center gap-2.5 p-3 rounded-2xl border-2 transition-all text-left ${allSel ? "border-violet-500/60 bg-violet-500/10" : someSel ? "border-violet-500/30 bg-violet-500/5" : "border-white/8 bg-white/[0.02] hover:border-white/15"}`}>
+                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all ${allSel ? "bg-violet-500" : "bg-white/5"}`}>
+                                                        {allSel ? <Check size={14} className="text-white" strokeWidth={3} /> : <Target size={14} className="text-neutral-500" />}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className={`text-[11px] font-black truncate ${allSel ? "text-violet-300" : "text-neutral-300"}`}>{n.name}</p>
+                                                        <p className="text-[9px] text-neutral-600">{nicheCats.length} cat. · {nicheImgs} imgs</p>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Completed catalogs */}
                             {iaCatalogs.filter(c => c.status === "completed" && c.images.length > 0).length > 0 && (
                                 <div className="space-y-3">
@@ -6189,62 +6320,6 @@ export function KdpFactoryApp() {
                 </div>
             )}
 
-            {/* ── COMPARE CATALOGS MODAL ── */}
-            {compareOpen && compareSel.size >= 1 && (() => {
-                const cats = iaCatalogs.filter(c => compareSel.has(c._id));
-                return (
-                    <div className="fixed inset-0 z-[170] bg-black/85 backdrop-blur-md flex flex-col" role="dialog" aria-modal="true">
-                        {/* Header */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-white/8 shrink-0">
-                            <div className="flex items-center gap-3">
-                                <Copy size={15} className="text-sky-400" />
-                                <p className="text-sm font-black text-white">Comparando {cats.length} catálogos</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button onClick={() => { setCompareSel(new Set()); setCompareOpen(false); }}
-                                    className="text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-colors px-3">
-                                    Limpiar selección
-                                </button>
-                                <button onClick={() => setCompareOpen(false)}
-                                    className="p-2 rounded-xl text-neutral-500 hover:text-white hover:bg-white/10 transition-all">
-                                    <X size={16} />
-                                </button>
-                            </div>
-                        </div>
-                        {/* Body — horizontal scroll of catalog panels */}
-                        <div className="flex-1 overflow-hidden flex gap-0">
-                            {cats.map((cat, ci) => (
-                                <div key={cat._id} className={`flex-1 min-w-0 flex flex-col border-white/8 ${ci > 0 ? "border-l" : ""}`}>
-                                    {/* Catalog header */}
-                                    <div className="px-4 py-3 border-b border-white/8 shrink-0">
-                                        <p className="text-[11px] font-black text-white truncate">{cat.name}</p>
-                                        <p className="text-[9px] text-neutral-500 truncate">{cat.aiModel?.name} · {cat.images.length} imágenes</p>
-                                    </div>
-                                    {/* Image grid — scrollable */}
-                                    <div className="flex-1 overflow-y-auto p-3 grid grid-cols-2 gap-2 content-start">
-                                        {cat.images.map((img, ii) => (
-                                            <div key={img.publicId} className="relative aspect-square rounded-xl overflow-hidden group/img border border-white/5 hover:border-white/20 transition-all">
-                                                <img src={img.url} alt="" className="w-full h-full object-cover" />
-                                                <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover/img:opacity-100">
-                                                    <a href={img.url} target="_blank" rel="noreferrer"
-                                                        className="p-1.5 rounded-lg bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 transition-all"
-                                                        onClick={e => e.stopPropagation()}>
-                                                        <ExternalLink size={12} />
-                                                    </a>
-                                                </div>
-                                                <span className="absolute bottom-1 left-1 text-[7px] font-black text-white/50 bg-black/40 rounded px-1">#{ii + 1}</span>
-                                            </div>
-                                        ))}
-                                        {cat.images.length === 0 && (
-                                            <p className="col-span-2 text-[10px] text-neutral-600 text-center py-8">Sin imágenes aún</p>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                );
-            })()}
 
 
             {/* ── ZIP FACTORY PANEL ── */}

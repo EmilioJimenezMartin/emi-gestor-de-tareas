@@ -181,7 +181,16 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
             const { id } = request.params as { id: string };
             const body = request.body as any;
             const update: Record<string, any> = {};
-            if (Array.isArray(body.nicheIds)) update.nicheIds = body.nicheIds;
+            if (Array.isArray(body.nicheIds)) {
+                const oldCatalog = await Catalog.findById(id).lean();
+                const oldNicheIds: string[] = oldCatalog?.nicheIds ?? [];
+                const newNicheIds: string[] = body.nicheIds;
+                const removed = oldNicheIds.filter(n => !newNicheIds.includes(n));
+                const added = newNicheIds.filter(n => !oldNicheIds.includes(n));
+                if (removed.length > 0) await Niche.updateMany({ _id: { $in: removed } }, { $pull: { catalogIds: id } });
+                if (added.length > 0) await Niche.updateMany({ _id: { $in: added } }, { $addToSet: { catalogIds: id } });
+                update.nicheIds = newNicheIds;
+            }
             if (body.name?.trim()) update.name = body.name.trim();
             const catalog = await Catalog.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
             if (!catalog) return reply.status(404).send({ error: "Catálogo no encontrado" });
