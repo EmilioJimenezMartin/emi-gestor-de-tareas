@@ -24,8 +24,11 @@ export async function registerNicheRoutes(app: FastifyInstance) {
     app.post("/niches", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const { name, description, tags, status, competition, demand, productType, styleCategory, notes } = request.body as any;
+            const { name, description, tags, status, competition, demand, productType, styleCategory, styleCategories, notes } = request.body as any;
             if (!name?.trim()) return reply.status(400).send({ error: "name required" });
+            const resolvedStyles: string[] = Array.isArray(styleCategories) && styleCategories.length > 0
+                ? styleCategories
+                : styleCategory ? [styleCategory] : ["generic"];
             const niche = await Niche.create({
                 name: name.trim(),
                 description: description?.trim() ?? "",
@@ -34,7 +37,8 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 competition: competition ?? "unknown",
                 demand: demand ?? "unknown",
                 productType: productType ?? "coloring-book",
-                styleCategory: styleCategory ?? "generic",
+                styleCategory: resolvedStyles[0],
+                styleCategories: resolvedStyles,
                 notes: notes?.trim() ?? "",
             });
             return reply.status(201).send({ niche });
@@ -47,7 +51,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
         if (!ensureMongo(reply)) return;
         try {
             const { id } = request.params as { id: string };
-            const { name, description, tags, status, competition, demand, productType, styleCategory, notes, generatedPrompt, catalogIds } = request.body as any;
+            const { name, description, tags, status, competition, demand, productType, styleCategory, styleCategories, notes, generatedPrompt, catalogIds } = request.body as any;
             const update: Record<string, any> = {};
             if (name?.trim()) update.name = name.trim();
             if (description !== undefined) update.description = description.trim();
@@ -56,7 +60,13 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             if (competition) update.competition = competition;
             if (demand) update.demand = demand;
             if (productType) update.productType = productType;
-            if (styleCategory) update.styleCategory = styleCategory;
+            if (Array.isArray(styleCategories) && styleCategories.length > 0) {
+                update.styleCategories = styleCategories;
+                update.styleCategory = styleCategories[0];
+            } else if (styleCategory) {
+                update.styleCategory = styleCategory;
+                update.styleCategories = [styleCategory];
+            }
             if (notes !== undefined) update.notes = notes.trim();
             if (generatedPrompt !== undefined) update.generatedPrompt = generatedPrompt;
             if (Array.isArray(catalogIds)) update.catalogIds = catalogIds;

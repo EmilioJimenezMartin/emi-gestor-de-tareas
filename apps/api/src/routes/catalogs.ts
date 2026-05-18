@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { Catalog } from "../models/catalog.js";
+import { Niche } from "../models/niche.js";
 import { getAgenda } from "../lib/agenda.js";
 import { getMongoStatus } from "../lib/mongo.js";
 import { getCloudinaryConfig, initCloudinary } from "./cloudinary.js";
@@ -41,7 +42,7 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
     app.post("/catalogs", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const { name, prompt, model, aiModel, width, height, totalImages, promptParts, productType, creativity, negativePrompt } = request.body || {};
+            const { name, prompt, model, aiModel, width, height, totalImages, promptParts, productType, creativity, negativePrompt, nicheIds } = request.body || {};
             const modelData = aiModel ?? model;
             if (!prompt || !modelData || !totalImages) {
                 return reply.status(400).send({ error: "prompt, model y totalImages son requeridos" });
@@ -65,6 +66,7 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
                 images: [],
                 status: initialStatus,
                 queueOrder: Date.now(),
+                nicheIds: Array.isArray(nicheIds) ? nicheIds : [],
             });
 
             if (initialStatus === "pending") {
@@ -109,6 +111,13 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
             }
 
             await Catalog.findByIdAndDelete(request.params.id);
+            // Remove catalog from any linked niches' catalogIds
+            if (catalog.nicheIds?.length) {
+                await Niche.updateMany(
+                    { _id: { $in: catalog.nicheIds } },
+                    { $pull: { catalogIds: String(request.params.id) } }
+                );
+            }
             if (wasActive) {
                 try { void activateNextQueued(getAgenda(), io); } catch { /* agenda not ready */ }
             }
@@ -160,6 +169,23 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
                 try { void activateNextQueued(getAgenda(), io); } catch { /* agenda not ready */ }
             }
             return reply.send({ success: true });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // PATCH /catalogs/:id — update catalog fields (nicheIds, name, etc.)
+    app.patch("/catalogs/:id", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { id } = request.params as { id: string };
+            const body = request.body as any;
+            const update: Record<string, any> = {};
+            if (Array.isArray(body.nicheIds)) update.nicheIds = body.nicheIds;
+            if (body.name?.trim()) update.name = body.name.trim();
+            const catalog = await Catalog.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
+            if (!catalog) return reply.status(404).send({ error: "Catálogo no encontrado" });
+            return reply.send({ catalog });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
         }

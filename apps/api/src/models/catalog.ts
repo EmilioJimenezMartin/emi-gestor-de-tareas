@@ -35,6 +35,7 @@ export interface ICatalog extends Document {
     lastError?: string;
     skippedImages: number;
     queueOrder: number;
+    nicheIds: string[];
     createdAt: Date;
     updatedAt: Date;
 }
@@ -82,6 +83,7 @@ const CatalogSchema = new Schema<ICatalog>(
         lastError: { type: String, default: "" },
         skippedImages: { type: Number, default: 0 },
         queueOrder: { type: Number, default: 0 },
+        nicheIds: [{ type: String }],
     },
     { timestamps: true }
 );

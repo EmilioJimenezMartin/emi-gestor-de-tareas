@@ -539,7 +539,7 @@ export async function registerAIRoutes(app: FastifyInstance) {
     // ── TEXT GENERATION ──────────────────────────────────────────────────────
     app.post("/ai/generate-text", async (request: any, reply) => {
         const { type, niche, productType, extras, language = "es", model: modelOverride } = request.body as {
-            type: "titles" | "description" | "keywords" | "full-listing" | "back-cover" | "series" | "kdp-physical-book" | "image-prompt";
+            type: "titles" | "description" | "keywords" | "full-listing" | "back-cover" | "series" | "kdp-physical-book" | "image-prompt" | "niche-particulars";
             niche: string;
             productType?: string;
             extras?: string;
@@ -594,6 +594,21 @@ Genera el paquete completo de metadatos.`,
 Description: "${niche}"${extras ? `\nAdditional context: ${extras}` : ""}
 
 Generate the 4 optimized prompt fields for creating coloring book pages for this product.`,
+
+            "niche-particulars": `You are an expert at writing image generation prompts for KDP coloring books.
+Niche: "${niche}"${extras ? `\nStyle context: ${extras}` : ""}
+
+Write ONLY the "particulars" — 15-30 words of specific visual details for ONE coloring page scene from this niche.
+The niche may be about characters, animals, places, objects, or abstract themes — adapt accordingly.
+Focus on the most visually striking and specific elements: key subjects, composition, distinctive details, atmosphere.
+Do NOT include technical specs like line style or coloring instructions. Do NOT invent characters unrelated to the niche.
+Examples:
+- Characters/animals niche: "fierce samurai fox mid-jump, sakura petals swirling, traditional torii gate silhouette in background"
+- Place/interior niche: "grand Victorian parlor with ornate fireplace, tall arched windows, elaborate chandelier, antique velvet armchairs"
+- Object/theme niche: "oversized vintage teapot overflowing with roses and ivy, surrounded by mismatched teacups and saucers"
+- Nature/abstract niche: "dense enchanted forest with giant twisted oaks, hidden fairy doors on trunks, glowing mushrooms at roots"
+
+Return ONLY a JSON object: {"particulars": "...15-30 words of visual specifics..."}`,
 
             titles: `${langInstruction} Generate 8 compelling titles for a "${productType}" KDP/Etsy product about "${niche}". ${extras ? `Additional context: ${extras}` : ""}
 Return ONLY a JSON array of strings: ["Title 1", "Title 2", ...]`,
@@ -661,8 +676,17 @@ Return ONLY a JSON object:
                     required: ["prompt"],
                 };
 
+                const nicheParticularsSchema = {
+                    type: Type.OBJECT,
+                    properties: {
+                        particulars: { type: Type.STRING, description: "15-30 words of specific visual details for the coloring page" },
+                    },
+                    required: ["particulars"],
+                };
+
                 const useSchema = type === "kdp-physical-book" ? kdpSchema
                     : type === "image-prompt" ? imagePromptSchema
+                    : type === "niche-particulars" ? nicheParticularsSchema
                     : undefined;
 
                 const response = await ai.models.generateContent({

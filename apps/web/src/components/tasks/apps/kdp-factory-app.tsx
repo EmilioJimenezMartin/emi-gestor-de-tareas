@@ -159,6 +159,7 @@ interface NicheFE {
     demand: "unknown" | "low" | "medium" | "high";
     productType: NicheProductType;
     styleCategory: NicheStyle;
+    styleCategories?: NicheStyle[];
     notes: string;
     generatedPrompt?: string;
     catalogIds?: string[];
@@ -185,6 +186,34 @@ const NICHE_STYLE_MODEL: Record<NicheStyle, string> = {
     watercolor: "openjourney-v4",
     abstract: "pollinations-flux",
 };
+
+// Coloring book prompt templates — theme/specs/details are FIXED; AI decides only "particulars"
+const COLORING_BOOK_TEMPLATE = {
+    anime: {
+        theme: (name: string) => `Iconic coloring page ${name} anime version.`,
+        specs: "Funny Iconic coloring page, anime cartoon style, ultra thick clean black outlines, white background, high contrast, zero shading, zero stippling, zero gradients.",
+        details: "Anime inspiration, no shadow, no grey, add more details behind the person and the scene",
+    },
+    default: {
+        theme: (name: string) => `Iconic coloring page ${name}.`,
+        specs: "Funny Iconic coloring page, ultra thick clean black outlines, white background, high contrast, zero shading, zero stippling, zero gradients.",
+        details: "No shadow, no grey, add more details behind the person and the scene",
+    },
+};
+const ANIME_STYLES: NicheStyle[] = ["anime", "children", "illustration"];
+
+function buildColoringBookPromptParts(nicheName: string, style: NicheStyle, particulars: string) {
+    const isAnime = ANIME_STYLES.includes(style);
+    const tpl = isAnime ? COLORING_BOOK_TEMPLATE.anime : COLORING_BOOK_TEMPLATE.default;
+    const theme = tpl.theme(nicheName);
+    return {
+        theme,
+        specs: tpl.specs,
+        details: tpl.details,
+        particulars,
+        fullPrompt: [theme, tpl.specs, tpl.details, particulars].filter(Boolean).join(" "),
+    };
+}
 
 const NICHE_PRODUCT_OPTIONS: { id: NicheProductType; label: string }[] = [
     { id: "coloring-book", label: "Libro de colorear" },
@@ -217,6 +246,7 @@ interface IACatalogFE {
     status: "queued" | "pending" | "running" | "completed" | "failed" | "cancelled";
     lastError?: string;
     skippedImages?: number;
+    nicheIds?: string[];
     createdAt: string;
 }
 
@@ -461,7 +491,10 @@ export function KdpFactoryApp() {
     const [nicheStatusFilter, setNicheStatusFilter] = useState<"all" | NicheStatus>("all");
     const [nicheGeneratingId, setNicheGeneratingId] = useState<string | null>(null);
     const [nicheFormProductType, setNicheFormProductType] = useState<NicheProductType>("coloring-book");
-    const [nicheFormStyle, setNicheFormStyle] = useState<NicheStyle>("generic");
+    const [nicheFormStyles, setNicheFormStyles] = useState<NicheStyle[]>(["generic"]);
+    const [catalogNicheFilter, setCatalogNicheFilter] = useState<string | null>(null);
+    const [catalogNichePickerId, setCatalogNichePickerId] = useState<string | null>(null);
+    const [kdpTemplateNicheFilter, setKdpTemplateNicheFilter] = useState<string | null>(null);
     const [kdpTemplateOpen, setKdpTemplateOpen] = useState(false);
     const [kdpTemplateTitle, setKdpTemplateTitle] = useState("Mi Libro de Colorear");
     const [kdpTemplateVaultSel, setKdpTemplateVaultSel] = useState<Set<number>>(new Set());
@@ -545,9 +578,18 @@ export function KdpFactoryApp() {
         setConfirmDeleteCatalogId(null);
         setDeletingCatalogId(id);
         try {
+            const catalog = iaCatalogs.find(c => c._id === id);
             const res = await fetch(`${API_BASE_URL}/catalogs/${id}`, { method: "DELETE" });
             if (!res.ok) throw new Error("Error al eliminar");
             setIaCatalogs((prev) => prev.filter((c) => c._id !== id));
+            // Remove catalog from linked niches in local state
+            if (catalog?.nicheIds?.length) {
+                setNiches(prev => prev.map(n =>
+                    catalog.nicheIds!.includes(n._id)
+                        ? { ...n, catalogIds: (n.catalogIds ?? []).filter(cid => cid !== id) }
+                        : n
+                ));
+            }
             toast.success("Catálogo eliminado");
         } catch (e: any) {
             toast.error(e.message ?? "Error al eliminar catálogo");
@@ -651,7 +693,7 @@ export function KdpFactoryApp() {
             setNicheFormComp(niche.competition);
             setNicheFormDemand(niche.demand);
             setNicheFormProductType(niche.productType ?? "coloring-book");
-            setNicheFormStyle(niche.styleCategory ?? "generic");
+            setNicheFormStyles(niche.styleCategories?.length ? niche.styleCategories : [niche.styleCategory ?? "generic"]);
             setNicheFormNotes(niche.notes);
             setNicheFormPrompt(niche.generatedPrompt ?? "");
         } else {
@@ -663,78 +705,116 @@ export function KdpFactoryApp() {
             setNicheFormComp("unknown");
             setNicheFormDemand("unknown");
             setNicheFormProductType("coloring-book");
-            setNicheFormStyle("generic");
+            setNicheFormStyles(["generic"]);
             setNicheFormNotes("");
             setNicheFormPrompt("");
         }
         setNicheFormOpen(true);
     };
 
-    const generateNicheContent = async (niche: NicheFE) => {
+    const generateNicheContent = async (niche: NicheFE, stylesToGen?: NicheStyle[]) => {
+        const styles = stylesToGen
+            ?? (niche.styleCategories?.length ? niche.styleCategories : [niche.styleCategory ?? "generic"]);
         setNicheGeneratingId(niche._id);
+        const allNewCatalogIds: string[] = [...(niche.catalogIds ?? [])];
+        let lastPrompt = niche.generatedPrompt ?? "";
         try {
-            // 1. Generate an image prompt for this niche
-            const promptRes = await fetch(`${API_BASE_URL}/ai/generate-text`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    type: "image-prompt",
-                    niche: niche.name,
-                    productType: niche.productType === "coloring-book" ? "KDP coloring book" : niche.productType === "printable-poster" ? "printable poster" : niche.name,
-                    language: "en",
-                    model: "gemini-2.5-flash",
-                }),
-            });
-            const promptData = await promptRes.json();
-            if (!promptRes.ok) throw new Error(promptData.error ?? "Error generando prompt");
-            const imagePrompt: string = typeof promptData.result === "object"
-                ? (promptData.result.prompt ?? niche.name)
-                : (promptData.result ?? niche.name);
+            for (const style of styles) {
+                const isColoringBook = niche.productType === "coloring-book";
+                let imagePrompt: string;
+                let promptParts: { theme: string; specs: string; details: string; particulars: string };
 
-            // 2. Pick AI model based on style category
-            const modelId = NICHE_STYLE_MODEL[niche.styleCategory ?? "generic"];
-            const model = AI_MODELS.find(m => m.id === modelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
+                if (isColoringBook) {
+                    // For coloring books: fixed template, AI decides only "particulars"
+                    const isAnime = ANIME_STYLES.includes(style);
+                    const partRes = await fetch(`${API_BASE_URL}/ai/generate-text`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            type: "niche-particulars",
+                            niche: niche.name,
+                            extras: isAnime ? "anime cartoon style" : undefined,
+                            language: "en",
+                            model: "gemini-2.5-flash",
+                        }),
+                    });
+                    const partData = await partRes.json();
+                    if (!partRes.ok) throw new Error(partData.error ?? "Error generando detalles");
+                    const particulars: string = partData.result?.particulars ?? niche.name;
+                    const built = buildColoringBookPromptParts(niche.name, style, particulars);
+                    imagePrompt = built.fullPrompt;
+                    promptParts = { theme: built.theme, specs: built.specs, details: built.details, particulars };
 
-            // 3. Create catalog with 5 images
-            const catalogRes = await fetch(`${API_BASE_URL}/catalogs`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    name: niche.name,
-                    prompt: imagePrompt,
-                    promptParts: { theme: niche.name, specs: "", details: "", particulars: "" },
-                    productType: niche.productType ?? "coloring-book",
-                    aiModel: { id: model.id, name: model.name, provider: model.provider, modelId: model.modelId },
-                    width: 1024,
-                    height: 1024,
-                    totalImages: 5,
-                }),
-            });
-            const catalogData = await catalogRes.json();
-            if (!catalogRes.ok) throw new Error(catalogData.error ?? "Error al crear catálogo");
-            setIaCatalogs(prev => [catalogData.catalog, ...prev]);
+                    // Auto-save template to prompts library if not already there
+                    const promptName = isAnime ? `Coloring Book · Anime · ${style}` : `Coloring Book · ${style}`;
+                    void fetch(`${API_BASE_URL}/saved-prompts`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            name: promptName,
+                            category: isAnime ? "Anime" : "Coloring Book",
+                            promptParts: { theme: built.theme, specs: built.specs, details: built.details, particulars: "" },
+                            aiModel: { id: NICHE_STYLE_MODEL[style], name: AI_MODELS.find(m => m.id === NICHE_STYLE_MODEL[style])?.name ?? style, provider: "Pollinations", modelId: AI_MODELS.find(m => m.id === NICHE_STYLE_MODEL[style])?.modelId ?? "" },
+                        }),
+                    }).catch(() => { });
+                } else {
+                    // For other types: AI generates everything
+                    const promptRes = await fetch(`${API_BASE_URL}/ai/generate-text`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            type: "image-prompt",
+                            niche: niche.name,
+                            productType: niche.productType === "printable-poster" ? "printable poster" : niche.name,
+                            language: "en",
+                            model: "gemini-2.5-flash",
+                        }),
+                    });
+                    const promptData = await promptRes.json();
+                    if (!promptRes.ok) throw new Error(promptData.error ?? "Error generando prompt");
+                    imagePrompt = typeof promptData.result === "object"
+                        ? (promptData.result.prompt ?? niche.name)
+                        : (promptData.result ?? niche.name);
+                    promptParts = { theme: niche.name, specs: "", details: "", particulars: imagePrompt };
+                }
 
-            // 4. Save prompt + catalogId back to niche
-            const newCatalogIds = [...(niche.catalogIds ?? []), catalogData.catalog._id];
+                lastPrompt = imagePrompt;
+                const modelId = NICHE_STYLE_MODEL[style] ?? NICHE_STYLE_MODEL[niche.styleCategory ?? "generic"];
+                const model = AI_MODELS.find(m => m.id === modelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
+                const catalogLabel = styles.length > 1 ? `${niche.name} · ${style}` : niche.name;
+
+                const catalogRes = await fetch(`${API_BASE_URL}/catalogs`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        name: catalogLabel,
+                        prompt: imagePrompt,
+                        promptParts,
+                        productType: niche.productType ?? "coloring-book",
+                        aiModel: { id: model.id, name: model.name, provider: model.provider, modelId: model.modelId },
+                        width: 1024,
+                        height: 1024,
+                        totalImages: 5,
+                        nicheIds: [niche._id],
+                    }),
+                });
+                const catalogData = await catalogRes.json();
+                if (!catalogRes.ok) throw new Error(catalogData.error ?? "Error al crear catálogo");
+                setIaCatalogs(prev => [catalogData.catalog, ...prev]);
+                allNewCatalogIds.push(catalogData.catalog._id);
+                toast.success(`Catálogo iniciado · ${catalogLabel} · ${model.name}`);
+            }
+
+            // Persist prompt + catalogIds back to niche
             await fetch(`${API_BASE_URL}/niches/${niche._id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ generatedPrompt: imagePrompt, catalogIds: newCatalogIds }),
+                body: JSON.stringify({ generatedPrompt: lastPrompt, catalogIds: allNewCatalogIds }),
             });
-            const nextPhase = (niche.phase === "niche" || !niche.phase) ? "catalog" : niche.phase;
-            if (nextPhase !== niche.phase) {
-                await fetch(`${API_BASE_URL}/niches/${niche._id}`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ phase: nextPhase }),
-                });
-            }
             setNiches(prev => prev.map(n => n._id === niche._id
-                ? { ...n, generatedPrompt: imagePrompt, catalogIds: newCatalogIds, phase: nextPhase }
+                ? { ...n, generatedPrompt: lastPrompt, catalogIds: allNewCatalogIds }
                 : n
             ));
-
-            toast.success(`Catálogo iniciado · ${niche.name} · ${model.name}`);
         } catch (e: any) {
             toast.error(e.message ?? "Error al generar contenido");
         } finally {
@@ -754,7 +834,8 @@ export function KdpFactoryApp() {
                 competition: nicheFormComp,
                 demand: nicheFormDemand,
                 productType: nicheFormProductType,
-                styleCategory: nicheFormStyle,
+                styleCategory: nicheFormStyles[0] ?? "generic",
+                styleCategories: nicheFormStyles,
                 notes: nicheFormNotes.trim(),
                 generatedPrompt: nicheFormPrompt.trim(),
             };
@@ -793,36 +874,8 @@ export function KdpFactoryApp() {
         const demandPts = { unknown: 0, low: 10, medium: 25, high: 40 }[n.demand] ?? 0;
         const compPts = { unknown: 0, high: 5, medium: 20, low: 35 }[n.competition] ?? 0;
         const catalogPts = (n.catalogIds?.length ?? 0) > 0 ? 10 : 0;
-        const phasePts = { niche: 0, catalog: 5, pdf: 10, published: 15 }[n.phase ?? "niche"] ?? 0;
         const statusPts = n.status === "active" ? 5 : n.status === "research" ? 3 : 0;
-        return demandPts + compPts + catalogPts + phasePts + statusPts;
-    };
-
-    const advanceNichePhase = async (niche: NicheFE) => {
-        const order: NicheFE["phase"][] = ["niche", "catalog", "pdf", "published"];
-        const cur = order.indexOf(niche.phase ?? "niche");
-        if (cur >= order.length - 1) return;
-        const next = order[cur + 1];
-        try {
-            await fetch(`${API_BASE_URL}/niches/${niche._id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ phase: next }),
-            });
-            setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase: next } : n));
-        } catch { toast.error("Error al avanzar fase"); }
-    };
-
-    const setNichePhase = async (niche: NicheFE, phase: NicheFE["phase"]) => {
-        if (phase === (niche.phase ?? "niche")) return;
-        try {
-            await fetch(`${API_BASE_URL}/niches/${niche._id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ phase }),
-            });
-            setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase } : n));
-        } catch { toast.error("Error al cambiar fase"); }
+        return demandPts + compPts + catalogPts + statusPts;
     };
 
     const retryFailedSlots = async (catalogId: string) => {
@@ -1033,8 +1086,8 @@ export function KdpFactoryApp() {
             toast.error("No hay imágenes en el vault, almacén ni catálogos completados");
             return;
         }
-        setKdpTemplateVaultSel(new Set(vaultImages.map((_, i) => i)));
-        setKdpTemplateCatalogSel(new Set(completedCatalogs.map(c => c._id)));
+        setKdpTemplateVaultSel(new Set());
+        setKdpTemplateCatalogSel(new Set());
         setKdpTemplateCloudSel(new Set());
         setKdpTemplateOpen(true);
     };
@@ -1289,6 +1342,7 @@ export function KdpFactoryApp() {
         if (next < 0 || next >= previewContext.urls.length) return;
         setPreviewImage(previewContext.urls[next]);
         setPreviewContext({ ...previewContext, index: next });
+        if (previewLensRef.current) previewLensRef.current.style.display = "none";
     };
 
 
@@ -1445,6 +1499,10 @@ export function KdpFactoryApp() {
     const [isImageLoading, setIsImageLoading] = useState(false);
     const [generatedImage, setGeneratedImage] = useState<string | null>(null);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [previewZoom, setPreviewZoom] = useState(2);
+    const [previewMagnifier, setPreviewMagnifier] = useState(false);
+    const previewImgRef = useRef<HTMLImageElement | null>(null);
+    const previewLensRef = useRef<HTMLDivElement | null>(null);
     const [vaultImages, setVaultImages] = useState<{ url: string, model: string, dim: string }[]>([]);
     const generatedImageObjectUrlRef = useRef<string | null>(null);
     const previewImageObjectUrlRef = useRef<string | null>(null);
@@ -1453,6 +1511,9 @@ export function KdpFactoryApp() {
     const [bookFileName, setBookFileName] = useState("libro-kdp");
     const [isBuildingPdf, setIsBuildingPdf] = useState(false);
     const [isSavingDraft, setIsSavingDraft] = useState(false);
+    const [bookDrafts, setBookDrafts] = useState<{ id: string; fileName: string; pages: BookPage[]; savedAt: string }[]>([]);
+    const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+    const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState<string | null>(null);
     const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
     const [showCatalogAccordion, setShowCatalogAccordion] = useState(false);
     const [negativePrompt, setNegativePrompt] = useState("");
@@ -1541,10 +1602,18 @@ export function KdpFactoryApp() {
                 ...p,
                 image: p.image?.url.startsWith("blob:") ? undefined : p.image,
             }));
+            const draftId = activeDraftId ?? `draft-${Date.now()}`;
+            const savedAt = new Date().toISOString();
+            const draft = { id: draftId, fileName: bookFileName, pages: serializablePages, savedAt };
+            const updated = bookDrafts.some(d => d.id === draftId)
+                ? bookDrafts.map(d => d.id === draftId ? draft : d)
+                : [...bookDrafts, draft];
+            setBookDrafts(updated);
+            setActiveDraftId(draftId);
             await fetch(`${API_BASE_URL}/settings`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify([{ key: "kdp-book-draft", value: { pages: serializablePages, fileName: bookFileName } }]),
+                body: JSON.stringify([{ key: "kdp-book-drafts", value: updated }]),
             });
             toast.success("Borrador guardado");
         } catch {
@@ -1554,16 +1623,39 @@ export function KdpFactoryApp() {
         }
     };
 
-    const deleteBookDraft = async () => {
+    const deleteBookDraft = async (draftId: string) => {
+        const updated = bookDrafts.filter(d => d.id !== draftId);
+        setBookDrafts(updated);
+        if (activeDraftId === draftId) {
+            setBookPages([]);
+            setSelectedPageId(null);
+            setBookFileName("libro-kdp");
+            setActiveDraftId(null);
+            setBookEditorOpen(false);
+        }
         try {
             await fetch(`${API_BASE_URL}/settings`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify([{ key: "kdp-book-draft", value: { pages: [], fileName: "" } }]),
+                body: JSON.stringify([{ key: "kdp-book-drafts", value: updated }]),
             });
-        } catch {
-            // silent — local state is already cleared
-        }
+        } catch { /* silent */ }
+    };
+
+    const loadBookDraft = (draft: { id: string; fileName: string; pages: BookPage[]; savedAt: string }) => {
+        setBookPages(draft.pages);
+        setSelectedPageId(draft.pages[0]?.id ?? null);
+        setBookFileName(draft.fileName);
+        setActiveDraftId(draft.id);
+        setBookEditorOpen(true);
+    };
+
+    const newBookDraft = () => {
+        setBookPages([]);
+        setSelectedPageId(null);
+        setBookFileName("libro-kdp");
+        setActiveDraftId(null);
+        setBookEditorOpen(true);
     };
 
     const buildBookPdf = async () => {
@@ -1709,12 +1801,17 @@ export function KdpFactoryApp() {
                     setFavorites(map);
                 }
 
-                // Book draft
-                const draftFound = (data.settings ?? []).find((s: any) => s.key === "kdp-book-draft");
-                if (draftFound?.value?.pages && Array.isArray(draftFound.value.pages) && draftFound.value.pages.length > 0) {
-                    setBookPages(draftFound.value.pages as BookPage[]);
-                    setSelectedPageId((draftFound.value.pages as BookPage[])[0].id);
-                    if (draftFound.value.fileName) setBookFileName(draftFound.value.fileName);
+                // Book drafts (multi-draft)
+                const draftsFound = (data.settings ?? []).find((s: any) => s.key === "kdp-book-drafts");
+                if (draftsFound?.value && Array.isArray(draftsFound.value) && draftsFound.value.length > 0) {
+                    setBookDrafts(draftsFound.value);
+                } else {
+                    // Migrate legacy single draft
+                    const legacyDraft = (data.settings ?? []).find((s: any) => s.key === "kdp-book-draft");
+                    if (legacyDraft?.value?.pages && Array.isArray(legacyDraft.value.pages) && legacyDraft.value.pages.length > 0) {
+                        const migrated = [{ id: "draft-legacy", fileName: legacyDraft.value.fileName ?? "libro-kdp", pages: legacyDraft.value.pages, savedAt: new Date().toISOString() }];
+                        setBookDrafts(migrated);
+                    }
                 }
             } catch { }
         };
@@ -3002,7 +3099,6 @@ export function KdpFactoryApp() {
                 {/* ── BOOK FACTORY CARD ── */}
                 <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
                     <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
-                        {/* Ambient glow */}
                         <div className="absolute -top-16 -right-16 w-48 h-48 bg-amber-500/8 blur-[60px] pointer-events-none" />
                         <div className="p-5 space-y-4">
                             {/* Header */}
@@ -3013,133 +3109,74 @@ export function KdpFactoryApp() {
                                 <div className="flex-1 min-w-0">
                                     <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Book Factory</h4>
                                     <p className="text-[10px] text-neutral-500 font-medium">
-                                        {bookPages.length === 0 ? "Sin páginas todavía" : `${bookPages.length} página${bookPages.length !== 1 ? "s" : ""} en el libro`}
+                                        {bookDrafts.length === 0 ? "Sin borradores" : `${bookDrafts.length} borrador${bookDrafts.length !== 1 ? "es" : ""}`}
                                     </p>
                                 </div>
-                            </div>
-                            {/* Action buttons — own row, full width on mobile */}
-                            <div className="flex items-center gap-2">
-                                {bookPages.length > 0 && (
-                                    confirmClearBook ? (
-                                        <>
-                                            <button
-                                                onClick={() => { setBookPages([]); setSelectedPageId(null); setConfirmClearBook(false); void deleteBookDraft(); }}
-                                                className="h-9 px-3 rounded-xl bg-red-500 text-white text-[10px] font-black uppercase active:scale-95 transition-all">
-                                                Sí, borrar
-                                            </button>
-                                            <button
-                                                onClick={() => setConfirmClearBook(false)}
-                                                className="h-9 px-3 rounded-xl border border-white/10 text-neutral-400 text-[10px] font-black uppercase active:scale-95 transition-all">
-                                                Cancelar
-                                            </button>
-                                        </>
-                                    ) : (
-                                        <button onClick={() => setConfirmClearBook(true)} className="h-9 px-4 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 transition-all text-[10px] font-black uppercase active:scale-95">
-                                            Borrar
-                                        </button>
-                                    )
-                                )}
-                                {!confirmClearBook && (
-                                    <>
-                                        <Button
-                                            onClick={() => {
-                                                if (vaultImages.length > 0 && bookPages.length === 0) {
-                                                    const pages: BookPage[] = vaultImages.map(v => ({ id: genPageId(), type: "image" as const, image: { url: v.url, scale: 1, label: v.model }, text: defaultTextStyle() }));
-                                                    setBookPages(pages);
-                                                    setSelectedPageId(pages[0]?.id ?? null);
-                                                }
-                                                setBookEditorOpen(true);
-                                            }}
-                                            className="h-9 px-4 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_20px_rgba(245,158,11,0.3)] active:scale-95"
-                                        >
-                                            <Pencil size={13} />
-                                            {bookPages.length === 0 ? "Crear" : "Editar"}
-                                        </Button>
-                                        <button
-                                            onClick={() => openKdpTemplateSelector()}
-                                            className="h-9 px-4 rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500 hover:text-white hover:border-violet-500 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 active:scale-95"
-                                            title="Selecciona imágenes del vault y catálogos para la plantilla KDP"
-                                        >
-                                            <BookOpen size={13} />
-                                            Plantilla KDP
-                                        </button>
-                                    </>
-                                )}
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                        onClick={() => openKdpTemplateSelector()}
+                                        className="h-8 px-3 rounded-xl border border-violet-500/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500 hover:text-white hover:border-violet-500 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 active:scale-95"
+                                    >
+                                        <BookOpen size={11} /> Plantilla
+                                    </button>
+                                    <button
+                                        onClick={newBookDraft}
+                                        className="h-8 px-3 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_16px_rgba(245,158,11,0.25)] active:scale-95"
+                                    >
+                                        <Plus size={11} /> Nuevo
+                                    </button>
+                                </div>
                             </div>
 
-                            {/* Page thumbnails preview or empty state */}
-                            {bookPages.length === 0 ? (
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/6">
-                                        <div className="flex gap-1.5">
-                                            {[0, 1, 2, 3].map(i => (
-                                                <div key={i} className="w-8 h-11 rounded-md bg-white/5 border border-dashed border-white/10" style={{ opacity: 1 - i * 0.2 }} />
-                                            ))}
-                                        </div>
-                                        <div>
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Libro vacío</p>
-                                            <p className="text-[9px] text-neutral-700">Pulsa "Crear" para empezar o importa las imágenes del vault automáticamente</p>
-                                        </div>
+                            {/* Draft list */}
+                            {bookDrafts.length === 0 ? (
+                                <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/6">
+                                    <div className="flex gap-1.5">
+                                        {[0, 1, 2, 3].map(i => (
+                                            <div key={i} className="w-8 h-11 rounded-md bg-white/5 border border-dashed border-white/10" style={{ opacity: 1 - i * 0.2 }} />
+                                        ))}
                                     </div>
-                                    {/* KDP template preview */}
-                                    <div className="rounded-2xl border border-violet-500/15 bg-violet-500/[0.03] p-3 space-y-2">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/70">Plantilla KDP — Libro de colorear</p>
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                            {[
-                                                { label: "Título", color: "bg-amber-500/30 border-amber-500/40 text-amber-300" },
-                                                { label: "Blanco", color: "bg-white/5 border-white/10 text-neutral-600" },
-                                                { label: "Imagen", color: "bg-violet-500/20 border-violet-500/30 text-violet-300" },
-                                                { label: "Blanco", color: "bg-white/5 border-white/10 text-neutral-600" },
-                                                { label: "Imagen", color: "bg-violet-500/20 border-violet-500/30 text-violet-300" },
-                                                { label: "…", color: "bg-transparent border-white/5 text-neutral-700" },
-                                            ].map((p, i) => (
-                                                <div key={i} className={`flex flex-col items-center justify-center w-9 h-12 rounded-lg border text-[7px] font-black uppercase ${p.color}`}>
-                                                    {p.label}
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <p className="text-[8px] text-neutral-700">Usa las imágenes del vault · página en blanco detrás de cada imagen para evitar sangrado de tinta</p>
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Sin borradores</p>
+                                        <p className="text-[9px] text-neutral-700">Pulsa "Nuevo" para crear tu primer libro</p>
                                     </div>
                                 </div>
                             ) : (
                                 <div className="space-y-2">
-                                    {/* Mini thumbnail strip */}
-                                    <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
-                                        {bookPages.map((page, idx) => (
-                                            <div key={page.id} className="shrink-0 w-9 h-[50px] rounded-lg overflow-hidden bg-white/5 border border-white/10 relative">
-                                                {page.image
-                                                    ? <img src={page.image.url} alt="" className="w-full h-full object-cover" />
-                                                    : <div className="w-full h-full flex items-center justify-center"><Type size={10} className="text-neutral-700" /></div>
-                                                }
-                                                <div className="absolute bottom-0 inset-x-0 h-3 bg-gradient-to-t from-black/70 to-transparent flex items-end justify-end px-0.5">
-                                                    <span className="text-[5px] font-mono text-white/50">{idx + 1}</span>
-                                                </div>
+                                    {bookDrafts.map(draft => (
+                                        <div key={draft.id} className={`flex items-center gap-3 p-3 rounded-2xl border transition-all ${activeDraftId === draft.id ? "border-amber-500/30 bg-amber-500/5" : "border-white/8 bg-white/[0.02] hover:border-white/14"}`}>
+                                            {/* Thumbnail strip */}
+                                            <div className="flex gap-1 shrink-0">
+                                                {draft.pages.slice(0, 4).map((page, idx) => (
+                                                    <div key={page.id} className="w-7 h-9 rounded-md overflow-hidden bg-white/5 border border-white/10 relative">
+                                                        {page.image
+                                                            ? <img src={page.image.url} alt="" className="w-full h-full object-cover" />
+                                                            : <div className="w-full h-full flex items-center justify-center"><Type size={8} className="text-neutral-700" /></div>}
+                                                        <span className="absolute bottom-0 right-0.5 text-[4px] font-mono text-white/40">{idx + 1}</span>
+                                                    </div>
+                                                ))}
+                                                {draft.pages.length > 4 && (
+                                                    <div className="w-7 h-9 rounded-md bg-white/5 border border-white/10 flex items-center justify-center text-[7px] font-black text-neutral-600">+{draft.pages.length - 4}</div>
+                                                )}
                                             </div>
-                                        ))}
-                                        <button onClick={() => { setBookEditorTab("editor"); setBookEditorOpen(true); }}
-                                            className="shrink-0 w-9 h-[50px] rounded-lg border border-dashed border-amber-500/30 text-amber-500/50 hover:border-amber-500/60 hover:text-amber-400 flex items-center justify-center transition-all">
-                                            <Plus size={12} />
-                                        </button>
-                                    </div>
-                                    {/* Quick stats */}
-                                    <div className="flex items-center gap-3">
-                                        {[
-                                            ["Imágenes", bookPages.filter(p => p.image).length],
-                                            ["Texto", bookPages.filter(p => p.text.content.trim()).length],
-                                            ["En blanco", bookPages.filter(p => !p.image && !p.text.content.trim()).length],
-                                        ].map(([label, count]) => (
-                                            <div key={label as string} className="flex items-center gap-1">
-                                                <span className="text-[9px] font-black text-neutral-400">{count as number}</span>
-                                                <span className="text-[9px] text-neutral-600">{label as string}</span>
+                                            {/* Info */}
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-[11px] font-black text-white truncate">{draft.fileName || "libro-kdp"}</p>
+                                                <p className="text-[9px] text-neutral-600">{draft.pages.length} pág · {new Date(draft.savedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
                                             </div>
-                                        ))}
-                                        <div className="ml-auto flex items-center gap-1.5">
-                                            <span className="text-[9px] text-neutral-600">Nombre:</span>
-                                            <input value={bookFileName} onChange={e => setBookFileName(e.target.value)}
-                                                className="h-5 w-24 rounded-md bg-white/5 border border-white/10 px-1.5 text-[9px] text-white outline-none focus:border-amber-500/40"
-                                                placeholder="libro-kdp" />
+                                            {/* Actions */}
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <button onClick={() => loadBookDraft(draft)}
+                                                    className="h-7 px-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black transition-all text-[9px] font-black uppercase tracking-widest">
+                                                    {activeDraftId === draft.id ? "Editando" : "Abrir"}
+                                                </button>
+                                                <button onClick={() => setConfirmDeleteDraftId(draft.id)}
+                                                    className="h-7 w-7 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all flex items-center justify-center">
+                                                    <Trash2 size={11} />
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
+                                    ))}
                                 </div>
                             )}
                         </div>
@@ -3476,9 +3513,12 @@ export function KdpFactoryApp() {
                         </div>
                     )}
                     {iaCatalogs.length > 0 && (() => {
-                        const activeCatalogs = iaCatalogs.filter(c => c.status === "running" || c.status === "pending" || c.status === "queued");
-                        const doneCatalogs = iaCatalogs.filter(c => c.status === "completed" || c.status === "failed" || c.status === "cancelled");
-                        const totalImages = iaCatalogs.reduce((sum, c) => sum + c.images.length, 0);
+                        const filteredByCatalogNiche = catalogNicheFilter
+                            ? iaCatalogs.filter(c => (c.nicheIds ?? []).includes(catalogNicheFilter))
+                            : iaCatalogs;
+                        const activeCatalogs = filteredByCatalogNiche.filter(c => c.status === "running" || c.status === "pending" || c.status === "queued");
+                        const doneCatalogs = filteredByCatalogNiche.filter(c => c.status === "completed" || c.status === "failed" || c.status === "cancelled");
+                        const totalImages = filteredByCatalogNiche.reduce((sum, c) => sum + c.images.length, 0);
 
                         const renderCard = (catalog: IACatalogFE) => {
                             const progress = catalog.totalImages > 0 ? (catalog.images.length / catalog.totalImages) * 100 : 0;
@@ -3524,10 +3564,11 @@ export function KdpFactoryApp() {
                                         </div>
                                         {/* Model badge + meta */}
                                         <div className="flex items-center justify-between gap-2 flex-wrap">
-                                            <div className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border ${providerColor.badge}`}>
-                                                <div className={`w-2 h-2 rounded-full ${providerColor.dot} shrink-0`} />
-                                                <span className="text-[10px] font-black leading-none truncate max-w-[200px]">{catalog.aiModel?.name}</span>
-                                                <span className="text-[9px] opacity-60 shrink-0">{catalog.aiModel?.provider}</span>
+                                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-black/50 border border-white/10 backdrop-blur-sm">
+                                                <div className={`w-1.5 h-1.5 rounded-full ${providerColor.dot} shrink-0`} />
+                                                <span className={`text-[9px] font-black uppercase tracking-wider ${providerColor.badge.split(" ").find(c => c.startsWith("text-")) ?? "text-neutral-400"}`}>{catalog.aiModel?.provider}</span>
+                                                <span className="text-neutral-700 text-[9px]">·</span>
+                                                <span className="text-[9px] font-mono text-neutral-400 truncate max-w-[160px]">{catalog.aiModel?.name.split(" ").slice(0, 3).join(" ")}</span>
                                             </div>
                                             <div className="flex items-center gap-1.5 text-[9px] font-mono text-neutral-600">
                                                 <span>{catalog.width}×{catalog.height}</span>
@@ -3538,6 +3579,19 @@ export function KdpFactoryApp() {
                                                 {isActive && catalog.status === "running" && timeStr && <span className="text-violet-400/70 not-mono">· {timeStr}</span>}
                                             </div>
                                         </div>
+                                        {/* Niche tags */}
+                                        {(catalog.nicheIds?.length ?? 0) > 0 && (
+                                            <div className="flex gap-1.5 flex-wrap">
+                                                {catalog.nicheIds!.map(nid => {
+                                                    const n = niches.find(n => n._id === nid);
+                                                    return n ? (
+                                                        <span key={nid} className="flex items-center gap-1 px-2 h-5 rounded-full bg-violet-500/10 border border-violet-500/20 text-[9px] font-bold text-violet-400">
+                                                            <Target size={7} /> {n.name}
+                                                        </span>
+                                                    ) : null;
+                                                })}
+                                            </div>
+                                        )}
                                         {/* Error */}
                                         {catalog.lastError && (
                                             <p className="text-[9px] text-red-400/70 font-mono break-all leading-relaxed bg-red-500/5 border border-red-500/10 rounded-lg px-2 py-1.5">
@@ -3626,6 +3680,13 @@ export function KdpFactoryApp() {
                                                     <StopCircle size={11} /> Detener
                                                 </button>
                                             )}
+                                            {niches.length > 0 && (
+                                                <button onClick={() => setCatalogNichePickerId(catalogNichePickerId === catalog._id ? null : catalog._id)}
+                                                    title="Asignar nicho"
+                                                    className={`p-2 rounded-xl border transition-all ${(catalog.nicheIds?.length ?? 0) > 0 ? "bg-violet-500/10 border-violet-500/20 text-violet-400 hover:bg-violet-500/20" : "bg-white/5 border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/20"}`}>
+                                                    <Target size={13} />
+                                                </button>
+                                            )}
                                             <button onClick={() => setConfirmDeleteCatalogId(catalog._id)} disabled={deletingCatalogId === catalog._id} title="Eliminar" className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 disabled:opacity-50">
                                                 {deletingCatalogId === catalog._id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                                             </button>
@@ -3643,6 +3704,41 @@ export function KdpFactoryApp() {
                                                     ? <div className="h-full w-1/3 bg-gradient-to-r from-orange-500/30 to-orange-400/60 rounded-full animate-pulse" />
                                                     : <div className="h-full bg-gradient-to-r from-violet-500 to-blue-500 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
                                                 }
+                                            </div>
+                                        </div>
+                                    )}
+                                    {/* Niche picker inline */}
+                                    {catalogNichePickerId === catalog._id && niches.length > 0 && (
+                                        <div className="px-4 pb-3 border-t border-white/5 pt-3 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Vincular nichos</p>
+                                                <button onClick={() => setCatalogNichePickerId(null)} className="text-[9px] text-neutral-600 hover:text-white transition-colors font-black uppercase">Cerrar</button>
+                                            </div>
+                                            <div className="rounded-xl border border-white/8 bg-white/[0.02] overflow-hidden max-h-44 overflow-y-auto">
+                                                {niches.map((n, ni) => {
+                                                    const assigned = (catalog.nicheIds ?? []).includes(n._id);
+                                                    return (
+                                                        <button key={n._id}
+                                                            onClick={() => {
+                                                                const cur = catalog.nicheIds ?? [];
+                                                                const next = assigned ? cur.filter(id => id !== n._id) : [...cur, n._id];
+                                                                setIaCatalogs(prev => prev.map(c => c._id === catalog._id ? { ...c, nicheIds: next } : c));
+                                                                fetch(`${API_BASE_URL}/catalogs/${catalog._id}`, {
+                                                                    method: "PATCH",
+                                                                    headers: { "Content-Type": "application/json" },
+                                                                    body: JSON.stringify({ nicheIds: next }),
+                                                                }).catch(() => { });
+                                                            }}
+                                                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-all ${ni > 0 ? "border-t border-white/5" : ""} ${assigned ? "bg-violet-500/8" : "hover:bg-white/[0.03]"}`}
+                                                        >
+                                                            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${assigned ? "bg-violet-500 border-violet-500" : "border-neutral-700 bg-transparent"}`}>
+                                                                {assigned && <Check size={9} className="text-white" strokeWidth={3} />}
+                                                            </div>
+                                                            <span className={`text-[11px] font-semibold flex-1 truncate ${assigned ? "text-white" : "text-neutral-400"}`}>{n.name}</span>
+                                                            {n.status && <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full ${n.status === "active" ? "text-emerald-400 bg-emerald-500/10" : "text-neutral-600 bg-white/5"}`}>{n.status}</span>}
+                                                        </button>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     )}
@@ -3713,6 +3809,61 @@ export function KdpFactoryApp() {
                                     )}
                                     <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                 </div>
+
+                                {/* ── Niche filter bar ── */}
+                                {niches.length > 0 && (
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+                                            {/* All */}
+                                            <button
+                                                onClick={() => setCatalogNicheFilter(null)}
+                                                className={`flex items-center gap-2 h-9 px-4 rounded-2xl border text-[10px] font-black whitespace-nowrap shrink-0 transition-all ${!catalogNicheFilter
+                                                    ? "bg-violet-500/20 border-violet-500/40 text-violet-300 shadow-[0_0_16px_rgba(139,92,246,0.25)]"
+                                                    : "border-white/10 bg-white/[0.02] text-neutral-500 hover:text-neutral-300 hover:border-white/20 hover:bg-white/[0.04]"}`}>
+                                                <Layers size={12} className={!catalogNicheFilter ? "text-violet-400" : "text-neutral-600"} />
+                                                Todos los catálogos
+                                                <span className={`text-[9px] tabular-nums font-black ${!catalogNicheFilter ? "text-violet-400/70" : "text-neutral-700"}`}>{iaCatalogs.length}</span>
+                                            </button>
+                                            {/* Per-niche pills */}
+                                            {niches.map(n => {
+                                                const count = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).length;
+                                                const isAct = catalogNicheFilter === n._id;
+                                                const statusDot: Record<NicheStatus, string> = { found: "bg-violet-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
+                                                return (
+                                                    <button key={n._id}
+                                                        onClick={() => setCatalogNicheFilter(isAct ? null : n._id)}
+                                                        className={`flex items-center gap-2 h-9 px-4 rounded-2xl border text-[10px] font-black whitespace-nowrap shrink-0 transition-all ${isAct
+                                                            ? "bg-violet-500/20 border-violet-500/40 text-violet-300 shadow-[0_0_16px_rgba(139,92,246,0.25)]"
+                                                            : "border-white/10 bg-white/[0.02] text-neutral-500 hover:text-neutral-300 hover:border-white/20 hover:bg-white/[0.04]"}`}>
+                                                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[n.status]}`} />
+                                                        {n.name}
+                                                        <span className={`text-[9px] tabular-nums font-black px-1.5 py-0.5 rounded-lg ${isAct
+                                                            ? "bg-violet-500/30 text-violet-300"
+                                                            : count > 0 ? "bg-white/5 text-neutral-600" : "text-neutral-800"}`}>
+                                                            {count}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        {/* Active filter indicator */}
+                                        {catalogNicheFilter && (() => {
+                                            const n = niches.find(x => x._id === catalogNicheFilter);
+                                            return n ? (
+                                                <div className="flex items-center gap-2 px-1">
+                                                    <div className="h-px flex-1 bg-violet-500/20" />
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-violet-400/60">
+                                                        Filtrando por: {n.name}
+                                                    </span>
+                                                    <button onClick={() => setCatalogNicheFilter(null)} className="text-[9px] text-neutral-600 hover:text-violet-400 transition-colors">
+                                                        <X size={10} />
+                                                    </button>
+                                                    <div className="h-px flex-1 bg-violet-500/20" />
+                                                </div>
+                                            ) : null;
+                                        })()}
+                                    </div>
+                                )}
 
                                 {/* Active catalogs (always visible) */}
                                 {activeCatalogs.length > 0 && (
@@ -3988,480 +4139,568 @@ export function KdpFactoryApp() {
                 </div>
             </div>
 
-            {/* ══ MIS NICHOS + CONTENIDO ══ */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
-
-                {/* ── MIS NICHOS ── */}
-                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
-                    <div className="h-px w-full bg-gradient-to-r from-violet-500/60 via-violet-400/20 to-transparent rounded-t-3xl" />
-                    <div className="p-6 space-y-4">
-                        {/* Header */}
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-1">
-                                <h2 className="text-xl font-black text-white flex items-center gap-2.5">
-                                    <Target size={20} className="text-violet-400" /> Mis Nichos
-                                </h2>
-                                <p className="text-xs text-neutral-500">Pipeline de nichos · fases y generación de contenido</p>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                                <button onClick={() => void fetchNiches()} disabled={isLoadingNiches} className="p-2.5 rounded-xl bg-white/5 border border-white/8 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
-                                    {isLoadingNiches ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-                                </button>
-                                <button onClick={() => openNicheForm()} className="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_4px_12px_rgba(139,92,246,0.3)]">
-                                    <Plus size={13} /> Nuevo
-                                </button>
-                            </div>
+            {/* ══ MIS NICHOS ══ */}
+            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                <div className="h-px w-full bg-gradient-to-r from-violet-500/80 via-fuchsia-400/40 to-transparent" />
+                <div className="p-6 space-y-6">
+                    {/* ── Header ── */}
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1.5">
+                            <h2 className="text-2xl font-black bg-gradient-to-r from-violet-300 via-fuchsia-300 to-violet-400 bg-clip-text text-transparent flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-2xl bg-violet-500/15 border border-violet-500/25 flex items-center justify-center shrink-0">
+                                    <Target size={18} className="text-violet-400" />
+                                </div>
+                                Mis Nichos
+                            </h2>
+                            <p className="text-xs text-neutral-500 pl-12">Gestión de nichos KDP · Catálogos vinculados · Métricas de mercado</p>
                         </div>
-                        {/* Segmented filter */}
-                        <div className="flex p-1.5 bg-white/[0.03] border border-white/8 rounded-2xl gap-0.5">
-                            {(["all", "found", "research", "active", "archived"] as const).map(s => {
-                                const cnt = s === "all" ? niches.length : niches.filter(n => n.status === s).length;
-                                const isAct = nicheStatusFilter === s;
-                                const dot: Record<string, string> = { found: "bg-blue-400", research: "bg-amber-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
-                                return (
-                                    <button key={s} onClick={() => setNicheStatusFilter(s)}
-                                        className={`flex-1 h-8 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${isAct ? "bg-white/10 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                        {s !== "all" && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot[s]}`} />}
-                                        <span className="truncate">{s === "all" ? "Todo" : STATUS_LABELS[s].label}</span>
-                                        {cnt > 0 && <span className={`text-[8px] tabular-nums ${isAct ? "text-white/50" : "text-neutral-700"}`}>{cnt}</span>}
-                                    </button>
-                                );
-                            })}
-                            <button onClick={() => setNicheSortBy(p => p === "score" ? "date" : "score")}
-                                className="ml-1 h-8 px-3 rounded-xl bg-white/5 border border-white/8 text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-all shrink-0">
-                                {nicheSortBy === "score" ? "★" : "↓"}
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button onClick={() => void fetchNiches()} disabled={isLoadingNiches}
+                                className="p-2.5 rounded-xl bg-white/5 border border-white/8 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
+                                {isLoadingNiches ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                            </button>
+                            <button onClick={() => openNicheForm()}
+                                className="flex items-center gap-2 h-10 px-5 rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_4px_20px_rgba(139,92,246,0.4)]">
+                                <Plus size={14} /> Nuevo nicho
                             </button>
                         </div>
-                        {/* Loading */}
-                        {isLoadingNiches && (
-                            <div className="space-y-2">
-                                {[1, 2].map(i => <div key={i} className="h-20 rounded-2xl bg-white/[0.03] animate-pulse border border-white/5" />)}
+                    </div>
+
+                    {/* ── Stats row ── */}
+                    {niches.length > 0 && (() => {
+                        const activeCount = niches.filter(n => n.status === "active").length;
+                        const totalLinkedCats = niches.reduce((s, n) => s + (n.catalogIds?.length ?? 0), 0);
+                        const totalLinkedImgs = iaCatalogs.filter(c => (c.nicheIds?.length ?? 0) > 0).reduce((s, c) => s + c.images.length, 0);
+                        return (
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                {[
+                                    { label: "Nichos", value: niches.length, icon: <Target size={15} />, color: "text-violet-400", bg: "bg-violet-500/10 border-violet-500/20", glow: "bg-violet-500/10" },
+                                    { label: "Activos", value: activeCount, icon: <Activity size={15} />, color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20", glow: "bg-emerald-500/10" },
+                                    { label: "Catálogos", value: totalLinkedCats, icon: <Layers size={15} />, color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20", glow: "bg-blue-500/10" },
+                                    { label: "Imágenes", value: totalLinkedImgs, icon: <ImageIcon size={15} />, color: "text-fuchsia-400", bg: "bg-fuchsia-500/10 border-fuchsia-500/20", glow: "bg-fuchsia-500/10" },
+                                ].map(stat => (
+                                    <div key={stat.label} className={`relative rounded-2xl border ${stat.bg} p-4 overflow-hidden`}>
+                                        <div className={`absolute -right-3 -top-3 w-14 h-14 ${stat.glow} blur-2xl rounded-full`} />
+                                        <div className={`flex items-center gap-2 ${stat.color} mb-2 relative`}>
+                                            {stat.icon}
+                                            <span className="text-[9px] font-black uppercase tracking-widest opacity-70">{stat.label}</span>
+                                        </div>
+                                        <p className="text-3xl font-black text-white relative tabular-nums">{stat.value}</p>
+                                    </div>
+                                ))}
                             </div>
-                        )}
-                        {/* Empty */}
-                        {!isLoadingNiches && (nicheStatusFilter === "all" ? niches : niches.filter(n => n.status === nicheStatusFilter)).length === 0 && (
-                            <div className="flex flex-col items-center gap-3 py-8 opacity-40">
-                                <Target size={24} strokeWidth={1.2} className="text-neutral-600" />
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">
-                                    {niches.length === 0 ? "Sin nichos aún" : "Sin resultados"}
-                                </p>
-                            </div>
-                        )}
-                        {/* List */}
-                        {!isLoadingNiches && (nicheStatusFilter === "all" ? niches : niches.filter(n => n.status === nicheStatusFilter)).length > 0 && (
+                        );
+                    })()}
+
+                    {/* ── Status distribution bar ── */}
+                    {niches.length > 0 && (() => {
+                        const statusConf: { s: NicheStatus; bar: string; dot: string }[] = [
+                            { s: "active", bar: "bg-emerald-500", dot: "bg-emerald-400" },
+                            { s: "research", bar: "bg-blue-500", dot: "bg-blue-400" },
+                            { s: "found", bar: "bg-violet-500", dot: "bg-violet-400" },
+                            { s: "archived", bar: "bg-neutral-700", dot: "bg-neutral-600" },
+                        ];
+                        return (
                             <div className="space-y-2">
-                                {(nicheStatusFilter === "all" ? niches : niches.filter(n => n.status === nicheStatusFilter))
-                                    .slice()
-                                    .sort((a, b) => nicheSortBy === "score" ? nicheScore(b) - nicheScore(a) : 0)
-                                    .map(niche => {
-                                        const score = nicheScore(niche);
-                                        const scoreColor = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-amber-400" : "text-neutral-500";
-                                        const PHASES: { id: NicheFE["phase"]; label: string }[] = [
-                                            { id: "niche", label: "Nicho" },
-                                            { id: "catalog", label: "Catálogo" },
-                                            { id: "pdf", label: "PDF" },
-                                            { id: "published", label: "Publicado" },
-                                        ];
-                                        const phaseIdx = PHASES.findIndex(p => p.id === (niche.phase ?? "niche"));
-                                        const statusDot: Record<string, string> = { found: "bg-blue-400", research: "bg-amber-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
+                                <div className="flex h-2 rounded-full overflow-hidden gap-px">
+                                    {statusConf.map(({ s, bar }) => {
+                                        const cnt = niches.filter(n => n.status === s).length;
+                                        const pct = (cnt / niches.length) * 100;
+                                        if (pct === 0) return null;
+                                        return <div key={s} className={`${bar} transition-all`} style={{ width: `${pct}%` }} />;
+                                    })}
+                                </div>
+                                <div className="flex items-center gap-4 flex-wrap">
+                                    {statusConf.map(({ s, dot }) => {
+                                        const cnt = niches.filter(n => n.status === s).length;
+                                        if (cnt === 0) return null;
                                         return (
-                                            <div key={niche._id} className="group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] hover:border-white/14 hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden">
-                                                {/* Glass shimmer line */}
-                                                <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-                                                <div className="p-4 space-y-4 relative">
-                                                    {/* Header */}
-                                                    <div className="flex items-start gap-2">
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-2 flex-wrap">
-                                                                <span className="text-sm font-bold text-white leading-tight">{niche.name}</span>
-                                                                <span className="flex items-center gap-1.5">
-                                                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[niche.status] ?? "bg-neutral-600"}`} />
-                                                                    <span className="text-[10px] text-neutral-500">{STATUS_LABELS[niche.status].label}</span>
-                                                                </span>
-                                                                <span className={`text-xs font-bold tabular-nums ${scoreColor}`}>★ {score}</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                                                                <span className="text-xs text-neutral-600">
-                                                                    {NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType}
-                                                                </span>
-                                                                <span className="text-xs text-neutral-700">·</span>
-                                                                <span className="text-xs text-neutral-600">
-                                                                    {NICHE_STYLE_OPTIONS.find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory}
-                                                                </span>
-                                                            </div>
-                                                            {niche.description && <p className="text-xs text-neutral-600 mt-1 line-clamp-1">{niche.description}</p>}
-                                                        </div>
-                                                        <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            {niche.generatedPrompt && (
-                                                                <button onClick={() => saveNichePromptToLibrary(niche)} title="Guardar prompt"
-                                                                    className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all">
-                                                                    <BookMarked size={13} />
-                                                                </button>
-                                                            )}
-                                                            <button onClick={() => openNicheForm(niche)} className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Pencil size={13} /></button>
-                                                            <button onClick={() => setNicheDeleteId(niche._id)} className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all"><Trash2 size={13} /></button>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Pipeline timeline */}
-                                                    <div className="relative">
-                                                        {/* Background track */}
-                                                        <div className="absolute top-[10px] left-4 right-4 h-px bg-white/[0.08]" />
-                                                        {/* Completed track */}
-                                                        {phaseIdx > 0 && (
-                                                            <div
-                                                                className="absolute top-[10px] left-4 h-px bg-gradient-to-r from-white/30 to-white/15 transition-all"
-                                                                style={{ width: `calc(${(phaseIdx / (PHASES.length - 1)) * 100}% - 32px)` }}
-                                                            />
-                                                        )}
-                                                        <div className="flex items-start justify-between relative">
-                                                            {PHASES.map((ph, i) => {
-                                                                const done = i <= phaseIdx;
-                                                                const isCurrent = i === phaseIdx;
-                                                                const isNext = i === phaseIdx + 1;
-                                                                return (
-                                                                    <button key={ph.id}
-                                                                        onClick={() => {
-                                                                            if (isNext) void advanceNichePhase(niche);
-                                                                            else if (done && !isCurrent) void setNichePhase(niche, ph.id);
-                                                                        }}
-                                                                        title={isCurrent ? ph.label : isNext ? `Avanzar → ${ph.label}` : done ? `Volver a ${ph.label}` : ph.label}
-                                                                        className={`flex flex-col items-center gap-1.5 transition-all ${isCurrent ? "cursor-default" : (done || isNext) ? "cursor-pointer group/step" : "cursor-default"}`}
-                                                                    >
-                                                                        {/* Dot */}
-                                                                        <span className={`relative flex items-center justify-center w-5 h-5 rounded-full transition-all ${isCurrent
-                                                                                ? "bg-white shadow-[0_0_0_3px_rgba(255,255,255,0.15),0_0_12px_rgba(255,255,255,0.35)]"
-                                                                                : done
-                                                                                    ? "bg-white/20 border border-white/20 group-hover/step:bg-white/30"
-                                                                                    : isNext
-                                                                                        ? "bg-transparent border border-dashed border-white/25 group-hover/step:border-white/50"
-                                                                                        : "bg-transparent border border-white/8"
-                                                                            }`}>
-                                                                            {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-white/30" />}
-                                                                            {done && !isCurrent && <Check size={9} className="text-white/60" />}
-                                                                        </span>
-                                                                        {/* Label */}
-                                                                        <span className={`text-[10px] font-semibold whitespace-nowrap transition-all ${isCurrent ? "text-white"
-                                                                                : done ? "text-neutral-500 group-hover/step:text-neutral-300"
-                                                                                    : isNext ? "text-neutral-600 group-hover/step:text-neutral-400"
-                                                                                        : "text-neutral-800"
-                                                                            }`}>{ph.label}</span>
-                                                                    </button>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Footer: meta + action */}
-                                                    <div className="flex items-center gap-2 justify-between pt-0.5">
-                                                        <div className="flex items-center gap-2 flex-wrap min-w-0">
-                                                            {niche.competition !== "unknown" && (
-                                                                <span className="text-[10px] text-neutral-600">
-                                                                    Comp <span className={`font-bold ${COMPETITION_LABELS[niche.competition].color.split(" ")[0]}`}>{COMPETITION_LABELS[niche.competition].label}</span>
-                                                                </span>
-                                                            )}
-                                                            {niche.demand !== "unknown" && (
-                                                                <span className="text-[10px] text-neutral-600">
-                                                                    · Dem <span className={`font-bold ${DEMAND_LABELS[niche.demand].color.split(" ")[0]}`}>{DEMAND_LABELS[niche.demand].label}</span>
-                                                                </span>
-                                                            )}
-                                                            {(niche.catalogIds?.length ?? 0) > 0 && (
-                                                                <span className="text-[10px] font-bold text-emerald-500">✓ {niche.catalogIds!.length} cat.</span>
-                                                            )}
-                                                            {niche.tags.slice(0, 1).map(tag => (
-                                                                <span key={tag} className="text-[10px] text-neutral-700">#{tag}</span>
-                                                            ))}
-                                                        </div>
-                                                        <button
-                                                            onClick={() => void generateNicheContent(niche)}
-                                                            disabled={nicheGeneratingId === niche._id}
-                                                            className="flex items-center gap-1.5 px-3 h-7 rounded-xl bg-white/[0.05] border border-white/10 text-[10px] font-black text-neutral-400 hover:text-white hover:bg-white/10 hover:border-white/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-                                                        >
-                                                            {nicheGeneratingId === niche._id
-                                                                ? <><Loader2 size={10} className="animate-spin" /> IA...</>
-                                                                : <><Sparkles size={10} /> Generar</>}
-                                                        </button>
-                                                    </div>
-                                                </div>
+                                            <div key={s} className="flex items-center gap-1.5">
+                                                <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500">{STATUS_LABELS[s].label}</span>
+                                                <span className="text-[9px] text-neutral-700 tabular-nums">{cnt}</span>
                                             </div>
                                         );
                                     })}
+                                </div>
                             </div>
-                        )}
-                    </div>
-                </div>
+                        );
+                    })()}
 
-                {/* ── CONTENIDO ── */}
-                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
-                    <div className="h-px w-full bg-gradient-to-r from-amber-500/40 via-violet-400/20 to-transparent rounded-t-3xl" />
-                    <div className="p-6 space-y-4">
-                        <div className="space-y-1">
-                            <h2 className="text-xl font-black bg-gradient-to-r from-amber-400 to-violet-400 bg-clip-text text-transparent flex items-center gap-2.5">
-                                <Sparkles size={20} className="text-amber-400" /> Generador de Contenido
-                            </h2>
-                            <p className="text-xs text-neutral-500">Metadatos listos para publicar en KDP y Etsy</p>
-                        </div>
-
-                        {/* ── KDP Physical Book — primary card ── */}
-                        <button
-                            onClick={() => { setContentType("kdp-physical-book"); setContentResult(null); }}
-                            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-all text-left ${contentType === "kdp-physical-book" ? "border-amber-500/40 bg-amber-500/[0.07]" : "border-white/8 bg-white/[0.02] hover:border-white/12 hover:bg-white/[0.03]"}`}>
-                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all ${contentType === "kdp-physical-book" ? "bg-amber-500/20" : "bg-white/5"}`}>
-                                <BookOpen size={16} className={contentType === "kdp-physical-book" ? "text-amber-400" : "text-neutral-600"} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <p className={`text-sm font-black leading-tight ${contentType === "kdp-physical-book" ? "text-amber-300" : "text-neutral-400"}`}>Libro físico KDP</p>
-                                <p className="text-[10px] text-neutral-600 mt-0.5">Título · Subtítulo · Descripción · 7 palabras clave</p>
-                            </div>
-                            {contentType === "kdp-physical-book" && (
-                                <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                            )}
-                        </button>
-
-                        {/* ── Secondary types ── */}
-                        <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-                            {CONTENT_TYPES_SECONDARY.map(ct => (
-                                <button key={ct.id} onClick={() => { setContentType(ct.id as any); setContentResult(null); }}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all shrink-0 ${contentType === ct.id ? "border-white/25 bg-white/10 text-white" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}>
-                                    {ct.icon}
-                                    <span className="text-[9px] font-bold whitespace-nowrap">{ct.label}</span>
+                    {/* ── Segmented filter ── */}
+                    <div className="flex p-1.5 bg-white/[0.03] border border-white/8 rounded-2xl gap-0.5">
+                        {(["all", "found", "research", "active", "archived"] as const).map(s => {
+                            const cnt = s === "all" ? niches.length : niches.filter(n => n.status === s).length;
+                            const isAct = nicheStatusFilter === s;
+                            const dot: Record<string, string> = { found: "bg-violet-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
+                            return (
+                                <button key={s} onClick={() => setNicheStatusFilter(s)}
+                                    className={`flex-1 h-8 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${isAct ? "bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                    {s !== "all" && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot[s]}`} />}
+                                    <span className="truncate">{s === "all" ? "Todos" : STATUS_LABELS[s].label}</span>
+                                    {cnt > 0 && <span className={`text-[8px] tabular-nums ${isAct ? "text-white/50" : "text-neutral-700"}`}>{cnt}</span>}
                                 </button>
-                            ))}
-                        </div>
+                            );
+                        })}
+                        <button onClick={() => setNicheSortBy(p => p === "score" ? "date" : "score")}
+                            className="ml-1 h-8 px-3 rounded-xl bg-white/5 border border-white/8 text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-all shrink-0">
+                            {nicheSortBy === "score" ? "★" : "↓"}
+                        </button>
+                    </div>
 
-                        {/* ── Inputs — adapt by type ── */}
-                        {contentType === "kdp-physical-book" ? (
-                            <div className="space-y-3">
-                                <textarea
-                                    value={contentNiche} onChange={e => setContentNiche(e.target.value)} rows={3}
-                                    placeholder="Describe tu libro: temática, género, público objetivo, estilo visual…&#10;ej: libro de colorear de mandalas zen para adultos, estilo minimalista"
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none leading-relaxed transition-all" />
-                                <div className="flex items-center gap-3">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 shrink-0">Idioma del listing</p>
-                                    <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl">
+                    {/* ── Loading skeletons ── */}
+                    {isLoadingNiches && (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            {[1, 2, 3, 4].map(i => <div key={i} className="h-56 rounded-2xl bg-white/[0.03] animate-pulse border border-white/5" />)}
+                        </div>
+                    )}
+
+                    {/* ── Empty state ── */}
+                    {!isLoadingNiches && (nicheStatusFilter === "all" ? niches : niches.filter(n => n.status === nicheStatusFilter)).length === 0 && (
+                        <div className="flex flex-col items-center gap-4 py-16 opacity-40">
+                            <div className="w-16 h-16 rounded-3xl bg-white/5 border border-white/8 flex items-center justify-center">
+                                <Target size={28} strokeWidth={1.2} className="text-neutral-600" />
+                            </div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">
+                                {niches.length === 0 ? "Sin nichos aún — crea el primero" : "Sin resultados para este filtro"}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* ── Niche cards grid ── */}
+                    {!isLoadingNiches && (nicheStatusFilter === "all" ? niches : niches.filter(n => n.status === nicheStatusFilter)).length > 0 && (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {(nicheStatusFilter === "all" ? niches : niches.filter(n => n.status === nicheStatusFilter))
+                                .slice()
+                                .sort((a, b) => nicheSortBy === "score" ? nicheScore(b) - nicheScore(a) : 0)
+                                .map(niche => {
+                                    const score = nicheScore(niche);
+                                    const scoreColor = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-amber-400" : "text-neutral-500";
+                                    const scoreStroke = score >= 70 ? "#10b981" : score >= 40 ? "#f59e0b" : "#525252";
+                                    const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
+                                    const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
+                                    const statusDotMap: Record<NicheStatus, string> = { found: "bg-violet-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
+                                    return (
+                                        <div key={niche._id} className="group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] hover:border-violet-500/25 hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden">
+                                            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+                                            <div className="p-5 space-y-4 relative">
+
+                                                {/* ─ Card header ─ */}
+                                                <div className="flex items-start gap-3">
+                                                    {/* Score ring */}
+                                                    <div className="shrink-0 relative w-14 h-14">
+                                                        <svg className="w-full h-full -rotate-90" viewBox="0 0 44 44">
+                                                            <circle cx="22" cy="22" r="17" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="4.5" />
+                                                            <circle cx="22" cy="22" r="17" fill="none"
+                                                                stroke={scoreStroke} strokeWidth="4.5" strokeLinecap="round"
+                                                                strokeDasharray={`${Math.min((score / 90) * 107, 107)} 107`} />
+                                                        </svg>
+                                                        <span className={`absolute inset-0 flex items-center justify-center text-[12px] font-black ${scoreColor}`}>{score}</span>
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-black text-white leading-tight">{niche.name}</p>
+                                                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                            <span className="text-[10px] text-neutral-600">
+                                                                {NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType}
+                                                            </span>
+                                                            <span className="text-neutral-700">·</span>
+                                                            <span className="text-[10px] text-neutral-600">
+                                                                {NICHE_STYLE_OPTIONS.find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory}
+                                                            </span>
+                                                        </div>
+                                                        {niche.description && <p className="text-[10px] text-neutral-600 mt-1 line-clamp-2">{niche.description}</p>}
+                                                    </div>
+                                                    {/* Actions — visible on hover */}
+                                                    <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        {niche.generatedPrompt && (
+                                                            <button onClick={() => saveNichePromptToLibrary(niche)} title="Guardar prompt en biblioteca"
+                                                                className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all">
+                                                                <BookMarked size={12} />
+                                                            </button>
+                                                        )}
+                                                        <button onClick={() => openNicheForm(niche)} className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Pencil size={12} /></button>
+                                                        <button onClick={() => setNicheDeleteId(niche._id)} className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all"><Trash2 size={12} /></button>
+                                                    </div>
+                                                </div>
+
+                                                {/* ─ Mini stats ─ */}
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {[
+                                                        { label: "Catálogos", value: linkedCats.length, color: linkedCats.length > 0 ? "text-violet-400" : "text-neutral-700" },
+                                                        { label: "Imágenes", value: linkedImgs, color: linkedImgs > 0 ? "text-blue-400" : "text-neutral-700" },
+                                                        { label: "Tags", value: niche.tags.length, color: niche.tags.length > 0 ? "text-fuchsia-400" : "text-neutral-700" },
+                                                    ].map(st => (
+                                                        <div key={st.label} className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-2.5 text-center">
+                                                            <p className="text-[8px] uppercase tracking-widest text-neutral-600 font-black">{st.label}</p>
+                                                            <p className={`text-xl font-black mt-0.5 tabular-nums ${st.color}`}>{st.value}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                {/* ─ Competition & demand bars ─ */}
+                                                {(niche.competition !== "unknown" || niche.demand !== "unknown") && (
+                                                    <div className="space-y-2">
+                                                        {niche.competition !== "unknown" && (
+                                                            <div className="flex items-center gap-2.5">
+                                                                <span className="text-[9px] text-neutral-600 uppercase font-black w-14 shrink-0">Comp.</span>
+                                                                <div className="flex-1 h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
+                                                                    <div className={`h-full rounded-full transition-all ${niche.competition === "low" ? "w-1/3 bg-emerald-500" : niche.competition === "medium" ? "w-2/3 bg-amber-500" : "w-full bg-rose-500"}`} />
+                                                                </div>
+                                                                <span className={`text-[9px] font-black w-12 text-right ${COMPETITION_LABELS[niche.competition].color.split(" ")[0]}`}>{COMPETITION_LABELS[niche.competition].label}</span>
+                                                            </div>
+                                                        )}
+                                                        {niche.demand !== "unknown" && (
+                                                            <div className="flex items-center gap-2.5">
+                                                                <span className="text-[9px] text-neutral-600 uppercase font-black w-14 shrink-0">Dem.</span>
+                                                                <div className="flex-1 h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
+                                                                    <div className={`h-full rounded-full transition-all ${niche.demand === "high" ? "w-full bg-emerald-500" : niche.demand === "medium" ? "w-2/3 bg-amber-500" : "w-1/3 bg-rose-500"}`} />
+                                                                </div>
+                                                                <span className={`text-[9px] font-black w-12 text-right ${DEMAND_LABELS[niche.demand].color.split(" ")[0]}`}>{DEMAND_LABELS[niche.demand].label}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* ─ Status chips ─ */}
+                                                <div className="flex gap-1.5 flex-wrap">
+                                                    {(["found", "research", "active", "archived"] as NicheStatus[]).map(s => {
+                                                        const isActive = niche.status === s;
+                                                        return (
+                                                            <button key={s}
+                                                                onClick={() => {
+                                                                    if (isActive) return;
+                                                                    fetch(`${API_BASE_URL}/niches/${niche._id}`, {
+                                                                        method: "PATCH",
+                                                                        headers: { "Content-Type": "application/json" },
+                                                                        body: JSON.stringify({ status: s }),
+                                                                    }).catch(() => { });
+                                                                    setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, status: s } : n));
+                                                                }}
+                                                                className={`flex items-center gap-1 px-2.5 h-6 rounded-lg border text-[9px] font-black uppercase tracking-widest transition-all ${isActive ? STATUS_LABELS[s].color : "border-white/8 bg-transparent text-neutral-700 hover:text-neutral-400 hover:border-white/20"}`}>
+                                                                {isActive && <span className={`w-1 h-1 rounded-full ${statusDotMap[s]}`} />}
+                                                                {STATUS_LABELS[s].label}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+
+                                                {/* ─ Tags ─ */}
+                                                {niche.tags.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {niche.tags.slice(0, 6).map(tag => (
+                                                            <span key={tag} className="text-[9px] px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] text-neutral-500">#{tag}</span>
+                                                        ))}
+                                                        {niche.tags.length > 6 && <span className="text-[9px] text-neutral-700">+{niche.tags.length - 6} más</span>}
+                                                    </div>
+                                                )}
+
+                                                {/* ─ Footer: generate action ─ */}
+                                                <div className="flex items-center justify-between pt-1 border-t border-white/[0.05]">
+                                                    <div className="text-[9px] text-neutral-700 tabular-nums">
+                                                        {new Date(niche.createdAt).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                                                    </div>
+                                                    <button
+                                                        onClick={() => void generateNicheContent(niche)}
+                                                        disabled={nicheGeneratingId === niche._id}
+                                                        className="flex items-center gap-1.5 px-4 h-8 rounded-xl bg-violet-500/15 border border-violet-500/30 text-[10px] font-black text-violet-300 hover:bg-violet-500/25 hover:border-violet-500/50 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                                                        {nicheGeneratingId === niche._id
+                                                            ? <><Loader2 size={11} className="animate-spin" /> Generando...</>
+                                                            : <><Sparkles size={11} /> Generar catálogo</>}
+                                                    </button>
+                                                </div>
+
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                        </div>
+                    )}
+
+                    {/* ── Insights placeholder (future) ── */}
+                    {niches.length > 0 && (
+                        <div className="rounded-2xl border border-dashed border-white/10 p-5 flex items-center gap-4 opacity-50">
+                            <div className="w-10 h-10 rounded-2xl bg-white/5 flex items-center justify-center shrink-0">
+                                <BarChart size={18} className="text-neutral-500" />
+                            </div>
+                            <div>
+                                <p className="text-[11px] font-black text-neutral-500 uppercase tracking-widest">Insights de nichos</p>
+                                <p className="text-[10px] text-neutral-700 mt-0.5">Próximamente: ventas estimadas, tendencias de keywords, análisis BSR y competencia real en Amazon</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* ══ CONTENIDO ══ */}
+            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+                <div className="h-px w-full bg-gradient-to-r from-amber-500/40 via-violet-400/20 to-transparent rounded-t-3xl" />
+                <div className="p-6 space-y-4">
+                    <div className="space-y-1">
+                        <h2 className="text-xl font-black bg-gradient-to-r from-amber-400 to-violet-400 bg-clip-text text-transparent flex items-center gap-2.5">
+                            <Sparkles size={20} className="text-amber-400" /> Generador de Contenido
+                        </h2>
+                        <p className="text-xs text-neutral-500">Metadatos listos para publicar en KDP y Etsy</p>
+                    </div>
+
+                    {/* ── KDP Physical Book — primary card ── */}
+                    <button
+                        onClick={() => { setContentType("kdp-physical-book"); setContentResult(null); }}
+                        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-all text-left ${contentType === "kdp-physical-book" ? "border-amber-500/40 bg-amber-500/[0.07]" : "border-white/8 bg-white/[0.02] hover:border-white/12 hover:bg-white/[0.03]"}`}>
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all ${contentType === "kdp-physical-book" ? "bg-amber-500/20" : "bg-white/5"}`}>
+                            <BookOpen size={16} className={contentType === "kdp-physical-book" ? "text-amber-400" : "text-neutral-600"} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-black leading-tight ${contentType === "kdp-physical-book" ? "text-amber-300" : "text-neutral-400"}`}>Libro físico KDP</p>
+                            <p className="text-[10px] text-neutral-600 mt-0.5">Título · Subtítulo · Descripción · 7 palabras clave</p>
+                        </div>
+                        {contentType === "kdp-physical-book" && (
+                            <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                        )}
+                    </button>
+
+                    {/* ── Secondary types ── */}
+                    <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+                        {CONTENT_TYPES_SECONDARY.map(ct => (
+                            <button key={ct.id} onClick={() => { setContentType(ct.id as any); setContentResult(null); }}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all shrink-0 ${contentType === ct.id ? "border-white/25 bg-white/10 text-white" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}>
+                                {ct.icon}
+                                <span className="text-[9px] font-bold whitespace-nowrap">{ct.label}</span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* ── Inputs — adapt by type ── */}
+                    {contentType === "kdp-physical-book" ? (
+                        <div className="space-y-3">
+                            <textarea
+                                value={contentNiche} onChange={e => setContentNiche(e.target.value)} rows={3}
+                                placeholder="Describe tu libro: temática, género, público objetivo, estilo visual…&#10;ej: libro de colorear de mandalas zen para adultos, estilo minimalista"
+                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none leading-relaxed transition-all" />
+                            <div className="flex items-center gap-3">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 shrink-0">Idioma del listing</p>
+                                <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl">
+                                    {(["en", "es"] as const).map(lang => (
+                                        <button key={lang} onClick={() => setContentLanguage(lang)}
+                                            className={`px-4 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                            {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <input value={contentNiche} onChange={e => setContentNiche(e.target.value)}
+                                placeholder="Nicho / Tema — ej: zen mandalas, cats for beginners..."
+                                onKeyDown={e => { if (e.key === "Enter") void generateContent(); }}
+                                className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 transition-all" />
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-1.5">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Tipo de producto</p>
+                                    <KdpSelect accent="amber" value={contentProductType} onChange={setContentProductType}
+                                        options={CONTENT_PRODUCT_TYPES.map(pt => ({ value: pt, label: pt }))} />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Idioma</p>
+                                    <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl h-[38px]">
                                         {(["en", "es"] as const).map(lang => (
                                             <button key={lang} onClick={() => setContentLanguage(lang)}
-                                                className={`px-4 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                                className={`flex-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
                                                 {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
                             </div>
-                        ) : (
-                            <div className="space-y-3">
-                                <input value={contentNiche} onChange={e => setContentNiche(e.target.value)}
-                                    placeholder="Nicho / Tema — ej: zen mandalas, cats for beginners..."
-                                    onKeyDown={e => { if (e.key === "Enter") void generateContent(); }}
-                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 transition-all" />
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div className="space-y-1.5">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Tipo de producto</p>
-                                        <KdpSelect accent="amber" value={contentProductType} onChange={setContentProductType}
-                                            options={CONTENT_PRODUCT_TYPES.map(pt => ({ value: pt, label: pt }))} />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Idioma</p>
-                                        <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl h-[38px]">
-                                            {(["en", "es"] as const).map(lang => (
-                                                <button key={lang} onClick={() => setContentLanguage(lang)}
-                                                    className={`flex-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
-                                                    {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                                <textarea value={contentExtras} onChange={e => setContentExtras(e.target.value)} rows={2}
-                                    placeholder="Contexto adicional: estilo, audiencia, ocasión... (opcional)"
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none transition-all" />
-                            </div>
-                        )}
-
-                        {/* ── Generate button ── */}
-                        <div className="space-y-1.5">
-                            <button onClick={() => void generateContent()} disabled={isGeneratingContent || !contentNiche.trim()}
-                                className="w-full h-11 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500">
-                                {isGeneratingContent ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><Sparkles size={13} /> Generar con IA</>}
-                            </button>
-                            <p className="text-center text-[9px] text-neutral-700 flex items-center justify-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/60 inline-block" />
-                                <span className="font-mono">gemini-2.5-flash</span> · gratuito
-                            </p>
+                            <textarea value={contentExtras} onChange={e => setContentExtras(e.target.value)} rows={2}
+                                placeholder="Contexto adicional: estilo, audiencia, ocasión... (opcional)"
+                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none transition-all" />
                         </div>
+                    )}
 
-                        {isGeneratingContent && (
-                            <div className="flex flex-col items-center justify-center py-10 gap-3">
-                                <div className="relative">
-                                    <Loader2 size={24} className="animate-spin text-amber-400" />
-                                </div>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Generando con IA...</p>
-                            </div>
-                        )}
-                        {!contentResult && !isGeneratingContent && (
-                            <div className="flex flex-col items-center justify-center py-10 text-center space-y-2 opacity-20">
-                                <Wand2 size={24} strokeWidth={1.5} className="text-neutral-600" />
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">El resultado aparecerá aquí</p>
-                            </div>
-                        )}
-                        {contentResult && !isGeneratingContent && (
-                            <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
-
-                                {/* ── KDP Physical Book result ── */}
-                                {contentType === "kdp-physical-book" && typeof contentResult === "object" && (
-                                    <div className="space-y-2.5">
-                                        {/* Copy all listing */}
-                                        {(contentResult.title || contentResult.description || contentResult.keywords?.length) && (
-                                            <button
-                                                onClick={() => {
-                                                    const parts: string[] = [];
-                                                    if (contentResult.title) parts.push(`TÍTULO: ${contentResult.title}${contentResult.subtitle ? `\nSUBTÍTULO: ${contentResult.subtitle}` : ""}`);
-                                                    if (contentResult.description) parts.push(`\nDESCRIPCIÓN:\n${contentResult.description}`);
-                                                    if (Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0) parts.push(`\nKEYWORDS: ${contentResult.keywords.join(", ")}`);
-                                                    copyText(parts.join("\n"));
-                                                }}
-                                                className="w-full flex items-center justify-center gap-2 h-9 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest"
-                                            >
-                                                <Copy size={12} /> Copiar listing completo
-                                            </button>
-                                        )}
-                                        {/* Title + Subtitle */}
-                                        {contentResult.title && (
-                                            <div className="bg-amber-500/[0.04] border border-amber-500/15 rounded-2xl p-4 space-y-2">
-                                                <div className="flex items-center justify-between">
-                                                    <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Título</p>
-                                                    <button onClick={() => copyText(`${contentResult.title}${contentResult.subtitle ? `: ${contentResult.subtitle}` : ""}`)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
-                                                </div>
-                                                <p className="text-[15px] font-black text-white leading-tight">{contentResult.title}</p>
-                                                {contentResult.subtitle && (
-                                                    <p className="text-[11px] text-amber-200/60 leading-snug border-t border-amber-500/10 pt-2">{contentResult.subtitle}</p>
-                                                )}
-                                            </div>
-                                        )}
-                                        {/* Description */}
-                                        {contentResult.description && (
-                                            <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2">
-                                                <div className="flex items-center justify-between">
-                                                    <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/80">Descripción</p>
-                                                    <button onClick={() => copyText(contentResult.description)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
-                                                </div>
-                                                <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
-                                            </div>
-                                        )}
-                                        {/* 7 Keywords */}
-                                        {Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0 && (
-                                            <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2.5">
-                                                <div className="flex items-center justify-between">
-                                                    <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/80">
-                                                        {contentResult.keywords.length} Palabras clave
-                                                    </p>
-                                                    <button onClick={() => copyText(contentResult.keywords.join("\n"))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar todo</button>
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    {contentResult.keywords.map((k: string, i: number) => (
-                                                        <div key={i} className="flex items-center gap-2 group">
-                                                            <span className="text-[9px] font-black text-amber-500/50 w-4 shrink-0 tabular-nums">{i + 1}</span>
-                                                            <p className="flex-1 text-[10px] text-neutral-300">{k}</p>
-                                                            <button onClick={() => copyText(k)} className="opacity-0 group-hover:opacity-100 p-1 rounded text-neutral-600 hover:text-white transition-all"><Copy size={9} /></button>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                        {/* Regenerate hint */}
-                                        <button onClick={() => void generateContent()} className="w-full flex items-center justify-center gap-1.5 py-2 text-[9px] font-black uppercase tracking-widest text-neutral-700 hover:text-neutral-400 transition-colors">
-                                            <Sparkles size={9} /> Regenerar
-                                        </button>
-                                    </div>
-                                )}
-
-                                {contentType === "full-listing" && typeof contentResult === "object" && (
-                                    <>
-                                        {contentResult.title && (
-                                            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                                <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Título</p><button onClick={() => copyText(contentResult.title)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
-                                                <p className="text-sm text-white font-medium">{contentResult.title}</p>
-                                                {contentResult.subtitle && <p className="text-[10px] text-neutral-500">{contentResult.subtitle}</p>}
-                                            </div>
-                                        )}
-                                        {contentResult.description && (
-                                            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                                <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
-                                                <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
-                                            </div>
-                                        )}
-                                        {Array.isArray(contentResult.bullets) && contentResult.bullets.length > 0 && (
-                                            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Bullets</p>
-                                                <ul className="space-y-0.5">{contentResult.bullets.map((b: string, i: number) => <li key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-violet-400 shrink-0">▸</span>{b}</li>)}</ul>
-                                            </div>
-                                        )}
-                                        {Array.isArray(contentResult.keywords) && (
-                                            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
-                                                <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Keywords ({contentResult.keywords.length})</p><button onClick={() => copyText(contentResult.keywords.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button></div>
-                                                <div className="flex flex-wrap gap-1">{contentResult.keywords.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[8px] px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 hover:bg-violet-500/20 transition-colors">{k}</button>)}</div>
-                                            </div>
-                                        )}
-                                        {contentResult.price_suggestion_usd && (
-                                            <div className="flex items-center gap-3 px-3 py-2 bg-emerald-500/5 border border-emerald-500/15 rounded-xl">
-                                                <DollarSign size={13} className="text-emerald-400 shrink-0" />
-                                                <div><p className="text-[8px] text-neutral-600 uppercase">Precio sugerido</p><p className="text-sm font-black text-emerald-400">${contentResult.price_suggestion_usd}</p></div>
-                                                {contentResult.series_name && <div className="ml-auto"><p className="text-[8px] text-neutral-600 uppercase">Serie</p><p className="text-[10px] text-neutral-300">{contentResult.series_name}</p></div>}
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                                {contentType === "titles" && Array.isArray(contentResult) && (
-                                    <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Títulos ({contentResult.length})</p>
-                                        {contentResult.map((t: string, i: number) => (
-                                            <div key={i} className="flex items-center gap-2 py-1.5 border-b border-white/5 last:border-0">
-                                                <span className="text-[9px] text-neutral-700 w-4">{i + 1}.</span>
-                                                <p className="text-[11px] text-neutral-200 flex-1">{t}</p>
-                                                <button onClick={() => copyText(t)} className="p-1 rounded text-neutral-600 hover:text-white shrink-0"><Copy size={10} /></button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                                {contentType === "description" && typeof contentResult === "object" && (
-                                    <>
-                                        {contentResult.description && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div><p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p></div>}
-                                        {Array.isArray(contentResult.bullets) && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Bullets</p>{contentResult.bullets.map((b: string, i: number) => <p key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-violet-400 shrink-0">▸</span>{b}</p>)}</div>}
-                                    </>
-                                )}
-                                {contentType === "keywords" && Array.isArray(contentResult) && (
-                                    <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-2">
-                                        <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Keywords ({contentResult.length})</p><button onClick={() => copyText(contentResult.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px]"><Copy size={9} /> Copiar todos</button></div>
-                                        <div className="flex flex-wrap gap-1.5">{contentResult.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[9px] px-2 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 hover:bg-violet-500/20 transition-colors">{k}</button>)}</div>
-                                    </div>
-                                )}
-                                {contentType === "back-cover" && typeof contentResult === "object" && contentResult.back_cover && (
-                                    <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
-                                        <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Contraportada</p><button onClick={() => copyText(contentResult.back_cover)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
-                                        <p className="text-[11px] text-neutral-200 leading-relaxed whitespace-pre-line">{contentResult.back_cover}</p>
-                                    </div>
-                                )}
-                                {contentType === "series" && typeof contentResult === "object" && contentResult.series_name && (
-                                    <div className="space-y-2">
-                                        <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Serie</p><p className="text-base font-black text-white mt-0.5">{contentResult.series_name}</p>{contentResult.concept && <p className="text-[10px] text-neutral-400 mt-0.5">{contentResult.concept}</p>}</div>
-                                        {Array.isArray(contentResult.volumes) && contentResult.volumes.map((v: any, i: number) => (
-                                            <div key={i} className="bg-white/[0.02] border border-white/5 rounded-xl p-2.5 flex gap-2">
-                                                <span className="text-[9px] font-black text-violet-400 w-4 shrink-0 mt-0.5">{i + 1}</span>
-                                                <div><p className="text-[11px] font-bold text-white">{v.title}</p><p className="text-[9px] text-neutral-500">{v.theme} — {v.angle}</p></div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                                {typeof contentResult === "string" && (
-                                    <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3">
-                                        <div className="flex justify-end mb-1"><button onClick={() => copyText(contentResult)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
-                                        <p className="text-[10px] text-neutral-300 whitespace-pre-wrap">{contentResult}</p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
+                    {/* ── Generate button ── */}
+                    <div className="space-y-1.5">
+                        <button onClick={() => void generateContent()} disabled={isGeneratingContent || !contentNiche.trim()}
+                            className="w-full h-11 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500">
+                            {isGeneratingContent ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><Sparkles size={13} /> Generar con IA</>}
+                        </button>
+                        <p className="text-center text-[9px] text-neutral-700 flex items-center justify-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/60 inline-block" />
+                            <span className="font-mono">gemini-2.5-flash</span> · gratuito
+                        </p>
                     </div>
+
+                    {isGeneratingContent && (
+                        <div className="flex flex-col items-center justify-center py-10 gap-3">
+                            <div className="relative">
+                                <Loader2 size={24} className="animate-spin text-amber-400" />
+                            </div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Generando con IA...</p>
+                        </div>
+                    )}
+                    {!contentResult && !isGeneratingContent && (
+                        <div className="flex flex-col items-center justify-center py-10 text-center space-y-2 opacity-20">
+                            <Wand2 size={24} strokeWidth={1.5} className="text-neutral-600" />
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">El resultado aparecerá aquí</p>
+                        </div>
+                    )}
+                    {contentResult && !isGeneratingContent && (
+                        <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
+
+                            {/* ── KDP Physical Book result ── */}
+                            {contentType === "kdp-physical-book" && typeof contentResult === "object" && (
+                                <div className="space-y-2.5">
+                                    {/* Copy all listing */}
+                                    {(contentResult.title || contentResult.description || contentResult.keywords?.length) && (
+                                        <button
+                                            onClick={() => {
+                                                const parts: string[] = [];
+                                                if (contentResult.title) parts.push(`TÍTULO: ${contentResult.title}${contentResult.subtitle ? `\nSUBTÍTULO: ${contentResult.subtitle}` : ""}`);
+                                                if (contentResult.description) parts.push(`\nDESCRIPCIÓN:\n${contentResult.description}`);
+                                                if (Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0) parts.push(`\nKEYWORDS: ${contentResult.keywords.join(", ")}`);
+                                                copyText(parts.join("\n"));
+                                            }}
+                                            className="w-full flex items-center justify-center gap-2 h-9 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest"
+                                        >
+                                            <Copy size={12} /> Copiar listing completo
+                                        </button>
+                                    )}
+                                    {/* Title + Subtitle */}
+                                    {contentResult.title && (
+                                        <div className="bg-amber-500/[0.04] border border-amber-500/15 rounded-2xl p-4 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Título</p>
+                                                <button onClick={() => copyText(`${contentResult.title}${contentResult.subtitle ? `: ${contentResult.subtitle}` : ""}`)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
+                                            </div>
+                                            <p className="text-[15px] font-black text-white leading-tight">{contentResult.title}</p>
+                                            {contentResult.subtitle && (
+                                                <p className="text-[11px] text-amber-200/60 leading-snug border-t border-amber-500/10 pt-2">{contentResult.subtitle}</p>
+                                            )}
+                                        </div>
+                                    )}
+                                    {/* Description */}
+                                    {contentResult.description && (
+                                        <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/80">Descripción</p>
+                                                <button onClick={() => copyText(contentResult.description)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
+                                            </div>
+                                            <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
+                                        </div>
+                                    )}
+                                    {/* 7 Keywords */}
+                                    {Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0 && (
+                                        <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2.5">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/80">
+                                                    {contentResult.keywords.length} Palabras clave
+                                                </p>
+                                                <button onClick={() => copyText(contentResult.keywords.join("\n"))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar todo</button>
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                {contentResult.keywords.map((k: string, i: number) => (
+                                                    <div key={i} className="flex items-center gap-2 group">
+                                                        <span className="text-[9px] font-black text-amber-500/50 w-4 shrink-0 tabular-nums">{i + 1}</span>
+                                                        <p className="flex-1 text-[10px] text-neutral-300">{k}</p>
+                                                        <button onClick={() => copyText(k)} className="opacity-0 group-hover:opacity-100 p-1 rounded text-neutral-600 hover:text-white transition-all"><Copy size={9} /></button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {/* Regenerate hint */}
+                                    <button onClick={() => void generateContent()} className="w-full flex items-center justify-center gap-1.5 py-2 text-[9px] font-black uppercase tracking-widest text-neutral-700 hover:text-neutral-400 transition-colors">
+                                        <Sparkles size={9} /> Regenerar
+                                    </button>
+                                </div>
+                            )}
+
+                            {contentType === "full-listing" && typeof contentResult === "object" && (
+                                <>
+                                    {contentResult.title && (
+                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
+                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Título</p><button onClick={() => copyText(contentResult.title)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
+                                            <p className="text-sm text-white font-medium">{contentResult.title}</p>
+                                            {contentResult.subtitle && <p className="text-[10px] text-neutral-500">{contentResult.subtitle}</p>}
+                                        </div>
+                                    )}
+                                    {contentResult.description && (
+                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
+                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
+                                            <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
+                                        </div>
+                                    )}
+                                    {Array.isArray(contentResult.bullets) && contentResult.bullets.length > 0 && (
+                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Bullets</p>
+                                            <ul className="space-y-0.5">{contentResult.bullets.map((b: string, i: number) => <li key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-violet-400 shrink-0">▸</span>{b}</li>)}</ul>
+                                        </div>
+                                    )}
+                                    {Array.isArray(contentResult.keywords) && (
+                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
+                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Keywords ({contentResult.keywords.length})</p><button onClick={() => copyText(contentResult.keywords.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button></div>
+                                            <div className="flex flex-wrap gap-1">{contentResult.keywords.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[8px] px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 hover:bg-violet-500/20 transition-colors">{k}</button>)}</div>
+                                        </div>
+                                    )}
+                                    {contentResult.price_suggestion_usd && (
+                                        <div className="flex items-center gap-3 px-3 py-2 bg-emerald-500/5 border border-emerald-500/15 rounded-xl">
+                                            <DollarSign size={13} className="text-emerald-400 shrink-0" />
+                                            <div><p className="text-[8px] text-neutral-600 uppercase">Precio sugerido</p><p className="text-sm font-black text-emerald-400">${contentResult.price_suggestion_usd}</p></div>
+                                            {contentResult.series_name && <div className="ml-auto"><p className="text-[8px] text-neutral-600 uppercase">Serie</p><p className="text-[10px] text-neutral-300">{contentResult.series_name}</p></div>}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                            {contentType === "titles" && Array.isArray(contentResult) && (
+                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Títulos ({contentResult.length})</p>
+                                    {contentResult.map((t: string, i: number) => (
+                                        <div key={i} className="flex items-center gap-2 py-1.5 border-b border-white/5 last:border-0">
+                                            <span className="text-[9px] text-neutral-700 w-4">{i + 1}.</span>
+                                            <p className="text-[11px] text-neutral-200 flex-1">{t}</p>
+                                            <button onClick={() => copyText(t)} className="p-1 rounded text-neutral-600 hover:text-white shrink-0"><Copy size={10} /></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {contentType === "description" && typeof contentResult === "object" && (
+                                <>
+                                    {contentResult.description && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div><p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p></div>}
+                                    {Array.isArray(contentResult.bullets) && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Bullets</p>{contentResult.bullets.map((b: string, i: number) => <p key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-violet-400 shrink-0">▸</span>{b}</p>)}</div>}
+                                </>
+                            )}
+                            {contentType === "keywords" && Array.isArray(contentResult) && (
+                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-2">
+                                    <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Keywords ({contentResult.length})</p><button onClick={() => copyText(contentResult.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px]"><Copy size={9} /> Copiar todos</button></div>
+                                    <div className="flex flex-wrap gap-1.5">{contentResult.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[9px] px-2 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 hover:bg-violet-500/20 transition-colors">{k}</button>)}</div>
+                                </div>
+                            )}
+                            {contentType === "back-cover" && typeof contentResult === "object" && contentResult.back_cover && (
+                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
+                                    <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Contraportada</p><button onClick={() => copyText(contentResult.back_cover)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
+                                    <p className="text-[11px] text-neutral-200 leading-relaxed whitespace-pre-line">{contentResult.back_cover}</p>
+                                </div>
+                            )}
+                            {contentType === "series" && typeof contentResult === "object" && contentResult.series_name && (
+                                <div className="space-y-2">
+                                    <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-3"><p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Serie</p><p className="text-base font-black text-white mt-0.5">{contentResult.series_name}</p>{contentResult.concept && <p className="text-[10px] text-neutral-400 mt-0.5">{contentResult.concept}</p>}</div>
+                                    {Array.isArray(contentResult.volumes) && contentResult.volumes.map((v: any, i: number) => (
+                                        <div key={i} className="bg-white/[0.02] border border-white/5 rounded-xl p-2.5 flex gap-2">
+                                            <span className="text-[9px] font-black text-violet-400 w-4 shrink-0 mt-0.5">{i + 1}</span>
+                                            <div><p className="text-[11px] font-bold text-white">{v.title}</p><p className="text-[9px] text-neutral-500">{v.theme} — {v.angle}</p></div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {typeof contentResult === "string" && (
+                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3">
+                                    <div className="flex justify-end mb-1"><button onClick={() => copyText(contentResult)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
+                                    <p className="text-[10px] text-neutral-300 whitespace-pre-wrap">{contentResult}</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                 </div>
             </div>
         </div>
@@ -4525,14 +4764,15 @@ export function KdpFactoryApp() {
                         role="dialog"
                         aria-modal="true"
                     >
-                        {/* Image — centered, bottom padding leaves room for toolbar */}
+                        {/* Image — explicit top/bottom push so full image is always visible */}
                         <div
-                            className="absolute inset-x-0 top-0 flex items-center justify-center px-4 pt-4"
-                            style={{ bottom: "calc(env(safe-area-inset-bottom) + 160px)" }}
+                            className="absolute inset-x-0 flex items-center justify-center px-8"
+                            style={{ top: "88px", bottom: "calc(env(safe-area-inset-bottom) + 220px)" }}
                             onClick={closePreview}
                         >
                             <div
-                                className="relative flex items-center justify-center w-full max-w-6xl h-full gap-3"
+                                className="relative flex items-center justify-center w-full max-w-6xl gap-3"
+                                style={{ height: "100%" }}
                                 onClick={(e) => e.stopPropagation()}
                             >
                                 {previewContext && previewContext.index > 0 ? (
@@ -4541,13 +4781,46 @@ export function KdpFactoryApp() {
                                         <ChevronLeft size={20} />
                                     </button>
                                 ) : previewContext ? <div className="shrink-0 w-11" /> : null}
-                                <img
-                                    key={previewImage}
-                                    src={previewImage}
-                                    alt="Vista previa"
-                                    className="flex-1 min-w-0 max-w-full max-h-full w-auto h-auto object-contain rounded-2xl"
-                                    onClick={(e) => e.stopPropagation()}
-                                />
+                                {/* Image + magnifier lens (only active when previewMagnifier=true) */}
+                                <div className="flex-1 min-w-0 relative flex items-center justify-center"
+                                    onMouseMove={e => {
+                                        const img = previewImgRef.current;
+                                        const lens = previewLensRef.current;
+                                        if (!img || !lens || !previewMagnifier) return;
+                                        const rect = img.getBoundingClientRect();
+                                        const LENS = 180;
+                                        const x = e.clientX - rect.left;
+                                        const y = e.clientY - rect.top;
+                                        if (x < 0 || y < 0 || x > rect.width || y > rect.height) { lens.style.display = "none"; return; }
+                                        lens.style.display = "block";
+                                        lens.style.left = `${Math.min(Math.max(x - LENS / 2, 0), rect.width - LENS)}px`;
+                                        lens.style.top = `${Math.min(Math.max(y - LENS / 2, 0), rect.height - LENS)}px`;
+                                        lens.style.backgroundPosition = `${-(x * previewZoom - LENS / 2)}px ${-(y * previewZoom - LENS / 2)}px`;
+                                        lens.style.backgroundSize = `${rect.width * previewZoom}px ${rect.height * previewZoom}px`;
+                                        lens.style.backgroundImage = `url(${previewImage})`;
+                                    }}
+                                    onMouseLeave={() => { if (previewLensRef.current) previewLensRef.current.style.display = "none"; }}
+                                >
+                                    <img
+                                        key={previewImage}
+                                        ref={previewImgRef}
+                                        src={previewImage}
+                                        alt="Vista previa"
+                                        className="w-auto h-auto object-contain rounded-2xl"
+                                        onClick={(e) => e.stopPropagation()}
+                                        style={{
+                                            maxWidth: "100%",
+                                            maxHeight: "calc(100vh - 370px)",
+                                            cursor: previewMagnifier ? "crosshair" : "default",
+                                        }}
+                                    />
+                                    {/* Magnifier lens — only shown via JS when magnifier is active */}
+                                    <div
+                                        ref={previewLensRef}
+                                        className="absolute pointer-events-none rounded-2xl border-2 border-white/40 shadow-[0_0_0_1px_rgba(0,0,0,0.6),0_8px_32px_rgba(0,0,0,0.9)]"
+                                        style={{ width: 180, height: 180, display: "none", backgroundRepeat: "no-repeat" }}
+                                    />
+                                </div>
                                 {previewContext && previewContext.index < previewContext.urls.length - 1 ? (
                                     <button onClick={() => navigatePreview(1)}
                                         className="shrink-0 w-11 h-11 rounded-2xl bg-black/60 backdrop-blur-md text-white border border-white/10 hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center">
@@ -4563,11 +4836,26 @@ export function KdpFactoryApp() {
                             style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 56px)" }}
                             onClick={(e) => e.stopPropagation()}
                         >
-                            {previewContext && (
-                                <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">
-                                    {previewContext.index + 1} / {previewContext.urls.length}
-                                </span>
-                            )}
+                            <div className="flex items-center gap-3">
+                                {previewContext && (
+                                    <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">
+                                        {previewContext.index + 1} / {previewContext.urls.length}
+                                    </span>
+                                )}
+                                {/* Magnifier toggle + zoom selector */}
+                                <div className="flex items-center gap-0.5 bg-black/60 backdrop-blur-md border border-white/10 rounded-2xl p-1">
+                                    <button onClick={() => { setPreviewMagnifier(false); if (previewLensRef.current) previewLensRef.current.style.display = "none"; }}
+                                        className={`h-6 px-2.5 rounded-xl text-[9px] font-black transition-all ${!previewMagnifier ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                        Off
+                                    </button>
+                                    {([1.5, 2, 3, 4] as const).map(z => (
+                                        <button key={z} onClick={() => { setPreviewZoom(z); setPreviewMagnifier(true); }}
+                                            className={`h-6 px-2.5 rounded-xl text-[9px] font-black transition-all ${previewMagnifier && previewZoom === z ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                            {z}×
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
                             <div className="flex items-center gap-2 flex-wrap justify-center px-4">
                                 {/* Favorite */}
                                 <button
@@ -5094,7 +5382,7 @@ export function KdpFactoryApp() {
 
                                                                     {/* Text rendered in position */}
                                                                     <div className={`absolute inset-[5%] pointer-events-none flex flex-col ${vAlign === "top" ? "justify-start" :
-                                                                            vAlign === "middle" ? "justify-center" : "justify-end"
+                                                                        vAlign === "middle" ? "justify-center" : "justify-end"
                                                                         }`} style={{ textAlign: selectedPage.text.align }}>
                                                                         <p style={{
                                                                             fontFamily: cssFontFamily,
@@ -5381,6 +5669,23 @@ export function KdpFactoryApp() {
                 </div>
             )}
 
+            {/* Confirm Delete Draft Dialog */}
+            {confirmDeleteDraftId && (
+                <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
+                    <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
+                        <div className="space-y-2 text-center">
+                            <div className="w-14 h-14 rounded-2xl bg-rose-500/10 flex items-center justify-center mx-auto"><Trash2 size={24} className="text-rose-400" /></div>
+                            <p className="text-base font-black text-white">¿Eliminar borrador?</p>
+                            <p className="text-sm text-neutral-500">Se eliminará el borrador <span className="text-white font-bold">"{bookDrafts.find(d => d.id === confirmDeleteDraftId)?.fileName || "libro-kdp"}"</span> y todas sus páginas. Esta acción no se puede deshacer.</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={() => setConfirmDeleteDraftId(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
+                            <button onClick={() => { void deleteBookDraft(confirmDeleteDraftId); setConfirmDeleteDraftId(null); }} className="flex-1 h-11 rounded-2xl bg-rose-500 text-white text-sm font-black hover:bg-rose-400 transition-all">Eliminar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Confirm Delete Image Dialog */}
             {confirmDeleteImageInfo && (
                 <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
@@ -5538,17 +5843,38 @@ export function KdpFactoryApp() {
                                     ))}
                                 </div>
                             </div>
-                            {/* Style Category */}
+                            {/* Style Category — multi-select */}
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Estilo visual</label>
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Estilo visual</label>
+                                    {nicheFormStyles.length > 1 && (
+                                        <span className="text-[9px] font-black text-violet-400">{nicheFormStyles.length} seleccionados</span>
+                                    )}
+                                </div>
                                 <div className="grid grid-cols-2 gap-1.5">
-                                    {NICHE_STYLE_OPTIONS.map(opt => (
-                                        <button key={opt.id} onClick={() => setNicheFormStyle(opt.id)}
-                                            className={`h-10 rounded-xl border px-3 text-left transition-all ${nicheFormStyle === opt.id ? "border-violet-500/40 bg-violet-500/10 ring-1 ring-violet-500/20" : "border-white/8 bg-white/[0.02] hover:bg-white/5"}`}>
-                                            <span className={`block text-[9px] font-black uppercase tracking-widest ${nicheFormStyle === opt.id ? "text-violet-400" : "text-neutral-400"}`}>{opt.label}</span>
-                                            <span className="block text-[8px] text-neutral-600 leading-tight">{opt.desc}</span>
-                                        </button>
-                                    ))}
+                                    {NICHE_STYLE_OPTIONS.map(opt => {
+                                        const active = nicheFormStyles.includes(opt.id);
+                                        return (
+                                            <button key={opt.id} onClick={() => {
+                                                setNicheFormStyles(prev => {
+                                                    if (prev.includes(opt.id)) {
+                                                        const next = prev.filter(s => s !== opt.id);
+                                                        return next.length === 0 ? [opt.id] : next;
+                                                    }
+                                                    return [...prev, opt.id];
+                                                });
+                                            }}
+                                                className={`h-10 rounded-xl border px-3 text-left transition-all flex items-start gap-2 ${active ? "border-violet-500/40 bg-violet-500/10 ring-1 ring-violet-500/20" : "border-white/8 bg-white/[0.02] hover:bg-white/5"}`}>
+                                                <div className={`mt-1.5 w-3 h-3 rounded-sm border-2 flex items-center justify-center shrink-0 transition-all ${active ? "bg-violet-500 border-violet-500" : "border-neutral-600"}`}>
+                                                    {active && <Check size={8} className="text-white" strokeWidth={3} />}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <span className={`block text-[9px] font-black uppercase tracking-widest ${active ? "text-violet-400" : "text-neutral-400"}`}>{opt.label}</span>
+                                                    <span className="block text-[8px] text-neutral-600 leading-tight">{opt.desc}</span>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
                             {/* Competition + Demand */}
@@ -5752,21 +6078,37 @@ export function KdpFactoryApp() {
                             {/* Completed catalogs */}
                             {iaCatalogs.filter(c => c.status === "completed" && c.images.length > 0).length > 0 && (
                                 <div className="space-y-3">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center justify-between gap-2 flex-wrap">
                                         <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Catálogos completados</p>
-                                        <button
-                                            onClick={() => {
-                                                const completed = iaCatalogs.filter(c => c.status === "completed" && c.images.length > 0);
-                                                const allSel = completed.every(c => kdpTemplateCatalogSel.has(c._id));
-                                                setKdpTemplateCatalogSel(allSel ? new Set() : new Set(completed.map(c => c._id)));
-                                            }}
-                                            className="text-[9px] font-black uppercase tracking-widest text-violet-400 hover:text-violet-300 transition-colors"
-                                        >
-                                            {iaCatalogs.filter(c => c.status === "completed" && c.images.length > 0).every(c => kdpTemplateCatalogSel.has(c._id)) ? "Deseleccionar todo" : "Seleccionar todo"}
-                                        </button>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            {niches.length > 0 && (
+                                                <>
+                                                    <button onClick={() => setKdpTemplateNicheFilter(null)}
+                                                        className={`px-2 h-5 rounded-full border text-[8px] font-black uppercase transition-all ${!kdpTemplateNicheFilter ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "border-white/10 text-neutral-700 hover:text-neutral-400"}`}>
+                                                        Todos
+                                                    </button>
+                                                    {niches.map(n => (
+                                                        <button key={n._id} onClick={() => setKdpTemplateNicheFilter(kdpTemplateNicheFilter === n._id ? null : n._id)}
+                                                            className={`px-2 h-5 rounded-full border text-[8px] font-bold transition-all truncate max-w-[100px] ${kdpTemplateNicheFilter === n._id ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "border-white/10 text-neutral-700 hover:text-neutral-400"}`}>
+                                                            {n.name}
+                                                        </button>
+                                                    ))}
+                                                </>
+                                            )}
+                                            <button
+                                                onClick={() => {
+                                                    const completed = iaCatalogs.filter(c => c.status === "completed" && c.images.length > 0 && (!kdpTemplateNicheFilter || (c.nicheIds ?? []).includes(kdpTemplateNicheFilter)));
+                                                    const allSel = completed.every(c => kdpTemplateCatalogSel.has(c._id));
+                                                    setKdpTemplateCatalogSel(allSel ? new Set() : new Set(completed.map(c => c._id)));
+                                                }}
+                                                className="text-[9px] font-black uppercase tracking-widest text-violet-400 hover:text-violet-300 transition-colors"
+                                            >
+                                                Sel. todo
+                                            </button>
+                                        </div>
                                     </div>
                                     <div className="space-y-2">
-                                        {iaCatalogs.filter(c => c.status === "completed" && c.images.length > 0).map(catalog => {
+                                        {iaCatalogs.filter(c => c.status === "completed" && c.images.length > 0 && (!kdpTemplateNicheFilter || (c.nicheIds ?? []).includes(kdpTemplateNicheFilter))).map(catalog => {
                                             const sel = kdpTemplateCatalogSel.has(catalog._id);
                                             return (
                                                 <button
@@ -5903,6 +6245,7 @@ export function KdpFactoryApp() {
                     </div>
                 );
             })()}
+
 
             {/* ── ZIP FACTORY PANEL ── */}
             {zipFactoryOpen && (() => {
@@ -6044,6 +6387,7 @@ export function KdpFactoryApp() {
                         </div>
                     </div>
                 );
+                1
             })()}
 
             {/* Custom Catalog from Cloudinary Modal */}
