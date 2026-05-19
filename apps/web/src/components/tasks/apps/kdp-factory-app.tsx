@@ -93,7 +93,7 @@ interface DigitalProduct {
 const PRODUCT_TYPES = [
     { id: "kdp-color-book", name: "KDP Color Book", icon: <BookOpen size={18} />, color: "text-blue-400", bg: "bg-blue-500/10" },
     { id: "poster-digital", name: "Poster Digital", icon: <ImageIcon size={18} />, color: "text-emerald-400", bg: "bg-emerald-500/10" },
-    { id: "clothing", name: "Patrones para Ropa", icon: <Shirt size={18} />, color: "text-purple-400", bg: "bg-purple-500/10" },
+    { id: "clothing", name: "Patrones para Ropa", icon: <Shirt size={18} />, color: "text-blue-400", bg: "bg-blue-500/10" },
     { id: "frames", name: "Cuadros Imprimibles", icon: <Frame size={18} />, color: "text-rose-400", bg: "bg-rose-500/10" },
     { id: "etsy-products", name: "Productos Etsy", icon: <Store size={18} />, color: "text-orange-400", bg: "bg-orange-500/10" },
     { id: "landing-page-template", name: "Landing Page Template", icon: <FileText size={18} />, color: "text-cyan-400", bg: "bg-cyan-500/10" }
@@ -150,6 +150,12 @@ type NicheStatus = "found" | "active" | "research" | "archived";
 type NicheProductType = "coloring-book" | "printable-poster" | "other";
 type NicheStyle = "generic" | "anime" | "illustration" | "children" | "realistic" | "watercolor" | "abstract";
 
+interface NicheRoyaltyEntry {
+    month: string;
+    sales: number;
+    revenue: number;
+}
+
 interface NicheFE {
     _id: string;
     name: string;
@@ -165,6 +171,11 @@ interface NicheFE {
     generatedPrompt?: string;
     catalogIds?: string[];
     phase?: "niche" | "catalog" | "pdf" | "published";
+    publishedAt?: string;
+    asin?: string;
+    etsyUrl?: string;
+    gumroadUrl?: string;
+    royalties?: NicheRoyaltyEntry[];
     createdAt: string;
 }
 
@@ -305,8 +316,8 @@ function KdpSelect({ value, onChange, options, accent = "white" }: {
         return () => document.removeEventListener("mousedown", handler);
     }, []);
     const current = options.find(o => o.value === value);
-    const ringCls = accent === "violet" ? "border-violet-500/50 bg-violet-500/5" : accent === "amber" ? "border-amber-500/50 bg-amber-500/5" : "border-white/20 bg-white/5";
-    const activeCls = accent === "violet" ? "text-violet-300 bg-violet-500/10" : accent === "amber" ? "text-amber-300 bg-amber-500/10" : "text-white bg-white/10";
+    const ringCls = accent === "violet" ? "border-sky-500/50 bg-sky-500/5" : accent === "amber" ? "border-amber-500/50 bg-amber-500/5" : "border-white/20 bg-white/5";
+    const activeCls = accent === "violet" ? "text-sky-300 bg-sky-500/10" : accent === "amber" ? "text-amber-300 bg-amber-500/10" : "text-white bg-white/10";
     return (
         <div ref={ref} className="relative">
             <button type="button" onClick={() => setOpen(o => !o)}
@@ -504,6 +515,7 @@ export function KdpFactoryApp() {
     const [kdpTemplateVaultSel, setKdpTemplateVaultSel] = useState<Set<number>>(new Set());
     const [kdpTemplateCatalogSel, setKdpTemplateCatalogSel] = useState<Set<string>>(new Set());
     const [kdpTemplateCloudSel, setKdpTemplateCloudSel] = useState<Set<number>>(new Set());
+    const [kdpTemplateRandom, setKdpTemplateRandom] = useState(false);
     // Feature: retry failed slots
     const [retryingCatalogId, setRetryingCatalogId] = useState<string | null>(null);
     // Feature: compare catalogs
@@ -527,6 +539,19 @@ export function KdpFactoryApp() {
     const [collapsedCompleted, setCollapsedCompleted] = useState(true);
     const [draggingId, setDraggingId] = useState<string | null>(null);
     const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+    // --- Pipeline: publication panel + royalties ---
+    const [nichePublishPanelId, setNichePublishPanelId] = useState<string | null>(null);
+    const [publishPanelAsin, setPublishPanelAsin] = useState("");
+    const [publishPanelEtsy, setPublishPanelEtsy] = useState("");
+    const [publishPanelGumroad, setPublishPanelGumroad] = useState("");
+    const [publishPanelDate, setPublishPanelDate] = useState("");
+    const [isSavingPublish, setIsSavingPublish] = useState(false);
+    const [royaltiesNicheId, setRoyaltiesNicheId] = useState<string | null>(null);
+    const [royaltiesMonth, setRoyaltiesMonth] = useState(() => new Date().toISOString().slice(0, 7));
+    const [royaltiesSales, setRoyaltiesSales] = useState("");
+    const [royaltiesRevenue, setRoyaltiesRevenue] = useState("");
+    const [isSavingRoyalties, setIsSavingRoyalties] = useState(false);
 
     // --- Content generator state ---
     const [contentNiche, setContentNiche] = useState("");
@@ -940,6 +965,66 @@ export function KdpFactoryApp() {
         setShowSavePromptDialog(true);
     };
 
+    const openPublishPanel = (niche: NicheFE) => {
+        setNichePublishPanelId(niche._id);
+        setPublishPanelAsin(niche.asin ?? "");
+        setPublishPanelEtsy(niche.etsyUrl ?? "");
+        setPublishPanelGumroad(niche.gumroadUrl ?? "");
+        setPublishPanelDate(niche.publishedAt ? niche.publishedAt.slice(0, 10) : "");
+    };
+
+    const savePublishPanel = async (nicheId: string) => {
+        setIsSavingPublish(true);
+        try {
+            const body: Record<string, any> = {
+                asin: publishPanelAsin.trim(),
+                etsyUrl: publishPanelEtsy.trim(),
+                gumroadUrl: publishPanelGumroad.trim(),
+                publishedAt: publishPanelDate || null,
+            };
+            if (publishPanelDate || publishPanelAsin || publishPanelEtsy) body.phase = "published";
+            const res = await fetch(`${API_BASE_URL}/niches/${nicheId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) throw new Error("Error al guardar");
+            const data = await res.json();
+            setNiches(prev => prev.map(n => n._id === nicheId ? data.niche : n));
+            setNichePublishPanelId(null);
+            toast.success("Datos de publicación guardados");
+        } catch { toast.error("Error al guardar publicación"); }
+        finally { setIsSavingPublish(false); }
+    };
+
+    const addRoyaltyEntry = async (nicheId: string) => {
+        if (!royaltiesMonth || !royaltiesRevenue) { toast.error("Mes e ingresos son obligatorios"); return; }
+        setIsSavingRoyalties(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches/${nicheId}/royalties`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ month: royaltiesMonth, sales: Number(royaltiesSales) || 0, revenue: Number(royaltiesRevenue) }),
+            });
+            if (!res.ok) throw new Error("Error");
+            const data = await res.json();
+            setNiches(prev => prev.map(n => n._id === nicheId ? data.niche : n));
+            setRoyaltiesSales("");
+            setRoyaltiesRevenue("");
+            toast.success("Royalties registrados");
+        } catch { toast.error("Error al guardar royalties"); }
+        finally { setIsSavingRoyalties(false); }
+    };
+
+    const deleteRoyaltyEntry = async (nicheId: string, month: string) => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches/${nicheId}/royalties/${encodeURIComponent(month)}`, { method: "DELETE" });
+            if (!res.ok) throw new Error("Error");
+            const data = await res.json();
+            setNiches(prev => prev.map(n => n._id === nicheId ? data.niche : n));
+        } catch { toast.error("Error al eliminar royalty"); }
+    };
+
     const saveCurrentPrompt = async () => {
         if (!promptTheme.trim()) { toast.error("La temática está vacía"); return; }
         if (!savePromptName.trim()) { toast.error("Dale un nombre al prompt"); return; }
@@ -1119,8 +1204,8 @@ export function KdpFactoryApp() {
         setKdpTemplateOpen(true);
     };
 
-    const applyColoringBookTemplate = (titleText = "Mi Libro de Colorear", imageEntries?: { url: string; label: string }[]) => {
-        const entries = imageEntries ?? [
+    const applyColoringBookTemplate = (titleText = "Mi Libro de Colorear", imageEntries?: { url: string; label: string }[], randomOrder = false) => {
+        let entries = imageEntries ?? [
             ...vaultImages.map(v => ({ url: v.url, label: v.model || "Vault" })),
             ...iaCatalogs
                 .filter(c => c.status === "completed" && c.images.length > 0)
@@ -1130,6 +1215,10 @@ export function KdpFactoryApp() {
         if (entries.length === 0) {
             toast.error("No hay imágenes seleccionadas");
             return;
+        }
+
+        if (randomOrder) {
+            entries = [...entries].sort(() => Math.random() - 0.5);
         }
 
         const pages: BookPage[] = [];
@@ -1153,7 +1242,7 @@ export function KdpFactoryApp() {
         setBookPages(pages);
         setSelectedPageId(pages[0].id);
         setBookEditorOpen(true);
-        toast.success(`Plantilla KDP · ${pages.length} páginas (${entries.length} imágenes)`);
+        toast.success(`Plantilla KDP · ${pages.length} páginas (${entries.length} imágenes${randomOrder ? " · orden aleatorio" : ""})`);
     };
 
     const deletePage = (id: string) => {
@@ -2090,7 +2179,7 @@ export function KdpFactoryApp() {
         high: { label: "Alta", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
     };
     const STATUS_LABELS: Record<NicheStatus, { label: string; color: string }> = {
-        found: { label: "Encontrado", color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
+        found: { label: "Encontrado", color: "text-sky-400 bg-sky-500/10 border-sky-500/20" },
         research: { label: "Investigando", color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
         active: { label: "Activo", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
         archived: { label: "Archivado", color: "text-neutral-500 bg-neutral-500/10 border-neutral-500/20" },
@@ -2121,10 +2210,10 @@ export function KdpFactoryApp() {
                     <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Market Reach</span><div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400"><Globe size={16} /></div></div>
                     <div className="space-y-1 text-3xl font-black italic tracking-tighter text-white">4/4 <span className="text-xs uppercase text-neutral-500 tracking-widest not-italic ml-2">Platforms</span></div>
                 </Card>
-                <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-purple-500/30 hover:shadow-[0_0_30px_rgba(168,85,247,0.12)] transition-all duration-500 group relative overflow-hidden">
-                    <div className="absolute -right-4 -top-4 w-16 h-16 bg-purple-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
-                    <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Top Nicho</span><div className="p-2 rounded-xl bg-purple-500/10 text-purple-400"><Activity size={16} /></div></div>
-                    <div className="space-y-1 text-xl font-black italic tracking-tighter text-white flex flex-col"><span>Mandala Art</span><span className="text-[11px] uppercase font-black text-purple-400 tracking-widest">+45% Demand</span></div>
+                <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.12)] transition-all duration-500 group relative overflow-hidden">
+                    <div className="absolute -right-4 -top-4 w-16 h-16 bg-blue-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
+                    <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Top Nicho</span><div className="p-2 rounded-xl bg-blue-500/10 text-blue-400"><Activity size={16} /></div></div>
+                    <div className="space-y-1 text-xl font-black italic tracking-tighter text-white flex flex-col"><span>Mandala Art</span><span className="text-[11px] uppercase font-black text-blue-400 tracking-widest">+45% Demand</span></div>
                 </Card>
             </div>
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -2181,22 +2270,22 @@ export function KdpFactoryApp() {
             {niches.length > 0 && (
                 <section className="space-y-5">
                     <div className="flex items-center gap-3">
-                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/25 to-transparent" />
+                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-sky-500/25 to-transparent" />
                         <div className="flex items-center gap-2">
-                            <Target size={11} className="text-violet-400" />
+                            <Target size={11} className="text-sky-400" />
                             <p className="text-[9px] font-black uppercase tracking-[0.25em] text-neutral-500">Análisis de Nichos</p>
                         </div>
-                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-violet-500/25 to-transparent" />
+                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-sky-500/25 to-transparent" />
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                         {/* Score Distribution */}
-                        <Card variant="glass" className="lg:col-span-2 p-6 border-white/5 bg-white/[0.01] space-y-5 relative overflow-hidden hover:shadow-[0_0_40px_rgba(139,92,246,0.08)] transition-all duration-500">
-                            <div className="absolute -right-6 -top-6 w-24 h-24 bg-violet-500/8 blur-3xl rounded-full" />
+                        <Card variant="glass" className="lg:col-span-2 p-6 border-white/5 bg-white/[0.01] space-y-5 relative overflow-hidden hover:shadow-[0_0_40px_rgba(14,165,233,0.08)] transition-all duration-500">
+                            <div className="absolute -right-6 -top-6 w-24 h-24 bg-sky-500/8 blur-3xl rounded-full" />
                             <div className="flex items-start justify-between relative">
                                 <div className="space-y-0.5">
                                     <h3 className="text-[11px] font-black uppercase tracking-widest text-neutral-300 flex items-center gap-2">
-                                        <BarChart size={13} className="text-violet-400" /> Score por Nicho
+                                        <BarChart size={13} className="text-sky-400" /> Score por Nicho
                                     </h3>
                                     <p className="text-[9px] text-neutral-600">Puntuación de mercado · máx. 90 pts</p>
                                 </div>
@@ -2206,14 +2295,14 @@ export function KdpFactoryApp() {
                                 {[...niches].sort((a, b) => nicheScore(b) - nicheScore(a)).slice(0, 7).map(n => {
                                     const score = nicheScore(n);
                                     const pct = Math.max(2, (score / 90) * 100);
-                                    const bar = score >= 70 ? "from-emerald-500 to-cyan-400" : score >= 40 ? "from-amber-500 to-orange-400" : "from-indigo-500 to-violet-400";
-                                    const txt = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-amber-400" : "text-violet-400";
+                                    const bar = score >= 70 ? "from-emerald-500 to-cyan-400" : score >= 40 ? "from-amber-500 to-orange-400" : "from-sky-600 to-sky-400";
+                                    const txt = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-amber-400" : "text-sky-400";
                                     const linked = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
                                     return (
                                         <div key={n._id} className="space-y-1">
                                             <div className="flex items-center justify-between gap-2">
                                                 <div className="flex items-center gap-1.5 min-w-0">
-                                                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${n.status === "active" ? "bg-emerald-400" : n.status === "research" ? "bg-blue-400" : n.status === "found" ? "bg-violet-400" : "bg-neutral-600"}`} />
+                                                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${n.status === "active" ? "bg-emerald-400" : n.status === "research" ? "bg-blue-400" : n.status === "found" ? "bg-sky-400" : "bg-neutral-600"}`} />
                                                     <span className="text-[10px] text-neutral-400 truncate">{n.name}</span>
                                                 </div>
                                                 <div className="flex items-center gap-2 shrink-0">
@@ -2248,7 +2337,7 @@ export function KdpFactoryApp() {
                                 const stages = [
                                     { key: "active", label: "Activo", count: counts.active, bar: "bg-emerald-500", dot: "bg-emerald-400" },
                                     { key: "research", label: "Investigando", count: counts.research, bar: "bg-blue-500", dot: "bg-blue-400" },
-                                    { key: "found", label: "Encontrado", count: counts.found, bar: "bg-violet-500", dot: "bg-violet-400" },
+                                    { key: "found", label: "Encontrado", count: counts.found, bar: "bg-sky-500", dot: "bg-sky-400" },
                                     { key: "archived", label: "Archivado", count: counts.archived, bar: "bg-neutral-700", dot: "bg-neutral-600" },
                                 ];
                                 return (
@@ -2273,7 +2362,7 @@ export function KdpFactoryApp() {
 
                             <div className="border-t border-white/5 pt-4 space-y-2 relative">
                                 {[
-                                    { label: "Catálogos vinculados", value: iaCatalogs.filter(c => (c.nicheIds?.length ?? 0) > 0).length, color: "text-violet-400" },
+                                    { label: "Catálogos vinculados", value: iaCatalogs.filter(c => (c.nicheIds?.length ?? 0) > 0).length, color: "text-sky-400" },
                                     { label: "Imágenes generadas", value: iaCatalogs.filter(c => (c.nicheIds?.length ?? 0) > 0).reduce((s, c) => s + c.images.length, 0), color: "text-blue-400" },
                                     { label: "Score promedio", value: niches.length > 0 ? Math.round(niches.reduce((s, n) => s + nicheScore(n), 0) / niches.length) : 0, color: "text-amber-400" },
                                 ].map(stat => (
@@ -2334,6 +2423,96 @@ export function KdpFactoryApp() {
                             </div>
                         </Card>
                     )}
+                </section>
+            )}
+
+            {/* ── ROYALTIES TRACKER ── */}
+            {niches.some(n => n.phase === "published" || (n.royalties?.length ?? 0) > 0) && (
+                <section className="space-y-5">
+                    <div className="flex items-center gap-3">
+                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-emerald-500/25 to-transparent" />
+                        <div className="flex items-center gap-2">
+                            <DollarSign size={11} className="text-emerald-400" />
+                            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-neutral-500">Tracker de Royalties KDP</p>
+                        </div>
+                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-emerald-500/25 to-transparent" />
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {niches.filter(n => n.phase === "published" || (n.royalties?.length ?? 0) > 0).map(n => {
+                            const totalRevenue = (n.royalties ?? []).reduce((s, r) => s + r.revenue, 0);
+                            const totalSales = (n.royalties ?? []).reduce((s, r) => s + r.sales, 0);
+                            const isSelected = royaltiesNicheId === n._id;
+                            return (
+                                <Card key={n._id} variant="glass" className="p-5 border-white/5 bg-white/[0.01] space-y-4 relative overflow-hidden hover:shadow-[0_0_30px_rgba(16,185,129,0.08)] transition-all duration-500">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="space-y-0.5">
+                                            <p className="text-[12px] font-black text-white">{n.name}</p>
+                                            <div className="flex items-center gap-3 text-[9px]">
+                                                <span className="text-neutral-600">{(n.royalties ?? []).length} entradas</span>
+                                                <span className="font-black text-emerald-400 tabular-nums">{totalRevenue.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</span>
+                                                {totalSales > 0 && <span className="text-neutral-600">{totalSales} ventas</span>}
+                                            </div>
+                                        </div>
+                                        <button onClick={() => setRoyaltiesNicheId(isSelected ? null : n._id)}
+                                            className={`flex items-center gap-1 px-3 h-7 rounded-xl border text-[9px] font-black transition-all ${isSelected ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300" : "border-white/10 bg-white/5 text-neutral-500 hover:text-emerald-400 hover:border-emerald-500/20"}`}>
+                                            <Plus size={10} /> Añadir
+                                        </button>
+                                    </div>
+
+                                    {/* Add royalty form */}
+                                    {isSelected && (
+                                        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 space-y-2.5">
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <div>
+                                                    <label className="text-[8px] font-black uppercase tracking-widest text-neutral-600 block mb-1">Mes</label>
+                                                    <input type="month" value={royaltiesMonth} onChange={e => setRoyaltiesMonth(e.target.value)}
+                                                        className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2 text-[10px] text-white focus:outline-none focus:border-emerald-500/30" />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[8px] font-black uppercase tracking-widest text-neutral-600 block mb-1">Ventas</label>
+                                                    <input type="number" value={royaltiesSales} onChange={e => setRoyaltiesSales(e.target.value)} min="0" placeholder="0"
+                                                        className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-emerald-500/30" />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[8px] font-black uppercase tracking-widest text-neutral-600 block mb-1">Ingresos €</label>
+                                                    <input type="number" value={royaltiesRevenue} onChange={e => setRoyaltiesRevenue(e.target.value)} min="0" step="0.01" placeholder="0.00"
+                                                        className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-emerald-500/30" />
+                                                </div>
+                                            </div>
+                                            <button onClick={() => void addRoyaltyEntry(n._id)} disabled={isSavingRoyalties}
+                                                className="w-full h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+                                                {isSavingRoyalties ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+                                                Registrar royalties
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {/* Royalties history */}
+                                    {(n.royalties?.length ?? 0) > 0 && (
+                                        <div className="space-y-1 max-h-40 overflow-y-auto">
+                                            {[...(n.royalties ?? [])].reverse().map((r, i) => (
+                                                <div key={i} className="flex items-center justify-between gap-2 py-1 border-b border-white/[0.04] last:border-0 group/row">
+                                                    <span className="text-[9px] font-mono text-neutral-500">{r.month}</span>
+                                                    <div className="flex items-center gap-3">
+                                                        {r.sales > 0 && <span className="text-[9px] text-neutral-600">{r.sales} vtas.</span>}
+                                                        <span className="text-[10px] font-black text-emerald-400 tabular-nums">{r.revenue.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</span>
+                                                        <button onClick={() => void deleteRoyaltyEntry(n._id, r.month)}
+                                                            className="opacity-0 group-hover/row:opacity-100 p-0.5 text-neutral-700 hover:text-rose-400 transition-all">
+                                                            <X size={10} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {(n.royalties?.length ?? 0) === 0 && (
+                                        <p className="text-[9px] text-neutral-700 italic text-center py-2">Sin entradas aún — pulsa "Añadir" para registrar</p>
+                                    )}
+                                </Card>
+                            );
+                        })}
+                    </div>
                 </section>
             )}
         </div>
@@ -3677,7 +3856,7 @@ export function KdpFactoryApp() {
                             <div className="flex items-center gap-4 px-2">
                                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                 <div className="flex items-center gap-3">
-                                    <Layers size={14} className="text-violet-400" />
+                                    <Layers size={14} className="text-sky-400" />
                                     <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Catálogos IA</h3>
                                 </div>
                                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
@@ -3723,7 +3902,7 @@ export function KdpFactoryApp() {
                             const providerColor = catalog.aiModel?.provider === "Google" ? { bar: "bg-blue-500/50", badge: "bg-blue-500/10 border-blue-500/20 text-blue-300", dot: "bg-blue-400" }
                                 : catalog.aiModel?.provider === "Leonardo" ? { bar: "bg-amber-500/50", badge: "bg-amber-500/10 border-amber-500/20 text-amber-300", dot: "bg-amber-400" }
                                     : catalog.aiModel?.provider === "Pollinations" ? { bar: "bg-emerald-500/50", badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300", dot: "bg-emerald-400" }
-                                        : { bar: "bg-violet-500/50", badge: "bg-violet-500/10 border-violet-500/20 text-violet-300", dot: "bg-violet-400" };
+                                        : { bar: "bg-sky-500/50", badge: "bg-sky-500/10 border-sky-500/20 text-sky-300", dot: "bg-sky-400" };
                             const isDraggable = catalog.status === "queued";
                             const isDragOver = dragOverId === catalog._id;
                             return (
@@ -3745,9 +3924,9 @@ export function KdpFactoryApp() {
                                             <div className="min-w-0 space-y-1">
                                                 <div className="flex items-center gap-2">
                                                     {isDraggable && <GripVertical size={12} className="text-neutral-700 shrink-0" />}
-                                                    <h4 className="font-black text-white text-base leading-tight truncate">{catalog.name}</h4>
+                                                    <h4 className="font-black text-white text-lg leading-tight truncate">{catalog.name}</h4>
                                                 </div>
-                                                <p className="text-[10px] text-neutral-500/80 line-clamp-1 leading-relaxed pl-0.5 italic">{catalog.prompt}</p>
+                                                <p className="text-xs text-neutral-500 line-clamp-1 leading-relaxed pl-0.5 italic">{catalog.prompt}</p>
                                             </div>
                                             <div className="flex flex-col items-end gap-1.5 shrink-0">
                                                 {statusBadge(catalog.status)}
@@ -3777,7 +3956,7 @@ export function KdpFactoryApp() {
                                                 {catalog.nicheIds!.map(nid => {
                                                     const n = niches.find(n => n._id === nid);
                                                     return n ? (
-                                                        <span key={nid} className="flex items-center gap-1 px-2 h-5 rounded-full bg-violet-500/10 border border-violet-500/20 text-[9px] font-bold text-violet-400">
+                                                        <span key={nid} className="flex items-center gap-1 px-2 h-5 rounded-full bg-sky-500/10 border border-sky-500/20 text-[9px] font-bold text-sky-400">
                                                             <Target size={7} /> {n.name}
                                                         </span>
                                                     ) : null;
@@ -3840,6 +4019,25 @@ export function KdpFactoryApp() {
                                                     <FileText size={11} /> PDF
                                                 </button>
                                             )}
+                                            {catalog.status === "completed" && catalog.images.length > 0 && (catalog.nicheIds?.length ?? 0) > 0 && (() => {
+                                                const linkedNiche = niches.find(n => (catalog.nicheIds ?? []).includes(n._id));
+                                                if (!linkedNiche) return null;
+                                                return (
+                                                    <button
+                                                        onClick={() => {
+                                                            setContentNiche(`${linkedNiche.name} — ${NICHE_PRODUCT_OPTIONS.find(p => p.id === linkedNiche.productType)?.label ?? linkedNiche.productType}`);
+                                                            setContentType("kdp-physical-book");
+                                                            setContentResult(null);
+                                                            changeTab("studio");
+                                                            toast.success(`Contenido listo para: ${linkedNiche.name}`);
+                                                        }}
+                                                        title="Generar contenido KDP para este nicho"
+                                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all border border-emerald-500/20 text-[9px] font-black uppercase tracking-widest"
+                                                    >
+                                                        <ArrowRight size={11} /> Contenido
+                                                    </button>
+                                                );
+                                            })()}
                                             {(catalog.skippedImages ?? 0) > 0 && !isActive && (
                                                 <button
                                                     onClick={() => void retryFailedSlots(catalog._id)}
@@ -3862,7 +4060,7 @@ export function KdpFactoryApp() {
                                             {niches.length > 0 && (
                                                 <button onClick={() => setCatalogNichePickerId(catalogNichePickerId === catalog._id ? null : catalog._id)}
                                                     title="Asignar nicho"
-                                                    className={`p-2 rounded-xl border transition-all ${(catalog.nicheIds?.length ?? 0) > 0 ? "bg-violet-500/10 border-violet-500/20 text-violet-400 hover:bg-violet-500/20" : "bg-white/5 border-white/10 text-neutral-500 hover:text-violet-400 hover:border-violet-500/20"}`}>
+                                                    className={`p-2 rounded-xl border transition-all ${(catalog.nicheIds?.length ?? 0) > 0 ? "bg-sky-500/10 border-sky-500/20 text-sky-400 hover:bg-sky-500/20" : "bg-white/5 border-white/10 text-neutral-500 hover:text-sky-400 hover:border-sky-500/20"}`}>
                                                     <Target size={13} />
                                                 </button>
                                             )}
@@ -3921,9 +4119,9 @@ export function KdpFactoryApp() {
                                                                     body: JSON.stringify({ nicheIds: next }),
                                                                 }).catch(() => { });
                                                             }}
-                                                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-all ${ni > 0 ? "border-t border-white/5" : ""} ${assigned ? "bg-violet-500/8" : "hover:bg-white/[0.03]"}`}
+                                                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-all ${ni > 0 ? "border-t border-white/5" : ""} ${assigned ? "bg-sky-500/8" : "hover:bg-white/[0.03]"}`}
                                                         >
-                                                            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${assigned ? "bg-violet-500 border-violet-500" : "border-neutral-700 bg-transparent"}`}>
+                                                            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${assigned ? "bg-sky-500 border-violet-500" : "border-neutral-700 bg-transparent"}`}>
                                                                 {assigned && <Check size={9} className="text-white" strokeWidth={3} />}
                                                             </div>
                                                             <span className={`text-[11px] font-semibold flex-1 truncate ${assigned ? "text-white" : "text-neutral-400"}`}>{n.name}</span>
@@ -4063,17 +4261,17 @@ export function KdpFactoryApp() {
                                             {niches.map(n => {
                                                 const count = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).length;
                                                 const isAct = catalogNicheFilter === n._id;
-                                                const statusDot: Record<NicheStatus, string> = { found: "bg-violet-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
+                                                const statusDot: Record<NicheStatus, string> = { found: "bg-sky-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
                                                 return (
                                                     <button key={n._id}
                                                         onClick={() => setCatalogNicheFilter(isAct ? null : n._id)}
                                                         className={`flex items-center gap-2 h-9 px-4 rounded-2xl border text-[10px] font-black whitespace-nowrap shrink-0 transition-all ${isAct
-                                                            ? "bg-violet-500/20 border-violet-500/40 text-violet-300 shadow-[0_0_16px_rgba(139,92,246,0.25)]"
+                                                            ? "bg-sky-500/20 border-sky-500/40 text-sky-300 shadow-[0_0_16px_rgba(14,165,233,0.25)]"
                                                             : "border-white/10 bg-white/[0.02] text-neutral-500 hover:text-neutral-300 hover:border-white/20 hover:bg-white/[0.04]"}`}>
                                                         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[n.status]}`} />
                                                         {n.name}
                                                         <span className={`text-[9px] tabular-nums font-black px-1.5 py-0.5 rounded-lg ${isAct
-                                                            ? "bg-violet-500/30 text-violet-300"
+                                                            ? "bg-sky-500/30 text-sky-300"
                                                             : count > 0 ? "bg-white/5 text-neutral-600" : "text-neutral-800"}`}>
                                                             {count}
                                                         </span>
@@ -4086,14 +4284,14 @@ export function KdpFactoryApp() {
                                             const n = niches.find(x => x._id === catalogNicheFilter);
                                             return n ? (
                                                 <div className="flex items-center gap-2 px-1">
-                                                    <div className="h-px flex-1 bg-violet-500/20" />
-                                                    <span className="text-[9px] font-black uppercase tracking-widest text-violet-400/60">
+                                                    <div className="h-px flex-1 bg-sky-500/20" />
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-sky-400/60">
                                                         Filtrando por: {n.name}
                                                     </span>
-                                                    <button onClick={() => setCatalogNicheFilter(null)} className="text-[9px] text-neutral-600 hover:text-violet-400 transition-colors">
+                                                    <button onClick={() => setCatalogNicheFilter(null)} className="text-[9px] text-neutral-600 hover:text-sky-400 transition-colors">
                                                         <X size={10} />
                                                     </button>
-                                                    <div className="h-px flex-1 bg-violet-500/20" />
+                                                    <div className="h-px flex-1 bg-sky-500/20" />
                                                 </div>
                                             ) : null;
                                         })()}
@@ -4267,14 +4465,14 @@ export function KdpFactoryApp() {
 
             {/* ══ MIS NICHOS ══ */}
             <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
-                <div className="h-px w-full bg-gradient-to-r from-violet-500/80 via-fuchsia-400/40 to-transparent" />
+                <div className="h-px w-full bg-gradient-to-r from-sky-500/80 via-cyan-400/40 to-transparent" />
                 <div className="p-6 space-y-6">
                     {/* ── Header ── */}
                     <div className="flex items-start justify-between gap-4">
                         <div className="space-y-1.5">
-                            <h2 className="text-2xl font-black bg-gradient-to-r from-violet-300 via-fuchsia-300 to-violet-400 bg-clip-text text-transparent flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-2xl bg-violet-500/15 border border-violet-500/25 flex items-center justify-center shrink-0">
-                                    <Target size={18} className="text-violet-400" />
+                            <h2 className="text-3xl font-black bg-gradient-to-r from-white via-sky-200 to-sky-400 bg-clip-text text-transparent flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-2xl bg-sky-500/15 border border-sky-500/25 flex items-center justify-center shrink-0">
+                                    <Target size={18} className="text-sky-400" />
                                 </div>
                                 Mis Nichos
                             </h2>
@@ -4282,11 +4480,11 @@ export function KdpFactoryApp() {
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                             <button onClick={() => void fetchNiches()} disabled={isLoadingNiches}
-                                className="p-2.5 rounded-xl bg-white/5 border border-white/8 text-neutral-500 hover:text-violet-400 hover:border-violet-500/30 transition-all disabled:opacity-40">
+                                className="p-2.5 rounded-xl bg-white/5 border border-white/8 text-neutral-500 hover:text-sky-400 hover:border-sky-500/30 transition-all disabled:opacity-40">
                                 {isLoadingNiches ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                             </button>
                             <button onClick={() => openNicheForm()}
-                                className="flex items-center gap-2 h-10 px-5 rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_4px_20px_rgba(139,92,246,0.4)]">
+                                className="flex items-center gap-2 h-10 px-5 rounded-2xl bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_4px_20px_rgba(14,165,233,0.4)]">
                                 <Plus size={14} /> Nuevo nicho
                             </button>
                         </div>
@@ -4300,10 +4498,10 @@ export function KdpFactoryApp() {
                         return (
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                 {[
-                                    { label: "Nichos", value: niches.length, icon: <Target size={15} />, color: "text-violet-400", bg: "bg-violet-500/10 border-violet-500/20", glow: "bg-violet-500/10" },
+                                    { label: "Nichos", value: niches.length, icon: <Target size={15} />, color: "text-sky-400", bg: "bg-sky-500/10 border-sky-500/20", glow: "bg-sky-500/10" },
                                     { label: "Activos", value: activeCount, icon: <Activity size={15} />, color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20", glow: "bg-emerald-500/10" },
                                     { label: "Catálogos", value: totalLinkedCats, icon: <Layers size={15} />, color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20", glow: "bg-blue-500/10" },
-                                    { label: "Imágenes", value: totalLinkedImgs, icon: <ImageIcon size={15} />, color: "text-fuchsia-400", bg: "bg-fuchsia-500/10 border-fuchsia-500/20", glow: "bg-fuchsia-500/10" },
+                                    { label: "Imágenes", value: totalLinkedImgs, icon: <ImageIcon size={15} />, color: "text-cyan-400", bg: "bg-sky-500/10 border-fuchsia-500/20", glow: "bg-sky-500/10" },
                                 ].map(stat => (
                                     <div key={stat.label} className={`relative rounded-2xl border ${stat.bg} p-4 overflow-hidden`}>
                                         <div className={`absolute -right-3 -top-3 w-14 h-14 ${stat.glow} blur-2xl rounded-full`} />
@@ -4323,7 +4521,7 @@ export function KdpFactoryApp() {
                         const statusConf: { s: NicheStatus; bar: string; dot: string }[] = [
                             { s: "active", bar: "bg-emerald-500", dot: "bg-emerald-400" },
                             { s: "research", bar: "bg-blue-500", dot: "bg-blue-400" },
-                            { s: "found", bar: "bg-violet-500", dot: "bg-violet-400" },
+                            { s: "found", bar: "bg-sky-500", dot: "bg-sky-400" },
                             { s: "archived", bar: "bg-neutral-700", dot: "bg-neutral-600" },
                         ];
                         return (
@@ -4358,7 +4556,7 @@ export function KdpFactoryApp() {
                         {(["all", "found", "research", "active", "archived"] as const).map(s => {
                             const cnt = s === "all" ? niches.length : niches.filter(n => n.status === s).length;
                             const isAct = nicheStatusFilter === s;
-                            const dot: Record<string, string> = { found: "bg-violet-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
+                            const dot: Record<string, string> = { found: "bg-sky-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
                             return (
                                 <button key={s} onClick={() => setNicheStatusFilter(s)}
                                     className={`flex-1 h-8 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${isAct ? "bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]" : "text-neutral-600 hover:text-neutral-400"}`}>
@@ -4401,12 +4599,12 @@ export function KdpFactoryApp() {
                                 .sort((a, b) => nicheSortBy === "score" ? nicheScore(b) - nicheScore(a) : 0)
                                 .map(niche => {
                                     const score = nicheScore(niche);
-                                    const scoreColor = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-amber-400" : "text-violet-400";
+                                    const scoreColor = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-amber-400" : "text-sky-400";
                                     const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
                                     const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
-                                    const statusDotMap: Record<NicheStatus, string> = { found: "bg-violet-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
+                                    const statusDotMap: Record<NicheStatus, string> = { found: "bg-sky-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
                                     return (
-                                        <div key={niche._id} className="group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] hover:border-violet-500/25 hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden">
+                                        <div key={niche._id} className="group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] hover:border-sky-500/25 hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden">
                                             <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
                                             <div className="p-5 space-y-4 relative">
 
@@ -4421,7 +4619,7 @@ export function KdpFactoryApp() {
                                                                         ? <><stop offset="0%" stopColor="#10b981" /><stop offset="100%" stopColor="#22d3ee" /></>
                                                                         : score >= 40
                                                                             ? <><stop offset="0%" stopColor="#f59e0b" /><stop offset="100%" stopColor="#fb923c" /></>
-                                                                            : <><stop offset="0%" stopColor="#6366f1" /><stop offset="50%" stopColor="#8b5cf6" /><stop offset="100%" stopColor="#a78bfa" /></>}
+                                                                            : <><stop offset="0%" stopColor="#0284c7" /><stop offset="50%" stopColor="#0ea5e9" /><stop offset="100%" stopColor="#38bdf8" /></>}
                                                                 </linearGradient>
                                                             </defs>
                                                             <circle cx="22" cy="22" r="17" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4.5" />
@@ -4432,16 +4630,16 @@ export function KdpFactoryApp() {
                                                         <span className={`absolute inset-0 flex items-center justify-center text-[12px] font-black ${scoreColor}`}>{score}</span>
                                                     </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-base font-black text-white leading-tight">{niche.name}</p>
-                                                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                                                            <span className="text-[9px] font-black uppercase tracking-wide text-neutral-500 bg-white/[0.04] border border-white/8 px-2 py-0.5 rounded-full">
+                                                        <p className="text-xl font-black text-white leading-tight tracking-tight">{niche.name}</p>
+                                                        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                                                            <span className="text-[9px] font-black uppercase tracking-wide text-sky-400/80 bg-sky-500/10 border border-sky-500/20 px-2 py-0.5 rounded-full">
                                                                 {NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType}
                                                             </span>
-                                                            <span className="text-[9px] font-black uppercase tracking-wide text-neutral-500 bg-white/[0.04] border border-white/8 px-2 py-0.5 rounded-full">
+                                                            <span className="text-[9px] font-black uppercase tracking-wide text-neutral-400 bg-white/[0.04] border border-white/8 px-2 py-0.5 rounded-full">
                                                                 {NICHE_STYLE_OPTIONS.find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory}
                                                             </span>
                                                         </div>
-                                                        {niche.description && <p className="text-[10px] text-neutral-500/70 mt-2 line-clamp-2 italic leading-relaxed">{niche.description}</p>}
+                                                        {niche.description && <p className="text-xs text-neutral-500 mt-2 line-clamp-2 leading-relaxed">{niche.description}</p>}
                                                     </div>
                                                     {/* Actions — visible on hover */}
                                                     <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -4459,9 +4657,9 @@ export function KdpFactoryApp() {
                                                 {/* ─ Mini stats ─ */}
                                                 <div className="grid grid-cols-3 gap-2">
                                                     {[
-                                                        { label: "Catálogos", value: linkedCats.length, color: linkedCats.length > 0 ? "text-violet-400" : "text-neutral-700" },
+                                                        { label: "Catálogos", value: linkedCats.length, color: linkedCats.length > 0 ? "text-sky-400" : "text-neutral-700" },
                                                         { label: "Imágenes", value: linkedImgs, color: linkedImgs > 0 ? "text-blue-400" : "text-neutral-700" },
-                                                        { label: "Tags", value: niche.tags.length, color: niche.tags.length > 0 ? "text-fuchsia-400" : "text-neutral-700" },
+                                                        { label: "Tags", value: niche.tags.length, color: niche.tags.length > 0 ? "text-cyan-400" : "text-neutral-700" },
                                                     ].map(st => (
                                                         <div key={st.label} className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-2.5 text-center">
                                                             <p className="text-[8px] uppercase tracking-widest text-neutral-600 font-black">{st.label}</p>
@@ -4527,19 +4725,98 @@ export function KdpFactoryApp() {
                                                     </div>
                                                 )}
 
+                                                {/* ─ Checklist 5 pasos ─ */}
+                                                {(() => {
+                                                    const hasPrompt = !!niche.generatedPrompt;
+                                                    const hasImages = linkedImgs > 0;
+                                                    const hasPdf = niche.phase === "pdf" || niche.phase === "published";
+                                                    const hasContent = niche.phase === "published" || hasPdf;
+                                                    const isPublished = niche.phase === "published" || !!(niche.asin || niche.etsyUrl);
+                                                    const steps = [
+                                                        { label: "Prompt generado", done: hasPrompt },
+                                                        { label: "Catálogo con imágenes", done: hasImages },
+                                                        { label: "PDF exportado", done: hasPdf },
+                                                        { label: "Contenido KDP", done: hasContent },
+                                                        { label: "Publicado", done: isPublished },
+                                                    ];
+                                                    const doneCount = steps.filter(s => s.done).length;
+                                                    return (
+                                                        <div className="space-y-1.5">
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Progreso</span>
+                                                                <span className={`text-[9px] font-black tabular-nums ${doneCount === 5 ? "text-emerald-400" : doneCount >= 3 ? "text-amber-400" : "text-neutral-600"}`}>{doneCount}/5</span>
+                                                            </div>
+                                                            <div className="h-1 w-full bg-white/[0.05] rounded-full overflow-hidden">
+                                                                <div className={`h-full rounded-full transition-all duration-700 ${doneCount === 5 ? "bg-gradient-to-r from-emerald-500 to-cyan-400" : doneCount >= 3 ? "bg-gradient-to-r from-amber-500 to-orange-400" : "bg-gradient-to-r from-sky-500 to-fuchsia-400"}`} style={{ width: `${(doneCount / 5) * 100}%` }} />
+                                                            </div>
+                                                            <div className="grid grid-cols-5 gap-1">
+                                                                {steps.map((s, i) => (
+                                                                    <div key={i} title={s.label} className={`h-1.5 rounded-full transition-all ${s.done ? (i === 4 ? "bg-emerald-400" : i >= 2 ? "bg-amber-400" : "bg-sky-400") : "bg-white/[0.06]"}`} />
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
+
+                                                {/* ─ Publication panel ─ */}
+                                                {nichePublishPanelId === niche._id && (
+                                                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 space-y-2.5">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">Datos de publicación</span>
+                                                            <button onClick={() => setNichePublishPanelId(null)} className="text-neutral-600 hover:text-white transition-colors"><X size={11} /></button>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <label className="text-[8px] font-black uppercase tracking-widest text-neutral-600 block mb-1">ASIN (KDP)</label>
+                                                                <input value={publishPanelAsin} onChange={e => setPublishPanelAsin(e.target.value)}
+                                                                    placeholder="B0XXXXXXXXX"
+                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2.5 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-orange-500/30 font-mono" />
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[8px] font-black uppercase tracking-widest text-neutral-600 block mb-1">Fecha publicación</label>
+                                                                <input type="date" value={publishPanelDate} onChange={e => setPublishPanelDate(e.target.value)}
+                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2.5 text-[10px] text-white focus:outline-none focus:border-emerald-500/30" />
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[8px] font-black uppercase tracking-widest text-neutral-600 block mb-1">URL Etsy</label>
+                                                                <input value={publishPanelEtsy} onChange={e => setPublishPanelEtsy(e.target.value)}
+                                                                    placeholder="https://etsy.com/listing/..."
+                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2.5 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/30" />
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[8px] font-black uppercase tracking-widest text-neutral-600 block mb-1">URL Gumroad</label>
+                                                                <input value={publishPanelGumroad} onChange={e => setPublishPanelGumroad(e.target.value)}
+                                                                    placeholder="https://gumroad.com/..."
+                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2.5 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-pink-500/30" />
+                                                            </div>
+                                                        </div>
+                                                        <button onClick={() => void savePublishPanel(niche._id)} disabled={isSavingPublish}
+                                                            className="w-full h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+                                                            {isSavingPublish ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                                                            Guardar y marcar publicado
+                                                        </button>
+                                                    </div>
+                                                )}
+
                                                 {/* ─ Footer: generate action ─ */}
                                                 <div className="flex items-center justify-between pt-1 border-t border-white/[0.05]">
                                                     <div className="text-[9px] text-neutral-700 tabular-nums">
                                                         {new Date(niche.createdAt).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
                                                     </div>
-                                                    <button
-                                                        onClick={() => void generateNicheContent(niche)}
-                                                        disabled={nicheGeneratingId === niche._id}
-                                                        className="flex items-center gap-1.5 px-4 h-8 rounded-xl bg-violet-500/15 border border-violet-500/30 text-[10px] font-black text-violet-300 hover:bg-violet-500/25 hover:border-violet-500/50 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                                                        {nicheGeneratingId === niche._id
-                                                            ? <><Loader2 size={11} className="animate-spin" /> Generando...</>
-                                                            : <><Sparkles size={11} /> Generar catálogo</>}
-                                                    </button>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <button onClick={() => nichePublishPanelId === niche._id ? setNichePublishPanelId(null) : openPublishPanel(niche)}
+                                                            className={`flex items-center gap-1 px-2.5 h-8 rounded-xl border text-[9px] font-black transition-all ${niche.asin || niche.etsyUrl ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20" : "border-white/10 bg-white/5 text-neutral-500 hover:text-white hover:border-white/20"}`}>
+                                                            <Globe size={10} /> Publicar
+                                                        </button>
+                                                        <button
+                                                            onClick={() => void generateNicheContent(niche)}
+                                                            disabled={nicheGeneratingId === niche._id}
+                                                            className="flex items-center gap-1.5 px-4 h-8 rounded-xl bg-sky-500/15 border border-sky-500/30 text-[10px] font-black text-sky-300 hover:bg-sky-500/25 hover:border-sky-500/50 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                                                            {nicheGeneratingId === niche._id
+                                                                ? <><Loader2 size={11} className="animate-spin" /> Generando...</>
+                                                                : <><Sparkles size={11} /> Generar catálogo</>}
+                                                        </button>
+                                                    </div>
                                                 </div>
 
                                             </div>
@@ -5952,13 +6229,13 @@ export function KdpFactoryApp() {
                             <div className="space-y-1.5">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Nombre *</label>
                                 <input value={nicheFormName} onChange={e => setNicheFormName(e.target.value)} placeholder="Ej: Mandalas zen para adultos"
-                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all" />
+                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all" />
                             </div>
                             {/* Description */}
                             <div className="space-y-1.5">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Descripción</label>
                                 <textarea value={nicheFormDesc} onChange={e => setNicheFormDesc(e.target.value)} rows={2} placeholder="Describe brevemente el nicho…"
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all resize-none" />
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all resize-none" />
                             </div>
                             {/* Status */}
                             <div className="space-y-1.5">
@@ -5978,7 +6255,7 @@ export function KdpFactoryApp() {
                                 <div className="flex gap-2">
                                     {NICHE_PRODUCT_OPTIONS.map(opt => (
                                         <button key={opt.id} onClick={() => setNicheFormProductType(opt.id)}
-                                            className={`flex-1 h-9 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${nicheFormProductType === opt.id ? "border-violet-500/40 bg-violet-500/10 text-violet-400 ring-1 ring-violet-500/20" : "border-white/10 bg-white/5 text-neutral-600 hover:text-white"}`}>
+                                            className={`flex-1 h-9 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${nicheFormProductType === opt.id ? "border-sky-500/40 bg-sky-500/10 text-sky-400 ring-1 ring-violet-500/20" : "border-white/10 bg-white/5 text-neutral-600 hover:text-white"}`}>
                                             {opt.label}
                                         </button>
                                     ))}
@@ -5989,7 +6266,7 @@ export function KdpFactoryApp() {
                                 <div className="flex items-center justify-between">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Estilo visual</label>
                                     {nicheFormStyles.length > 1 && (
-                                        <span className="text-[9px] font-black text-violet-400">{nicheFormStyles.length} seleccionados</span>
+                                        <span className="text-[9px] font-black text-sky-400">{nicheFormStyles.length} seleccionados</span>
                                     )}
                                 </div>
                                 <div className="grid grid-cols-2 gap-1.5">
@@ -6005,12 +6282,12 @@ export function KdpFactoryApp() {
                                                     return [...prev, opt.id];
                                                 });
                                             }}
-                                                className={`h-10 rounded-xl border px-3 text-left transition-all flex items-start gap-2 ${active ? "border-violet-500/40 bg-violet-500/10 ring-1 ring-violet-500/20" : "border-white/8 bg-white/[0.02] hover:bg-white/5"}`}>
-                                                <div className={`mt-1.5 w-3 h-3 rounded-sm border-2 flex items-center justify-center shrink-0 transition-all ${active ? "bg-violet-500 border-violet-500" : "border-neutral-600"}`}>
+                                                className={`h-10 rounded-xl border px-3 text-left transition-all flex items-start gap-2 ${active ? "border-sky-500/40 bg-sky-500/10 ring-1 ring-violet-500/20" : "border-white/8 bg-white/[0.02] hover:bg-white/5"}`}>
+                                                <div className={`mt-1.5 w-3 h-3 rounded-sm border-2 flex items-center justify-center shrink-0 transition-all ${active ? "bg-sky-500 border-violet-500" : "border-neutral-600"}`}>
                                                     {active && <Check size={8} className="text-white" strokeWidth={3} />}
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <span className={`block text-[9px] font-black uppercase tracking-widest ${active ? "text-violet-400" : "text-neutral-400"}`}>{opt.label}</span>
+                                                    <span className={`block text-[9px] font-black uppercase tracking-widest ${active ? "text-sky-400" : "text-neutral-400"}`}>{opt.label}</span>
                                                     <span className="block text-[8px] text-neutral-600 leading-tight">{opt.desc}</span>
                                                 </div>
                                             </button>
@@ -6047,7 +6324,7 @@ export function KdpFactoryApp() {
                             <div className="space-y-1.5">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Tags <span className="normal-case text-neutral-600">(separados por coma)</span></label>
                                 <input value={nicheFormTags} onChange={e => setNicheFormTags(e.target.value)} placeholder="mandala, zen, adultos, colorear…"
-                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all" />
+                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all" />
                                 {nicheFormTags.trim() && (
                                     <div className="flex flex-wrap gap-1 pt-1">
                                         {nicheFormTags.split(",").map(t => t.trim()).filter(Boolean).map(tag => (
@@ -6060,7 +6337,7 @@ export function KdpFactoryApp() {
                             <div className="space-y-1.5">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Notas</label>
                                 <textarea value={nicheFormNotes} onChange={e => setNicheFormNotes(e.target.value)} rows={3} placeholder="Observaciones, ideas, URLs de referencia…"
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all resize-none" />
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all resize-none" />
                             </div>
                             {/* Generated Prompt */}
                             <div className="space-y-1.5">
@@ -6068,11 +6345,11 @@ export function KdpFactoryApp() {
                                     Prompt generado <span className="normal-case text-neutral-600">(guardado automáticamente al generar contenido)</span>
                                 </label>
                                 <textarea value={nicheFormPrompt} onChange={e => setNicheFormPrompt(e.target.value)} rows={4} placeholder="El prompt de imagen se guardará aquí al usar Generar contenido…"
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-[11px] text-neutral-300 placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all resize-none font-mono leading-relaxed" />
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-[11px] text-neutral-300 placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all resize-none font-mono leading-relaxed" />
                                 {nicheFormPrompt.trim() && (
                                     <button
                                         onClick={() => { setPromptTheme(nicheFormPrompt.trim()); changeTab("creation"); setNicheFormOpen(false); toast.success("Prompt aplicado al generador"); }}
-                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[9px] font-black uppercase tracking-widest hover:bg-violet-500 hover:text-white hover:border-violet-500 transition-all">
+                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[9px] font-black uppercase tracking-widest hover:bg-sky-500 hover:text-white hover:border-violet-500 transition-all">
                                         <ArrowRight size={10} /> Aplicar en generador
                                     </button>
                                 )}
@@ -6081,7 +6358,7 @@ export function KdpFactoryApp() {
                         <div className="px-6 pb-6 pt-4 border-t border-white/8 shrink-0 flex gap-3">
                             <button onClick={() => setNicheFormOpen(false)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
                             <button onClick={() => void saveNiche()} disabled={isSavingNiche || !nicheFormName.trim()}
-                                className="flex-1 h-11 rounded-2xl bg-violet-500 text-white text-sm font-black hover:bg-violet-400 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
+                                className="flex-1 h-11 rounded-2xl bg-sky-500 text-white text-sm font-black hover:bg-sky-400 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
                                 {isSavingNiche ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                                 {nicheEditTarget ? "Guardar cambios" : "Crear nicho"}
                             </button>
@@ -6129,7 +6406,7 @@ export function KdpFactoryApp() {
                                     value={kdpTemplateTitle}
                                     onChange={e => setKdpTemplateTitle(e.target.value)}
                                     placeholder="Mi Libro de Colorear"
-                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all"
+                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all"
                                 />
                             </div>
 
@@ -6143,7 +6420,7 @@ export function KdpFactoryApp() {
                                                 const allSelected = vaultImages.every((_, i) => kdpTemplateVaultSel.has(i));
                                                 setKdpTemplateVaultSel(allSelected ? new Set() : new Set(vaultImages.map((_, i) => i)));
                                             }}
-                                            className="text-[9px] font-black uppercase tracking-widest text-violet-400 hover:text-violet-300 transition-colors"
+                                            className="text-[9px] font-black uppercase tracking-widest text-sky-400 hover:text-sky-300 transition-colors"
                                         >
                                             {vaultImages.every((_, i) => kdpTemplateVaultSel.has(i)) ? "Deseleccionar todo" : "Seleccionar todo"}
                                         </button>
@@ -6159,11 +6436,11 @@ export function KdpFactoryApp() {
                                                         sel ? next.delete(i) : next.add(i);
                                                         return next;
                                                     })}
-                                                    className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${sel ? "border-violet-500 ring-1 ring-violet-500/50" : "border-white/10 opacity-40 hover:opacity-70"}`}
+                                                    className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${sel ? "border-violet-500 ring-1 ring-sky-500/50" : "border-white/10 opacity-40 hover:opacity-70"}`}
                                                 >
                                                     <img src={img.url} alt="" className="w-full h-full object-cover" />
                                                     {sel && (
-                                                        <div className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-violet-500 flex items-center justify-center">
+                                                        <div className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-sky-500 flex items-center justify-center">
                                                             <Check size={9} className="text-white" strokeWidth={3} />
                                                         </div>
                                                     )}
@@ -6184,7 +6461,7 @@ export function KdpFactoryApp() {
                                                 const allSel = cloudinaryImages.every((_, i) => kdpTemplateCloudSel.has(i));
                                                 setKdpTemplateCloudSel(allSel ? new Set() : new Set(cloudinaryImages.map((_, i) => i)));
                                             }}
-                                            className="text-[9px] font-black uppercase tracking-widest text-violet-400 hover:text-violet-300 transition-colors"
+                                            className="text-[9px] font-black uppercase tracking-widest text-sky-400 hover:text-sky-300 transition-colors"
                                         >
                                             {cloudinaryImages.every((_, i) => kdpTemplateCloudSel.has(i)) ? "Deseleccionar todo" : "Seleccionar todo"}
                                         </button>
@@ -6200,12 +6477,12 @@ export function KdpFactoryApp() {
                                                         sel ? next.delete(i) : next.add(i);
                                                         return next;
                                                     })}
-                                                    className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${sel ? "border-violet-500 ring-1 ring-violet-500/50" : "border-white/10 opacity-40 hover:opacity-70"}`}
+                                                    className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${sel ? "border-violet-500 ring-1 ring-sky-500/50" : "border-white/10 opacity-40 hover:opacity-70"}`}
                                                     title={img.publicId.split("/").pop()}
                                                 >
                                                     <img src={img.url} alt="" className="w-full h-full object-cover" />
                                                     {sel && (
-                                                        <div className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-violet-500 flex items-center justify-center">
+                                                        <div className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-sky-500 flex items-center justify-center">
                                                             <Check size={9} className="text-white" strokeWidth={3} />
                                                         </div>
                                                     )}
@@ -6222,7 +6499,7 @@ export function KdpFactoryApp() {
                                     <div className="flex items-center gap-2">
                                         <div className="h-px flex-1 bg-white/8" />
                                         <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5">
-                                            <Target size={10} className="text-violet-400" /> Añadir nicho entero
+                                            <Target size={10} className="text-sky-400" /> Añadir nicho entero
                                         </p>
                                         <div className="h-px flex-1 bg-white/8" />
                                     </div>
@@ -6242,12 +6519,12 @@ export function KdpFactoryApp() {
                                                             return next;
                                                         });
                                                     }}
-                                                    className={`flex items-center gap-2.5 p-3 rounded-2xl border-2 transition-all text-left ${allSel ? "border-violet-500/60 bg-violet-500/10" : someSel ? "border-violet-500/30 bg-violet-500/5" : "border-white/8 bg-white/[0.02] hover:border-white/15"}`}>
-                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all ${allSel ? "bg-violet-500" : "bg-white/5"}`}>
+                                                    className={`flex items-center gap-2.5 p-3 rounded-2xl border-2 transition-all text-left ${allSel ? "border-violet-500/60 bg-sky-500/10" : someSel ? "border-sky-500/30 bg-sky-500/5" : "border-white/8 bg-white/[0.02] hover:border-white/15"}`}>
+                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all ${allSel ? "bg-sky-500" : "bg-white/5"}`}>
                                                         {allSel ? <Check size={14} className="text-white" strokeWidth={3} /> : <Target size={14} className="text-neutral-500" />}
                                                     </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <p className={`text-[11px] font-black truncate ${allSel ? "text-violet-300" : "text-neutral-300"}`}>{n.name}</p>
+                                                        <p className={`text-[11px] font-black truncate ${allSel ? "text-sky-300" : "text-neutral-300"}`}>{n.name}</p>
                                                         <p className="text-[9px] text-neutral-600">{nicheCats.length} cat. · {nicheImgs} imgs</p>
                                                     </div>
                                                 </button>
@@ -6266,12 +6543,12 @@ export function KdpFactoryApp() {
                                             {niches.length > 0 && (
                                                 <>
                                                     <button onClick={() => setKdpTemplateNicheFilter(null)}
-                                                        className={`px-2 h-5 rounded-full border text-[8px] font-black uppercase transition-all ${!kdpTemplateNicheFilter ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "border-white/10 text-neutral-700 hover:text-neutral-400"}`}>
+                                                        className={`px-2 h-5 rounded-full border text-[8px] font-black uppercase transition-all ${!kdpTemplateNicheFilter ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "border-white/10 text-neutral-700 hover:text-neutral-400"}`}>
                                                         Todos
                                                     </button>
                                                     {niches.map(n => (
                                                         <button key={n._id} onClick={() => setKdpTemplateNicheFilter(kdpTemplateNicheFilter === n._id ? null : n._id)}
-                                                            className={`px-2 h-5 rounded-full border text-[8px] font-bold transition-all truncate max-w-[100px] ${kdpTemplateNicheFilter === n._id ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "border-white/10 text-neutral-700 hover:text-neutral-400"}`}>
+                                                            className={`px-2 h-5 rounded-full border text-[8px] font-bold transition-all truncate max-w-[100px] ${kdpTemplateNicheFilter === n._id ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "border-white/10 text-neutral-700 hover:text-neutral-400"}`}>
                                                             {n.name}
                                                         </button>
                                                     ))}
@@ -6283,7 +6560,7 @@ export function KdpFactoryApp() {
                                                     const allSel = completed.every(c => kdpTemplateCatalogSel.has(c._id));
                                                     setKdpTemplateCatalogSel(allSel ? new Set() : new Set(completed.map(c => c._id)));
                                                 }}
-                                                className="text-[9px] font-black uppercase tracking-widest text-violet-400 hover:text-violet-300 transition-colors"
+                                                className="text-[9px] font-black uppercase tracking-widest text-sky-400 hover:text-sky-300 transition-colors"
                                             >
                                                 Sel. todo
                                             </button>
@@ -6300,9 +6577,9 @@ export function KdpFactoryApp() {
                                                         sel ? next.delete(catalog._id) : next.add(catalog._id);
                                                         return next;
                                                     })}
-                                                    className={`w-full flex items-center gap-3 p-3 rounded-2xl border-2 transition-all text-left ${sel ? "border-violet-500/60 bg-violet-500/8" : "border-white/8 bg-white/[0.02] opacity-50 hover:opacity-80"}`}
+                                                    className={`w-full flex items-center gap-3 p-3 rounded-2xl border-2 transition-all text-left ${sel ? "border-violet-500/60 bg-sky-500/8" : "border-white/8 bg-white/[0.02] opacity-50 hover:opacity-80"}`}
                                                 >
-                                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${sel ? "bg-violet-500 border-violet-500" : "border-white/20 bg-white/5"}`}>
+                                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${sel ? "bg-sky-500 border-violet-500" : "border-white/20 bg-white/5"}`}>
                                                         {sel && <Check size={10} className="text-white" strokeWidth={3} />}
                                                     </div>
                                                     {/* Thumbnail strip */}
@@ -6328,6 +6605,22 @@ export function KdpFactoryApp() {
 
                         {/* Footer */}
                         <div className="px-6 pb-6 pt-4 border-t border-white/8 shrink-0 space-y-3">
+                            {/* Random order toggle */}
+                            <button
+                                onClick={() => setKdpTemplateRandom(v => !v)}
+                                className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border transition-all ${kdpTemplateRandom ? "border-sky-500/40 bg-sky-500/8" : "border-white/8 bg-white/[0.02] hover:border-white/12"}`}
+                            >
+                                <div className="flex items-center gap-2.5">
+                                    <RefreshCw size={13} className={kdpTemplateRandom ? "text-sky-400" : "text-neutral-600"} />
+                                    <div className="text-left">
+                                        <p className={`text-[10px] font-black ${kdpTemplateRandom ? "text-sky-300" : "text-neutral-400"}`}>Orden aleatorio</p>
+                                        <p className="text-[9px] text-neutral-600">Mezcla las imágenes aleatoriamente antes de añadirlas al libro</p>
+                                    </div>
+                                </div>
+                                <div className={`w-8 h-4 rounded-full transition-all relative ${kdpTemplateRandom ? "bg-sky-500" : "bg-white/10"}`}>
+                                    <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${kdpTemplateRandom ? "left-4" : "left-0.5"}`} />
+                                </div>
+                            </button>
                             {/* Summary */}
                             {(() => {
                                 const vaultCount = kdpTemplateVaultSel.size;
@@ -6338,7 +6631,7 @@ export function KdpFactoryApp() {
                                 const total = vaultCount + cloudCount + catalogCount;
                                 return total > 0 ? (
                                     <p className="text-[10px] text-neutral-500 text-center">
-                                        <span className="text-violet-400 font-black">{total}</span> imágenes seleccionadas · <span className="text-neutral-400 font-black">{total * 2 + 2}</span> páginas totales (portada + blanco + imagen + blanco × {total})
+                                        <span className="text-sky-400 font-black">{total}</span> imágenes seleccionadas · <span className="text-neutral-400 font-black">{total * 2 + 2}</span> páginas totales (portada + blanco + imagen + blanco × {total})
                                     </p>
                                 ) : (
                                     <p className="text-[10px] text-amber-400/70 text-center font-black">Selecciona al menos una imagen</p>
@@ -6358,7 +6651,7 @@ export function KdpFactoryApp() {
                                             .filter(c => kdpTemplateCatalogSel.has(c._id))
                                             .flatMap(c => c.images.map((img, i) => ({ url: img.url, label: `${c.name} #${i + 1}` })));
                                         setKdpTemplateOpen(false);
-                                        applyColoringBookTemplate(kdpTemplateTitle || "Mi Libro de Colorear", [...vaultEntries, ...cloudEntries, ...catalogEntries]);
+                                        applyColoringBookTemplate(kdpTemplateTitle || "Mi Libro de Colorear", [...vaultEntries, ...cloudEntries, ...catalogEntries], kdpTemplateRandom);
                                     }}
                                     disabled={kdpTemplateVaultSel.size === 0 && kdpTemplateCatalogSel.size === 0 && kdpTemplateCloudSel.size === 0}
                                     className="flex-1 h-11 rounded-2xl bg-amber-500 text-black text-sm font-black hover:bg-amber-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(245,158,11,0.25)]"

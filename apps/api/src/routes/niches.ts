@@ -71,7 +71,45 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             if (generatedPrompt !== undefined) update.generatedPrompt = generatedPrompt;
             if (Array.isArray(catalogIds)) update.catalogIds = catalogIds;
             if (request.body.phase) update.phase = request.body.phase;
+            if (request.body.publishedAt !== undefined) update.publishedAt = request.body.publishedAt ? new Date(request.body.publishedAt) : null;
+            if (request.body.asin !== undefined) update.asin = request.body.asin;
+            if (request.body.etsyUrl !== undefined) update.etsyUrl = request.body.etsyUrl;
+            if (request.body.gumroadUrl !== undefined) update.gumroadUrl = request.body.gumroadUrl;
             const niche = await Niche.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+            return reply.send({ niche });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    app.post("/niches/:id/royalties", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { id } = request.params as { id: string };
+            const { month, sales, revenue } = request.body as any;
+            if (!month?.trim()) return reply.status(400).send({ error: "month required" });
+            const niche = await Niche.findByIdAndUpdate(
+                id,
+                { $push: { royalties: { month: month.trim(), sales: Number(sales) || 0, revenue: Number(revenue) || 0 } } },
+                { new: true }
+            ).lean();
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+            return reply.send({ niche });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    app.delete("/niches/:id/royalties/:month", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { id, month } = request.params as { id: string; month: string };
+            const niche = await Niche.findByIdAndUpdate(
+                id,
+                { $pull: { royalties: { month: decodeURIComponent(month) } } },
+                { new: true }
+            ).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
             return reply.send({ niche });
         } catch (e: any) {

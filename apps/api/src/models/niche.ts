@@ -1,5 +1,11 @@
 import mongoose, { Schema, Document } from "mongoose";
 
+export interface IRoyaltyEntry {
+    month: string;
+    sales: number;
+    revenue: number;
+}
+
 export interface INiche extends Document {
     name: string;
     description: string;
@@ -14,6 +20,11 @@ export interface INiche extends Document {
     generatedPrompt: string;
     catalogIds: string[];
     phase: "niche" | "catalog" | "pdf" | "published";
+    publishedAt?: Date;
+    asin?: string;
+    etsyUrl?: string;
+    gumroadUrl?: string;
+    royalties?: IRoyaltyEntry[];
     createdAt: Date;
     updatedAt: Date;
 }
@@ -33,6 +44,15 @@ const NicheSchema = new Schema<INiche>(
         generatedPrompt: { type: String, default: "" },
         catalogIds: [{ type: String }],
         phase: { type: String, enum: ["niche", "catalog", "pdf", "published"], default: "niche" },
+        publishedAt: { type: Date },
+        asin: { type: String, default: "" },
+        etsyUrl: { type: String, default: "" },
+        gumroadUrl: { type: String, default: "" },
+        royalties: [{
+            month: { type: String, required: true },
+            sales: { type: Number, default: 0 },
+            revenue: { type: Number, default: 0 },
+        }],
     },
     { timestamps: true }
 );
