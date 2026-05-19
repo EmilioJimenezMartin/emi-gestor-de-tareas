@@ -38,6 +38,14 @@ interface EtsyNicheResult {
     nichos_detectados: EtsyListing[];
 }
 
+interface PreNicho {
+    nombre: string;
+    descripcion: string;
+    potencial: "low" | "medium" | "high";
+    sub_nichos: string[];
+    keywords_clave: string[];
+}
+
 interface LogEntry {
     id: string;
     timestamp: string;
@@ -119,6 +127,8 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
     const [sortKey, setSortKey] = useState<SortKey>("personas_carrito");
     const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
     const [showHelp, setShowHelp] = useState(false);
+    const [preNichos, setPreNichos] = useState<PreNicho[] | null>(null);
+    const [isGeneratingPreNichos, setIsGeneratingPreNichos] = useState(false);
     const logsEndRef = useRef<HTMLDivElement>(null);
     const isFirstLog = useRef(true);
 
@@ -164,6 +174,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
         setIsAnalyzing(true);
         setEtsyResult(null);
         setGeneralResult(null);
+        setPreNichos(null);
         setLogs([]);
         isFirstLog.current = true;
         toast.info(`Iniciando análisis · modo: ${mode === "etsy-niches" ? "Etsy Nichos" : "General"}...`);
@@ -185,6 +196,26 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
         } catch (e: any) {
             toast.error(e.message ?? "Error al conectar");
             setIsAnalyzing(false);
+        }
+    };
+
+    const generatePreNichos = async () => {
+        if (!etsyResult?.nichos_detectados?.length) return;
+        setIsGeneratingPreNichos(true);
+        setPreNichos(null);
+        try {
+            const res = await fetch(`${apiUrl}/radar/pre-nichos`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ nichos: etsyResult.nichos_detectados }),
+            });
+            if (!res.ok) throw new Error(`Error ${res.status}`);
+            const data = await res.json();
+            setPreNichos(data.pre_nichos ?? []);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error generando pre-nichos");
+        } finally {
+            setIsGeneratingPreNichos(false);
         }
     };
 
@@ -381,7 +412,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                     const active = mode === tab.id;
                     return (
                         <button key={tab.id}
-                            onClick={() => { setMode(tab.id); setUrl(""); setEtsyResult(null); setGeneralResult(null); setLogs([]); }}
+                            onClick={() => { setMode(tab.id); setUrl(""); setEtsyResult(null); setGeneralResult(null); setPreNichos(null); setLogs([]); }}
                             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${active
                                 ? tab.id === "etsy-niches"
                                     ? "bg-sky-500/15 border border-sky-500/25 text-sky-300"
@@ -641,7 +672,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                                             className="flex items-center gap-1.5 h-7 px-3 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[9px] font-black uppercase hover:bg-sky-500/20 transition-all">
                                             <Download size={10} /> CSV
                                         </button>
-                                        <button onClick={() => { setEtsyResult(null); void analyze(); }}
+                                        <button onClick={() => { setEtsyResult(null); setPreNichos(null); void analyze(); }}
                                             className="flex items-center gap-1.5 h-7 px-3 rounded-xl bg-white/5 border border-white/8 text-[9px] font-black uppercase text-neutral-400 hover:text-white hover:border-white/15 transition-all">
                                             <RefreshCw size={10} /> Repetir
                                         </button>
@@ -708,6 +739,84 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                                         </tbody>
                                     </table>
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Pre-nichos section */}
+                    {etsyResult && mode === "etsy-niches" && (
+                        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.03] overflow-hidden">
+                            <div className="h-px w-full bg-gradient-to-r from-violet-500/60 via-purple-400/30 to-transparent" />
+                            <div className="p-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Sparkles size={14} className="text-violet-400" />
+                                        <span className="text-[11px] font-black text-white">Pre-Nichos</span>
+                                        <span className="text-[9px] text-neutral-600">· categorías agrupadas por IA</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {preNichos && !isGeneratingPreNichos && (
+                                            <button onClick={() => void generatePreNichos()} disabled={isGeneratingPreNichos}
+                                                className="flex items-center gap-1 h-6 px-2 rounded-lg bg-white/5 border border-white/8 text-neutral-600 text-[9px] font-black uppercase hover:text-white transition-all">
+                                                <RefreshCw size={9} />
+                                            </button>
+                                        )}
+                                        {!preNichos && (
+                                            <button onClick={() => void generatePreNichos()} disabled={isGeneratingPreNichos}
+                                                className="flex items-center gap-1.5 h-7 px-3 rounded-xl bg-violet-500/15 border border-violet-500/25 text-violet-300 text-[9px] font-black uppercase hover:bg-violet-500/25 transition-all disabled:opacity-50">
+                                                {isGeneratingPreNichos ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                                                {isGeneratingPreNichos ? "Generando..." : "Generar Pre-Nichos"}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {isGeneratingPreNichos && (
+                                    <div className="flex items-center justify-center py-8 gap-3">
+                                        <Loader2 size={18} className="animate-spin text-violet-400" />
+                                        <span className="text-[10px] text-neutral-600 font-black uppercase tracking-widest">Gemini agrupando nichos...</span>
+                                    </div>
+                                )}
+
+                                {preNichos && !isGeneratingPreNichos && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        {preNichos.map((pn, i) => (
+                                            <div key={i} className="rounded-xl border border-white/8 bg-white/[0.02] p-3 space-y-2">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <p className="text-[11px] font-black text-white leading-tight">{pn.nombre}</p>
+                                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-md border shrink-0 ${pn.potencial === "high" ? "bg-emerald-500/15 border-emerald-500/25 text-emerald-400" : pn.potencial === "medium" ? "bg-amber-500/15 border-amber-500/25 text-amber-400" : "bg-neutral-500/15 border-neutral-500/25 text-neutral-400"}`}>
+                                                        {pn.potencial === "high" ? "Alto" : pn.potencial === "medium" ? "Medio" : "Bajo"}
+                                                    </span>
+                                                </div>
+                                                <p className="text-[9px] text-neutral-500 leading-relaxed">{pn.descripcion}</p>
+                                                {pn.keywords_clave?.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {pn.keywords_clave.map(k => (
+                                                            <span key={k} className="text-[7px] font-black px-1.5 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/15 text-violet-400">{k}</span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {pn.sub_nichos?.length > 0 && (
+                                                    <div>
+                                                        <p className="text-[7px] font-black uppercase tracking-widest text-neutral-700 mb-1">Sub-nichos ({pn.sub_nichos.length})</p>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {pn.sub_nichos.slice(0, 5).map(s => (
+                                                                <span key={s} className="text-[7px] px-1.5 py-0.5 rounded-md bg-white/5 border border-white/8 text-neutral-500">{s}</span>
+                                                            ))}
+                                                            {pn.sub_nichos.length > 5 && <span className="text-[7px] text-neutral-700">+{pn.sub_nichos.length - 5}</span>}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {!preNichos && !isGeneratingPreNichos && (
+                                    <div className="flex items-center justify-center py-5 opacity-30">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Genera pre-nichos a partir de los resultados del escaneo</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

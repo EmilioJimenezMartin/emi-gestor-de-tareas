@@ -72,6 +72,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
+import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import { createApiSocket } from "@/lib/socket";
 import { NicheRadar } from "@/components/extractor/NicheRadar";
@@ -554,6 +555,8 @@ export function KdpFactoryApp() {
     const [royaltiesSales, setRoyaltiesSales] = useState("");
     const [royaltiesRevenue, setRoyaltiesRevenue] = useState("");
     const [isSavingRoyalties, setIsSavingRoyalties] = useState(false);
+
+    const [contentGeneratorOpen, setContentGeneratorOpen] = useState(false);
 
     // --- Content generator state ---
     const [contentNiche, setContentNiche] = useState("");
@@ -3587,6 +3590,36 @@ export function KdpFactoryApp() {
                     </Card>
                 </div>
 
+                {/* ── CONTENT GENERATOR CARD ── */}
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
+                        <div className="absolute -top-16 -right-16 w-48 h-48 bg-amber-500/8 blur-[60px] pointer-events-none" />
+                        <div className="p-5 space-y-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500/20 to-orange-600/10 border border-amber-500/20 flex items-center justify-center shadow-lg shadow-amber-500/10 shrink-0">
+                                    <Sparkles size={19} className="text-amber-400" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Generador de Contenido</h4>
+                                    <p className="text-[10px] text-neutral-500 font-medium">Títulos · Descripción · Keywords · Listing completo</p>
+                                </div>
+                                <Button
+                                    onClick={() => setContentGeneratorOpen(true)}
+                                    className="h-9 px-4 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_20px_rgba(245,158,11,0.3)] active:scale-95 shrink-0"
+                                >
+                                    <Sparkles size={13} />
+                                    Abrir
+                                </Button>
+                            </div>
+                            <div className="flex items-center gap-3 text-[10px] text-neutral-600">
+                                <span className="flex items-center gap-1"><BookOpen size={10} className="text-amber-600" />KDP físico</span>
+                                <span className="flex items-center gap-1"><Type size={10} className="text-amber-600" />Títulos &amp; Keywords</span>
+                                <span className="flex items-center gap-1"><AlignLeft size={10} className="text-amber-600" />Listings Etsy</span>
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+
                 {/* Asset Vault / Carousel — always visible */}
                 <div className="space-y-6 animate-in fade-in slide-in-from-left-8 duration-700 pb-4">
                     <div className="flex items-center px-2 gap-3">
@@ -4868,279 +4901,6 @@ export function KdpFactoryApp() {
                             </div>
                         </div>
                     )}
-                </div>
-            </div>
-
-            {/* ══ CONTENIDO ══ */}
-            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
-                <div className="h-px w-full bg-gradient-to-r from-amber-500/40 via-orange-400/20 to-transparent rounded-t-3xl" />
-                <div className="p-6 space-y-4">
-                    <div className="space-y-1">
-                        <h2 className="text-xl font-black bg-gradient-to-r from-amber-400 to-orange-300 bg-clip-text text-transparent flex items-center gap-2.5">
-                            <Sparkles size={20} className="text-amber-400" /> Generador de Contenido
-                        </h2>
-                        <p className="text-xs text-neutral-500">Metadatos listos para publicar en KDP y Etsy</p>
-                    </div>
-
-                    {/* ── KDP Physical Book — primary card ── */}
-                    <button
-                        onClick={() => { setContentType("kdp-physical-book"); setContentResult(null); }}
-                        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-all text-left ${contentType === "kdp-physical-book" ? "border-amber-500/40 bg-amber-500/[0.07]" : "border-white/8 bg-white/[0.02] hover:border-white/12 hover:bg-white/[0.03]"}`}>
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all ${contentType === "kdp-physical-book" ? "bg-amber-500/20" : "bg-white/5"}`}>
-                            <BookOpen size={16} className={contentType === "kdp-physical-book" ? "text-amber-400" : "text-neutral-600"} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-black leading-tight ${contentType === "kdp-physical-book" ? "text-amber-300" : "text-neutral-400"}`}>Libro físico KDP</p>
-                            <p className="text-[10px] text-neutral-600 mt-0.5">Título · Subtítulo · Descripción · 7 palabras clave</p>
-                        </div>
-                        {contentType === "kdp-physical-book" && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                        )}
-                    </button>
-
-                    {/* ── Secondary types ── */}
-                    <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-                        {CONTENT_TYPES_SECONDARY.map(ct => (
-                            <button key={ct.id} onClick={() => { setContentType(ct.id as any); setContentResult(null); }}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all shrink-0 ${contentType === ct.id ? "border-white/25 bg-white/10 text-white" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}>
-                                {ct.icon}
-                                <span className="text-[9px] font-bold whitespace-nowrap">{ct.label}</span>
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* ── Inputs — adapt by type ── */}
-                    {contentType === "kdp-physical-book" ? (
-                        <div className="space-y-3">
-                            <textarea
-                                value={contentNiche} onChange={e => setContentNiche(e.target.value)} rows={3}
-                                placeholder="Describe tu libro: temática, género, público objetivo, estilo visual…&#10;ej: libro de colorear de mandalas zen para adultos, estilo minimalista"
-                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none leading-relaxed transition-all" />
-                            <div className="flex items-center gap-3">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 shrink-0">Idioma del listing</p>
-                                <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl">
-                                    {(["en", "es"] as const).map(lang => (
-                                        <button key={lang} onClick={() => setContentLanguage(lang)}
-                                            className={`px-4 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
-                                            {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="space-y-3">
-                            <input value={contentNiche} onChange={e => setContentNiche(e.target.value)}
-                                placeholder="Nicho / Tema — ej: zen mandalas, cats for beginners..."
-                                onKeyDown={e => { if (e.key === "Enter") void generateContent(); }}
-                                className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 transition-all" />
-                            <div className="grid grid-cols-2 gap-2">
-                                <div className="space-y-1.5">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Tipo de producto</p>
-                                    <KdpSelect accent="amber" value={contentProductType} onChange={setContentProductType}
-                                        options={CONTENT_PRODUCT_TYPES.map(pt => ({ value: pt, label: pt }))} />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Idioma</p>
-                                    <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl h-[38px]">
-                                        {(["en", "es"] as const).map(lang => (
-                                            <button key={lang} onClick={() => setContentLanguage(lang)}
-                                                className={`flex-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
-                                                {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                            <textarea value={contentExtras} onChange={e => setContentExtras(e.target.value)} rows={2}
-                                placeholder="Contexto adicional: estilo, audiencia, ocasión... (opcional)"
-                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none transition-all" />
-                        </div>
-                    )}
-
-                    {/* ── Generate button ── */}
-                    <div className="space-y-1.5">
-                        <button onClick={() => void generateContent()} disabled={isGeneratingContent || !contentNiche.trim()}
-                            className="w-full h-11 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500">
-                            {isGeneratingContent ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><Sparkles size={13} /> Generar con IA</>}
-                        </button>
-                        <p className="text-center text-[9px] text-neutral-700 flex items-center justify-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/60 inline-block" />
-                            <span className="font-mono">gemini-2.5-flash</span> · gratuito
-                        </p>
-                    </div>
-
-                    {isGeneratingContent && (
-                        <div className="flex flex-col items-center justify-center py-10 gap-3">
-                            <div className="relative">
-                                <Loader2 size={24} className="animate-spin text-amber-400" />
-                            </div>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Generando con IA...</p>
-                        </div>
-                    )}
-                    {!contentResult && !isGeneratingContent && (
-                        <div className="flex flex-col items-center justify-center py-10 text-center space-y-2 opacity-20">
-                            <Wand2 size={24} strokeWidth={1.5} className="text-neutral-600" />
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">El resultado aparecerá aquí</p>
-                        </div>
-                    )}
-                    {contentResult && !isGeneratingContent && (
-                        <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
-
-                            {/* ── KDP Physical Book result ── */}
-                            {contentType === "kdp-physical-book" && typeof contentResult === "object" && (
-                                <div className="space-y-2.5">
-                                    {/* Copy all listing */}
-                                    {(contentResult.title || contentResult.description || contentResult.keywords?.length) && (
-                                        <button
-                                            onClick={() => {
-                                                const parts: string[] = [];
-                                                if (contentResult.title) parts.push(`TÍTULO: ${contentResult.title}${contentResult.subtitle ? `\nSUBTÍTULO: ${contentResult.subtitle}` : ""}`);
-                                                if (contentResult.description) parts.push(`\nDESCRIPCIÓN:\n${contentResult.description}`);
-                                                if (Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0) parts.push(`\nKEYWORDS: ${contentResult.keywords.join(", ")}`);
-                                                copyText(parts.join("\n"));
-                                            }}
-                                            className="w-full flex items-center justify-center gap-2 h-9 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest"
-                                        >
-                                            <Copy size={12} /> Copiar listing completo
-                                        </button>
-                                    )}
-                                    {/* Title + Subtitle */}
-                                    {contentResult.title && (
-                                        <div className="bg-amber-500/[0.04] border border-amber-500/15 rounded-2xl p-4 space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Título</p>
-                                                <button onClick={() => copyText(`${contentResult.title}${contentResult.subtitle ? `: ${contentResult.subtitle}` : ""}`)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
-                                            </div>
-                                            <p className="text-[15px] font-black text-white leading-tight">{contentResult.title}</p>
-                                            {contentResult.subtitle && (
-                                                <p className="text-[11px] text-amber-200/60 leading-snug border-t border-amber-500/10 pt-2">{contentResult.subtitle}</p>
-                                            )}
-                                        </div>
-                                    )}
-                                    {/* Description */}
-                                    {contentResult.description && (
-                                        <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Descripción</p>
-                                                <button onClick={() => copyText(contentResult.description)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
-                                            </div>
-                                            <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
-                                        </div>
-                                    )}
-                                    {/* 7 Keywords */}
-                                    {Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0 && (
-                                        <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2.5">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">
-                                                    {contentResult.keywords.length} Palabras clave
-                                                </p>
-                                                <button onClick={() => copyText(contentResult.keywords.join("\n"))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar todo</button>
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                {contentResult.keywords.map((k: string, i: number) => (
-                                                    <div key={i} className="flex items-center gap-2 group">
-                                                        <span className="text-[9px] font-black text-amber-500/50 w-4 shrink-0 tabular-nums">{i + 1}</span>
-                                                        <p className="flex-1 text-[10px] text-neutral-300">{k}</p>
-                                                        <button onClick={() => copyText(k)} className="opacity-0 group-hover:opacity-100 p-1 rounded text-neutral-600 hover:text-white transition-all"><Copy size={9} /></button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                    {/* Regenerate hint */}
-                                    <button onClick={() => void generateContent()} className="w-full flex items-center justify-center gap-1.5 py-2 text-[9px] font-black uppercase tracking-widest text-neutral-700 hover:text-neutral-400 transition-colors">
-                                        <Sparkles size={9} /> Regenerar
-                                    </button>
-                                </div>
-                            )}
-
-                            {contentType === "full-listing" && typeof contentResult === "object" && (
-                                <>
-                                    {contentResult.title && (
-                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Título</p><button onClick={() => copyText(contentResult.title)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
-                                            <p className="text-sm text-white font-medium">{contentResult.title}</p>
-                                            {contentResult.subtitle && <p className="text-[10px] text-neutral-500">{contentResult.subtitle}</p>}
-                                        </div>
-                                    )}
-                                    {contentResult.description && (
-                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div>
-                                            <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
-                                        </div>
-                                    )}
-                                    {Array.isArray(contentResult.bullets) && contentResult.bullets.length > 0 && (
-                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Bullets</p>
-                                            <ul className="space-y-0.5">{contentResult.bullets.map((b: string, i: number) => <li key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-amber-400/60 shrink-0">▸</span>{b}</li>)}</ul>
-                                        </div>
-                                    )}
-                                    {Array.isArray(contentResult.keywords) && (
-                                        <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
-                                            <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Keywords ({contentResult.keywords.length})</p><button onClick={() => copyText(contentResult.keywords.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button></div>
-                                            <div className="flex flex-wrap gap-1">{contentResult.keywords.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[8px] px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 transition-colors">{k}</button>)}</div>
-                                        </div>
-                                    )}
-                                    {contentResult.price_suggestion_usd && (
-                                        <div className="flex items-center gap-3 px-3 py-2 bg-emerald-500/5 border border-emerald-500/15 rounded-xl">
-                                            <DollarSign size={13} className="text-emerald-400 shrink-0" />
-                                            <div><p className="text-[8px] text-neutral-600 uppercase">Precio sugerido</p><p className="text-sm font-black text-emerald-400">${contentResult.price_suggestion_usd}</p></div>
-                                            {contentResult.series_name && <div className="ml-auto"><p className="text-[8px] text-neutral-600 uppercase">Serie</p><p className="text-[10px] text-neutral-300">{contentResult.series_name}</p></div>}
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                            {contentType === "titles" && Array.isArray(contentResult) && (
-                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Títulos ({contentResult.length})</p>
-                                    {contentResult.map((t: string, i: number) => (
-                                        <div key={i} className="flex items-center gap-2 py-1.5 border-b border-white/5 last:border-0">
-                                            <span className="text-[9px] text-neutral-700 w-4">{i + 1}.</span>
-                                            <p className="text-[11px] text-neutral-200 flex-1">{t}</p>
-                                            <button onClick={() => copyText(t)} className="p-1 rounded text-neutral-600 hover:text-white shrink-0"><Copy size={10} /></button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            {contentType === "description" && typeof contentResult === "object" && (
-                                <>
-                                    {contentResult.description && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div><p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p></div>}
-                                    {Array.isArray(contentResult.bullets) && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Bullets</p>{contentResult.bullets.map((b: string, i: number) => <p key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-amber-400/60 shrink-0">▸</span>{b}</p>)}</div>}
-                                </>
-                            )}
-                            {contentType === "keywords" && Array.isArray(contentResult) && (
-                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-2">
-                                    <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Keywords ({contentResult.length})</p><button onClick={() => copyText(contentResult.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px]"><Copy size={9} /> Copiar todos</button></div>
-                                    <div className="flex flex-wrap gap-1.5">{contentResult.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[9px] px-2 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 transition-colors">{k}</button>)}</div>
-                                </div>
-                            )}
-                            {contentType === "back-cover" && typeof contentResult === "object" && contentResult.back_cover && (
-                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
-                                    <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Contraportada</p><button onClick={() => copyText(contentResult.back_cover)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
-                                    <p className="text-[11px] text-neutral-200 leading-relaxed whitespace-pre-line">{contentResult.back_cover}</p>
-                                </div>
-                            )}
-                            {contentType === "series" && typeof contentResult === "object" && contentResult.series_name && (
-                                <div className="space-y-2">
-                                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Serie</p><p className="text-base font-black text-white mt-0.5">{contentResult.series_name}</p>{contentResult.concept && <p className="text-[10px] text-neutral-400 mt-0.5">{contentResult.concept}</p>}</div>
-                                    {Array.isArray(contentResult.volumes) && contentResult.volumes.map((v: any, i: number) => (
-                                        <div key={i} className="bg-white/[0.02] border border-white/5 rounded-xl p-2.5 flex gap-2">
-                                            <span className="text-[9px] font-black text-amber-400 w-4 shrink-0 mt-0.5">{i + 1}</span>
-                                            <div><p className="text-[11px] font-bold text-white">{v.title}</p><p className="text-[9px] text-neutral-500">{v.theme} — {v.angle}</p></div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            {typeof contentResult === "string" && (
-                                <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3">
-                                    <div className="flex justify-end mb-1"><button onClick={() => copyText(contentResult)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
-                                    <p className="text-[10px] text-neutral-300 whitespace-pre-wrap">{contentResult}</p>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
                 </div>
             </div>
 
@@ -6875,6 +6635,237 @@ export function KdpFactoryApp() {
                     </div>
                 </div>
             )}
+
+            {/* ── CONTENT GENERATOR MODAL ── */}
+            <Modal open={contentGeneratorOpen} onClose={() => setContentGeneratorOpen(false)} maxWidth="max-w-2xl" showClose zIndex={120}>
+                <div className="overflow-hidden rounded-3xl">
+                    <div className="h-px w-full bg-gradient-to-r from-amber-500/80 via-orange-400/40 to-transparent" />
+                    <div className="p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+                        <div className="space-y-1">
+                            <h2 className="text-xl font-black bg-gradient-to-r from-amber-400 to-orange-300 bg-clip-text text-transparent flex items-center gap-2.5">
+                                <Sparkles size={20} className="text-amber-400" /> Generador de Contenido
+                            </h2>
+                            <p className="text-xs text-neutral-500">Metadatos listos para publicar en KDP y Etsy</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* ── Left: type selector + inputs ── */}
+                            <div className="space-y-3">
+                                {/* KDP Physical Book — primary card */}
+                                <button
+                                    onClick={() => { setContentType("kdp-physical-book"); setContentResult(null); }}
+                                    className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border transition-all text-left ${contentType === "kdp-physical-book" ? "border-amber-500/40 bg-amber-500/[0.07]" : "border-white/8 bg-white/[0.02] hover:border-white/12 hover:bg-white/[0.03]"}`}>
+                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-all ${contentType === "kdp-physical-book" ? "bg-amber-500/20" : "bg-white/5"}`}>
+                                        <BookOpen size={16} className={contentType === "kdp-physical-book" ? "text-amber-400" : "text-neutral-600"} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className={`text-sm font-black leading-tight ${contentType === "kdp-physical-book" ? "text-amber-300" : "text-neutral-400"}`}>Libro físico KDP</p>
+                                        <p className="text-[10px] text-neutral-600 mt-0.5">Título · Subtítulo · Descripción · 7 keywords</p>
+                                    </div>
+                                    {contentType === "kdp-physical-book" && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />}
+                                </button>
+
+                                {/* Secondary types */}
+                                <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+                                    {CONTENT_TYPES_SECONDARY.map(ct => (
+                                        <button key={ct.id} onClick={() => { setContentType(ct.id as any); setContentResult(null); }}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all shrink-0 ${contentType === ct.id ? "border-white/25 bg-white/10 text-white" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}>
+                                            {ct.icon}
+                                            <span className="text-[9px] font-bold whitespace-nowrap">{ct.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Inputs */}
+                                {contentType === "kdp-physical-book" ? (
+                                    <div className="space-y-3">
+                                        <textarea
+                                            value={contentNiche} onChange={e => setContentNiche(e.target.value)} rows={3}
+                                            placeholder="Describe tu libro: temática, género, público objetivo, estilo visual…&#10;ej: libro de colorear de mandalas zen para adultos, estilo minimalista"
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none leading-relaxed transition-all" />
+                                        <div className="flex items-center gap-3">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 shrink-0">Idioma</p>
+                                            <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl">
+                                                {(["en", "es"] as const).map(lang => (
+                                                    <button key={lang} onClick={() => setContentLanguage(lang)}
+                                                        className={`px-4 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                                        {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        <input value={contentNiche} onChange={e => setContentNiche(e.target.value)}
+                                            placeholder="Nicho / Tema — ej: zen mandalas, cats for beginners..."
+                                            onKeyDown={e => { if (e.key === "Enter") void generateContent(); }}
+                                            className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 transition-all" />
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-1.5">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Tipo de producto</p>
+                                                <KdpSelect accent="amber" value={contentProductType} onChange={setContentProductType}
+                                                    options={CONTENT_PRODUCT_TYPES.map(pt => ({ value: pt, label: pt }))} />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Idioma</p>
+                                                <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl h-[38px]">
+                                                    {(["en", "es"] as const).map(lang => (
+                                                        <button key={lang} onClick={() => setContentLanguage(lang)}
+                                                            className={`flex-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                                            {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <textarea value={contentExtras} onChange={e => setContentExtras(e.target.value)} rows={2}
+                                            placeholder="Contexto adicional: estilo, audiencia, ocasión... (opcional)"
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none transition-all" />
+                                    </div>
+                                )}
+
+                                {/* Generate button */}
+                                <div className="space-y-1.5">
+                                    <button onClick={() => void generateContent()} disabled={isGeneratingContent || !contentNiche.trim()}
+                                        className="w-full h-11 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500">
+                                        {isGeneratingContent ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><Sparkles size={13} /> Generar con IA</>}
+                                    </button>
+                                    <p className="text-center text-[9px] text-neutral-700 flex items-center justify-center gap-1.5">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/60 inline-block" />
+                                        <span className="font-mono">gemini-2.5-flash</span> · gratuito
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* ── Right: result ── */}
+                            <div className="overflow-y-auto max-h-[60vh]">
+                                {isGeneratingContent && (
+                                    <div className="flex flex-col items-center justify-center py-10 gap-3">
+                                        <Loader2 size={24} className="animate-spin text-amber-400" />
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Generando con IA...</p>
+                                    </div>
+                                )}
+                                {!contentResult && !isGeneratingContent && (
+                                    <div className="flex flex-col items-center justify-center py-10 text-center space-y-2 opacity-20">
+                                        <Wand2 size={24} strokeWidth={1.5} className="text-neutral-600" />
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">El resultado aparecerá aquí</p>
+                                    </div>
+                                )}
+                                {contentResult && !isGeneratingContent && (
+                                    <div className="space-y-2.5 pr-1">
+                                        {contentType === "kdp-physical-book" && typeof contentResult === "object" && (
+                                            <div className="space-y-2.5">
+                                                {(contentResult.title || contentResult.description || contentResult.keywords?.length) && (
+                                                    <button onClick={() => { const parts: string[] = []; if (contentResult.title) parts.push(`TÍTULO: ${contentResult.title}${contentResult.subtitle ? `\nSUBTÍTULO: ${contentResult.subtitle}` : ""}`); if (contentResult.description) parts.push(`\nDESCRIPCIÓN:\n${contentResult.description}`); if (Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0) parts.push(`\nKEYWORDS: ${contentResult.keywords.join(", ")}`); copyText(parts.join("\n")); }}
+                                                        className="w-full flex items-center justify-center gap-2 h-9 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest">
+                                                        <Copy size={12} /> Copiar listing completo
+                                                    </button>
+                                                )}
+                                                {contentResult.title && (
+                                                    <div className="bg-amber-500/[0.04] border border-amber-500/15 rounded-2xl p-4 space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Título</p>
+                                                            <button onClick={() => copyText(`${contentResult.title}${contentResult.subtitle ? `: ${contentResult.subtitle}` : ""}`)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
+                                                        </div>
+                                                        <p className="text-[15px] font-black text-white leading-tight">{contentResult.title}</p>
+                                                        {contentResult.subtitle && <p className="text-[11px] text-amber-200/60 leading-snug border-t border-amber-500/10 pt-2">{contentResult.subtitle}</p>}
+                                                    </div>
+                                                )}
+                                                {contentResult.description && (
+                                                    <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Descripción</p>
+                                                            <button onClick={() => copyText(contentResult.description)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
+                                                        </div>
+                                                        <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
+                                                    </div>
+                                                )}
+                                                {Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0 && (
+                                                    <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2.5">
+                                                        <div className="flex items-center justify-between">
+                                                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">{contentResult.keywords.length} Palabras clave</p>
+                                                            <button onClick={() => copyText(contentResult.keywords.join("\n"))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar todo</button>
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                            {contentResult.keywords.map((k: string, i: number) => (
+                                                                <div key={i} className="flex items-center gap-2 group">
+                                                                    <span className="text-[9px] font-black text-amber-500/50 w-4 shrink-0 tabular-nums">{i + 1}</span>
+                                                                    <p className="flex-1 text-[10px] text-neutral-300">{k}</p>
+                                                                    <button onClick={() => copyText(k)} className="opacity-0 group-hover:opacity-100 p-1 rounded text-neutral-600 hover:text-white transition-all"><Copy size={9} /></button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                <button onClick={() => void generateContent()} className="w-full flex items-center justify-center gap-1.5 py-2 text-[9px] font-black uppercase tracking-widest text-neutral-700 hover:text-neutral-400 transition-colors">
+                                                    <Sparkles size={9} /> Regenerar
+                                                </button>
+                                            </div>
+                                        )}
+                                        {contentType === "full-listing" && typeof contentResult === "object" && (
+                                            <>
+                                                {contentResult.title && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Título</p><button onClick={() => copyText(contentResult.title)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div><p className="text-sm text-white font-medium">{contentResult.title}</p>{contentResult.subtitle && <p className="text-[10px] text-neutral-500">{contentResult.subtitle}</p>}</div>}
+                                                {contentResult.description && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div><p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p></div>}
+                                                {Array.isArray(contentResult.bullets) && contentResult.bullets.length > 0 && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Bullets</p><ul className="space-y-0.5">{contentResult.bullets.map((b: string, i: number) => <li key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-amber-400/60 shrink-0">▸</span>{b}</li>)}</ul></div>}
+                                                {Array.isArray(contentResult.keywords) && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Keywords ({contentResult.keywords.length})</p><button onClick={() => copyText(contentResult.keywords.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button></div><div className="flex flex-wrap gap-1">{contentResult.keywords.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[8px] px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 transition-colors">{k}</button>)}</div></div>}
+                                                {contentResult.price_suggestion_usd && <div className="flex items-center gap-3 px-3 py-2 bg-emerald-500/5 border border-emerald-500/15 rounded-xl"><DollarSign size={13} className="text-emerald-400 shrink-0" /><div><p className="text-[8px] text-neutral-600 uppercase">Precio sugerido</p><p className="text-sm font-black text-emerald-400">${contentResult.price_suggestion_usd}</p></div></div>}
+                                            </>
+                                        )}
+                                        {contentType === "titles" && Array.isArray(contentResult) && (
+                                            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Títulos ({contentResult.length})</p>
+                                                {contentResult.map((t: string, i: number) => (
+                                                    <div key={i} className="flex items-center gap-2 py-1.5 border-b border-white/5 last:border-0">
+                                                        <span className="text-[9px] text-neutral-700 w-4">{i + 1}.</span>
+                                                        <p className="text-[11px] text-neutral-200 flex-1">{t}</p>
+                                                        <button onClick={() => copyText(t)} className="p-1 rounded text-neutral-600 hover:text-white shrink-0"><Copy size={10} /></button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {contentType === "description" && typeof contentResult === "object" && (
+                                            <>
+                                                {contentResult.description && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div><p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p></div>}
+                                                {Array.isArray(contentResult.bullets) && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Bullets</p>{contentResult.bullets.map((b: string, i: number) => <p key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-amber-400/60 shrink-0">▸</span>{b}</p>)}</div>}
+                                            </>
+                                        )}
+                                        {contentType === "keywords" && Array.isArray(contentResult) && (
+                                            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-2">
+                                                <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Keywords ({contentResult.length})</p><button onClick={() => copyText(contentResult.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px]"><Copy size={9} /> Copiar todos</button></div>
+                                                <div className="flex flex-wrap gap-1.5">{contentResult.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[9px] px-2 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 transition-colors">{k}</button>)}</div>
+                                            </div>
+                                        )}
+                                        {contentType === "back-cover" && typeof contentResult === "object" && contentResult.back_cover && (
+                                            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
+                                                <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Contraportada</p><button onClick={() => copyText(contentResult.back_cover)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
+                                                <p className="text-[11px] text-neutral-200 leading-relaxed whitespace-pre-line">{contentResult.back_cover}</p>
+                                            </div>
+                                        )}
+                                        {contentType === "series" && typeof contentResult === "object" && contentResult.series_name && (
+                                            <div className="space-y-2">
+                                                <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Serie</p><p className="text-base font-black text-white mt-0.5">{contentResult.series_name}</p>{contentResult.concept && <p className="text-[10px] text-neutral-400 mt-0.5">{contentResult.concept}</p>}</div>
+                                                {Array.isArray(contentResult.volumes) && contentResult.volumes.map((v: any, i: number) => (
+                                                    <div key={i} className="bg-white/[0.02] border border-white/5 rounded-xl p-2.5 flex gap-2">
+                                                        <span className="text-[9px] font-black text-amber-400 w-4 shrink-0 mt-0.5">{i + 1}</span>
+                                                        <div><p className="text-[11px] font-bold text-white">{v.title}</p><p className="text-[9px] text-neutral-500">{v.theme} — {v.angle}</p></div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {typeof contentResult === "string" && (
+                                            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3">
+                                                <div className="flex justify-end mb-1"><button onClick={() => copyText(contentResult)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
+                                                <p className="text-[10px] text-neutral-300 whitespace-pre-wrap">{contentResult}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </Modal>
 
             {/* Confirm Delete Cloudinary Image Dialog */}
             {confirmDeleteCloudinaryId && (

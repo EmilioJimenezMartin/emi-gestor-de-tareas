@@ -1,7 +1,6 @@
 import { FastifyInstance } from "fastify";
 import type { Server as SocketIOServer } from "socket.io";
 import { z } from "zod";
-import { Settings } from "../models/settings.js";
 
 // ── Mode: General market analysis ────────────────────────────────────────────
 export const NicheInsightSchema = z.object({
@@ -92,9 +91,9 @@ export async function registerRadarRoutes(
                 // For Etsy: scroll to load lazy content
                 if (mode === "etsy-niches") {
                     log(deps.io, "info", `[FETCH] Scroll para cargar resultados lazy...`);
-                    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight / 2));
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)");
                     await page.waitForTimeout(1500);
-                    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)");
                     await page.waitForTimeout(1000);
                 }
 
@@ -106,7 +105,7 @@ export async function registerRadarRoutes(
                 const { Output } = await import("ai");
 
                 const google = createGoogleGenerativeAI({ apiKey: googleKey });
-                const scraper = new LLMScraper(google("gemini-1.5-flash"));
+                const scraper = new LLMScraper(google("gemini-2.0-flash"));
 
                 let data: any;
 
@@ -148,5 +147,57 @@ export async function registerRadarRoutes(
         })();
 
         return reply.send({ success: true, jobId });
+    });
+
+    // ── POST /radar/pre-nichos — group detected listings into pre-niche categories ──
+    const PreNichoSchema = z.object({
+        nombre: z.string().describe("Nombre de la categoría de pre-nicho (corto y memorable)"),
+        descripcion: z.string().describe("Por qué este pre-nicho tiene potencial en Etsy (1-2 frases)"),
+        potencial: z.enum(["low", "medium", "high"]).describe("Potencial de mercado estimado"),
+        sub_nichos: z.array(z.string()).describe("Sub-nichos específicos que pertenecen a esta categoría"),
+        keywords_clave: z.array(z.string()).describe("3-5 keywords principales para este pre-nicho"),
+    });
+    const PreNichosResultSchema = z.object({
+        pre_nichos: z.array(PreNichoSchema).describe("Categorías de pre-nichos identificadas (máximo 6)"),
+    });
+
+    app.post("/radar/pre-nichos", async (request: any, reply) => {
+        const { nichos } = request.body || {};
+        if (!Array.isArray(nichos) || nichos.length === 0) {
+            return reply.status(400).send({ error: "nichos array es requerido" });
+        }
+        const googleKey = await getGoogleKey();
+        if (!googleKey) return reply.status(400).send({ error: "Google API key no configurada" });
+
+        try {
+            const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
+            const { generateObject } = await import("ai");
+            const google = createGoogleGenerativeAI({ apiKey: googleKey });
+
+            const listSummary = nichos
+                .map((n: any) => `- "${n.titulo_producto}" | sub_nicho: ${n.sub_nicho_estimado} | bestseller: ${n.bestseller} | reseñas: ${n.total_reseñas}`)
+                .join("\n");
+
+            const { object } = await generateObject({
+                model: google("gemini-2.0-flash"),
+                schema: PreNichosResultSchema as any,
+                prompt: `Eres un experto en investigación de mercado para productos digitales en Etsy (libros de colorear, printables, PDF descargables).
+
+Analiza la siguiente lista de productos detectados en Etsy y agrúpalos en categorías de "pre-nichos" — categorías más amplias que engloban varios micro-nichos similares.
+
+REGLAS:
+- Agrupa los sub_nichos similares en categorías coherentes (máximo 6 pre-nichos)
+- El nombre debe ser específico y accionable (ej: "Animales lindos Kawaii", "Mandalas Zen Adultos", "Halloween Gótico")
+- Evalúa el potencial basándote en cuántos productos bestseller hay en el grupo y el número de reseñas
+- keywords_clave deben ser los términos de búsqueda reales que usaría un comprador en Etsy
+
+PRODUCTOS DETECTADOS:
+${listSummary}`,
+            });
+
+            return reply.send(object);
+        } catch (err: any) {
+            return reply.status(500).send({ error: err?.message ?? "Error generando pre-nichos" });
+        }
     });
 }
