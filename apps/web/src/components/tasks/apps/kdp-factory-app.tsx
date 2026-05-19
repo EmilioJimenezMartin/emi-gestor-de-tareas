@@ -73,6 +73,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Modal } from "@/components/ui/modal";
+import { KdpStatCard } from "@/components/ui/kdp-stat-card";
+import { KdpVerticalBarChart } from "@/components/ui/kdp-vertical-bar-chart";
 import { toast } from "sonner";
 import { createApiSocket } from "@/lib/socket";
 import { NicheRadar } from "@/components/extractor/NicheRadar";
@@ -2317,165 +2319,6 @@ export function KdpFactoryApp() {
                 </Card>
             </section>
 
-            {/* ── NICHE ANALYTICS ── */}
-            {niches.length > 0 && (
-                <section className="space-y-5">
-                    <div className="flex items-center gap-3">
-                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-sky-500/25 to-transparent" />
-                        <div className="flex items-center gap-2">
-                            <Target size={11} className="text-sky-400" />
-                            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-neutral-500">Análisis de Nichos</p>
-                        </div>
-                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-sky-500/25 to-transparent" />
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                        {/* Score Distribution */}
-                        <Card variant="glass" className="lg:col-span-2 p-6 border-white/5 bg-white/[0.01] space-y-5 relative overflow-hidden hover:shadow-[0_0_40px_rgba(14,165,233,0.08)] transition-all duration-500">
-                            <div className="absolute -right-6 -top-6 w-24 h-24 bg-sky-500/8 blur-3xl rounded-full" />
-                            <div className="flex items-start justify-between relative">
-                                <div className="space-y-0.5">
-                                    <h3 className="text-[11px] font-black uppercase tracking-widest text-neutral-300 flex items-center gap-2">
-                                        <BarChart size={13} className="text-sky-400" /> Score por Nicho
-                                    </h3>
-                                    <p className="text-[9px] text-neutral-600">Puntuación de mercado · máx. 90 pts</p>
-                                </div>
-                                <span className="text-[9px] font-mono text-neutral-700">{niches.length} nichos</span>
-                            </div>
-                            <div className="space-y-2.5 relative">
-                                {[...niches].sort((a, b) => nicheScore(b) - nicheScore(a)).slice(0, 7).map(n => {
-                                    const score = nicheScore(n);
-                                    const pct = Math.max(2, (score / 90) * 100);
-                                    const bar = score >= 70 ? "from-emerald-500 to-cyan-400" : score >= 40 ? "from-amber-500 to-orange-400" : "from-sky-600 to-sky-400";
-                                    const txt = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-amber-400" : "text-sky-400";
-                                    const linked = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
-                                    return (
-                                        <div key={n._id} className="space-y-1">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <div className="flex items-center gap-1.5 min-w-0">
-                                                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${n.status === "active" ? "bg-emerald-400" : n.status === "research" ? "bg-blue-400" : n.status === "found" ? "bg-sky-400" : "bg-neutral-600"}`} />
-                                                    <span className="text-[10px] text-neutral-400 truncate">{n.name}</span>
-                                                </div>
-                                                <div className="flex items-center gap-2 shrink-0">
-                                                    {linked.length > 0 && <span className="text-[8px] text-neutral-700 font-mono">{linked.length} cat.</span>}
-                                                    <span className={`text-[11px] font-black tabular-nums ${txt}`}>{score}</span>
-                                                </div>
-                                            </div>
-                                            <div className="h-1.5 w-full bg-white/[0.04] rounded-full overflow-hidden">
-                                                <div className={`h-full bg-gradient-to-r ${bar} rounded-full transition-all duration-700`} style={{ width: `${pct}%` }} />
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </Card>
-
-                        {/* Pipeline + Stats */}
-                        <Card variant="glass" className="p-6 border-white/5 bg-white/[0.01] space-y-5 relative overflow-hidden hover:shadow-[0_0_40px_rgba(99,102,241,0.08)] transition-all duration-500">
-                            <div className="absolute -left-6 -bottom-6 w-20 h-20 bg-indigo-500/8 blur-2xl rounded-full" />
-                            <h3 className="text-[11px] font-black uppercase tracking-widest text-neutral-300 flex items-center gap-2 relative">
-                                <Activity size={13} className="text-indigo-400" /> Pipeline
-                            </h3>
-
-                            {(() => {
-                                const counts = {
-                                    active: niches.filter(n => n.status === "active").length,
-                                    research: niches.filter(n => n.status === "research").length,
-                                    found: niches.filter(n => n.status === "found").length,
-                                    archived: niches.filter(n => n.status === "archived").length,
-                                };
-                                const total = niches.length;
-                                const stages = [
-                                    { key: "active", label: "Activo", count: counts.active, bar: "bg-emerald-500", dot: "bg-emerald-400" },
-                                    { key: "research", label: "Investigando", count: counts.research, bar: "bg-blue-500", dot: "bg-blue-400" },
-                                    { key: "found", label: "Encontrado", count: counts.found, bar: "bg-sky-500", dot: "bg-sky-400" },
-                                    { key: "archived", label: "Archivado", count: counts.archived, bar: "bg-neutral-700", dot: "bg-neutral-600" },
-                                ];
-                                return (
-                                    <div className="space-y-3 relative">
-                                        <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
-                                            {stages.filter(s => s.count > 0).map(s => (
-                                                <div key={s.key} className={`${s.bar} h-full transition-all duration-700`} style={{ width: `${(s.count / total) * 100}%` }} title={`${s.label}: ${s.count}`} />
-                                            ))}
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                                            {stages.map(s => (
-                                                <div key={s.key} className="flex items-center gap-1.5">
-                                                    <div className={`w-1.5 h-1.5 rounded-full ${s.dot} shrink-0`} />
-                                                    <span className="text-[9px] text-neutral-600 truncate">{s.label}</span>
-                                                    <span className="text-[10px] font-black text-neutral-400 ml-auto tabular-nums">{s.count}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                );
-                            })()}
-
-                            <div className="border-t border-white/5 pt-4 space-y-2 relative">
-                                {[
-                                    { label: "Catálogos vinculados", value: iaCatalogs.filter(c => (c.nicheIds?.length ?? 0) > 0).length, color: "text-sky-400" },
-                                    { label: "Imágenes generadas", value: iaCatalogs.filter(c => (c.nicheIds?.length ?? 0) > 0).reduce((s, c) => s + c.images.length, 0), color: "text-blue-400" },
-                                    { label: "Score promedio", value: niches.length > 0 ? Math.round(niches.reduce((s, n) => s + nicheScore(n), 0) / niches.length) : 0, color: "text-amber-400" },
-                                ].map(stat => (
-                                    <div key={stat.label} className="flex items-center justify-between gap-2">
-                                        <span className="text-[9px] text-neutral-600">{stat.label}</span>
-                                        <span className={`text-[13px] font-black tabular-nums ${stat.color}`}>{stat.value}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </Card>
-                    </div>
-
-                    {/* Top niches by output */}
-                    {iaCatalogs.some(c => (c.nicheIds?.length ?? 0) > 0 && c.images.length > 0) && (
-                        <Card variant="glass" className="p-6 border-white/5 bg-white/[0.01] space-y-4 relative overflow-hidden hover:shadow-[0_0_30px_rgba(99,102,241,0.06)] transition-all duration-500">
-                            <h3 className="text-[11px] font-black uppercase tracking-widest text-neutral-300 flex items-center gap-2">
-                                <Star size={13} className="text-amber-400" /> Top Nichos por Producción
-                            </h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                                {[...niches]
-                                    .map(n => ({ n, imgs: iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).reduce((s, c) => s + c.images.length, 0), cats: iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).length }))
-                                    .filter(x => x.imgs > 0)
-                                    .sort((a, b) => b.imgs - a.imgs)
-                                    .slice(0, 4)
-                                    .map(({ n, imgs, cats }) => {
-                                        const score = nicheScore(n);
-                                        const gradFrom = score >= 70 ? "#10b981" : score >= 40 ? "#f59e0b" : "#6366f1";
-                                        const gradTo = score >= 70 ? "#22d3ee" : score >= 40 ? "#fb923c" : "#8b5cf6";
-                                        return (
-                                            <div key={n._id} className="rounded-2xl bg-white/[0.02] border border-white/[0.06] p-4 space-y-3 hover:border-white/10 transition-all">
-                                                <div className="flex items-start justify-between gap-2">
-                                                    <p className="text-[11px] font-bold text-white leading-tight line-clamp-2 flex-1">{n.name}</p>
-                                                    <div className="relative shrink-0 w-9 h-9">
-                                                        <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                                                            <defs>
-                                                                <linearGradient id={`top-grad-${n._id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                                                                    <stop offset="0%" stopColor={gradFrom} />
-                                                                    <stop offset="100%" stopColor={gradTo} />
-                                                                </linearGradient>
-                                                            </defs>
-                                                            <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="3.5" />
-                                                            <circle cx="18" cy="18" r="14" fill="none" stroke={`url(#top-grad-${n._id})`} strokeWidth="3.5" strokeLinecap="round"
-                                                                strokeDasharray={`${Math.min((score / 90) * 88, 88)} 88`} />
-                                                        </svg>
-                                                        <span className="absolute inset-0 flex items-center justify-center text-[9px] font-black text-neutral-300">{score}</span>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center justify-between text-[9px]">
-                                                    <span className="text-neutral-600">{cats} cat.</span>
-                                                    <span className="font-black text-white tabular-nums">{imgs} imgs</span>
-                                                </div>
-                                                <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-                                                    <div className="h-full rounded-full" style={{ width: `${Math.min((imgs / 50) * 100, 100)}%`, background: `linear-gradient(to right, ${gradFrom}, ${gradTo})` }} />
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                            </div>
-                        </Card>
-                    )}
-                </section>
-            )}
 
             {/* ── ROYALTIES TRACKER ── */}
             {niches.some(n => n.phase === "published" || (n.royalties?.length ?? 0) > 0) && (
@@ -4622,73 +4465,45 @@ export function KdpFactoryApp() {
                     {/* ── Stats row ── */}
                     {niches.length > 0 && (() => {
                         const activeCount = niches.filter(n => n.status === "active").length;
-                        const totalLinkedCats = niches.reduce((s, n) => s + (n.catalogIds?.length ?? 0), 0);
+                        const totalLinkedCats = iaCatalogs.filter(c => (c.nicheIds?.length ?? 0) > 0).length;
                         const totalLinkedImgs = iaCatalogs.filter(c => (c.nicheIds?.length ?? 0) > 0).reduce((s, c) => s + c.images.length, 0);
                         return (
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                {[
-                                    { label: "Nichos", value: niches.length, icon: <Target size={15} />, color: "text-sky-400", bg: "bg-sky-500/10 border-sky-500/20", glow: "bg-sky-500/10" },
-                                    { label: "Activos", value: activeCount, icon: <Activity size={15} />, color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20", glow: "bg-emerald-500/10" },
-                                    { label: "Catálogos", value: totalLinkedCats, icon: <Layers size={15} />, color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20", glow: "bg-blue-500/10" },
-                                    { label: "Imágenes", value: totalLinkedImgs, icon: <ImageIcon size={15} />, color: "text-cyan-400", bg: "bg-sky-500/10 border-fuchsia-500/20", glow: "bg-sky-500/10" },
-                                ].map(stat => (
-                                    <div key={stat.label} className={`relative rounded-2xl border ${stat.bg} p-4 overflow-hidden`}>
-                                        <div className={`absolute -right-3 -top-3 w-14 h-14 ${stat.glow} blur-2xl rounded-full`} />
-                                        <div className={`flex items-center gap-2 ${stat.color} mb-2 relative`}>
-                                            {stat.icon}
-                                            <span className="text-[9px] font-black uppercase tracking-widest opacity-70">{stat.label}</span>
-                                        </div>
-                                        <p className="text-3xl font-black text-white relative tabular-nums">{stat.value}</p>
-                                    </div>
-                                ))}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                <KdpStatCard label="Nichos" value={niches.length} icon={<Target size={16} />} color="sky" />
+                                <KdpStatCard label="Activos" value={activeCount} icon={<Activity size={16} />} color="emerald" />
+                                <KdpStatCard label="Catálogos" value={totalLinkedCats} icon={<Layers size={16} />} color="blue" />
+                                <KdpStatCard label="Imágenes" value={totalLinkedImgs} icon={<ImageIcon size={16} />} color="cyan" />
                             </div>
                         );
                     })()}
 
-                    {/* ── Status distribution chart ── */}
+                    {/* ── Per-niche vertical bar charts ── */}
                     {niches.length > 0 && (() => {
-                        const statusConf: { s: NicheStatus; bar: string; glow: string; label: string; emoji: string }[] = [
-                            { s: "active", bar: "bg-gradient-to-r from-emerald-500 to-emerald-400", glow: "shadow-[0_0_8px_rgba(16,185,129,0.5)]", label: "Activos", emoji: "🟢" },
-                            { s: "research", bar: "bg-gradient-to-r from-blue-500 to-blue-400", glow: "shadow-[0_0_8px_rgba(59,130,246,0.4)]", label: "Investigando", emoji: "🔵" },
-                            { s: "found", bar: "bg-gradient-to-r from-sky-500 to-sky-400", glow: "shadow-[0_0_8px_rgba(14,165,233,0.35)]", label: "Encontrados", emoji: "🔷" },
-                            { s: "archived", bar: "bg-neutral-700", glow: "", label: "Archivados", emoji: "⚫" },
-                        ];
-                        const activeCount = niches.filter(n => n.status === "active").length;
-                        const publishedCount = niches.filter(n => n.phase === "published" || !!(n.asin || n.etsyUrl)).length;
+                        const nicheChartData = niches
+                            .map(n => {
+                                const cats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
+                                return { label: n.name.split(" ").slice(0, 2).join(" "), images: cats.reduce((s, c) => s + c.images.length, 0), catalogs: cats.length };
+                            });
                         return (
-                            <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-3">
-                                <div className="flex items-center justify-between mb-1">
-                                    <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Distribución</span>
-                                    <div className="flex items-center gap-3 text-[9px] text-neutral-600">
-                                        {activeCount > 0 && <span className="text-emerald-400 font-black">{activeCount} activos</span>}
-                                        {publishedCount > 0 && <span className="text-amber-400 font-black">{publishedCount} publicados</span>}
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    {statusConf.map(({ s, bar, glow, label }) => {
-                                        const cnt = niches.filter(n => n.status === s).length;
-                                        if (cnt === 0) return null;
-                                        const pct = Math.round((cnt / niches.length) * 100);
-                                        return (
-                                            <div key={s} className="flex items-center gap-3">
-                                                <span className="text-[9px] text-neutral-500 font-black w-20 shrink-0 truncate">{label}</span>
-                                                <div className="flex-1 h-[5px] bg-white/[0.05] rounded-full overflow-hidden">
-                                                    <div className={`h-full rounded-full transition-all duration-700 ${bar} ${glow}`} style={{ width: `${pct}%` }} />
-                                                </div>
-                                                <span className="text-[10px] font-black text-white tabular-nums w-4 text-right">{cnt}</span>
-                                                <span className="text-[9px] text-neutral-700 tabular-nums w-8 text-right">{pct}%</span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                {/* Mini stacked bar at bottom */}
-                                <div className="flex h-1 rounded-full overflow-hidden gap-px pt-1">
-                                    {statusConf.map(({ s, bar }) => {
-                                        const pct = (niches.filter(n => n.status === s).length / niches.length) * 100;
-                                        if (pct === 0) return null;
-                                        return <div key={s} className={`${bar} transition-all`} style={{ width: `${pct}%` }} />;
-                                    })}
-                                </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <KdpVerticalBarChart
+                                    title="Imágenes por nicho"
+                                    subtitle="Producción total de imágenes por nicho"
+                                    icon={<ImageIcon size={13} />}
+                                    items={[...nicheChartData].sort((a, b) => b.images - a.images).map(d => ({ label: d.label, value: d.images }))}
+                                    color="sky"
+                                    height={160}
+                                    emptyMessage="Genera catálogos para ver estadísticas"
+                                />
+                                <KdpVerticalBarChart
+                                    title="Catálogos por nicho"
+                                    subtitle="Número de catálogos vinculados por nicho"
+                                    icon={<Layers size={13} />}
+                                    items={[...nicheChartData].sort((a, b) => b.catalogs - a.catalogs).map(d => ({ label: d.label, value: d.catalogs }))}
+                                    color="blue"
+                                    height={160}
+                                    emptyMessage="Genera catálogos para ver estadísticas"
+                                />
                             </div>
                         );
                     })()}
@@ -4874,11 +4689,21 @@ export function KdpFactoryApp() {
                                                     const hasImages = linkedImgs > 0;
                                                     const hasPublicacion = niche.phase === "pdf" || niche.phase === "published";
                                                     const hasProducto = niche.phase === "published" || !!(niche.asin || niche.etsyUrl);
-                                                    const steps = [
+                                                    const steps: { label: string; done: boolean; doneColor: string; nextColor: string; lineColor: string; onClick?: () => void }[] = [
                                                         { label: "Prompt", done: hasPrompt, doneColor: "text-sky-300 bg-sky-500/20 border-sky-400/50", nextColor: "text-sky-400 bg-sky-500/10 border-sky-500/30", lineColor: "bg-sky-500/40" },
                                                         { label: "Catálogos", done: hasImages, doneColor: "text-blue-300 bg-blue-500/20 border-blue-400/50", nextColor: "text-blue-400 bg-blue-500/10 border-blue-500/30", lineColor: "bg-blue-500/40" },
-                                                        { label: "Publicación", done: hasPublicacion, doneColor: "text-amber-300 bg-amber-500/20 border-amber-400/50", nextColor: "text-amber-400 bg-amber-500/10 border-amber-500/30", lineColor: "bg-amber-500/40" },
-                                                        { label: "Producto", done: hasProducto, doneColor: "text-emerald-300 bg-emerald-500/20 border-emerald-400/50", nextColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30", lineColor: "bg-emerald-500/40" },
+                                                        {
+                                                            label: "Publicación", done: hasPublicacion, doneColor: "text-amber-300 bg-amber-500/20 border-amber-400/50", nextColor: "text-amber-400 bg-amber-500/10 border-amber-500/30", lineColor: "bg-amber-500/40",
+                                                            onClick: () => {
+                                                                const newPhase = hasPublicacion ? "catalog" : "pdf";
+                                                                fetch(`${API_BASE_URL}/niches/${niche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: newPhase }) }).catch(() => { });
+                                                                setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase: newPhase as typeof niche.phase } : n));
+                                                            },
+                                                        },
+                                                        {
+                                                            label: "Producto", done: hasProducto, doneColor: "text-emerald-300 bg-emerald-500/20 border-emerald-400/50", nextColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30", lineColor: "bg-emerald-500/40",
+                                                            onClick: () => nichePublishPanelId === niche._id ? setNichePublishPanelId(null) : openPublishPanel(niche),
+                                                        },
                                                     ];
                                                     const doneCount = steps.filter(s => s.done).length;
                                                     const nextStep = steps.findIndex(s => !s.done);
@@ -4891,7 +4716,12 @@ export function KdpFactoryApp() {
                                                             <div className="flex items-center">
                                                                 {steps.map((s, i) => (
                                                                     <div key={i} className="flex items-center flex-1 min-w-0">
-                                                                        <div title={s.label} className="flex flex-col items-center gap-1 shrink-0">
+                                                                        <button
+                                                                            title={s.label}
+                                                                            onClick={s.onClick}
+                                                                            disabled={!s.onClick}
+                                                                            className={`flex flex-col items-center gap-1 shrink-0 transition-all ${s.onClick ? "cursor-pointer hover:opacity-80 active:scale-95" : "cursor-default"}`}
+                                                                        >
                                                                             <div className={`w-7 h-7 rounded-xl border-2 flex items-center justify-center transition-all duration-300 ${s.done ? s.doneColor : i === nextStep ? `${s.nextColor} ring-1 ring-white/10` : "text-neutral-800 bg-white/[0.02] border-white/[0.06]"}`}>
                                                                                 {s.done
                                                                                     ? <Check size={12} strokeWidth={3} />
@@ -4899,7 +4729,7 @@ export function KdpFactoryApp() {
                                                                                 }
                                                                             </div>
                                                                             <span className={`text-[8px] font-black leading-none ${s.done ? "text-neutral-400" : i === nextStep ? "text-neutral-300" : "text-neutral-700"}`}>{s.label}</span>
-                                                                        </div>
+                                                                        </button>
                                                                         {i < steps.length - 1 && (
                                                                             <div className={`h-px flex-1 mx-1 mt-[-8px] transition-all duration-500 ${s.done ? s.lineColor : "bg-white/[0.05]"}`} />
                                                                         )}
@@ -4955,20 +4785,14 @@ export function KdpFactoryApp() {
                                                     <div className="text-[9px] text-neutral-700 tabular-nums">
                                                         {new Date(niche.createdAt).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
                                                     </div>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <button onClick={() => nichePublishPanelId === niche._id ? setNichePublishPanelId(null) : openPublishPanel(niche)}
-                                                            className={`flex items-center gap-1 px-2.5 h-8 rounded-xl border text-[9px] font-black transition-all ${niche.asin || niche.etsyUrl ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20" : "border-white/10 bg-white/5 text-neutral-500 hover:text-white hover:border-white/20"}`}>
-                                                            <Globe size={10} /> Publicar
-                                                        </button>
-                                                        <button
-                                                            onClick={() => void generateNicheContent(niche)}
-                                                            disabled={nicheGeneratingId === niche._id}
-                                                            className="flex items-center gap-1.5 px-4 h-8 rounded-xl bg-sky-500/15 border border-sky-500/30 text-[10px] font-black text-sky-300 hover:bg-sky-500/25 hover:border-sky-500/50 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                                                            {nicheGeneratingId === niche._id
-                                                                ? <><Loader2 size={11} className="animate-spin" /> Generando...</>
-                                                                : <><Sparkles size={11} /> Generar catálogo</>}
-                                                        </button>
-                                                    </div>
+                                                    <button
+                                                        onClick={() => void generateNicheContent(niche)}
+                                                        disabled={nicheGeneratingId === niche._id}
+                                                        className="flex items-center gap-1.5 px-4 h-8 rounded-xl bg-sky-500/15 border border-sky-500/30 text-[10px] font-black text-sky-300 hover:bg-sky-500/25 hover:border-sky-500/50 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                                                        {nicheGeneratingId === niche._id
+                                                            ? <><Loader2 size={11} className="animate-spin" /> Generando...</>
+                                                            : <><Sparkles size={11} /> Generar catálogo</>}
+                                                    </button>
                                                 </div>
 
                                             </div>
@@ -4978,18 +4802,6 @@ export function KdpFactoryApp() {
                         </div>
                     )}
 
-                    {/* ── Insights placeholder (future) ── */}
-                    {niches.length > 0 && (
-                        <div className="rounded-2xl border border-dashed border-white/10 p-5 flex items-center gap-4 opacity-50">
-                            <div className="w-10 h-10 rounded-2xl bg-white/5 flex items-center justify-center shrink-0">
-                                <BarChart size={18} className="text-neutral-500" />
-                            </div>
-                            <div>
-                                <p className="text-[11px] font-black text-neutral-500 uppercase tracking-widest">Insights de nichos</p>
-                                <p className="text-[10px] text-neutral-700 mt-0.5">Próximamente: ventas estimadas, tendencias de keywords, análisis BSR y competencia real en Amazon</p>
-                            </div>
-                        </div>
-                    )}
                 </div>
             </div>
 
@@ -6683,7 +6495,6 @@ export function KdpFactoryApp() {
                         </div>
                     </div>
                 );
-                1
             })()}
 
             {/* Custom Catalog from Cloudinary Modal */}

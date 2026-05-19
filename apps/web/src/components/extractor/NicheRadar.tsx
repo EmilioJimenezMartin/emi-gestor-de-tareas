@@ -6,7 +6,7 @@ import {
     Loader2, RefreshCw, Target, BarChart3, ShoppingBag,
     Users, DollarSign, Tag, Zap, Search,
     Star, ShoppingCart, Download, ArrowUpDown, CheckCircle2,
-    HelpCircle, ArrowRight, BookOpen, Sparkles,
+    HelpCircle, ArrowRight, BookOpen, Sparkles, Plus,
 } from "lucide-react";
 import { createApiSocket } from "@/lib/socket";
 import { Modal } from "@/components/ui/modal";
@@ -129,6 +129,8 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
     const [showHelp, setShowHelp] = useState(false);
     const [preNichos, setPreNichos] = useState<PreNicho[] | null>(null);
     const [isGeneratingPreNichos, setIsGeneratingPreNichos] = useState(false);
+    const [creatingNicheIdx, setCreatingNicheIdx] = useState<number | null>(null);
+    const [createdNicheIdxs, setCreatedNicheIdxs] = useState<Set<number>>(new Set());
     const logsEndRef = useRef<HTMLDivElement>(null);
     const isFirstLog = useRef(true);
 
@@ -175,6 +177,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
         setEtsyResult(null);
         setGeneralResult(null);
         setPreNichos(null);
+        setCreatedNicheIdxs(new Set());
         setLogs([]);
         isFirstLog.current = true;
         toast.info(`Iniciando análisis · modo: ${mode === "etsy-niches" ? "Etsy Nichos" : "General"}...`);
@@ -216,6 +219,30 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
             toast.error(e.message ?? "Error generando pre-nichos");
         } finally {
             setIsGeneratingPreNichos(false);
+        }
+    };
+
+    const createNicheFromPreNicho = async (pn: PreNicho, idx: number) => {
+        if (createdNicheIdxs.has(idx)) return;
+        setCreatingNicheIdx(idx);
+        try {
+            const res = await fetch(`${apiUrl}/niches`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: pn.nombre,
+                    description: pn.descripcion,
+                    tags: pn.keywords_clave,
+                    status: "found",
+                }),
+            });
+            if (!res.ok) throw new Error(`Error ${res.status}`);
+            setCreatedNicheIdxs(prev => new Set([...prev, idx]));
+            toast.success(`Nicho "${pn.nombre}" creado`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error creando nicho");
+        } finally {
+            setCreatingNicheIdx(null);
         }
     };
 
@@ -780,35 +807,47 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
 
                                 {preNichos && !isGeneratingPreNichos && (
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        {preNichos.map((pn, i) => (
-                                            <div key={i} className="rounded-xl border border-white/8 bg-white/[0.02] p-3 space-y-2">
-                                                <div className="flex items-start justify-between gap-2">
-                                                    <p className="text-[11px] font-black text-white leading-tight">{pn.nombre}</p>
-                                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-md border shrink-0 ${pn.potencial === "high" ? "bg-emerald-500/15 border-emerald-500/25 text-emerald-400" : pn.potencial === "medium" ? "bg-amber-500/15 border-amber-500/25 text-amber-400" : "bg-neutral-500/15 border-neutral-500/25 text-neutral-400"}`}>
-                                                        {pn.potencial === "high" ? "Alto" : pn.potencial === "medium" ? "Medio" : "Bajo"}
-                                                    </span>
-                                                </div>
-                                                <p className="text-[9px] text-neutral-500 leading-relaxed">{pn.descripcion}</p>
-                                                {pn.keywords_clave?.length > 0 && (
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {pn.keywords_clave.map(k => (
-                                                            <span key={k} className="text-[7px] font-black px-1.5 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/15 text-violet-400">{k}</span>
-                                                        ))}
+                                        {preNichos.map((pn, i) => {
+                                            const isCreated = createdNicheIdxs.has(i);
+                                            const isCreating = creatingNicheIdx === i;
+                                            return (
+                                                <div key={i} className="rounded-xl border border-white/8 bg-white/[0.02] p-3 space-y-2">
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <p className="text-[11px] font-black text-white leading-tight">{pn.nombre}</p>
+                                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-md border shrink-0 ${pn.potencial === "high" ? "bg-emerald-500/15 border-emerald-500/25 text-emerald-400" : pn.potencial === "medium" ? "bg-amber-500/15 border-amber-500/25 text-amber-400" : "bg-neutral-500/15 border-neutral-500/25 text-neutral-400"}`}>
+                                                            {pn.potencial === "high" ? "Alto" : pn.potencial === "medium" ? "Medio" : "Bajo"}
+                                                        </span>
                                                     </div>
-                                                )}
-                                                {pn.sub_nichos?.length > 0 && (
-                                                    <div>
-                                                        <p className="text-[7px] font-black uppercase tracking-widest text-neutral-700 mb-1">Sub-nichos ({pn.sub_nichos.length})</p>
+                                                    <p className="text-[9px] text-neutral-500 leading-relaxed">{pn.descripcion}</p>
+                                                    {pn.keywords_clave?.length > 0 && (
                                                         <div className="flex flex-wrap gap-1">
-                                                            {pn.sub_nichos.slice(0, 5).map(s => (
-                                                                <span key={s} className="text-[7px] px-1.5 py-0.5 rounded-md bg-white/5 border border-white/8 text-neutral-500">{s}</span>
+                                                            {pn.keywords_clave.map(k => (
+                                                                <span key={k} className="text-[7px] font-black px-1.5 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/15 text-violet-400">{k}</span>
                                                             ))}
-                                                            {pn.sub_nichos.length > 5 && <span className="text-[7px] text-neutral-700">+{pn.sub_nichos.length - 5}</span>}
                                                         </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
+                                                    )}
+                                                    {pn.sub_nichos?.length > 0 && (
+                                                        <div>
+                                                            <p className="text-[7px] font-black uppercase tracking-widest text-neutral-700 mb-1">Sub-nichos ({pn.sub_nichos.length})</p>
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {pn.sub_nichos.slice(0, 5).map(s => (
+                                                                    <span key={s} className="text-[7px] px-1.5 py-0.5 rounded-md bg-white/5 border border-white/8 text-neutral-500">{s}</span>
+                                                                ))}
+                                                                {pn.sub_nichos.length > 5 && <span className="text-[7px] text-neutral-700">+{pn.sub_nichos.length - 5}</span>}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    <button
+                                                        onClick={() => void createNicheFromPreNicho(pn, i)}
+                                                        disabled={isCreating || isCreated}
+                                                        className={`w-full h-7 rounded-lg border text-[8px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${isCreated ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-400 cursor-default" : "border-violet-500/20 bg-violet-500/[0.06] text-violet-400 hover:bg-violet-500/15 hover:border-violet-500/30 disabled:opacity-50 disabled:cursor-not-allowed"}`}
+                                                    >
+                                                        {isCreating ? <Loader2 size={9} className="animate-spin" /> : isCreated ? <CheckCircle2 size={9} /> : <Plus size={9} />}
+                                                        {isCreated ? "Nicho creado" : isCreating ? "Creando..." : "Crear Nicho"}
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
 
