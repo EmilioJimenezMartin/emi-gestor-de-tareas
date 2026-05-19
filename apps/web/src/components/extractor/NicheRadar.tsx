@@ -6,8 +6,10 @@ import {
     Loader2, RefreshCw, Target, BarChart3, ShoppingBag,
     Users, DollarSign, Tag, Zap, Search,
     Star, ShoppingCart, Download, ArrowUpDown, CheckCircle2,
+    HelpCircle, ArrowRight, BookOpen, Sparkles,
 } from "lucide-react";
 import { createApiSocket } from "@/lib/socket";
+import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 
 interface NicheInsight {
@@ -116,6 +118,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
     const [history, setHistory] = useState<{ url: string; insight: NicheInsight; ts: number }[]>([]);
     const [sortKey, setSortKey] = useState<SortKey>("personas_carrito");
     const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+    const [showHelp, setShowHelp] = useState(false);
     const logsEndRef = useRef<HTMLDivElement>(null);
     const isFirstLog = useRef(true);
 
@@ -228,7 +231,145 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                         Análisis de mercado con IA · Powered by Gemini + llm-scraper · Playwright headless
                     </p>
                 </div>
+                <button
+                    onClick={() => setShowHelp(true)}
+                    title="Instrucciones de uso"
+                    className="shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/[0.04] border border-white/8 text-neutral-500 hover:text-amber-400 hover:border-amber-500/25 hover:bg-amber-500/[0.06] transition-all text-[9px] font-black uppercase tracking-widest"
+                >
+                    <HelpCircle size={12} />
+                    Ayuda
+                </button>
             </div>
+
+            {/* Help modal */}
+            <Modal open={showHelp} onClose={() => setShowHelp(false)} maxWidth="max-w-2xl" showClose zIndex={200}>
+                <div className="p-6 space-y-5">
+                    {/* Header */}
+                    <div className="flex items-center gap-3 pb-4 border-b border-white/[0.06]">
+                        <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
+                            <TrendingUp size={18} className="text-amber-400" />
+                        </div>
+                        <div>
+                            <p className="text-base font-black text-white">Radar de Nichos — Guía de uso</p>
+                            <p className="text-[11px] text-neutral-500">Gemini + llm-scraper + Playwright headless</p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Modo Etsy */}
+                        <div className="rounded-2xl border border-sky-500/15 bg-sky-500/[0.04] p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                                <ShoppingCart size={14} className="text-sky-400" />
+                                <span className="text-[11px] font-black uppercase tracking-widest text-sky-400">Nichos Etsy</span>
+                            </div>
+                            <p className="text-[10px] text-neutral-400 leading-relaxed">
+                                Extrae señales de demanda real de páginas de resultados de Etsy: bestsellers, productos en carrito activo, reseñas acumuladas y micro-nicho estimado.
+                            </p>
+                            <div className="space-y-1.5">
+                                {[
+                                    "Selecciona un preset o pega una URL de búsqueda de Etsy",
+                                    "Pulsa «Escanear Etsy» — tarda 30–60 s",
+                                    "Ordena la tabla por «Carrito» para ver demanda inmediata",
+                                    "Ordena por «Reseñas» para ver nichos establecidos",
+                                    "Exporta a CSV para analizar en Excel o Google Sheets",
+                                ].map((step, i) => (
+                                    <div key={i} className="flex items-start gap-2">
+                                        <span className="text-[9px] font-black text-sky-400/70 tabular-nums mt-px shrink-0">{i + 1}.</span>
+                                        <span className="text-[10px] text-neutral-400">{step}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="rounded-xl bg-sky-500/[0.08] border border-sky-500/15 p-2.5 space-y-1">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-sky-400/80">URLs para archivos digitales</p>
+                                {[
+                                    "etsy.com/es/search?q=digital+download+svg+bundle",
+                                    "etsy.com/es/search?q=printable+wall+art+pdf",
+                                    "etsy.com/es/search?q=digital+planner+pdf+2025",
+                                    "etsy.com/es/search?q=clip+art+bundle+commercial+use",
+                                ].map(url => (
+                                    <p key={url} className="text-[8px] font-mono text-neutral-600 truncate">{url}</p>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Modo General */}
+                        <div className="rounded-2xl border border-amber-500/15 bg-amber-500/[0.04] p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                                <BarChart3 size={14} className="text-amber-400" />
+                                <span className="text-[11px] font-black uppercase tracking-widest text-amber-400">Análisis General</span>
+                            </div>
+                            <p className="text-[10px] text-neutral-400 leading-relaxed">
+                                Analiza cualquier marketplace — Amazon, Gumroad, Creative Market, Google Trends — y devuelve un informe de competencia, demanda, tendencia, keywords y oportunidad de entrada.
+                            </p>
+                            <div className="space-y-1.5">
+                                {[
+                                    "Pega la URL de resultados de cualquier marketplace",
+                                    "Escribe el nicho objetivo (opcional pero recomendado)",
+                                    "Añade contexto: qué quieres saber exactamente",
+                                    "Pulsa «Analizar Mercado»",
+                                    "Revisa competencia · demanda · tendencia · oportunidad",
+                                ].map((step, i) => (
+                                    <div key={i} className="flex items-start gap-2">
+                                        <span className="text-[9px] font-black text-amber-400/70 tabular-nums mt-px shrink-0">{i + 1}.</span>
+                                        <span className="text-[10px] text-neutral-400">{step}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="rounded-xl bg-amber-500/[0.08] border border-amber-500/15 p-2.5 space-y-1">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Ejemplo de contexto</p>
+                                <p className="text-[9px] font-mono text-neutral-500 leading-relaxed italic">
+                                    "Busco hueco para un libro digital de colorear a 4–7€, enfocado en adultos, estilo mandala minimalista"
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Interpretación de resultados */}
+                    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                            <Sparkles size={13} className="text-neutral-400" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Cómo interpretar los resultados</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[10px] text-neutral-500">
+                            <div className="space-y-2">
+                                <p className="font-black text-neutral-300">Modo Etsy</p>
+                                <div className="flex items-start gap-2"><ArrowRight size={10} className="text-sky-400 mt-0.5 shrink-0" /><span><span className="text-sky-400 font-black">Carrito alto (&gt;10)</span> — demanda activa ahora mismo</span></div>
+                                <div className="flex items-start gap-2"><ArrowRight size={10} className="text-amber-400 mt-0.5 shrink-0" /><span><span className="text-amber-400 font-black">Bestseller = true</span> — el mercado ya valida ese producto</span></div>
+                                <div className="flex items-start gap-2"><ArrowRight size={10} className="text-emerald-400 mt-0.5 shrink-0" /><span><span className="text-emerald-400 font-black">Reseñas &gt;500</span> — nicho establecido, entrada más difícil</span></div>
+                                <div className="flex items-start gap-2"><ArrowRight size={10} className="text-neutral-400 mt-0.5 shrink-0" /><span><span className="text-neutral-300 font-black">Sub-nicho</span> — el micro-tema específico del producto</span></div>
+                            </div>
+                            <div className="space-y-2">
+                                <p className="font-black text-neutral-300">Modo General</p>
+                                <div className="flex items-start gap-2"><ArrowRight size={10} className="text-emerald-400 mt-0.5 shrink-0" /><span><span className="text-emerald-400 font-black">Competencia baja + Demanda alta</span> — oportunidad ideal</span></div>
+                                <div className="flex items-start gap-2"><ArrowRight size={10} className="text-amber-400 mt-0.5 shrink-0" /><span><span className="text-amber-400 font-black">Tendencia rising</span> — el nicho crece, entra pronto</span></div>
+                                <div className="flex items-start gap-2"><ArrowRight size={10} className="text-rose-400 mt-0.5 shrink-0" /><span><span className="text-rose-400 font-black">Competencia alta</span> — diferénciate con sub-nicho muy específico</span></div>
+                                <div className="flex items-start gap-2"><ArrowRight size={10} className="text-neutral-400 mt-0.5 shrink-0" /><span><span className="text-neutral-300 font-black">Top Keywords</span> — úsalos en el título y tags de Etsy/KDP</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Tips avanzados */}
+                    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-2">
+                        <div className="flex items-center gap-2 mb-1">
+                            <BookOpen size={13} className="text-neutral-400" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Tips avanzados</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {[
+                                { tip: "Escanea la página 1 y la página 3 del mismo término — la 3 muestra nichos emergentes sin posicionar aún" },
+                                { tip: "Usa la tabla CSV en Google Sheets y filtra: bestseller=true AND carrito>5 = nichos de acción inmediata" },
+                                { tip: "Busca términos muy específicos: «octopus coloring page pdf adults» en vez de «coloring book»" },
+                                { tip: "El análisis general en Amazon revela el rango de precios exacto — fíjate en cuántos tienen 4+ estrellas" },
+                            ].map(({ tip }, i) => (
+                                <div key={i} className="flex items-start gap-2">
+                                    <span className="text-amber-400/60 text-[10px] mt-px shrink-0">✦</span>
+                                    <span className="text-[10px] text-neutral-500 leading-relaxed">{tip}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </Modal>
 
             {/* Mode tabs */}
             <div className="flex gap-1 p-1 bg-white/[0.03] border border-white/8 rounded-2xl w-fit">

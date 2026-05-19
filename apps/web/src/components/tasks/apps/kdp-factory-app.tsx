@@ -71,6 +71,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { createApiSocket } from "@/lib/socket";
 import { NicheRadar } from "@/components/extractor/NicheRadar";
@@ -457,6 +458,7 @@ export function KdpFactoryApp() {
     const [isCreatingCatalog, setIsCreatingCatalog] = useState(false);
     const [deletingCatalogId, setDeletingCatalogId] = useState<string | null>(null);
     const [confirmDeleteCatalogId, setConfirmDeleteCatalogId] = useState<string | null>(null);
+    const [confirmStopCatalogId, setConfirmStopCatalogId] = useState<string | null>(null);
     const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
     const [confirmDeleteImageInfo, setConfirmDeleteImageInfo] = useState<{ catalogId: string; publicId: string } | null>(null);
     const [bulkDeleteCatalogId, setBulkDeleteCatalogId] = useState<string | null>(null);
@@ -3972,104 +3974,106 @@ export function KdpFactoryApp() {
                                                 ⚠ {catalog.lastError.length > 100 ? catalog.lastError.slice(0, 100) + "…" : catalog.lastError}
                                             </p>
                                         )}
-                                        {/* Action buttons */}
-                                        <div className="flex items-center justify-end gap-2">
-                                            <button
-                                                onClick={() => {
-                                                    if (catalog.promptParts?.theme) {
-                                                        setPromptTheme(catalog.promptParts.theme);
-                                                        setPromptSpecs(catalog.promptParts.specs ?? "");
-                                                        setPromptDetails(catalog.promptParts.details ?? "");
-                                                        setPromptParticulars(catalog.promptParts.particulars ?? "");
-                                                    } else {
-                                                        // Old catalog without parts — strip the composed prefix so
-                                                        // imagePrompt doesn't double-wrap it
-                                                        const prefix = "Genera una imagen con la siguiente temática: ";
-                                                        let raw = catalog.prompt;
-                                                        if (raw.startsWith(prefix)) raw = raw.slice(prefix.length);
-                                                        // Strip style suffix added by coloring-book modifier
-                                                        const styleIdx = raw.indexOf(". Style:");
-                                                        if (styleIdx >= 0) raw = raw.slice(0, styleIdx);
-                                                        // Take only up to the first sub-clause separator
-                                                        const cutAt = [
-                                                            raw.indexOf(", que tenga las siguientes especificaciones:"),
-                                                            raw.indexOf(", con los siguientes detalles:"),
-                                                            raw.indexOf(", y las siguientes particularidades:"),
-                                                        ].filter(i => i >= 0).sort((a, b) => a - b)[0] ?? -1;
-                                                        setPromptTheme(cutAt >= 0 ? raw.slice(0, cutAt) : raw);
-                                                        setPromptSpecs(""); setPromptDetails(""); setPromptParticulars("");
-                                                    }
-                                                    const matchModel = AI_MODELS.find(m => m.id === catalog.aiModel?.id);
-                                                    if (matchModel) setSelectedModel(matchModel.id);
-                                                    const matchDim = AI_DIMENSIONS.find(d => d.width === catalog.width && d.height === catalog.height);
-                                                    if (matchDim) setSelectedDim(matchDim.id);
-                                                    if (catalog.productType) setCatalogProductType(catalog.productType);
-                                                    if (catalog.creativity !== undefined) setCatalogCreativity(catalog.creativity);
-                                                    if (catalog.negativePrompt !== undefined) setCatalogNegativePrompt(catalog.negativePrompt);
-                                                    toast.success("Prompt, modelo y resolución cargados");
-                                                }}
-                                                title="Cargar prompt, modelo y resolución"
-                                                className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-white transition-all border border-white/10 text-[9px] font-black uppercase tracking-widest"
-                                            >
-                                                <Copy size={11} /> Reusar
-                                            </button>
-                                            {catalog.images.length > 0 && (
+                                        {/* Action buttons — two groups */}
+                                        <div className="flex items-center justify-between gap-2">
+                                            {/* Left: utility actions */}
+                                            <div className="flex items-center gap-1.5 flex-wrap">
                                                 <button
-                                                    onClick={() => { const pages: BookPage[] = catalog.images.map((img, i) => ({ id: genPageId(), type: "image" as const, image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` }, text: defaultTextStyle() })); setBookPages(pages); setSelectedPageId(pages[0]?.id ?? null); setBookEditorOpen(true); }}
-                                                    title="Editar PDF"
-                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-[9px] font-black uppercase tracking-widest"
+                                                    onClick={() => {
+                                                        if (catalog.promptParts?.theme) {
+                                                            setPromptTheme(catalog.promptParts.theme);
+                                                            setPromptSpecs(catalog.promptParts.specs ?? "");
+                                                            setPromptDetails(catalog.promptParts.details ?? "");
+                                                            setPromptParticulars(catalog.promptParts.particulars ?? "");
+                                                        } else {
+                                                            const prefix = "Genera una imagen con la siguiente temática: ";
+                                                            let raw = catalog.prompt;
+                                                            if (raw.startsWith(prefix)) raw = raw.slice(prefix.length);
+                                                            const styleIdx = raw.indexOf(". Style:");
+                                                            if (styleIdx >= 0) raw = raw.slice(0, styleIdx);
+                                                            const cutAt = [
+                                                                raw.indexOf(", que tenga las siguientes especificaciones:"),
+                                                                raw.indexOf(", con los siguientes detalles:"),
+                                                                raw.indexOf(", y las siguientes particularidades:"),
+                                                            ].filter(i => i >= 0).sort((a, b) => a - b)[0] ?? -1;
+                                                            setPromptTheme(cutAt >= 0 ? raw.slice(0, cutAt) : raw);
+                                                            setPromptSpecs(""); setPromptDetails(""); setPromptParticulars("");
+                                                        }
+                                                        const matchModel = AI_MODELS.find(m => m.id === catalog.aiModel?.id);
+                                                        if (matchModel) setSelectedModel(matchModel.id);
+                                                        const matchDim = AI_DIMENSIONS.find(d => d.width === catalog.width && d.height === catalog.height);
+                                                        if (matchDim) setSelectedDim(matchDim.id);
+                                                        if (catalog.productType) setCatalogProductType(catalog.productType);
+                                                        if (catalog.creativity !== undefined) setCatalogCreativity(catalog.creativity);
+                                                        if (catalog.negativePrompt !== undefined) setCatalogNegativePrompt(catalog.negativePrompt);
+                                                        toast.success("Prompt, modelo y resolución cargados");
+                                                    }}
+                                                    title="Cargar prompt, modelo y resolución"
+                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-white transition-all border border-white/10 text-[9px] font-black uppercase tracking-widest"
                                                 >
-                                                    <FileText size={11} /> PDF
+                                                    <Copy size={11} /> Reusar
                                                 </button>
-                                            )}
-                                            {catalog.status === "completed" && catalog.images.length > 0 && (catalog.nicheIds?.length ?? 0) > 0 && (() => {
-                                                const linkedNiche = niches.find(n => (catalog.nicheIds ?? []).includes(n._id));
-                                                if (!linkedNiche) return null;
-                                                return (
+                                                {catalog.images.length > 0 && (
                                                     <button
-                                                        onClick={() => {
-                                                            setContentNiche(`${linkedNiche.name} — ${NICHE_PRODUCT_OPTIONS.find(p => p.id === linkedNiche.productType)?.label ?? linkedNiche.productType}`);
-                                                            setContentType("kdp-physical-book");
-                                                            setContentResult(null);
-                                                            changeTab("studio");
-                                                            toast.success(`Contenido listo para: ${linkedNiche.name}`);
-                                                        }}
-                                                        title="Generar contenido KDP para este nicho"
-                                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all border border-emerald-500/20 text-[9px] font-black uppercase tracking-widest"
+                                                        onClick={() => { const pages: BookPage[] = catalog.images.map((img, i) => ({ id: genPageId(), type: "image" as const, image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` }, text: defaultTextStyle() })); setBookPages(pages); setSelectedPageId(pages[0]?.id ?? null); setBookEditorOpen(true); }}
+                                                        title="Editar PDF"
+                                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-[9px] font-black uppercase tracking-widest"
                                                     >
-                                                        <ArrowRight size={11} /> Contenido
+                                                        <FileText size={11} /> PDF
                                                     </button>
-                                                );
-                                            })()}
-                                            {(catalog.skippedImages ?? 0) > 0 && !isActive && (
-                                                <button
-                                                    onClick={() => void retryFailedSlots(catalog._id)}
-                                                    disabled={retryingCatalogId === catalog._id}
-                                                    title={`Reintentar ${catalog.skippedImages} slot${(catalog.skippedImages ?? 0) > 1 ? "s" : ""} fallados`}
-                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20 text-[9px] font-black uppercase tracking-widest disabled:opacity-50"
-                                                >
-                                                    {retryingCatalogId === catalog._id ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                                                    {catalog.skippedImages} fallidos
+                                                )}
+                                                {catalog.status === "completed" && catalog.images.length > 0 && (catalog.nicheIds?.length ?? 0) > 0 && (() => {
+                                                    const linkedNiche = niches.find(n => (catalog.nicheIds ?? []).includes(n._id));
+                                                    if (!linkedNiche) return null;
+                                                    return (
+                                                        <button
+                                                            onClick={() => {
+                                                                setContentNiche(`${linkedNiche.name} — ${NICHE_PRODUCT_OPTIONS.find(p => p.id === linkedNiche.productType)?.label ?? linkedNiche.productType}`);
+                                                                setContentType("kdp-physical-book");
+                                                                setContentResult(null);
+                                                                changeTab("studio");
+                                                                toast.success(`Contenido listo para: ${linkedNiche.name}`);
+                                                            }}
+                                                            title="Generar contenido KDP para este nicho"
+                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all border border-emerald-500/20 text-[9px] font-black uppercase tracking-widest"
+                                                        >
+                                                            <ArrowRight size={11} /> Contenido
+                                                        </button>
+                                                    );
+                                                })()}
+                                                {(catalog.skippedImages ?? 0) > 0 && !isActive && (
+                                                    <button
+                                                        onClick={() => void retryFailedSlots(catalog._id)}
+                                                        disabled={retryingCatalogId === catalog._id}
+                                                        title={`Reintentar ${catalog.skippedImages} fallados`}
+                                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20 text-[9px] font-black uppercase tracking-widest disabled:opacity-50"
+                                                    >
+                                                        {retryingCatalogId === catalog._id ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                                                        {catalog.skippedImages} fallidos
+                                                    </button>
+                                                )}
+                                                {niches.length > 0 && (
+                                                    <button onClick={() => setCatalogNichePickerId(catalogNichePickerId === catalog._id ? null : catalog._id)}
+                                                        title="Asignar nicho"
+                                                        className={`p-2 rounded-xl border transition-all ${(catalog.nicheIds?.length ?? 0) > 0 ? "bg-sky-500/10 border-sky-500/20 text-sky-400 hover:bg-sky-500/20" : "bg-white/5 border-white/10 text-neutral-500 hover:text-sky-400 hover:border-sky-500/20"}`}>
+                                                        <Target size={13} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {/* Right: destructive actions */}
+                                            <div className="flex items-center gap-1.5 shrink-0 pl-2 border-l border-white/[0.06]">
+                                                {isActive && (
+                                                    <button
+                                                        onClick={() => setConfirmStopCatalogId(catalog._id)}
+                                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-orange-500/10 text-orange-400 border border-orange-500/20 hover:bg-orange-500 hover:text-white transition-all text-[9px] font-black uppercase tracking-widest"
+                                                    >
+                                                        <StopCircle size={11} /> Detener
+                                                    </button>
+                                                )}
+                                                <button onClick={() => setConfirmDeleteCatalogId(catalog._id)} disabled={deletingCatalogId === catalog._id} title="Eliminar catálogo" className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 disabled:opacity-50">
+                                                    {deletingCatalogId === catalog._id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                                                 </button>
-                                            )}
-                                            {isActive && (
-                                                <button
-                                                    onClick={() => void cancelCatalog(catalog._id)}
-                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all text-[9px] font-black uppercase tracking-widest"
-                                                >
-                                                    <StopCircle size={11} /> Detener
-                                                </button>
-                                            )}
-                                            {niches.length > 0 && (
-                                                <button onClick={() => setCatalogNichePickerId(catalogNichePickerId === catalog._id ? null : catalog._id)}
-                                                    title="Asignar nicho"
-                                                    className={`p-2 rounded-xl border transition-all ${(catalog.nicheIds?.length ?? 0) > 0 ? "bg-sky-500/10 border-sky-500/20 text-sky-400 hover:bg-sky-500/20" : "bg-white/5 border-white/10 text-neutral-500 hover:text-sky-400 hover:border-sky-500/20"}`}>
-                                                    <Target size={13} />
-                                                </button>
-                                            )}
-                                            <button onClick={() => setConfirmDeleteCatalogId(catalog._id)} disabled={deletingCatalogId === catalog._id} title="Eliminar" className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 disabled:opacity-50">
-                                                {deletingCatalogId === catalog._id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                                            </button>
+                                            </div>
                                         </div>
                                     </div>
                                     {/* Progress bar */}
@@ -4673,14 +4677,13 @@ export function KdpFactoryApp() {
                                                 </div>
 
                                                 {/* ─ Mini stats ─ */}
-                                                <div className="grid grid-cols-3 gap-2">
+                                                <div className="grid grid-cols-2 gap-2">
                                                     {[
                                                         { label: "Catálogos", value: linkedCats.length, color: linkedCats.length > 0 ? "text-sky-400" : "text-neutral-700" },
                                                         { label: "Imágenes", value: linkedImgs, color: linkedImgs > 0 ? "text-blue-400" : "text-neutral-700" },
-                                                        { label: "Tags", value: niche.tags.length, color: niche.tags.length > 0 ? "text-cyan-400" : "text-neutral-700" },
                                                     ].map(st => (
                                                         <div key={st.label} className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-2.5 text-center">
-                                                            <p className="text-[8px] uppercase tracking-widest text-neutral-600 font-black">{st.label}</p>
+                                                            <p className="text-[9px] uppercase tracking-wider text-neutral-600 font-black">{st.label}</p>
                                                             <p className={`text-xl font-black mt-0.5 tabular-nums ${st.color}`}>{st.value}</p>
                                                         </div>
                                                     ))}
@@ -4747,15 +4750,13 @@ export function KdpFactoryApp() {
                                                 {(() => {
                                                     const hasPrompt = !!niche.generatedPrompt;
                                                     const hasImages = linkedImgs > 0;
-                                                    const hasPdf = niche.phase === "pdf" || niche.phase === "published";
-                                                    const hasContent = niche.phase === "published" || hasPdf;
-                                                    const isPublished = niche.phase === "published" || !!(niche.asin || niche.etsyUrl);
+                                                    const hasPublicacion = niche.phase === "pdf" || niche.phase === "published";
+                                                    const hasProducto = niche.phase === "published" || !!(niche.asin || niche.etsyUrl);
                                                     const steps = [
-                                                        { label: "Prompt", icon: "✦", done: hasPrompt, activeColor: "text-sky-400 bg-sky-500/15 border-sky-500/40", doneColor: "text-sky-300 bg-sky-500/20 border-sky-400/50", lineColor: "bg-sky-500/40" },
-                                                        { label: "Catálogo", icon: "⊞", done: hasImages, activeColor: "text-blue-400 bg-blue-500/15 border-blue-500/40", doneColor: "text-blue-300 bg-blue-500/20 border-blue-400/50", lineColor: "bg-blue-500/40" },
-                                                        { label: "PDF", icon: "⬡", done: hasPdf, activeColor: "text-amber-400 bg-amber-500/15 border-amber-500/40", doneColor: "text-amber-300 bg-amber-500/20 border-amber-400/50", lineColor: "bg-amber-500/40" },
-                                                        { label: "KDP", icon: "◈", done: hasContent, activeColor: "text-orange-400 bg-orange-500/15 border-orange-500/40", doneColor: "text-orange-300 bg-orange-500/20 border-orange-400/50", lineColor: "bg-orange-500/40" },
-                                                        { label: "Live", icon: "★", done: isPublished, activeColor: "text-emerald-400 bg-emerald-500/15 border-emerald-500/40", doneColor: "text-emerald-300 bg-emerald-500/20 border-emerald-400/50", lineColor: "bg-emerald-500/40" },
+                                                        { label: "Prompt", done: hasPrompt, doneColor: "text-sky-300 bg-sky-500/20 border-sky-400/50", nextColor: "text-sky-400 bg-sky-500/10 border-sky-500/30", lineColor: "bg-sky-500/40" },
+                                                        { label: "Catálogos", done: hasImages, doneColor: "text-blue-300 bg-blue-500/20 border-blue-400/50", nextColor: "text-blue-400 bg-blue-500/10 border-blue-500/30", lineColor: "bg-blue-500/40" },
+                                                        { label: "Publicación", done: hasPublicacion, doneColor: "text-amber-300 bg-amber-500/20 border-amber-400/50", nextColor: "text-amber-400 bg-amber-500/10 border-amber-500/30", lineColor: "bg-amber-500/40" },
+                                                        { label: "Producto", done: hasProducto, doneColor: "text-emerald-300 bg-emerald-500/20 border-emerald-400/50", nextColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30", lineColor: "bg-emerald-500/40" },
                                                     ];
                                                     const doneCount = steps.filter(s => s.done).length;
                                                     const nextStep = steps.findIndex(s => !s.done);
@@ -4763,19 +4764,22 @@ export function KdpFactoryApp() {
                                                         <div className="space-y-2">
                                                             <div className="flex items-center justify-between">
                                                                 <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Pipeline</span>
-                                                                <span className={`text-[9px] font-black tabular-nums ${doneCount === 5 ? "text-emerald-400" : doneCount >= 3 ? "text-amber-400" : "text-sky-400"}`}>{doneCount}/5 pasos</span>
+                                                                <span className={`text-[9px] font-black tabular-nums ${doneCount === 4 ? "text-emerald-400" : doneCount >= 2 ? "text-amber-400" : "text-sky-400"}`}>{doneCount}/4</span>
                                                             </div>
                                                             <div className="flex items-center">
                                                                 {steps.map((s, i) => (
                                                                     <div key={i} className="flex items-center flex-1 min-w-0">
                                                                         <div title={s.label} className="flex flex-col items-center gap-1 shrink-0">
-                                                                            <div className={`w-7 h-7 rounded-xl border flex items-center justify-center text-[11px] transition-all duration-300 ${s.done ? s.doneColor : i === nextStep ? `${s.activeColor} animate-pulse` : "text-neutral-800 bg-white/[0.03] border-white/[0.07]"}`}>
-                                                                                {s.done ? <Check size={11} strokeWidth={3} /> : <span>{s.icon}</span>}
+                                                                            <div className={`w-7 h-7 rounded-xl border-2 flex items-center justify-center transition-all duration-300 ${s.done ? s.doneColor : i === nextStep ? `${s.nextColor} ring-1 ring-white/10` : "text-neutral-800 bg-white/[0.02] border-white/[0.06]"}`}>
+                                                                                {s.done
+                                                                                    ? <Check size={12} strokeWidth={3} />
+                                                                                    : <span className={`text-[10px] font-black tabular-nums ${i === nextStep ? "" : "text-neutral-800"}`}>{i + 1}</span>
+                                                                                }
                                                                             </div>
-                                                                            <span className={`text-[7px] font-black uppercase tracking-wide leading-none ${s.done ? "text-neutral-400" : i === nextStep ? "text-neutral-300" : "text-neutral-700"}`}>{s.label}</span>
+                                                                            <span className={`text-[8px] font-black leading-none ${s.done ? "text-neutral-400" : i === nextStep ? "text-neutral-300" : "text-neutral-700"}`}>{s.label}</span>
                                                                         </div>
                                                                         {i < steps.length - 1 && (
-                                                                            <div className={`h-px flex-1 mx-1 transition-all duration-500 ${s.done ? s.lineColor : "bg-white/[0.05]"}`} />
+                                                                            <div className={`h-px flex-1 mx-1 mt-[-8px] transition-all duration-500 ${s.done ? s.lineColor : "bg-white/[0.05]"}`} />
                                                                         )}
                                                                     </div>
                                                                 ))}
@@ -6071,98 +6075,68 @@ export function KdpFactoryApp() {
                 </div>
             )}
 
-            {/* Confirm Delete Product Dialog */}
-            {confirmDeleteProductId && (
-                <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
-                    <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
-                        <div className="space-y-3 text-center">
-                            <div className="w-14 h-14 rounded-2xl bg-rose-500/10 flex items-center justify-center mx-auto">
-                                <Trash2 size={24} className="text-rose-400" />
-                            </div>
-                            <p className="text-base font-black text-white">¿Eliminar producto?</p>
-                            <p className="text-sm text-neutral-500 leading-relaxed">
-                                Se eliminará <span className="text-white font-bold">{products.find(p => p.id === confirmDeleteProductId)?.title ?? "este producto"}</span> de tu biblioteca. Esta acción no se puede deshacer.
-                            </p>
-                        </div>
-                        <div className="flex gap-3">
-                            <button onClick={() => setConfirmDeleteProductId(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">
-                                Cancelar
-                            </button>
-                            <button onClick={() => { handleDeleteProduct(confirmDeleteProductId); setConfirmDeleteProductId(null); }} className="flex-1 h-11 rounded-2xl bg-rose-500 text-white text-sm font-black hover:bg-rose-400 transition-all">
-                                Eliminar
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Confirm Delete Catalog Dialog */}
-            {confirmDeleteCatalogId && (
-                <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
-                    <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
-                        <div className="space-y-2 text-center">
-                            <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto"><Trash2 size={24} className="text-red-400" /></div>
-                            <p className="text-base font-black text-white">¿Eliminar catálogo?</p>
-                            <p className="text-sm text-neutral-500">Se eliminarán todas las imágenes de Cloudinary. Esta acción no se puede deshacer.</p>
-                        </div>
-                        <div className="flex gap-3">
-                            <button onClick={() => setConfirmDeleteCatalogId(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
-                            <button onClick={() => void deleteCatalogConfirmed(confirmDeleteCatalogId)} className="flex-1 h-11 rounded-2xl bg-red-500 text-white text-sm font-black hover:bg-red-400 transition-all">Eliminar</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Confirm Delete Draft Dialog */}
-            {confirmDeleteDraftId && (
-                <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
-                    <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
-                        <div className="space-y-2 text-center">
-                            <div className="w-14 h-14 rounded-2xl bg-rose-500/10 flex items-center justify-center mx-auto"><Trash2 size={24} className="text-rose-400" /></div>
-                            <p className="text-base font-black text-white">¿Eliminar borrador?</p>
-                            <p className="text-sm text-neutral-500">Se eliminará el borrador <span className="text-white font-bold">"{bookDrafts.find(d => d.id === confirmDeleteDraftId)?.fileName || "libro-kdp"}"</span> y todas sus páginas. Esta acción no se puede deshacer.</p>
-                        </div>
-                        <div className="flex gap-3">
-                            <button onClick={() => setConfirmDeleteDraftId(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
-                            <button onClick={() => { void deleteBookDraft(confirmDeleteDraftId); setConfirmDeleteDraftId(null); }} className="flex-1 h-11 rounded-2xl bg-rose-500 text-white text-sm font-black hover:bg-rose-400 transition-all">Eliminar</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Confirm Delete Image Dialog */}
-            {confirmDeleteImageInfo && (
-                <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
-                    <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
-                        <div className="space-y-2 text-center">
-                            <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto"><ImageIcon size={24} className="text-red-400" /></div>
-                            <p className="text-base font-black text-white">¿Eliminar imagen?</p>
-                            <p className="text-sm text-neutral-500">Se eliminará de Cloudinary y del catálogo.</p>
-                        </div>
-                        <div className="flex gap-3">
-                            <button onClick={() => setConfirmDeleteImageInfo(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
-                            <button onClick={() => void deleteCatalogImageConfirmed(confirmDeleteImageInfo.catalogId, confirmDeleteImageInfo.publicId)} className="flex-1 h-11 rounded-2xl bg-red-500 text-white text-sm font-black hover:bg-red-400 transition-all">Eliminar</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Confirm Delete Vault Image Dialog */}
-            {confirmDeleteVaultIndex !== null && (
-                <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
-                    <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
-                        <div className="space-y-2 text-center">
-                            <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto"><Trash2 size={24} className="text-red-400" /></div>
-                            <p className="text-base font-black text-white">¿Eliminar del vault?</p>
-                            <p className="text-sm text-neutral-500">La imagen se eliminará de la sesión actual.</p>
-                        </div>
-                        <div className="flex gap-3">
-                            <button onClick={() => setConfirmDeleteVaultIndex(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
-                            <button onClick={() => { setVaultImages(prev => prev.filter((_, i) => i !== confirmDeleteVaultIndex)); setConfirmDeleteVaultIndex(null); closePreview(); }} className="flex-1 h-11 rounded-2xl bg-red-500 text-white text-sm font-black hover:bg-red-400 transition-all">Eliminar</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* ── Confirm modals (generic) ── */}
+            <ConfirmModal
+                open={!!confirmDeleteProductId}
+                onClose={() => setConfirmDeleteProductId(null)}
+                onConfirm={() => { if (confirmDeleteProductId) { handleDeleteProduct(confirmDeleteProductId); setConfirmDeleteProductId(null); } }}
+                title="¿Eliminar producto?"
+                description={<>Se eliminará <span className="text-white font-bold">{products.find(p => p.id === confirmDeleteProductId)?.title ?? "este producto"}</span> de tu biblioteca. Esta acción no se puede deshacer.</>}
+                confirmLabel="Eliminar"
+                variant="danger"
+                icon={<Trash2 size={24} className="text-red-400" />}
+            />
+            <ConfirmModal
+                open={!!confirmDeleteCatalogId}
+                onClose={() => setConfirmDeleteCatalogId(null)}
+                onConfirm={() => { if (confirmDeleteCatalogId) void deleteCatalogConfirmed(confirmDeleteCatalogId); }}
+                title="¿Eliminar catálogo?"
+                description="Se eliminarán todas las imágenes de Cloudinary. Esta acción no se puede deshacer."
+                confirmLabel="Eliminar"
+                variant="danger"
+                icon={<Trash2 size={24} className="text-red-400" />}
+            />
+            <ConfirmModal
+                open={!!confirmStopCatalogId}
+                onClose={() => setConfirmStopCatalogId(null)}
+                onConfirm={() => { if (confirmStopCatalogId) { void cancelCatalog(confirmStopCatalogId); setConfirmStopCatalogId(null); } }}
+                title="¿Detener generación?"
+                description="Se cancelará el catálogo en curso. Las imágenes ya generadas se conservarán."
+                confirmLabel="Detener"
+                cancelLabel="Seguir generando"
+                variant="stop"
+                icon={<StopCircle size={24} className="text-orange-400" />}
+            />
+            <ConfirmModal
+                open={!!confirmDeleteDraftId}
+                onClose={() => setConfirmDeleteDraftId(null)}
+                onConfirm={() => { if (confirmDeleteDraftId) { void deleteBookDraft(confirmDeleteDraftId); setConfirmDeleteDraftId(null); } }}
+                title="¿Eliminar borrador?"
+                description={<>Se eliminará el borrador <span className="text-white font-bold">"{bookDrafts.find(d => d.id === confirmDeleteDraftId)?.fileName || "libro-kdp"}"</span> y todas sus páginas.</>}
+                confirmLabel="Eliminar"
+                variant="danger"
+                icon={<Trash2 size={24} className="text-red-400" />}
+            />
+            <ConfirmModal
+                open={!!confirmDeleteImageInfo}
+                onClose={() => setConfirmDeleteImageInfo(null)}
+                onConfirm={() => { if (confirmDeleteImageInfo) void deleteCatalogImageConfirmed(confirmDeleteImageInfo.catalogId, confirmDeleteImageInfo.publicId); }}
+                title="¿Eliminar imagen?"
+                description="Se eliminará de Cloudinary y del catálogo permanentemente."
+                confirmLabel="Eliminar"
+                variant="danger"
+                icon={<ImageIcon size={24} className="text-red-400" />}
+            />
+            <ConfirmModal
+                open={confirmDeleteVaultIndex !== null}
+                onClose={() => setConfirmDeleteVaultIndex(null)}
+                onConfirm={() => { if (confirmDeleteVaultIndex !== null) { setVaultImages(prev => prev.filter((_, i) => i !== confirmDeleteVaultIndex)); setConfirmDeleteVaultIndex(null); closePreview(); } }}
+                title="¿Eliminar del vault?"
+                description="La imagen se eliminará de la sesión actual."
+                confirmLabel="Eliminar"
+                variant="danger"
+                icon={<Trash2 size={24} className="text-red-400" />}
+            />
 
             {/* Save Prompt Dialog */}
             {showSavePromptDialog && (
