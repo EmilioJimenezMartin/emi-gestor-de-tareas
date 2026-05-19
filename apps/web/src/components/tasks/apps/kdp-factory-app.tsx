@@ -4519,35 +4519,48 @@ export function KdpFactoryApp() {
                         );
                     })()}
 
-                    {/* ── Status distribution bar ── */}
+                    {/* ── Status distribution chart ── */}
                     {niches.length > 0 && (() => {
-                        const statusConf: { s: NicheStatus; bar: string; dot: string }[] = [
-                            { s: "active", bar: "bg-emerald-500", dot: "bg-emerald-400" },
-                            { s: "research", bar: "bg-blue-500", dot: "bg-blue-400" },
-                            { s: "found", bar: "bg-sky-500", dot: "bg-sky-400" },
-                            { s: "archived", bar: "bg-neutral-700", dot: "bg-neutral-600" },
+                        const statusConf: { s: NicheStatus; bar: string; glow: string; label: string; emoji: string }[] = [
+                            { s: "active", bar: "bg-gradient-to-r from-emerald-500 to-emerald-400", glow: "shadow-[0_0_8px_rgba(16,185,129,0.5)]", label: "Activos", emoji: "🟢" },
+                            { s: "research", bar: "bg-gradient-to-r from-blue-500 to-blue-400", glow: "shadow-[0_0_8px_rgba(59,130,246,0.4)]", label: "Investigando", emoji: "🔵" },
+                            { s: "found", bar: "bg-gradient-to-r from-sky-500 to-sky-400", glow: "shadow-[0_0_8px_rgba(14,165,233,0.35)]", label: "Encontrados", emoji: "🔷" },
+                            { s: "archived", bar: "bg-neutral-700", glow: "", label: "Archivados", emoji: "⚫" },
                         ];
+                        const activeCount = niches.filter(n => n.status === "active").length;
+                        const publishedCount = niches.filter(n => n.phase === "published" || !!(n.asin || n.etsyUrl)).length;
                         return (
-                            <div className="space-y-2">
-                                <div className="flex h-2 rounded-full overflow-hidden gap-px">
-                                    {statusConf.map(({ s, bar }) => {
-                                        const cnt = niches.filter(n => n.status === s).length;
-                                        const pct = (cnt / niches.length) * 100;
-                                        if (pct === 0) return null;
-                                        return <div key={s} className={`${bar} transition-all`} style={{ width: `${pct}%` }} />;
-                                    })}
+                            <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-3">
+                                <div className="flex items-center justify-between mb-1">
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Distribución</span>
+                                    <div className="flex items-center gap-3 text-[9px] text-neutral-600">
+                                        {activeCount > 0 && <span className="text-emerald-400 font-black">{activeCount} activos</span>}
+                                        {publishedCount > 0 && <span className="text-amber-400 font-black">{publishedCount} publicados</span>}
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-4 flex-wrap">
-                                    {statusConf.map(({ s, dot }) => {
+                                <div className="space-y-2">
+                                    {statusConf.map(({ s, bar, glow, label }) => {
                                         const cnt = niches.filter(n => n.status === s).length;
                                         if (cnt === 0) return null;
+                                        const pct = Math.round((cnt / niches.length) * 100);
                                         return (
-                                            <div key={s} className="flex items-center gap-1.5">
-                                                <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
-                                                <span className="text-[9px] font-black uppercase tracking-widest text-neutral-500">{STATUS_LABELS[s].label}</span>
-                                                <span className="text-[9px] text-neutral-700 tabular-nums">{cnt}</span>
+                                            <div key={s} className="flex items-center gap-3">
+                                                <span className="text-[9px] text-neutral-500 font-black w-20 shrink-0 truncate">{label}</span>
+                                                <div className="flex-1 h-[5px] bg-white/[0.05] rounded-full overflow-hidden">
+                                                    <div className={`h-full rounded-full transition-all duration-700 ${bar} ${glow}`} style={{ width: `${pct}%` }} />
+                                                </div>
+                                                <span className="text-[10px] font-black text-white tabular-nums w-4 text-right">{cnt}</span>
+                                                <span className="text-[9px] text-neutral-700 tabular-nums w-8 text-right">{pct}%</span>
                                             </div>
                                         );
+                                    })}
+                                </div>
+                                {/* Mini stacked bar at bottom */}
+                                <div className="flex h-1 rounded-full overflow-hidden gap-px pt-1">
+                                    {statusConf.map(({ s, bar }) => {
+                                        const pct = (niches.filter(n => n.status === s).length / niches.length) * 100;
+                                        if (pct === 0) return null;
+                                        return <div key={s} className={`${bar} transition-all`} style={{ width: `${pct}%` }} />;
                                     })}
                                 </div>
                             </div>
@@ -4730,7 +4743,7 @@ export function KdpFactoryApp() {
                                                     </div>
                                                 )}
 
-                                                {/* ─ Checklist 5 pasos ─ */}
+                                                {/* ─ Pipeline stepper ─ */}
                                                 {(() => {
                                                     const hasPrompt = !!niche.generatedPrompt;
                                                     const hasImages = linkedImgs > 0;
@@ -4738,25 +4751,33 @@ export function KdpFactoryApp() {
                                                     const hasContent = niche.phase === "published" || hasPdf;
                                                     const isPublished = niche.phase === "published" || !!(niche.asin || niche.etsyUrl);
                                                     const steps = [
-                                                        { label: "Prompt generado", done: hasPrompt },
-                                                        { label: "Catálogo con imágenes", done: hasImages },
-                                                        { label: "PDF exportado", done: hasPdf },
-                                                        { label: "Contenido KDP", done: hasContent },
-                                                        { label: "Publicado", done: isPublished },
+                                                        { label: "Prompt", icon: "✦", done: hasPrompt, activeColor: "text-sky-400 bg-sky-500/15 border-sky-500/40", doneColor: "text-sky-300 bg-sky-500/20 border-sky-400/50", lineColor: "bg-sky-500/40" },
+                                                        { label: "Catálogo", icon: "⊞", done: hasImages, activeColor: "text-blue-400 bg-blue-500/15 border-blue-500/40", doneColor: "text-blue-300 bg-blue-500/20 border-blue-400/50", lineColor: "bg-blue-500/40" },
+                                                        { label: "PDF", icon: "⬡", done: hasPdf, activeColor: "text-amber-400 bg-amber-500/15 border-amber-500/40", doneColor: "text-amber-300 bg-amber-500/20 border-amber-400/50", lineColor: "bg-amber-500/40" },
+                                                        { label: "KDP", icon: "◈", done: hasContent, activeColor: "text-orange-400 bg-orange-500/15 border-orange-500/40", doneColor: "text-orange-300 bg-orange-500/20 border-orange-400/50", lineColor: "bg-orange-500/40" },
+                                                        { label: "Live", icon: "★", done: isPublished, activeColor: "text-emerald-400 bg-emerald-500/15 border-emerald-500/40", doneColor: "text-emerald-300 bg-emerald-500/20 border-emerald-400/50", lineColor: "bg-emerald-500/40" },
                                                     ];
                                                     const doneCount = steps.filter(s => s.done).length;
+                                                    const nextStep = steps.findIndex(s => !s.done);
                                                     return (
-                                                        <div className="space-y-1.5">
+                                                        <div className="space-y-2">
                                                             <div className="flex items-center justify-between">
-                                                                <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Progreso</span>
-                                                                <span className={`text-[9px] font-black tabular-nums ${doneCount === 5 ? "text-emerald-400" : doneCount >= 3 ? "text-amber-400" : "text-neutral-600"}`}>{doneCount}/5</span>
+                                                                <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Pipeline</span>
+                                                                <span className={`text-[9px] font-black tabular-nums ${doneCount === 5 ? "text-emerald-400" : doneCount >= 3 ? "text-amber-400" : "text-sky-400"}`}>{doneCount}/5 pasos</span>
                                                             </div>
-                                                            <div className="h-1 w-full bg-white/[0.05] rounded-full overflow-hidden">
-                                                                <div className={`h-full rounded-full transition-all duration-700 ${doneCount === 5 ? "bg-gradient-to-r from-emerald-500 to-cyan-400" : doneCount >= 3 ? "bg-gradient-to-r from-amber-500 to-orange-400" : "bg-gradient-to-r from-sky-500 to-fuchsia-400"}`} style={{ width: `${(doneCount / 5) * 100}%` }} />
-                                                            </div>
-                                                            <div className="grid grid-cols-5 gap-1">
+                                                            <div className="flex items-center">
                                                                 {steps.map((s, i) => (
-                                                                    <div key={i} title={s.label} className={`h-1.5 rounded-full transition-all ${s.done ? (i === 4 ? "bg-emerald-400" : i >= 2 ? "bg-amber-400" : "bg-sky-400") : "bg-white/[0.06]"}`} />
+                                                                    <div key={i} className="flex items-center flex-1 min-w-0">
+                                                                        <div title={s.label} className="flex flex-col items-center gap-1 shrink-0">
+                                                                            <div className={`w-7 h-7 rounded-xl border flex items-center justify-center text-[11px] transition-all duration-300 ${s.done ? s.doneColor : i === nextStep ? `${s.activeColor} animate-pulse` : "text-neutral-800 bg-white/[0.03] border-white/[0.07]"}`}>
+                                                                                {s.done ? <Check size={11} strokeWidth={3} /> : <span>{s.icon}</span>}
+                                                                            </div>
+                                                                            <span className={`text-[7px] font-black uppercase tracking-wide leading-none ${s.done ? "text-neutral-400" : i === nextStep ? "text-neutral-300" : "text-neutral-700"}`}>{s.label}</span>
+                                                                        </div>
+                                                                        {i < steps.length - 1 && (
+                                                                            <div className={`h-px flex-1 mx-1 transition-all duration-500 ${s.done ? s.lineColor : "bg-white/[0.05]"}`} />
+                                                                        )}
+                                                                    </div>
                                                                 ))}
                                                             </div>
                                                         </div>
