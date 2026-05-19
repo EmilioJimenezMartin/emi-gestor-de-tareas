@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 interface ModalProps {
@@ -22,7 +23,7 @@ export function Modal({ open, onClose, children, maxWidth = "max-w-sm", showClos
 
     if (!open) return null;
 
-    return (
+    return createPortal(
         <div
             className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-150"
             style={{ zIndex }}
@@ -44,6 +45,7 @@ export function Modal({ open, onClose, children, maxWidth = "max-w-sm", showClos
                 )}
                 {children}
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

@@ -542,6 +542,9 @@ export function KdpFactoryApp() {
     const [collapsedCompleted, setCollapsedCompleted] = useState(true);
     const [draggingId, setDraggingId] = useState<string | null>(null);
     const [dragOverId, setDragOverId] = useState<string | null>(null);
+    const catalogStartTimeRef = useRef<Record<string, number>>({});
+    const avgSecsPerImageRef = useRef<number>(90);
+    const [queueEstimateMs, setQueueEstimateMs] = useState<number | null>(null);
 
     // --- Pipeline: publication panel + royalties ---
     const [nichePublishPanelId, setNichePublishPanelId] = useState<string | null>(null);
@@ -2039,6 +2042,49 @@ export function KdpFactoryApp() {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab]);
+
+    // Track catalog start times and update historical avg on completion
+    useEffect(() => {
+        iaCatalogs.forEach(c => {
+            if ((c.status === "running" || c.status === "pending") && !catalogStartTimeRef.current[c._id]) {
+                catalogStartTimeRef.current[c._id] = Date.now();
+            }
+        });
+        iaCatalogs.forEach(c => {
+            const startedAt = catalogStartTimeRef.current[c._id];
+            if (!startedAt) return;
+            if (c.status === "completed" && c.images.length > 0) {
+                const secsPerImg = (Date.now() - startedAt) / 1000 / c.images.length;
+                avgSecsPerImageRef.current = avgSecsPerImageRef.current * 0.7 + secsPerImg * 0.3;
+                delete catalogStartTimeRef.current[c._id];
+            } else if (c.status === "cancelled" || c.status === "failed") {
+                delete catalogStartTimeRef.current[c._id];
+            }
+        });
+    }, [iaCatalogs]);
+
+    // Live countdown timer for queue estimate
+    useEffect(() => {
+        const active = iaCatalogs.filter(c => c.status === "running" || c.status === "pending" || c.status === "queued");
+        if (active.length === 0) { setQueueEstimateMs(null); return; }
+        const interval = setInterval(() => {
+            let totalMs = 0;
+            const avgMs = avgSecsPerImageRef.current * 1000;
+            for (const c of iaCatalogs.filter(cat => cat.status === "running" || cat.status === "pending" || cat.status === "queued")) {
+                const remaining = Math.max(0, c.totalImages - c.images.length - (c.skippedImages ?? 0));
+                const startedAt = catalogStartTimeRef.current[c._id];
+                if ((c.status === "running" || c.status === "pending") && startedAt && c.images.length > 0) {
+                    const elapsed = Date.now() - startedAt;
+                    const msPerImg = elapsed / c.images.length;
+                    totalMs += remaining * msPerImg;
+                } else {
+                    totalMs += remaining * avgMs;
+                }
+            }
+            setQueueEstimateMs(Math.max(0, totalMs));
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [iaCatalogs]);
 
     // Sincronizar estado de carga cuando cambia la URL
     useEffect(() => {
@@ -4337,6 +4383,49 @@ export function KdpFactoryApp() {
                                         })()}
                                     </div>
                                 )}
+
+                                {/* ── Queue time estimate banner ── */}
+                                {activeCatalogs.length > 0 && queueEstimateMs !== null && (() => {
+                                    const totalSec = Math.max(0, Math.round(queueEstimateMs / 1000));
+                                    const h = Math.floor(totalSec / 3600);
+                                    const m = Math.floor((totalSec % 3600) / 60);
+                                    const s = totalSec % 60;
+                                    const timeLabel = h > 0 ? `${h}h ${m}m` : m > 0 ? `${m}m ${s}s` : `${s}s`;
+                                    const running = activeCatalogs.filter(c => c.status === "running" || c.status === "pending");
+                                    const queued = activeCatalogs.filter(c => c.status === "queued");
+                                    const totalImagesLeft = activeCatalogs.reduce((s, c) => s + Math.max(0, c.totalImages - c.images.length - (c.skippedImages ?? 0)), 0);
+                                    const totalImagesAll = activeCatalogs.reduce((s, c) => s + c.totalImages, 0);
+                                    const totalGenerated = activeCatalogs.reduce((s, c) => s + c.images.length, 0);
+                                    const overallPct = totalImagesAll > 0 ? Math.round((totalGenerated / totalImagesAll) * 100) : 0;
+                                    return (
+                                        <div className="rounded-2xl border border-sky-500/20 bg-sky-500/[0.04] overflow-hidden">
+                                            <div className="px-4 py-3 flex items-center gap-3">
+                                                <div className="relative shrink-0">
+                                                    <div className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
+                                                    <div className="absolute inset-0 rounded-full bg-sky-400/30 animate-ping" />
+                                                </div>
+                                                <div className="flex-1 min-w-0 space-y-1.5">
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <p className="text-[10px] font-black text-sky-300 leading-tight">
+                                                            {running.length > 0 ? `Generando catálogo ${running.length > 1 ? `(${running.length})` : `"${running[0].name}"`}` : `En cola — ${queued.length} catálogo${queued.length !== 1 ? "s" : ""}`}
+                                                            {queued.length > 0 && running.length > 0 && <span className="text-sky-500/60 font-normal"> · {queued.length} en cola</span>}
+                                                        </p>
+                                                        <span className="text-[11px] font-black text-white tabular-nums shrink-0">~{timeLabel}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex-1 h-1 bg-white/[0.06] rounded-full overflow-hidden">
+                                                            <div
+                                                                className="h-full bg-gradient-to-r from-sky-500 to-cyan-400 rounded-full transition-all duration-1000"
+                                                                style={{ width: `${overallPct}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className="text-[9px] text-neutral-600 tabular-nums shrink-0">{totalGenerated}/{totalImagesAll} imgs</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
 
                                 {/* Active catalogs (always visible) */}
                                 {activeCatalogs.length > 0 && (
