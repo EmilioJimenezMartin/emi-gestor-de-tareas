@@ -22,6 +22,10 @@ type ServerToClientEvents = {
   "catalog:completed": (payload: { catalogId: string }) => void;
   "catalog:error": (payload: { catalogId: string; error: string; current: number; total: number }) => void;
   "catalog:queue-activated": (payload: { catalogId: string; status: string; name: string }) => void;
+  "radar:log": (payload: { timestamp: string | Date; level?: string; message: string }) => void;
+  "radar:result": (payload: { jobId?: string; data: Record<string, any> }) => void;
+  "radar:done": (payload: { jobId?: string }) => void;
+  "radar:error": (payload: { jobId?: string; message: string }) => void;
 };
 
 type ClientToServerEvents = Record<string, never>;

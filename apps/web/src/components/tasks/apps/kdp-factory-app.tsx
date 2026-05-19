@@ -73,6 +73,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { createApiSocket } from "@/lib/socket";
+import { NicheRadar } from "@/components/extractor/NicheRadar";
 
 interface ProductPlatform {
     name: string;
@@ -4836,40 +4837,11 @@ export function KdpFactoryApp() {
                 </div>
             </div>
 
-            {/* ══ RADAR DE NICHOS — Próximamente ══ */}
-            <div className="relative rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
-                <div className="absolute inset-0 z-10 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center gap-4 rounded-3xl">
-                    <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-                        <TrendingUp size={24} className="text-amber-400/60" />
-                    </div>
-                    <div className="text-center space-y-1.5">
-                        <span className="inline-block text-[9px] font-black uppercase tracking-[0.3em] text-amber-400/80 bg-amber-500/10 border border-amber-500/20 px-4 py-1.5 rounded-full">Próximamente</span>
-                        <p className="text-[12px] font-black text-neutral-300">Radar de Nichos</p>
-                        <p className="text-[10px] text-neutral-600 max-w-xs">El radar de tendencias de mercado con IA estará disponible pronto</p>
-                    </div>
-                </div>
+            {/* ══ RADAR DE NICHOS ══ */}
+            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
                 <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent" />
-                <div className="p-6 space-y-5 opacity-20 pointer-events-none select-none">
-                    <div className="flex items-start justify-between gap-4">
-                        <div className="space-y-1">
-                            <h2 className="text-xl font-black bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent flex items-center gap-2.5">
-                                <TrendingUp size={20} className="text-amber-400" /> Radar de Nichos
-                            </h2>
-                            <p className="text-xs text-neutral-500">Tendencias de mercado analizadas con IA para KDP, Etsy y Printify</p>
-                        </div>
-                        <button className="h-10 px-5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 text-black text-[10px] font-black uppercase tracking-wider flex items-center gap-2">
-                            <TrendingUp size={13} /> Analizar
-                        </button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <div className="h-10 rounded-xl bg-white/5 border border-white/8" />
-                        <div className="h-10 rounded-xl bg-white/5 border border-white/8" />
-                    </div>
-                    <div className="space-y-1.5">
-                        {[1, 2, 3].map(i => (
-                            <div key={i} className="h-14 rounded-xl bg-white/[0.02] border border-white/5" />
-                        ))}
-                    </div>
+                <div className="p-6">
+                    <NicheRadar apiUrl={API_BASE_URL} niches={niches} />
                 </div>
             </div>
         </div>

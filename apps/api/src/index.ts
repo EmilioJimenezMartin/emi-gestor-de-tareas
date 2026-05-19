@@ -19,6 +19,7 @@ import { registerCatalogRoutes } from "./routes/catalogs.js";
 import { registerSavedPromptsRoutes } from "./routes/savedPrompts.js";
 import { registerNicheRoutes } from "./routes/niches.js";
 import { registerZipRoutes } from "./routes/zip.js";
+import { registerRadarRoutes } from "./routes/radar.js";
 import { Settings } from "./models/settings.js";
 
 const env = loadEnv(process.env);
@@ -47,6 +48,7 @@ await registerCatalogRoutes(app, { io });
 await registerSavedPromptsRoutes(app);
 await registerNicheRoutes(app);
 await registerZipRoutes(app);
+await registerRadarRoutes(app, { io });
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {
