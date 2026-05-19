@@ -2444,7 +2444,8 @@ export function KdpFactoryApp() {
                             const totalSales = (n.royalties ?? []).reduce((s, r) => s + r.sales, 0);
                             const isSelected = royaltiesNicheId === n._id;
                             return (
-                                <Card key={n._id} variant="glass" className="p-5 border-white/5 bg-white/[0.01] space-y-4 relative overflow-hidden hover:shadow-[0_0_30px_rgba(16,185,129,0.08)] transition-all duration-500">
+                                <Card key={n._id} variant="glass" className="group p-5 pl-6 border-white/5 bg-white/[0.01] space-y-4 relative overflow-hidden hover:border-emerald-500/15 hover:shadow-[0_0_30px_rgba(16,185,129,0.08)] transition-all duration-500">
+                                    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-emerald-500 via-emerald-400 to-cyan-400 opacity-40 group-hover:opacity-100 transition-all duration-300" />
                                     <div className="flex items-start justify-between gap-2">
                                         <div className="space-y-0.5">
                                             <p className="text-[12px] font-black text-white">{n.name}</p>
@@ -3377,8 +3378,8 @@ export function KdpFactoryApp() {
                                             return (
                                                 <div key={p._id}
                                                     className="group relative rounded-2xl border border-white/8 bg-white/[0.03] hover:border-sky-500/25 hover:bg-white/[0.05] transition-all overflow-hidden">
-                                                    <div className="h-0.5 w-full bg-gradient-to-r from-sky-500/60 via-sky-400/30 to-transparent" />
-                                                    <div className="p-4 space-y-3">
+                                                    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-sky-500 via-sky-400 to-cyan-400 opacity-40 group-hover:opacity-100 transition-all duration-300" />
+                                                    <div className="p-4 pl-5 space-y-3">
                                                         <div className="flex items-start gap-2">
                                                             <div className="flex-1 min-w-0">
                                                                 {isFullEdit ? (
@@ -3899,10 +3900,10 @@ export function KdpFactoryApp() {
                             const remainingImages = Math.max(0, catalog.totalImages - catalog.images.length - (catalog.skippedImages ?? 0));
                             const estMin = Math.round(remainingImages * 1.5);
                             const timeStr = estMin > 60 ? `~${Math.floor(estMin / 60)}h ${estMin % 60}m` : estMin > 0 ? `~${estMin}m` : "";
-                            const providerColor = catalog.aiModel?.provider === "Google" ? { bar: "bg-blue-500/50", badge: "bg-blue-500/10 border-blue-500/20 text-blue-300", dot: "bg-blue-400" }
-                                : catalog.aiModel?.provider === "Leonardo" ? { bar: "bg-amber-500/50", badge: "bg-amber-500/10 border-amber-500/20 text-amber-300", dot: "bg-amber-400" }
-                                    : catalog.aiModel?.provider === "Pollinations" ? { bar: "bg-emerald-500/50", badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300", dot: "bg-emerald-400" }
-                                        : { bar: "bg-sky-500/50", badge: "bg-sky-500/10 border-sky-500/20 text-sky-300", dot: "bg-sky-400" };
+                            const providerColor = catalog.aiModel?.provider === "Google" ? { bar: "bg-blue-500/50", gradient: "from-blue-500 via-blue-400 to-cyan-400", border: "hover:border-blue-500/20", badge: "bg-blue-500/10 border-blue-500/20 text-blue-300", dot: "bg-blue-400" }
+                                : catalog.aiModel?.provider === "Leonardo" ? { bar: "bg-amber-500/50", gradient: "from-amber-500 via-orange-400 to-amber-300", border: "hover:border-amber-500/20", badge: "bg-amber-500/10 border-amber-500/20 text-amber-300", dot: "bg-amber-400" }
+                                    : catalog.aiModel?.provider === "Pollinations" ? { bar: "bg-emerald-500/50", gradient: "from-emerald-500 via-emerald-400 to-cyan-400", border: "hover:border-emerald-500/20", badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300", dot: "bg-emerald-400" }
+                                        : { bar: "bg-sky-500/50", gradient: "from-sky-500 via-sky-400 to-cyan-400", border: "hover:border-sky-500/20", badge: "bg-sky-500/10 border-sky-500/20 text-sky-300", dot: "bg-sky-400" };
                             const isDraggable = catalog.status === "queued";
                             const isDragOver = dragOverId === catalog._id;
                             return (
@@ -3914,11 +3915,13 @@ export function KdpFactoryApp() {
                                     onDragEnd={() => { setDraggingId(null); setDragOverId(null); }}
                                     onDragOver={(e: React.DragEvent) => { if (isDraggable && draggingId) { e.preventDefault(); setDragOverId(catalog._id); } }}
                                     onDrop={(e: React.DragEvent) => { e.preventDefault(); if (draggingId && isDraggable) void handleQueueReorder(draggingId, catalog._id); setDraggingId(null); setDragOverId(null); }}
-                                    className={`border-white/5 bg-white/[0.01] overflow-hidden transition-all duration-300 hover:border-white/10 ${isDraggable ? "cursor-grab active:cursor-grabbing" : ""} ${isDragOver ? "ring-1 ring-orange-500/50 border-orange-500/30" : ""} ${draggingId === catalog._id ? "opacity-50" : ""}`}
+                                    className={`group relative border-white/5 bg-white/[0.01] overflow-hidden transition-all duration-300 ${providerColor.border} ${isDraggable ? "cursor-grab active:cursor-grabbing" : ""} ${isDragOver ? "ring-1 ring-orange-500/50 border-orange-500/30" : ""} ${draggingId === catalog._id ? "opacity-50" : ""}`}
                                 >
-                                    {/* Provider accent bar */}
-                                    <div className={`h-px w-full ${providerColor.bar}`} />
-                                    <div className="p-4 space-y-3">
+                                    {/* Lateral provider border */}
+                                    <div className={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${providerColor.gradient} opacity-40 group-hover:opacity-100 transition-all duration-300`} />
+                                    {/* Top accent */}
+                                    <div className={`h-px w-full ${providerColor.bar} opacity-60`} />
+                                    <div className="p-4 pl-5 space-y-3">
                                         {/* Header */}
                                         <div className="flex items-start justify-between gap-4">
                                             <div className="min-w-0 space-y-1">
@@ -4484,7 +4487,7 @@ export function KdpFactoryApp() {
                                 {isLoadingNiches ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                             </button>
                             <button onClick={() => openNicheForm()}
-                                className="flex items-center gap-2 h-10 px-5 rounded-2xl bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_4px_20px_rgba(14,165,233,0.4)]">
+                                className="flex items-center gap-2 h-10 px-5 rounded-2xl bg-gradient-to-r from-sky-600 to-sky-600 hover:from-sky-500 hover:to-sky-500 text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_4px_20px_rgba(14,165,233,0.4)]">
                                 <Plus size={14} /> Nuevo nicho
                             </button>
                         </div>
@@ -4603,10 +4606,12 @@ export function KdpFactoryApp() {
                                     const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
                                     const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
                                     const statusDotMap: Record<NicheStatus, string> = { found: "bg-sky-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
+                                    const statusGradient: Record<NicheStatus, string> = { found: "from-sky-500 via-sky-400 to-cyan-400", research: "from-blue-500 via-blue-400 to-sky-400", active: "from-emerald-500 via-emerald-400 to-cyan-400", archived: "from-neutral-600 via-neutral-500 to-neutral-700" };
+                                    const statusHoverBorder: Record<NicheStatus, string> = { found: "hover:border-sky-500/25", research: "hover:border-blue-500/25", active: "hover:border-emerald-500/25", archived: "hover:border-neutral-500/20" };
                                     return (
-                                        <div key={niche._id} className="group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] hover:border-sky-500/25 hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden">
-                                            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
-                                            <div className="p-5 space-y-4 relative">
+                                        <div key={niche._id} className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] ${statusHoverBorder[niche.status]} hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden`}>
+                                            <div className={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${statusGradient[niche.status]} opacity-40 group-hover:opacity-100 transition-all duration-300`} />
+                                            <div className="p-5 pl-6 space-y-4 relative">
 
                                                 {/* ─ Card header ─ */}
                                                 <div className="flex items-start gap-3">
