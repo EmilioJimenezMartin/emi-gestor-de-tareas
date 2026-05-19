@@ -75,6 +75,7 @@ import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Modal } from "@/components/ui/modal";
 import { KdpStatCard } from "@/components/ui/kdp-stat-card";
 import { KdpVerticalBarChart } from "@/components/ui/kdp-vertical-bar-chart";
+import { SectionHeader } from "@/components/ui/section-header";
 import { toast } from "sonner";
 import { createApiSocket } from "@/lib/socket";
 import { NicheRadar } from "@/components/extractor/NicheRadar";
@@ -2272,11 +2273,14 @@ export function KdpFactoryApp() {
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <Card variant="glass" className="lg:col-span-2 p-8 border-white/5 bg-white/[0.01] space-y-8 relative overflow-hidden hover:shadow-[0_0_40px_rgba(99,102,241,0.08)] transition-all duration-500">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="space-y-1">
-                            <h3 className="text-sm font-black text-white italic tracking-widest uppercase flex items-center gap-2"><Activity size={14} className="text-indigo-400" />Evolución de Tendencias</h3>
-                            <p className="text-[10px] text-neutral-500 font-medium tracking-tight">Análisis predictivo basado en volumen de ventas</p>
-                        </div>
-                        <div className="w-full md:w-48">
+                        <SectionHeader
+                            icon={<Activity size={16} />}
+                            title="Evolución de Tendencias"
+                            subtitle="Análisis predictivo basado en volumen de ventas"
+                            color="indigo"
+                            size="sm"
+                        />
+                        <div className="w-full md:w-48 shrink-0">
                             <KdpSelect value={chartPeriod} onChange={v => setChartPeriod(v as PeriodID)}
                                 options={[{ value: "month", label: "Último Mes" }, { value: "6months", label: "Últimos 6 Meses" }, { value: "year", label: "Último Año" }, { value: "all", label: "Histórico Total" }]} />
                         </div>
@@ -2301,7 +2305,7 @@ export function KdpFactoryApp() {
                 </Card>
                 <Card variant="glass" className="p-8 border-white/5 bg-white/[0.01] space-y-8 flex flex-col justify-between relative overflow-hidden hover:shadow-[0_0_40px_rgba(99,102,241,0.08)] transition-all duration-500">
                     <div className="space-y-6 relative">
-                        <div className="space-y-1"><h3 className="text-sm font-black text-white italic tracking-widest uppercase">Platform Split</h3><p className="text-[10px] text-neutral-500 font-medium tracking-tight">Distribución por canales de venta</p></div>
+                        <SectionHeader icon={<BarChart size={16} />} title="Platform Split" subtitle="Distribución por canales de venta" color="blue" size="sm" />
                         <div className="space-y-5">
                             {[{ name: "Amazon KDP", percent: 65, color: "bg-orange-500" }, { name: "Etsy", percent: 25, color: "bg-indigo-500" }, { name: "Creative Fabrica", percent: 10, color: "bg-blue-500" }].map(plat => (
                                 <div key={plat.name} className="space-y-2.5">
@@ -2323,14 +2327,12 @@ export function KdpFactoryApp() {
             {/* ── ROYALTIES TRACKER ── */}
             {niches.some(n => n.phase === "published" || (n.royalties?.length ?? 0) > 0) && (
                 <section className="space-y-5">
-                    <div className="flex items-center gap-3">
-                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-emerald-500/25 to-transparent" />
-                        <div className="flex items-center gap-2">
-                            <DollarSign size={11} className="text-emerald-400" />
-                            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-neutral-500">Tracker de Royalties KDP</p>
-                        </div>
-                        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-emerald-500/25 to-transparent" />
-                    </div>
+                    <SectionHeader
+                        icon={<DollarSign size={18} />}
+                        title="Tracker de Royalties KDP"
+                        color="emerald"
+                        size="md"
+                    />
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         {niches.filter(n => n.phase === "published" || (n.royalties?.length ?? 0) > 0).map(n => {
@@ -2524,15 +2526,13 @@ export function KdpFactoryApp() {
                 <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
                     <div className="h-px w-full bg-gradient-to-r from-amber-500/80 via-orange-400/40 to-transparent" />
                     <div className="px-6 py-5 flex items-center justify-between gap-4">
-                        <div className="space-y-1">
-                            <h2 className="text-2xl font-black bg-gradient-to-r from-amber-300 via-orange-300 to-amber-400 bg-clip-text text-transparent flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-2xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
-                                    <Zap size={18} className="text-amber-400" />
-                                </div>
-                                IA Asset Studio
-                            </h2>
-                            <p className="text-xs text-neutral-500 pl-12">Genera imágenes únicas · Gestiona catálogos · Vault de activos</p>
-                        </div>
+                        <SectionHeader
+                            icon={<Zap size={20} />}
+                            title={<><span className="text-white">IA Asset </span><span className="bg-gradient-to-r from-amber-300 to-orange-400 bg-clip-text text-transparent">Studio</span></>}
+                            subtitle="Genera imágenes únicas · Gestiona catálogos · Vault de activos"
+                            color="amber"
+                            size="lg"
+                        />
                         <button
                             onClick={() => setShowSafeArea(v => !v)}
                             className={`flex items-center gap-2 h-9 px-4 rounded-2xl border transition-all text-[10px] font-black uppercase tracking-wider shrink-0 ${showSafeArea ? "bg-amber-500/20 border-amber-500/40 text-amber-400 shadow-[0_0_16px_rgba(245,158,11,0.2)]" : "bg-white/5 border-white/10 text-neutral-500 hover:text-amber-400 hover:border-amber-500/30"}`}
@@ -3512,14 +3512,14 @@ export function KdpFactoryApp() {
                 {/* Asset Vault / Carousel — always visible */}
                 <div className="space-y-6 animate-in fade-in slide-in-from-left-8 duration-700 pb-4">
                     <div className="flex items-center px-2 gap-3">
-                        <div className="flex items-center gap-3 flex-1">
-                            <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/5">
-                                <Box size={16} />
-                            </div>
-                            <div>
-                                <h4 className="text-[11px] font-black uppercase tracking-widest text-neutral-400">Vault de Activos Digitales</h4>
-                                <p className="text-[10px] text-neutral-600 font-medium italic">Sesión actual: {vaultImages.length} activos conservados</p>
-                            </div>
+                        <div className="flex-1">
+                            <SectionHeader
+                                icon={<Box size={16} />}
+                                title="Vault de Activos Digitales"
+                                subtitle={`Sesión actual: ${vaultImages.length} activos conservados`}
+                                color="amber"
+                                size="sm"
+                            />
                         </div>
                         {vaultImages.length > 0 && (
                             <button
@@ -3778,14 +3778,7 @@ export function KdpFactoryApp() {
                     {/* Skeleton while loading initial list */}
                     {isLoadingCatalogs && iaCatalogs.length === 0 && (
                         <div className="space-y-4">
-                            <div className="flex items-center gap-4 px-2">
-                                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                                <div className="flex items-center gap-3">
-                                    <Layers size={14} className="text-sky-400" />
-                                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Catálogos IA</h3>
-                                </div>
-                                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                            </div>
+                            <SectionHeader icon={<Layers size={16} />} title="Catálogos IA" color="sky" size="sm" />
                             <div className="space-y-3">
                                 {[0, 1, 2].map(i => (
                                     <div key={i} className="rounded-2xl border border-white/5 bg-white/[0.01] overflow-hidden animate-pulse">
@@ -4157,19 +4150,18 @@ export function KdpFactoryApp() {
                         return (
                             <div className="space-y-4">
                                 {/* Header with counter + controls */}
-                                <div className="flex items-center gap-4 px-2">
-                                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                                    <div className="flex items-center gap-3">
-                                        <Layers size={14} className="text-sky-400" />
-                                        <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Catálogos IA</h3>
-                                        {totalImages > 0 && (
-                                            <span className="text-[9px] font-black text-sky-400/60 tabular-nums">{totalImages} imgs</span>
-                                        )}
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1">
+                                        <SectionHeader
+                                            icon={<Layers size={16} />}
+                                            title={<>Catálogos IA{totalImages > 0 && <span className="text-[9px] font-black text-sky-400/60 tabular-nums ml-2 not-italic">{totalImages} imgs</span>}</>}
+                                            color="sky"
+                                            size="sm"
+                                        />
                                     </div>
                                     <button onClick={() => void fetchCatalogs()} disabled={isLoadingCatalogs} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-sky-400 hover:border-sky-500/30 transition-all disabled:opacity-40">
                                         {isLoadingCatalogs ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                                     </button>
-                                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                 </div>
 
                                 {/* ── Niche filter bar ── */}
@@ -4441,15 +4433,13 @@ export function KdpFactoryApp() {
                 <div className="p-6 space-y-6">
                     {/* ── Header ── */}
                     <div className="flex items-start justify-between gap-4">
-                        <div className="space-y-1.5">
-                            <h2 className="text-3xl font-black bg-gradient-to-r from-white via-sky-200 to-sky-400 bg-clip-text text-transparent flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-2xl bg-sky-500/15 border border-sky-500/25 flex items-center justify-center shrink-0">
-                                    <Target size={18} className="text-sky-400" />
-                                </div>
-                                Mis Nichos
-                            </h2>
-                            <p className="text-xs text-neutral-500 pl-12">Gestión de nichos KDP · Catálogos vinculados · Métricas de mercado</p>
-                        </div>
+                        <SectionHeader
+                            icon={<Target size={20} />}
+                            title={<><span className="text-white">Mis </span><span className="bg-gradient-to-r from-sky-300 to-cyan-400 bg-clip-text text-transparent">Nichos</span></>}
+                            subtitle="Gestión de nichos KDP · Catálogos vinculados · Métricas de mercado"
+                            color="sky"
+                            size="lg"
+                        />
                         <div className="flex items-center gap-2 shrink-0">
                             <button onClick={() => void fetchNiches()} disabled={isLoadingNiches}
                                 className="p-2.5 rounded-xl bg-white/5 border border-white/8 text-neutral-500 hover:text-sky-400 hover:border-sky-500/30 transition-all disabled:opacity-40">

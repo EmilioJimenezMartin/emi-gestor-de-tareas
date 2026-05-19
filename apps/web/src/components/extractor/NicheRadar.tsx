@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { createApiSocket } from "@/lib/socket";
 import { Modal } from "@/components/ui/modal";
+import { SectionHeader } from "@/components/ui/section-header";
 import { toast } from "sonner";
 
 interface NicheInsight {
@@ -278,17 +279,13 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
         <div className="space-y-6">
             {/* Header */}
             <div className="flex items-start justify-between gap-4">
-                <div className="space-y-1">
-                    <h2 className="text-xl font-black bg-gradient-to-r from-amber-400 to-orange-300 bg-clip-text text-transparent flex items-center gap-2.5">
-                        <div className="w-9 h-9 rounded-2xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
-                            <TrendingUp size={18} className="text-amber-400" />
-                        </div>
-                        Radar de Nichos
-                    </h2>
-                    <p className="text-xs text-neutral-500 pl-12">
-                        Análisis de mercado con IA · Powered by Gemini + llm-scraper · Playwright headless
-                    </p>
-                </div>
+                <SectionHeader
+                    icon={<TrendingUp size={20} />}
+                    title={<><span className="text-white">Radar de </span><span className="bg-gradient-to-r from-amber-300 to-orange-400 bg-clip-text text-transparent">Nichos</span></>}
+                    subtitle="Análisis de mercado con IA · Powered by Gemini + llm-scraper · Playwright headless"
+                    color="amber"
+                    size="lg"
+                />
                 <button
                     onClick={() => setShowHelp(true)}
                     title="Instrucciones de uso"
@@ -301,7 +298,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
 
             {/* Help modal */}
             <Modal open={showHelp} onClose={() => setShowHelp(false)} maxWidth="max-w-2xl" showClose zIndex={200}>
-                <div className="p-6 space-y-5">
+                <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
                     {/* Header */}
                     <div className="flex items-center gap-3 pb-4 border-b border-white/[0.06]">
                         <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
@@ -621,7 +618,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                             </button>
                         </div>
                         {showLogs && (
-                            <div className="h-[140px] rounded-2xl border border-white/8 bg-[#040404] overflow-hidden flex flex-col">
+                            <div className="h-[260px] rounded-2xl border border-white/8 bg-[#040404] overflow-hidden flex flex-col">
                                 <div className="h-8 bg-white/[0.015] border-b border-white/5 flex items-center px-3 gap-1.5 shrink-0">
                                     <div className="w-2 h-2 rounded-full bg-rose-500/40" />
                                     <div className="w-2 h-2 rounded-full bg-amber-500/40" />
