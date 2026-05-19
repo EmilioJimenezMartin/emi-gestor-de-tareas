@@ -447,6 +447,9 @@ export function KdpFactoryApp() {
     const [confirmDeleteCatalogId, setConfirmDeleteCatalogId] = useState<string | null>(null);
     const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
     const [confirmDeleteImageInfo, setConfirmDeleteImageInfo] = useState<{ catalogId: string; publicId: string } | null>(null);
+    const [bulkDeleteCatalogId, setBulkDeleteCatalogId] = useState<string | null>(null);
+    const [bulkDeleteSelection, setBulkDeleteSelection] = useState<Set<string>>(new Set());
+    const [isBulkDeleting, setIsBulkDeleting] = useState(false);
     const [bookPages, setBookPages] = useState<BookPage[]>([]);
     const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
     const [bookEditorTab, setBookEditorTab] = useState<"editor" | "preview" | "images">("editor");
@@ -1034,6 +1037,31 @@ export function KdpFactoryApp() {
             toast.success("Imagen eliminada");
         } catch (e: any) {
             toast.error(e.message ?? "Error al eliminar imagen");
+        }
+    };
+
+    const bulkDeleteSelectedImages = async (catalogId: string) => {
+        if (bulkDeleteSelection.size === 0) return;
+        setIsBulkDeleting(true);
+        const publicIds = [...bulkDeleteSelection];
+        try {
+            await Promise.all(publicIds.map(pid =>
+                fetch(`${API_BASE_URL}/catalogs/${catalogId}/delete-image`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ publicId: pid }),
+                })
+            ));
+            setIaCatalogs(prev => prev.map(c =>
+                c._id === catalogId ? { ...c, images: c.images.filter(img => !bulkDeleteSelection.has(img.publicId)) } : c
+            ));
+            toast.success(`${publicIds.length} imagen${publicIds.length !== 1 ? "es" : ""} eliminada${publicIds.length !== 1 ? "s" : ""}`);
+            setBulkDeleteSelection(new Set());
+            setBulkDeleteCatalogId(null);
+        } catch {
+            toast.error("Error al eliminar imágenes");
+        } finally {
+            setIsBulkDeleting(false);
         }
     };
 
@@ -3716,9 +3744,9 @@ export function KdpFactoryApp() {
                                             <div className="min-w-0 space-y-1">
                                                 <div className="flex items-center gap-2">
                                                     {isDraggable && <GripVertical size={12} className="text-neutral-700 shrink-0" />}
-                                                    <h4 className="font-black text-white text-sm leading-tight truncate">{catalog.name}</h4>
+                                                    <h4 className="font-black text-white text-base leading-tight truncate">{catalog.name}</h4>
                                                 </div>
-                                                <p className="text-[10px] text-neutral-500 line-clamp-1 leading-relaxed">{catalog.prompt}</p>
+                                                <p className="text-[10px] text-neutral-500/80 line-clamp-1 leading-relaxed pl-0.5 italic">{catalog.prompt}</p>
                                             </div>
                                             <div className="flex flex-col items-end gap-1.5 shrink-0">
                                                 {statusBadge(catalog.status)}
@@ -3907,23 +3935,74 @@ export function KdpFactoryApp() {
                                     )}
                                     {/* Image grid */}
                                     {catalog.images.length > 0 && (
-                                        <div className="px-4 pb-4 border-t border-white/5 pt-3">
+                                        <div className="px-4 pb-4 border-t border-white/5 pt-3 space-y-2">
+                                            {/* Bulk delete toolbar */}
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-[9px] text-neutral-700 font-mono">{catalog.images.length} imgs</span>
+                                                <div className="flex items-center gap-1.5">
+                                                    {bulkDeleteCatalogId === catalog._id && bulkDeleteSelection.size > 0 && (
+                                                        <button
+                                                            onClick={() => void bulkDeleteSelectedImages(catalog._id)}
+                                                            disabled={isBulkDeleting}
+                                                            className="flex items-center gap-1 h-6 px-2.5 rounded-lg bg-red-500/15 border border-red-500/30 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-all disabled:opacity-50"
+                                                        >
+                                                            {isBulkDeleting ? <Loader2 size={9} className="animate-spin" /> : <Trash2 size={9} />}
+                                                            Borrar {bulkDeleteSelection.size}
+                                                        </button>
+                                                    )}
+                                                    {bulkDeleteCatalogId === catalog._id && bulkDeleteSelection.size > 0 && (
+                                                        <button onClick={() => setBulkDeleteSelection(new Set())}
+                                                            className="h-6 px-2 rounded-lg bg-white/5 border border-white/10 text-[9px] text-neutral-500 hover:text-white transition-all">
+                                                            Limpiar
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={() => {
+                                                            if (bulkDeleteCatalogId === catalog._id) {
+                                                                setBulkDeleteCatalogId(null);
+                                                                setBulkDeleteSelection(new Set());
+                                                            } else {
+                                                                setBulkDeleteCatalogId(catalog._id);
+                                                                setBulkDeleteSelection(new Set());
+                                                            }
+                                                        }}
+                                                        className={`h-6 px-2.5 rounded-lg text-[9px] font-black uppercase transition-all border ${bulkDeleteCatalogId === catalog._id ? "bg-rose-500/15 border-rose-500/30 text-rose-400 hover:bg-rose-500/25" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                                                    >
+                                                        {bulkDeleteCatalogId === catalog._id ? "✕ Cancelar" : "Seleccionar"}
+                                                    </button>
+                                                </div>
+                                            </div>
                                             <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
                                                 {catalog.images.map((img, imgIdx) => {
                                                     const isCatSelected = selectedImageUrls.has(img.url);
+                                                    const isBulkSel = bulkDeleteCatalogId === catalog._id && bulkDeleteSelection.has(img.publicId);
+                                                    const isBulkMode = bulkDeleteCatalogId === catalog._id;
                                                     return (
                                                         <div
                                                             key={img.publicId}
-                                                            className={`aspect-square rounded-lg overflow-hidden bg-white/5 border transition-all relative group ${isVaultSelectMode ? (isCatSelected ? "border-sky-500 ring-1 ring-sky-500/50 cursor-pointer" : "border-white/10 hover:border-sky-500/50 cursor-pointer") : "border-white/5 cursor-zoom-in hover:border-sky-500/40"}`}
-                                                            onClick={() => isVaultSelectMode ? toggleImageSelect(img.url) : openCatalogImagePreview(catalog.images, imgIdx, catalog._id)}
+                                                            className={`aspect-square rounded-lg overflow-hidden bg-white/5 border transition-all relative group ${isBulkMode ? (isBulkSel ? "border-red-500 ring-1 ring-red-500/50 cursor-pointer" : "border-white/10 hover:border-red-500/50 cursor-pointer") : isVaultSelectMode ? (isCatSelected ? "border-sky-500 ring-1 ring-sky-500/50 cursor-pointer" : "border-white/10 hover:border-sky-500/50 cursor-pointer") : "border-white/5 cursor-zoom-in hover:border-sky-500/40"}`}
+                                                            onClick={() => {
+                                                                if (isBulkMode) {
+                                                                    setBulkDeleteSelection(prev => { const next = new Set(prev); isBulkSel ? next.delete(img.publicId) : next.add(img.publicId); return next; });
+                                                                } else if (isVaultSelectMode) {
+                                                                    toggleImageSelect(img.url);
+                                                                } else {
+                                                                    openCatalogImagePreview(catalog.images, imgIdx, catalog._id);
+                                                                }
+                                                            }}
                                                         >
                                                             <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                                                            {isVaultSelectMode && (
+                                                            {isBulkMode && (
+                                                                <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isBulkSel ? "bg-red-500 border-red-500" : "bg-black/50 border-white/30 backdrop-blur-sm"}`}>
+                                                                    {isBulkSel && <Check size={9} className="text-white" strokeWidth={3} />}
+                                                                </div>
+                                                            )}
+                                                            {!isBulkMode && isVaultSelectMode && (
                                                                 <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isCatSelected ? "bg-sky-500 border-sky-500" : "bg-black/50 border-white/30 backdrop-blur-sm"}`}>
                                                                     {isCatSelected && <Check size={9} className="text-white" strokeWidth={3} />}
                                                                 </div>
                                                             )}
-                                                            {!isVaultSelectMode && (
+                                                            {!isBulkMode && !isVaultSelectMode && (
                                                                 <button
                                                                     onClick={e => { e.stopPropagation(); toggleFavorite(img.url, { label: `${catalog.name} #${imgIdx + 1}`, source: "catalog" }); }}
                                                                     className={`absolute top-0.5 left-0.5 p-0.5 rounded-md backdrop-blur-sm transition-all ${favorites.has(img.url) ? "bg-rose-500/80 text-white opacity-100" : "bg-black/50 text-neutral-400 opacity-0 group-hover:opacity-100 hover:text-rose-400"}`}
@@ -3931,6 +4010,7 @@ export function KdpFactoryApp() {
                                                                     <Heart size={8} className={favorites.has(img.url) ? "fill-white" : ""} />
                                                                 </button>
                                                             )}
+                                                            {isBulkSel && <div className="absolute inset-0 bg-red-500/10 pointer-events-none" />}
                                                         </div>
                                                     );
                                                 })}
@@ -4351,17 +4431,16 @@ export function KdpFactoryApp() {
                                                         <span className={`absolute inset-0 flex items-center justify-center text-[12px] font-black ${scoreColor}`}>{score}</span>
                                                     </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-black text-white leading-tight">{niche.name}</p>
-                                                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                                                            <span className="text-[10px] text-neutral-600">
+                                                        <p className="text-base font-black text-white leading-tight">{niche.name}</p>
+                                                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                                            <span className="text-[9px] font-black uppercase tracking-wide text-neutral-500 bg-white/[0.04] border border-white/8 px-2 py-0.5 rounded-full">
                                                                 {NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType}
                                                             </span>
-                                                            <span className="text-neutral-700">·</span>
-                                                            <span className="text-[10px] text-neutral-600">
+                                                            <span className="text-[9px] font-black uppercase tracking-wide text-neutral-500 bg-white/[0.04] border border-white/8 px-2 py-0.5 rounded-full">
                                                                 {NICHE_STYLE_OPTIONS.find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory}
                                                             </span>
                                                         </div>
-                                                        {niche.description && <p className="text-[10px] text-neutral-600 mt-1 line-clamp-2">{niche.description}</p>}
+                                                        {niche.description && <p className="text-[10px] text-neutral-500/70 mt-2 line-clamp-2 italic leading-relaxed">{niche.description}</p>}
                                                     </div>
                                                     {/* Actions — visible on hover */}
                                                     <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -6310,7 +6389,7 @@ export function KdpFactoryApp() {
                                         applyColoringBookTemplate(kdpTemplateTitle || "Mi Libro de Colorear", [...vaultEntries, ...cloudEntries, ...catalogEntries]);
                                     }}
                                     disabled={kdpTemplateVaultSel.size === 0 && kdpTemplateCatalogSel.size === 0 && kdpTemplateCloudSel.size === 0}
-                                    className="flex-1 h-11 rounded-2xl bg-violet-500 text-white text-sm font-black hover:bg-violet-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    className="flex-1 h-11 rounded-2xl bg-amber-500 text-black text-sm font-black hover:bg-amber-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(245,158,11,0.25)]"
                                 >
                                     <BookOpen size={16} /> Aplicar plantilla
                                 </button>
@@ -6425,6 +6504,34 @@ export function KdpFactoryApp() {
                                     )}
                                 </div>
                             </div>
+
+                            {/* Niche quick-add row */}
+                            {niches.length > 0 && (
+                                <div className="shrink-0 flex items-center gap-1.5 px-3 sm:px-4 py-2 border-b border-white/6 overflow-x-auto no-scrollbar">
+                                    <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600 shrink-0">Añadir nicho:</span>
+                                    {niches.map(n => {
+                                        const nicheImgs = iaCatalogs
+                                            .filter(c => (c.nicheIds ?? []).includes(n._id))
+                                            .flatMap(c => c.images.map(img => img.url));
+                                        if (nicheImgs.length === 0) return null;
+                                        const allAdded = nicheImgs.every(url => zipSelection.has(url));
+                                        return (
+                                            <button key={n._id}
+                                                onClick={() => setZipSelection(prev => {
+                                                    const next = new Set(prev);
+                                                    if (allAdded) nicheImgs.forEach(url => next.delete(url));
+                                                    else nicheImgs.forEach(url => next.add(url));
+                                                    return next;
+                                                })}
+                                                className={`shrink-0 h-6 px-2.5 rounded-full text-[9px] font-black border transition-all flex items-center gap-1.5 ${allAdded ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300" : "bg-white/[0.03] border-white/8 text-neutral-500 hover:text-white hover:border-white/20"}`}>
+                                                {allAdded ? <Check size={9} strokeWidth={3} /> : <Plus size={9} />}
+                                                {n.name}
+                                                <span className="text-[8px] opacity-60">{nicheImgs.length}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
 
                             {/* Image grid */}
                             <div className="flex-1 overflow-y-auto p-3 sm:p-4">
