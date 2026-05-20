@@ -6,7 +6,7 @@ import {
     RefreshCw, Plus, ExternalLink, Check, X, ChevronRight,
     Download, Upload, Eye, Trash2, Tag, DollarSign,
     AlertCircle, Loader2, Globe, Zap, FileText, Image as ImageIcon,
-    BookOpen, ArrowRight, Settings, BadgeCheck, Clock,
+    BookOpen, ArrowRight, Settings, BadgeCheck, Clock, LayoutTemplate,
 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -31,6 +31,18 @@ interface GelatoProductDoc {
     etsyListingId?: string;
     etsyListingUrl?: string;
     printFileUrl?: string;
+    createdAt: string;
+}
+
+interface GelatoStoreProduct {
+    id: string;
+    title: string;
+    status: string;
+    isReadyToPublish: boolean;
+    publishedAt: string | null;
+    externalId: string | null;
+    previewUrl: string | null;
+    variants: any[];
     createdAt: string;
 }
 
@@ -576,6 +588,8 @@ export function GelatoEtsyApp() {
         useApi<{ listings: EtsyListingDoc[] }>(activeTab === "listings" ? "/etsy/my-listings" : null);
     const { data: myProducts, loading: productsLoading, reload: reloadProducts } =
         useApi<{ products: GelatoProductDoc[] }>(activeTab === "gelato" ? "/gelato/my-products" : null);
+    const { data: storeProductsData, loading: storeProductsLoading, reload: reloadStoreProducts } =
+        useApi<{ products: GelatoStoreProduct[] }>(activeTab === "gelato" ? "/gelato/store/products" : null);
     const { data: ordersData, loading: ordersLoading, reload: reloadOrders } =
         useApi<any>(activeTab === "orders" ? "/gelato/orders?limit=20" : null);
     const { data: transactionsData, loading: txLoading, reload: reloadTx } =
@@ -622,6 +636,7 @@ export function GelatoEtsyApp() {
 
     const listings = myListings?.listings ?? [];
     const products = myProducts?.products ?? [];
+    const storeProducts = storeProductsData?.products ?? [];
     const orders = ordersData?.orders ?? [];
     const transactions = (transactionsData?.results ?? []) as EtsyTransaction[];
 
@@ -695,21 +710,19 @@ export function GelatoEtsyApp() {
                         </div>
 
                         {/* Quick stats */}
-                        {(listings.length > 0 || products.length > 0) && (
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                {[
-                                    { label: "Listings activos", value: listings.filter(l => l.status === "active").length, icon: ShoppingBag, color: "amber" },
-                                    { label: "Borradores", value: listings.filter(l => l.status === "draft").length, icon: FileText, color: "neutral" },
-                                    { label: "Productos Gelato", value: products.length, icon: Package, color: "orange" },
-                                    { label: "Pedidos Etsy", value: transactions.length, icon: Truck, color: "sky" },
-                                ].map(s => (
-                                    <div key={s.label} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
-                                        <p className="text-2xl font-black text-white">{s.value}</p>
-                                        <p className="text-[10px] text-neutral-500 mt-0.5">{s.label}</p>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {[
+                                { label: "Listings activos", value: listings.filter(l => l.status === "active").length, icon: ShoppingBag },
+                                { label: "Borradores Etsy", value: listings.filter(l => l.status === "draft").length, icon: FileText },
+                                { label: "Productos Gelato", value: storeProducts.length, icon: Package },
+                                { label: "Pedidos Etsy", value: transactions.length, icon: Truck },
+                            ].map(s => (
+                                <div key={s.label} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+                                    <p className="text-2xl font-black text-white">{s.value}</p>
+                                    <p className="text-[10px] text-neutral-500 mt-0.5">{s.label}</p>
+                                </div>
+                            ))}
+                        </div>
 
                         {/* Setup checklist */}
                         <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-5">
@@ -717,9 +730,10 @@ export function GelatoEtsyApp() {
                             <div className="space-y-3">
                                 {[
                                     { done: gelatoStatus?.ok, label: "Gelato API key configurada", action: "Ajustes → GELATO_API_KEY" },
-                                    { done: !!gelatoStatus?.stores?.length, label: "Tienda Gelato detectada", action: "Configura GELATO_STORE_ID en Ajustes" },
-                                    { done: etsyStatus?.connected, label: "Etsy conectado", action: "Haz clic en 'Conectar con Etsy'" },
-                                    { done: etsyStatus?.connected && !!listings.length, label: "Primer listing creado", action: "Haz clic en '+ Nuevo listing'" },
+                                    { done: !!gelatoStatus?.stores?.length, label: "Tienda EmiJCreaciones detectada", action: "Auto-detectada al conectar API key" },
+                                    { done: etsyStatus?.connected, label: "Etsy vinculado a Gelato", action: "La tienda Etsy se conecta en el Gelato Dashboard → Channels" },
+                                    { done: storeProducts.length > 0, label: "Primer producto Wire-O creado", action: "Ir a Productos Gelato → Crear en Gelato Dashboard" },
+                                    { done: storeProducts.some(p => p.externalId != null), label: "Producto publicado en Etsy", action: "Publicar el producto desde el Gelato Dashboard" },
                                 ].map((item, i) => (
                                     <div key={i} className="flex items-center gap-3">
                                         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${item.done ? "bg-emerald-500 border-emerald-500" : "border-white/20"}`}>
@@ -739,20 +753,28 @@ export function GelatoEtsyApp() {
                             <div className="w-10 h-10 rounded-2xl bg-orange-500/15 border border-orange-500/25 flex items-center justify-center shrink-0">
                                 <BookOpen size={16} className="text-orange-400" />
                             </div>
-                            <div>
-                                <p className="text-sm font-bold text-white mb-1">Libros físicos: Wire-O binding</p>
-                                <p className="text-xs text-neutral-400 leading-relaxed">
-                                    Gelato ofrece Wire-O binding (anillas dobles) para libros de colorear — las páginas quedan completamente planas al abrir.
-                                    Rango: 28–150 páginas, múltiplos de 2. Specs PDF: 300 DPI, CMYK, 4mm de sangría, 12mm de zona segura en el lado del encuadernado.
+                            <div className="flex-1">
+                                <p className="text-sm font-bold text-white mb-1">Libros físicos: Wire-O via Gelato Dashboard</p>
+                                <p className="text-xs text-neutral-400 leading-relaxed mb-2">
+                                    Crea tus libros de colorear Wire-O directamente desde el Gelato Dashboard. Gelato los sincroniza automáticamente
+                                    a tu tienda Etsy EmiJCreaciones cuando los publicas. Specs PDF: A4, 300 DPI, CMYK, 4mm bleed, 12mm zona segura en encuadernado.
                                 </p>
-                                <div className="flex items-center gap-4 mt-2">
-                                    {[["Wire-O", "28–150 págs"], ["A4 / Letter", "Tamaños"], ["CMYK", "Color"], ["4mm bleed", "Sangría"]].map(([k, v]) => (
+                                <div className="flex items-center gap-4 mb-3">
+                                    {[["Wire-O", "28–150 págs"], ["A4", "Tamaño"], ["CMYK", "Color"], ["4mm bleed", "Sangría"]].map(([k, v]) => (
                                         <div key={k}>
                                             <p className="text-[10px] font-black text-orange-400">{k}</p>
                                             <p className="text-[10px] text-neutral-500">{v}</p>
                                         </div>
                                     ))}
                                 </div>
+                                <a
+                                    href="https://dashboard.gelato.com/store-products/product-list"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/30 text-orange-300 text-[11px] font-bold transition-all"
+                                >
+                                    <ExternalLink size={11} /> Crear producto Wire-O →
+                                </a>
                             </div>
                         </div>
                     </div>
@@ -851,11 +873,51 @@ export function GelatoEtsyApp() {
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
                             <p className="text-xs font-black uppercase tracking-widest text-neutral-400">
-                                Productos Gelato <span className="text-neutral-600">({products.length})</span>
+                                Productos en Gelato Store <span className="text-neutral-600">({storeProducts.length})</span>
                             </p>
-                            <button onClick={reloadProducts} className="p-2 rounded-xl hover:bg-white/8 transition-colors">
-                                <RefreshCw size={13} className="text-neutral-400" />
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => { reloadProducts(); reloadStoreProducts(); }}
+                                    className="p-2 rounded-xl hover:bg-white/8 transition-colors"
+                                >
+                                    <RefreshCw size={13} className="text-neutral-400" />
+                                </button>
+                                <a
+                                    href="https://dashboard.gelato.com/store-products/product-list"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 text-xs font-bold transition-all"
+                                >
+                                    <ExternalLink size={12} /> Abrir Gelato
+                                </a>
+                            </div>
+                        </div>
+
+                        {/* How to create Wire-O products */}
+                        <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5">
+                            <div className="flex items-start gap-3">
+                                <div className="w-8 h-8 rounded-xl bg-orange-500/15 border border-orange-500/25 flex items-center justify-center shrink-0 mt-0.5">
+                                    <LayoutTemplate size={14} className="text-orange-400" />
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-xs font-bold text-white mb-1.5">Cómo crear un libro Wire-O en Gelato</p>
+                                    <ol className="text-[11px] text-neutral-400 space-y-1 list-decimal list-inside">
+                                        <li>Abre el <strong className="text-neutral-300">Gelato Dashboard</strong> → Store → Products → New Product</li>
+                                        <li>Selecciona <strong className="text-neutral-300">Notebooks → Wire-O Multi-page Brochures</strong></li>
+                                        <li>Elige A4, 115gsm uncoated, 4+4 color, Wire-O left binding</li>
+                                        <li>Sube tu PDF de interior + portada (300 DPI, CMYK, 4mm bleed)</li>
+                                        <li>Publica → Gelato lo sincroniza automáticamente a Etsy</li>
+                                    </ol>
+                                    <a
+                                        href="https://dashboard.gelato.com/store-products/product-list"
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-xl bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/30 text-orange-300 text-[11px] font-bold transition-all"
+                                    >
+                                        <ExternalLink size={11} /> Crear producto en Gelato →
+                                    </a>
+                                </div>
+                            </div>
                         </div>
 
                         {!gelatoStatus?.ok && (
@@ -866,43 +928,61 @@ export function GelatoEtsyApp() {
                             </div>
                         )}
 
-                        {productsLoading && (
+                        {(storeProductsLoading || productsLoading) && (
                             <div className="flex items-center justify-center py-12">
                                 <Loader2 size={20} className="text-neutral-500 animate-spin" />
                             </div>
                         )}
 
-                        {!productsLoading && gelatoStatus?.ok && products.length === 0 && (
+                        {!storeProductsLoading && gelatoStatus?.ok && storeProducts.length === 0 && (
                             <div className="rounded-3xl border border-white/8 bg-white/[0.02] p-8 text-center">
                                 <Package size={28} className="text-neutral-600 mx-auto mb-3" />
-                                <p className="text-sm font-medium text-neutral-400 mb-1">Sin productos en Gelato todavía</p>
-                                <p className="text-xs text-neutral-600">Los productos físicos (Wire-O) aparecerán aquí una vez creados</p>
+                                <p className="text-sm font-medium text-neutral-400 mb-1">Tu tienda Gelato está vacía</p>
+                                <p className="text-xs text-neutral-600 mb-4">Crea tu primer producto en el Gelato Dashboard y aparecerá aquí</p>
+                                <a
+                                    href="https://dashboard.gelato.com/store-products/product-list"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500/15 border border-orange-500/30 text-orange-300 text-xs font-bold"
+                                >
+                                    <ExternalLink size={12} /> Ir al Gelato Dashboard
+                                </a>
                             </div>
                         )}
 
-                        <div className="space-y-2">
-                            {products.map(p => (
-                                <div key={p._id} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 flex items-center gap-4">
-                                    <div className="w-12 h-12 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center shrink-0">
-                                        <Package size={16} className="text-orange-400" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-bold text-white truncate">{p.title}</p>
-                                        <div className="flex items-center gap-2 mt-0.5">
-                                            <Chip label={p.status} color={statusColor(p.status)} />
-                                            <Chip label={p.productType === "physical" ? "Físico Wire-O" : "Digital"} color="amber" />
-                                            {p.etsyListingId && <Chip label="En Etsy" color="amber" />}
+                        {/* Real Gelato store products */}
+                        {storeProducts.length > 0 && (
+                            <div className="space-y-2">
+                                {storeProducts.map(sp => (
+                                    <div key={sp.id} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 flex items-center gap-4">
+                                        {sp.previewUrl ? (
+                                            <img src={sp.previewUrl} className="w-12 h-12 rounded-xl object-cover shrink-0" alt="" />
+                                        ) : (
+                                            <div className="w-12 h-12 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center shrink-0">
+                                                <Package size={16} className="text-orange-400" />
+                                            </div>
+                                        )}
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-bold text-white truncate">{sp.title}</p>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                                <Chip label={sp.status} color={statusColor(sp.status)} />
+                                                <Chip label={`${sp.variants.length} variant${sp.variants.length !== 1 ? "es" : "e"}`} color="neutral" />
+                                                {sp.externalId && <Chip label="En Etsy" color="amber" />}
+                                                {sp.isReadyToPublish && !sp.publishedAt && <Chip label="Listo para publicar" color="sky" />}
+                                            </div>
                                         </div>
+                                        <a
+                                            href={`https://dashboard.gelato.com/store-products/product-list`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="p-2 rounded-lg hover:bg-white/8 transition-colors shrink-0"
+                                        >
+                                            <ExternalLink size={13} className="text-neutral-400" />
+                                        </a>
                                     </div>
-                                    {p.retailPrice && (
-                                        <div className="text-right shrink-0">
-                                            <p className="text-base font-black text-white">€{p.retailPrice.toFixed(2)}</p>
-                                            {p.gelatoCost && <p className="text-[10px] text-neutral-500">Coste: €{p.gelatoCost.toFixed(2)}</p>}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
 
