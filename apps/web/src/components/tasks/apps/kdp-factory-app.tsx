@@ -152,7 +152,7 @@ const AI_DIMENSIONS = [
 
 const PLATFORMS = ["Amazon KDP", "Etsy", "Printify", "Creative Fabrica"];
 
-type TabID = "insights" | "catalog" | "creation" | "studio" | "niches" | "gelato";
+type TabID = "insights" | "creation" | "studio" | "niches" | "gelato";
 type PeriodID = "month" | "6months" | "year" | "all";
 
 type NicheStatus = "found" | "active" | "research" | "archived";
@@ -866,7 +866,7 @@ export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
         if (typeof window === "undefined") return "insights";
         const saved = localStorage.getItem("kdp-active-tab");
-        return (saved && ["insights", "catalog", "creation", "studio", "gelato"].includes(saved)) ? saved as TabID : "insights";
+        return (saved && ["insights", "creation", "studio", "gelato"].includes(saved)) ? saved as TabID : "insights";
     });
     const changeTab = (tab: TabID) => { localStorage.setItem("kdp-active-tab", tab); setActiveTab(tab); };
     const [chartPeriod, setChartPeriod] = useState<PeriodID>("month");
@@ -2660,7 +2660,7 @@ export function KdpFactoryApp() {
             void fetchCloudinaryImages();
             void fetchSavedPrompts();
         }
-        if ((activeTab === "studio" || activeTab === "catalog") && niches.length === 0) {
+        if (activeTab === "studio" && niches.length === 0) {
             void fetchNiches();
         }
         if (activeTab === "gelato" && gelatoMyProducts.length === 0) {
@@ -2914,8 +2914,8 @@ export function KdpFactoryApp() {
         setProducts([newProduct, ...products]);
         setNewTitle("");
         setNewDesc("");
-        toast.success("Producto creado. ¡Revísalo en el catálogo!");
-        changeTab("catalog");
+        toast.success("Producto creado. ¡Revísalo en Insights!");
+        changeTab("insights");
     };
 
     const handleDeleteProduct = (id: string) => {
@@ -3115,101 +3115,102 @@ export function KdpFactoryApp() {
                     </div>
                 </section>
             )}
-        </div>
-    );
 
-    const renderCatalog = () => (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            {/* Catalog Filters Refined */}
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6 px-2">
-                <div className="flex-1 w-full md:w-auto space-y-2">
-                    <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1">Filtrar por Categoría</label>
-                    <KdpSelect value={catalogFilter} onChange={setCatalogFilter}
-                        options={[{ value: "all", label: "Todos los Activos" }, ...PRODUCT_TYPES.map(t => ({ value: t.id, label: t.name }))]} />
-                </div>
-
-                <div className="w-full md:w-auto space-y-2">
-                    <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1">Búsqueda rápida</label>
-                    <div className="relative group">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-600 group-focus-within:text-white transition-colors" size={14} />
-                        <input
-                            type="text"
-                            placeholder="Ej: Cyberpunk Series"
-                            className="h-12 w-full md:w-72 bg-white/5 border border-white/10 rounded-2xl pl-12 pr-4 text-[10px] font-bold text-white focus:outline-none focus:border-white/20 transition-all placeholder:text-neutral-700"
-                        />
+            {/* ── Productos ── */}
+            <section className="space-y-6">
+                <SectionHeader
+                    icon={<Box size={16} />}
+                    title="Productos"
+                    subtitle="Catálogo de activos digitales publicados"
+                    color="indigo"
+                    size="sm"
+                />
+                <div className="flex flex-col md:flex-row items-center justify-between gap-6 px-2">
+                    <div className="flex-1 w-full md:w-auto space-y-2">
+                        <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1">Filtrar por Categoría</label>
+                        <KdpSelect value={catalogFilter} onChange={setCatalogFilter}
+                            options={[{ value: "all", label: "Todos los Activos" }, ...PRODUCT_TYPES.map(t => ({ value: t.id, label: t.name }))]} />
+                    </div>
+                    <div className="w-full md:w-auto space-y-2">
+                        <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1">Búsqueda rápida</label>
+                        <div className="relative group">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-600 group-focus-within:text-white transition-colors" size={14} />
+                            <input
+                                type="text"
+                                placeholder="Ej: Cyberpunk Series"
+                                className="h-12 w-full md:w-72 bg-white/5 border border-white/10 rounded-2xl pl-12 pr-4 text-[10px] font-bold text-white focus:outline-none focus:border-white/20 transition-all placeholder:text-neutral-700"
+                            />
+                        </div>
                     </div>
                 </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-5">
-                {filteredProducts.length === 0 ? (
-                    <Card variant="outline" className="p-20 border-dashed border-white/10 bg-white/[0.01] flex flex-col items-center justify-center text-center space-y-4">
-                        <div className="p-6 rounded-[32px] bg-white/5 text-neutral-700">
-                            <Box size={48} strokeWidth={1.5} />
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-xl font-black text-white italic tracking-tighter uppercase">Sin coincidencias</p>
-                            <p className="text-sm text-neutral-500 font-medium tracking-tight">Prueba con otra categoría o término de búsqueda.</p>
-                        </div>
-                    </Card>
-                ) : (
-                    filteredProducts.map((product) => (
-                        <Card key={product.id} variant="glass" className="group relative p-6 border-white/5 bg-white/[0.01] hover:border-white/20 transition-all duration-300 overflow-hidden">
-                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500 via-blue-500 to-cyan-500 opacity-30 group-hover:opacity-100 transition-opacity" />
-
-                            <div className="flex flex-col md:flex-row gap-6 relative">
-                                <div className="flex-1 space-y-5">
-                                    <div className="flex items-start justify-between">
-                                        <div className="space-y-1">
-                                            <div className="flex items-center gap-2">
-                                                <Badge variant="neutral" className="bg-indigo-500/10 border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-[0.05em] px-2.5">
-                                                    {product.type}
-                                                </Badge>
-                                                <span className="text-[10px] font-medium text-neutral-700 font-mono">#{product.id.slice(-6)}</span>
-                                            </div>
-                                            <h3 className="text-xl font-black text-white italic tracking-tight">{product.title}</h3>
-                                        </div>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setConfirmDeleteProductId(product.id)}
-                                            className="h-9 w-9 p-0 rounded-xl text-neutral-700 hover:text-rose-500 hover:bg-rose-500/10 transition-all"
-                                        >
-                                            <Trash2 size={16} />
-                                        </Button>
-                                    </div>
-
-                                    <p className="text-sm text-neutral-500 leading-relaxed max-w-2xl font-medium tracking-tight">{product.description}</p>
-
-                                    <div className="flex flex-wrap gap-2 pt-2">
-                                        {product.platforms.map((plat) => (
-                                            <div key={plat.name} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-white/10 transition-all group/plat cursor-default">
-                                                <span className="text-[10px] font-black uppercase text-neutral-600 group-hover/plat:text-neutral-400 tracking-tighter transition-colors">{plat.name}</span>
-                                                <div className="w-px h-2.5 bg-white/10" />
-                                                <span className="text-[11px] font-black italic tracking-tighter text-emerald-400 tabular-nums">
-                                                    {plat.earnings.toFixed(2)}€
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="flex md:flex-col justify-between items-end md:items-end gap-4 md:gap-6 md:w-48 md:border-l border-white/5 md:pl-8 pt-5 md:pt-0 border-t md:border-t-0">
-                                    <div className="text-right space-y-0.5">
-                                        <span className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-600 block">Total Profit</span>
-                                        <span className="text-2xl md:text-3xl font-black italic tracking-tighter text-white tabular-nums">{product.totalEarnings.toFixed(2)}€</span>
-                                    </div>
-                                    <Button variant="outline" className="h-9 md:h-10 px-4 md:w-full rounded-xl border-white/10 text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all shadow-xl shadow-white/5">
-                                        Informe
-                                    </Button>
-                                </div>
+                <div className="grid grid-cols-1 gap-5">
+                    {filteredProducts.length === 0 ? (
+                        <Card variant="outline" className="p-20 border-dashed border-white/10 bg-white/[0.01] flex flex-col items-center justify-center text-center space-y-4">
+                            <div className="p-6 rounded-[32px] bg-white/5 text-neutral-700">
+                                <Box size={48} strokeWidth={1.5} />
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-xl font-black text-white italic tracking-tighter uppercase">Sin coincidencias</p>
+                                <p className="text-sm text-neutral-500 font-medium tracking-tight">Prueba con otra categoría o término de búsqueda.</p>
                             </div>
                         </Card>
-                    ))
-                )}
-            </div>
+                    ) : (
+                        filteredProducts.map((product) => (
+                            <Card key={product.id} variant="glass" className="group relative p-6 border-white/5 bg-white/[0.01] hover:border-white/20 transition-all duration-300 overflow-hidden">
+                                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500 via-blue-500 to-cyan-500 opacity-30 group-hover:opacity-100 transition-opacity" />
+                                <div className="flex flex-col md:flex-row gap-6 relative">
+                                    <div className="flex-1 space-y-5">
+                                        <div className="flex items-start justify-between">
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <Badge variant="neutral" className="bg-indigo-500/10 border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-[0.05em] px-2.5">
+                                                        {product.type}
+                                                    </Badge>
+                                                    <span className="text-[10px] font-medium text-neutral-700 font-mono">#{product.id.slice(-6)}</span>
+                                                </div>
+                                                <h3 className="text-xl font-black text-white italic tracking-tight">{product.title}</h3>
+                                            </div>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setConfirmDeleteProductId(product.id)}
+                                                className="h-9 w-9 p-0 rounded-xl text-neutral-700 hover:text-rose-500 hover:bg-rose-500/10 transition-all"
+                                            >
+                                                <Trash2 size={16} />
+                                            </Button>
+                                        </div>
+                                        <p className="text-sm text-neutral-500 leading-relaxed max-w-2xl font-medium tracking-tight">{product.description}</p>
+                                        <div className="flex flex-wrap gap-2 pt-2">
+                                            {product.platforms.map((plat) => (
+                                                <div key={plat.name} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-white/10 transition-all group/plat cursor-default">
+                                                    <span className="text-[10px] font-black uppercase text-neutral-600 group-hover/plat:text-neutral-400 tracking-tighter transition-colors">{plat.name}</span>
+                                                    <div className="w-px h-2.5 bg-white/10" />
+                                                    <span className="text-[11px] font-black italic tracking-tighter text-emerald-400 tabular-nums">
+                                                        {plat.earnings.toFixed(2)}€
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="flex md:flex-col justify-between items-end md:items-end gap-4 md:gap-6 md:w-48 md:border-l border-white/5 md:pl-8 pt-5 md:pt-0 border-t md:border-t-0">
+                                        <div className="text-right space-y-0.5">
+                                            <span className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-600 block">Total Profit</span>
+                                            <span className="text-2xl md:text-3xl font-black italic tracking-tighter text-white tabular-nums">{product.totalEarnings.toFixed(2)}€</span>
+                                        </div>
+                                        <Button variant="outline" className="h-9 md:h-10 px-4 md:w-full rounded-xl border-white/10 text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all shadow-xl shadow-white/5">
+                                            Informe
+                                        </Button>
+                                    </div>
+                                </div>
+                            </Card>
+                        ))
+                    )}
+                </div>
+            </section>
         </div>
     );
+
+
 
     const renderAIStudio = () => {
         const currentModel = AI_MODELS.find(m => m.id === selectedModel);
@@ -4063,153 +4064,6 @@ export function KdpFactoryApp() {
                             )}
                         </div>
                     </div>
-                </div>
-
-                {/* ── BOOK FACTORY CARD ── */}
-                <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                    <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
-                        <div className="absolute -top-16 -right-16 w-48 h-48 bg-amber-500/8 blur-[60px] pointer-events-none" />
-                        <div className="p-5 space-y-4">
-                            {/* Header */}
-                            <div className="flex items-center gap-3">
-                                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/20 flex items-center justify-center shadow-lg shadow-amber-500/10 shrink-0">
-                                    <BookOpen size={19} className="text-amber-400" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Book Factory</h4>
-                                    <p className="text-[10px] text-neutral-500 font-medium">
-                                        {bookDrafts.length === 0 ? "Sin borradores" : `${bookDrafts.length} borrador${bookDrafts.length !== 1 ? "es" : ""}`}
-                                    </p>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                    <button
-                                        onClick={() => openKdpTemplateSelector()}
-                                        className="h-8 px-3 rounded-xl border border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-600 hover:text-white hover:border-sky-600 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 active:scale-95"
-                                    >
-                                        <BookOpen size={11} /> Plantilla
-                                    </button>
-                                    <button
-                                        onClick={newBookDraft}
-                                        className="h-8 px-3 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_16px_rgba(245,158,11,0.25)] active:scale-95"
-                                    >
-                                        <Plus size={11} /> Nuevo
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Draft list */}
-                            {bookDrafts.length === 0 ? (
-                                <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/6">
-                                    <div className="flex gap-1.5">
-                                        {[0, 1, 2, 3].map(i => (
-                                            <div key={i} className="w-8 h-11 rounded-md bg-white/5 border border-dashed border-white/10" style={{ opacity: 1 - i * 0.2 }} />
-                                        ))}
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Sin borradores</p>
-                                        <p className="text-[9px] text-neutral-700">Pulsa "Nuevo" para crear tu primer libro</p>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="space-y-2">
-                                    {bookDrafts.map(draft => (
-                                        <div key={draft.id} className={`flex items-center gap-3 p-3 rounded-2xl border transition-all ${activeDraftId === draft.id ? "border-amber-500/30 bg-amber-500/5" : "border-white/8 bg-white/[0.02] hover:border-white/14"}`}>
-                                            {/* Thumbnail strip */}
-                                            <div className="flex gap-1 shrink-0">
-                                                {draft.pages.slice(0, 4).map((page, idx) => (
-                                                    <div key={page.id} className="w-7 h-9 rounded-md overflow-hidden bg-white/5 border border-white/10 relative">
-                                                        {page.image
-                                                            ? <img src={page.image.url} alt="" className="w-full h-full object-cover" />
-                                                            : <div className="w-full h-full flex items-center justify-center"><Type size={8} className="text-neutral-700" /></div>}
-                                                        <span className="absolute bottom-0 right-0.5 text-[4px] font-mono text-white/40">{idx + 1}</span>
-                                                    </div>
-                                                ))}
-                                                {draft.pages.length > 4 && (
-                                                    <div className="w-7 h-9 rounded-md bg-white/5 border border-white/10 flex items-center justify-center text-[7px] font-black text-neutral-600">+{draft.pages.length - 4}</div>
-                                                )}
-                                            </div>
-                                            {/* Info */}
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-[11px] font-black text-white truncate">{draft.fileName || "libro-kdp"}</p>
-                                                <p className="text-[9px] text-neutral-600">{draft.pages.length} pág · {new Date(draft.savedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
-                                            </div>
-                                            {/* Actions */}
-                                            <div className="flex items-center gap-1 shrink-0">
-                                                <button onClick={() => loadBookDraft(draft)}
-                                                    className="h-7 px-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black transition-all text-[9px] font-black uppercase tracking-widest">
-                                                    {activeDraftId === draft.id ? "Editando" : "Abrir"}
-                                                </button>
-                                                <button onClick={() => setConfirmDeleteDraftId(draft.id)}
-                                                    className="h-7 w-7 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all flex items-center justify-center">
-                                                    <Trash2 size={11} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </Card>
-                </div>
-
-                {/* ── ZIP FACTORY CARD ── */}
-                <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                    <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
-                        <div className="absolute -top-16 -right-16 w-48 h-48 bg-emerald-500/8 blur-[60px] pointer-events-none" />
-                        <div className="p-5 space-y-4">
-                            <div className="flex items-center gap-3">
-                                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/20 flex items-center justify-center shadow-lg shadow-emerald-500/10 shrink-0">
-                                    <Archive size={19} className="text-emerald-400" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Zip Factory</h4>
-                                    <p className="text-[10px] text-neutral-500 font-medium">Selecciona imágenes y descárgalas comprimidas</p>
-                                </div>
-                                <Button
-                                    onClick={() => setZipFactoryOpen(true)}
-                                    className="h-9 px-4 rounded-xl bg-emerald-500 text-black hover:bg-emerald-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_20px_rgba(16,185,129,0.3)] active:scale-95 shrink-0"
-                                >
-                                    <FolderArchive size={13} />
-                                    Abrir
-                                </Button>
-                            </div>
-                            <div className="flex items-center gap-3 text-[10px] text-neutral-600">
-                                <span className="flex items-center gap-1"><Box size={10} className="text-emerald-600" />{vaultImages.length} vault</span>
-                                <span className="flex items-center gap-1"><Layers size={10} className="text-emerald-600" />{iaCatalogs.reduce((s, c) => s + c.images.length, 0)} catálogos</span>
-                                <span className="flex items-center gap-1"><Cloud size={10} className="text-emerald-600" />{cloudinaryImages.length} cloud</span>
-                            </div>
-                        </div>
-                    </Card>
-                </div>
-
-                {/* ── CONTENT GENERATOR CARD ── */}
-                <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                    <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
-                        <div className="absolute -top-16 -right-16 w-48 h-48 bg-amber-500/8 blur-[60px] pointer-events-none" />
-                        <div className="p-5 space-y-4">
-                            <div className="flex items-center gap-3">
-                                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500/20 to-orange-600/10 border border-amber-500/20 flex items-center justify-center shadow-lg shadow-amber-500/10 shrink-0">
-                                    <Sparkles size={19} className="text-amber-400" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Generador de Contenido</h4>
-                                    <p className="text-[10px] text-neutral-500 font-medium">Títulos · Descripción · Keywords · Listing completo</p>
-                                </div>
-                                <Button
-                                    onClick={() => setContentGeneratorOpen(true)}
-                                    className="h-9 px-4 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_20px_rgba(245,158,11,0.3)] active:scale-95 shrink-0"
-                                >
-                                    <Sparkles size={13} />
-                                    Abrir
-                                </Button>
-                            </div>
-                            <div className="flex items-center gap-3 text-[10px] text-neutral-600">
-                                <span className="flex items-center gap-1"><BookOpen size={10} className="text-amber-600" />KDP físico</span>
-                                <span className="flex items-center gap-1"><Type size={10} className="text-amber-600" />Títulos &amp; Keywords</span>
-                                <span className="flex items-center gap-1"><AlignLeft size={10} className="text-amber-600" />Listings Etsy</span>
-                            </div>
-                        </div>
-                    </Card>
                 </div>
 
                 {/* Asset Vault / Carousel — always visible */}
@@ -5270,6 +5124,152 @@ export function KdpFactoryApp() {
                         </div>
                     )}
                 </div>
+
+                {/* ── Factories ── */}
+                <div className="space-y-4 pt-4 border-t border-white/8">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Herramientas de Producción</p>
+
+                    {/* Book Factory */}
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                        <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
+                            <div className="absolute -top-16 -right-16 w-48 h-48 bg-amber-500/8 blur-[60px] pointer-events-none" />
+                            <div className="p-5 space-y-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/20 flex items-center justify-center shadow-lg shadow-amber-500/10 shrink-0">
+                                        <BookOpen size={19} className="text-amber-400" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Book Factory</h4>
+                                        <p className="text-[10px] text-neutral-500 font-medium">
+                                            {bookDrafts.length === 0 ? "Sin borradores" : `${bookDrafts.length} borrador${bookDrafts.length !== 1 ? "es" : ""}`}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        <button
+                                            onClick={() => openKdpTemplateSelector()}
+                                            className="h-8 px-3 rounded-xl border border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-600 hover:text-white hover:border-sky-600 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 active:scale-95"
+                                        >
+                                            <BookOpen size={11} /> Plantilla
+                                        </button>
+                                        <button
+                                            onClick={newBookDraft}
+                                            className="h-8 px-3 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_16px_rgba(245,158,11,0.25)] active:scale-95"
+                                        >
+                                            <Plus size={11} /> Nuevo
+                                        </button>
+                                    </div>
+                                </div>
+                                {bookDrafts.length === 0 ? (
+                                    <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] border border-white/6">
+                                        <div className="flex gap-1.5">
+                                            {[0, 1, 2, 3].map(i => (
+                                                <div key={i} className="w-8 h-11 rounded-md bg-white/5 border border-dashed border-white/10" style={{ opacity: 1 - i * 0.2 }} />
+                                            ))}
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Sin borradores</p>
+                                            <p className="text-[9px] text-neutral-700">Pulsa "Nuevo" para crear tu primer libro</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {bookDrafts.map(draft => (
+                                            <div key={draft.id} className={`flex items-center gap-3 p-3 rounded-2xl border transition-all ${activeDraftId === draft.id ? "border-amber-500/30 bg-amber-500/5" : "border-white/8 bg-white/[0.02] hover:border-white/14"}`}>
+                                                <div className="flex gap-1 shrink-0">
+                                                    {draft.pages.slice(0, 4).map((page, idx) => (
+                                                        <div key={page.id} className="w-7 h-9 rounded-md overflow-hidden bg-white/5 border border-white/10 relative">
+                                                            {page.image
+                                                                ? <img src={page.image.url} alt="" className="w-full h-full object-cover" />
+                                                                : <div className="w-full h-full flex items-center justify-center"><Type size={8} className="text-neutral-700" /></div>}
+                                                            <span className="absolute bottom-0 right-0.5 text-[4px] font-mono text-white/40">{idx + 1}</span>
+                                                        </div>
+                                                    ))}
+                                                    {draft.pages.length > 4 && (
+                                                        <div className="w-7 h-9 rounded-md bg-white/5 border border-white/10 flex items-center justify-center text-[7px] font-black text-neutral-600">+{draft.pages.length - 4}</div>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[11px] font-black text-white truncate">{draft.fileName || "libro-kdp"}</p>
+                                                    <p className="text-[9px] text-neutral-600">{draft.pages.length} pág · {new Date(draft.savedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                                                </div>
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <button onClick={() => loadBookDraft(draft)}
+                                                        className="h-7 px-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black transition-all text-[9px] font-black uppercase tracking-widest">
+                                                        {activeDraftId === draft.id ? "Editando" : "Abrir"}
+                                                    </button>
+                                                    <button onClick={() => setConfirmDeleteDraftId(draft.id)}
+                                                        className="h-7 w-7 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all flex items-center justify-center">
+                                                        <Trash2 size={11} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </Card>
+                    </div>
+
+                    {/* Zip Factory */}
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                        <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
+                            <div className="absolute -top-16 -right-16 w-48 h-48 bg-emerald-500/8 blur-[60px] pointer-events-none" />
+                            <div className="p-5 space-y-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/20 flex items-center justify-center shadow-lg shadow-emerald-500/10 shrink-0">
+                                        <Archive size={19} className="text-emerald-400" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Zip Factory</h4>
+                                        <p className="text-[10px] text-neutral-500 font-medium">Selecciona imágenes y descárgalas comprimidas</p>
+                                    </div>
+                                    <Button
+                                        onClick={() => setZipFactoryOpen(true)}
+                                        className="h-9 px-4 rounded-xl bg-emerald-500 text-black hover:bg-emerald-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_20px_rgba(16,185,129,0.3)] active:scale-95 shrink-0"
+                                    >
+                                        <FolderArchive size={13} />
+                                        Abrir
+                                    </Button>
+                                </div>
+                                <div className="flex items-center gap-3 text-[10px] text-neutral-600">
+                                    <span className="flex items-center gap-1"><Box size={10} className="text-emerald-600" />{vaultImages.length} vault</span>
+                                    <span className="flex items-center gap-1"><Layers size={10} className="text-emerald-600" />{iaCatalogs.reduce((s, c) => s + c.images.length, 0)} catálogos</span>
+                                    <span className="flex items-center gap-1"><Cloud size={10} className="text-emerald-600" />{cloudinaryImages.length} cloud</span>
+                                </div>
+                            </div>
+                        </Card>
+                    </div>
+
+                    {/* Generador de Contenido */}
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                        <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
+                            <div className="absolute -top-16 -right-16 w-48 h-48 bg-amber-500/8 blur-[60px] pointer-events-none" />
+                            <div className="p-5 space-y-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500/20 to-orange-600/10 border border-amber-500/20 flex items-center justify-center shadow-lg shadow-amber-500/10 shrink-0">
+                                        <Sparkles size={19} className="text-amber-400" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Generador de Contenido</h4>
+                                        <p className="text-[10px] text-neutral-500 font-medium">Títulos · Descripción · Keywords · Listing completo</p>
+                                    </div>
+                                    <Button
+                                        onClick={() => setContentGeneratorOpen(true)}
+                                        className="h-9 px-4 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_20px_rgba(245,158,11,0.3)] active:scale-95 shrink-0"
+                                    >
+                                        <Sparkles size={13} />
+                                        Abrir
+                                    </Button>
+                                </div>
+                                <div className="flex items-center gap-3 text-[10px] text-neutral-600">
+                                    <span className="flex items-center gap-1"><BookOpen size={10} className="text-amber-600" />KDP físico</span>
+                                    <span className="flex items-center gap-1"><Type size={10} className="text-amber-600" />Títulos &amp; Keywords</span>
+                                    <span className="flex items-center gap-1"><AlignLeft size={10} className="text-amber-600" />Listings Etsy</span>
+                                </div>
+                            </div>
+                        </Card>
+                    </div>
+                </div>
             </div>
         );
     };
@@ -5662,10 +5662,9 @@ export function KdpFactoryApp() {
                 <div className="pointer-events-auto flex p-1.5 bg-[#111111]/90 backdrop-blur-xl border border-white/10 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.6)] max-w-full overflow-x-auto no-scrollbar">
                     {[
                         { id: "insights", name: "Insights", icon: <Activity size={15} /> },
-                        { id: "catalog", name: "Productos", icon: <Box size={15} /> },
                         { id: "creation", name: "Imágenes", icon: <ImageIcon size={15} /> },
                         { id: "studio", name: "Studio IA", icon: <Sparkles size={15} /> },
-                        { id: "gelato", name: "Gelato", icon: <Store size={15} /> },
+                        { id: "gelato", name: "Factory", icon: <Store size={15} /> },
                     ].map((tab) => (
                         <button
                             key={tab.id}
@@ -5685,7 +5684,6 @@ export function KdpFactoryApp() {
             {/* Content Area Rendering Based on Active Tab */}
             <div className="relative pt-6">
                 {activeTab === "insights" && renderInsights()}
-                {activeTab === "catalog" && renderCatalog()}
                 {activeTab === "creation" && renderCreation()}
                 {activeTab === "studio" && renderStudio()}
                 {activeTab === "gelato" && renderGelato()}
