@@ -1,6 +1,9 @@
 import { FastifyInstance } from "fastify";
 import type { Server as SocketIOServer } from "socket.io";
+import type { Agenda } from "agenda";
 import { z } from "zod";
+import { RadarJob } from "../models/radar-job.js";
+import { RADAR_JOB_NAME } from "../jobs/radar.js";
 
 // ── Mode: General market analysis ────────────────────────────────────────────
 export const NicheInsightSchema = z.object({
@@ -31,7 +34,7 @@ export const EtsyNicheResultSchema = z.object({
 });
 export type EtsyNicheResult = z.infer<typeof EtsyNicheResultSchema>;
 
-const ETSY_SYSTEM_PROMPT = `Eres un analista experto en investigación de mercado para productos digitales en Etsy. Tu objetivo es extraer y estructurar TODOS los listados de productos visibles en la página de resultados, especialmente los relacionados con libros de colorear, coloring pages PDF, printables, pósters digitales o cualquier producto digital descargable.
+export const ETSY_SYSTEM_PROMPT = `Eres un analista experto en investigación de mercado para productos digitales en Etsy. Tu objetivo es extraer y estructurar TODOS los listados de productos visibles en la página de resultados, especialmente los relacionados con libros de colorear, coloring pages PDF, printables, pósters digitales o cualquier producto digital descargable.
 
 Para CADA producto encontrado en la página, aplica estas reglas de extracción:
 1. Extrae el título completo y límpialo de caracteres extraños o codificaciones HTML.
@@ -41,10 +44,6 @@ Para CADA producto encontrado en la página, aplica estas reglas de extracción:
 5. Deduce el micronicho específico a partir de las palabras clave del título: busca términos como animales, estilos visuales, temáticas, audiencias (niños, adultos, mandala, kawaii, gótico, etc.).
 
 Extrae TODOS los productos que veas, no solo los que parecen más relevantes. El objetivo es detectar patrones de demanda.`;
-
-function log(io: SocketIOServer | undefined, level: "info" | "success" | "error" | "warning", message: string) {
-    io?.emit("radar:log", { timestamp: new Date(), level, message });
-}
 
 async function getGoogleKey(): Promise<string> {
     let key = process.env.GOOGLE_API_KEY ?? "";
@@ -58,98 +57,53 @@ async function getGoogleKey(): Promise<string> {
 
 export async function registerRadarRoutes(
     app: FastifyInstance,
-    deps: { io?: SocketIOServer }
+    deps: { io?: SocketIOServer; agenda?: Agenda }
 ) {
-    // POST /radar/analyze — Playwright + llm-scraper + Gemini
-    // Body: { url, mode: "etsy-niches" | "general", nicheName?, context? }
+    // POST /radar/analyze — crea job en DB y lo encola en Agenda
     app.post("/radar/analyze", async (request: any, reply) => {
-        const { url, mode = "general", nicheName, context } = request.body || {};
+        const { url, mode = "general", nicheName, context, geminiModel = "gemini-2.0-flash" } = request.body || {};
         if (!url?.trim()) return reply.status(400).send({ error: "url es requerida" });
 
         const googleKey = await getGoogleKey();
         if (!googleKey) return reply.status(400).send({ error: "Google API key no configurada. Añádela en Ajustes." });
 
+        if (!deps.agenda) return reply.status(503).send({ error: "Agenda no disponible aún, espera unos segundos" });
+
         const jobId = `radar-${Date.now()}`;
-        log(deps.io, "info", `[INIT] Iniciando análisis · modo: ${mode} · URL: ${url}`);
 
-        (async () => {
-            let browser: any = null;
-            try {
-                log(deps.io, "info", `[BROWSER] Lanzando navegador headless...`);
-                const { chromium } = await import("playwright");
-                browser = await chromium.launch({ headless: true });
-                const page = await browser.newPage();
+        const jobDoc = await RadarJob.create({
+            jobId,
+            url,
+            mode,
+            nicheName,
+            context,
+            geminiModel,
+            status: "running",
+            logs: [{ timestamp: new Date(), level: "info", message: `[INIT] Análisis encolado · modo: ${mode} · modelo: ${geminiModel}` }],
+        });
 
-                await page.setExtraHTTPHeaders({
-                    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                });
+        deps.io?.emit("radar:log", { timestamp: new Date(), level: "info", message: `[INIT] Análisis encolado · modo: ${mode} · URL: ${url}` });
 
-                log(deps.io, "info", `[FETCH] Cargando página: ${url}`);
-                await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-
-                // For Etsy: scroll to load lazy content
-                if (mode === "etsy-niches") {
-                    log(deps.io, "info", `[FETCH] Scroll para cargar resultados lazy...`);
-                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)");
-                    await page.waitForTimeout(1500);
-                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)");
-                    await page.waitForTimeout(1000);
-                }
-
-                log(deps.io, "success", `[FETCH] ✓ Página cargada`);
-                log(deps.io, "info", `[AI] Analizando con Gemini · modo: ${mode}...`);
-
-                const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
-                const { default: LLMScraper } = await import("llm-scraper");
-                const { Output } = await import("ai");
-
-                const google = createGoogleGenerativeAI({ apiKey: googleKey });
-                const scraper = new LLMScraper(google("gemini-2.0-flash"));
-
-                let data: any;
-
-                if (mode === "etsy-niches") {
-                    const output = Output.object(EtsyNicheResultSchema as any);
-                    const result = await scraper.run(page, output, {
-                        format: "html",
-                        system: ETSY_SYSTEM_PROMPT,
-                    });
-                    data = result.data;
-                    const count = (data?.nichos_detectados ?? []).length;
-                    log(deps.io, "success", `[AI] ✓ ${count} productos/nichos detectados`);
-                } else {
-                    const contextHint = [
-                        nicheName ? `Niche objetivo: "${nicheName}".` : "",
-                        context ? `Contexto adicional: ${context}.` : "",
-                        "Analiza esta página de marketplace (Amazon, Etsy, Google, etc.) para investigar el nicho de mercado.",
-                    ].filter(Boolean).join(" ");
-                    const output = Output.object(NicheInsightSchema as any);
-                    const result = await scraper.run(page, output, {
-                        format: "html",
-                        system: contextHint || undefined,
-                    });
-                    data = result.data;
-                    log(deps.io, "success", `[AI] ✓ Análisis completado`);
-                }
-
-                deps.io?.emit("radar:result", { jobId, mode, data });
-                await page.close();
-            } catch (err: any) {
-                log(deps.io, "error", `[ERROR] ${err?.message ?? "Error desconocido"}`);
-                deps.io?.emit("radar:error", { jobId, message: err?.message ?? "Error desconocido" });
-            } finally {
-                if (browser) {
-                    try { await browser.close(); } catch { /* ignore */ }
-                }
-                deps.io?.emit("radar:done", { jobId });
-            }
-        })();
+        await deps.agenda.now(RADAR_JOB_NAME, { jobId });
 
         return reply.send({ success: true, jobId });
     });
 
-    // ── POST /radar/pre-nichos — group detected listings into pre-niche categories ──
+    // GET /radar/jobs/latest — devuelve el job más reciente (para restaurar estado en el frontend)
+    app.get("/radar/jobs/latest", async (_request, reply) => {
+        const job = await RadarJob.findOne().sort({ createdAt: -1 }).lean();
+        if (!job) return reply.send({ job: null });
+        return reply.send({ job });
+    });
+
+    // GET /radar/jobs/:jobId — estado de un job concreto
+    app.get("/radar/jobs/:jobId", async (request: any, reply) => {
+        const job = await RadarJob.findOne({ jobId: request.params.jobId }).lean();
+        if (!job) return reply.status(404).send({ error: "Job no encontrado" });
+        return reply.send({ job });
+    });
+
+    // ── POST /radar/pre-nichos — agrupa listados en pre-nichos (síncrono, rápido) ──
     const PreNichoSchema = z.object({
         nombre: z.string().describe("Nombre de la categoría de pre-nicho (corto y memorable)"),
         descripcion: z.string().describe("Por qué este pre-nicho tiene potencial en Etsy (1-2 frases)"),
@@ -183,11 +137,11 @@ export async function registerRadarRoutes(
                 schema: PreNichosResultSchema as any,
                 prompt: `Eres un experto en investigación de mercado para productos digitales en Etsy (libros de colorear, printables, PDF descargables).
 
-Analiza la siguiente lista de productos detectados en Etsy y agrúpalos en categorías de "pre-nichos" — categorías más amplias que engloban varios micro-nichos similares.
+Analiza la siguiente lista de productos detectados en Etsy y agrúpalos en categorías de "pre-nichos".
 
 REGLAS:
 - Agrupa los sub_nichos similares en categorías coherentes (máximo 6 pre-nichos)
-- El nombre debe ser específico y accionable (ej: "Animales lindos Kawaii", "Mandalas Zen Adultos", "Halloween Gótico")
+- El nombre debe ser específico y accionable (ej: "Animales lindos Kawaii", "Mandalas Zen Adultos")
 - Evalúa el potencial basándote en cuántos productos bestseller hay en el grupo y el número de reseñas
 - keywords_clave deben ser los términos de búsqueda reales que usaría un comprador en Etsy
 
@@ -197,7 +151,11 @@ ${listSummary}`,
 
             return reply.send(object);
         } catch (err: any) {
-            return reply.status(500).send({ error: err?.message ?? "Error generando pre-nichos" });
+            const isHardQuota = /limit:\s*0/i.test(err?.message ?? "");
+            const msg = isHardQuota
+                ? "Cuota diaria de Gemini agotada. Vuelve mañana o activa facturación en Google AI Studio."
+                : (err?.message ?? "Error generando pre-nichos");
+            return reply.status(500).send({ error: msg });
         }
     });
 }

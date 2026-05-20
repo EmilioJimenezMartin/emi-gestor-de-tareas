@@ -48,7 +48,7 @@ await registerCatalogRoutes(app, { io });
 await registerSavedPromptsRoutes(app);
 await registerNicheRoutes(app);
 await registerZipRoutes(app);
-await registerRadarRoutes(app, { io });
+await registerRadarRoutes(app, deps);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {

@@ -3967,13 +3967,33 @@ export function KdpFactoryApp() {
                                                         {catalog.skippedImages} fallidos
                                                     </button>
                                                 )}
-                                                {niches.length > 0 && (
-                                                    <button onClick={() => setCatalogNichePickerId(catalogNichePickerId === catalog._id ? null : catalog._id)}
-                                                        title="Asignar nicho"
-                                                        className={`p-2 rounded-xl border transition-all ${(catalog.nicheIds?.length ?? 0) > 0 ? "bg-sky-500/10 border-sky-500/20 text-sky-400 hover:bg-sky-500/20" : "bg-white/5 border-white/10 text-neutral-500 hover:text-sky-400 hover:border-sky-500/20"}`}>
-                                                        <Target size={13} />
-                                                    </button>
-                                                )}
+                                                {(() => {
+                                                    const linkedNiches = niches.filter(n => (catalog.nicheIds ?? []).includes(n._id));
+                                                    const isOpen = catalogNichePickerId === catalog._id;
+                                                    const hasNiches = niches.length > 0;
+                                                    return (
+                                                        <button
+                                                            onClick={() => hasNiches && setCatalogNichePickerId(isOpen ? null : catalog._id)}
+                                                            title={hasNiches ? "Vincular nicho" : "No hay nichos — créalos primero en la pestaña Nichos"}
+                                                            disabled={!hasNiches}
+                                                            className={`flex items-center gap-1.5 h-8 px-2.5 rounded-xl border transition-all text-[9px] font-black uppercase tracking-wider shrink-0 disabled:opacity-40 disabled:cursor-not-allowed
+                                                                ${linkedNiches.length > 0
+                                                                    ? isOpen
+                                                                        ? "bg-sky-500/20 border-sky-500/40 text-sky-300 shadow-[0_0_12px_rgba(14,165,233,0.2)]"
+                                                                        : "bg-sky-500/10 border-sky-500/25 text-sky-400 hover:bg-sky-500/20 hover:border-sky-500/40"
+                                                                    : isOpen
+                                                                        ? "bg-violet-500/15 border-violet-500/35 text-violet-300"
+                                                                        : "border-dashed border-white/15 text-neutral-500 hover:border-sky-500/30 hover:text-sky-400 hover:bg-sky-500/[0.06]"
+                                                                }`}
+                                                        >
+                                                            <Target size={11} className="shrink-0" />
+                                                            {linkedNiches.length > 0
+                                                                ? <span className="max-w-[80px] truncate">{linkedNiches.length === 1 ? linkedNiches[0].name : `${linkedNiches.length} nichos`}</span>
+                                                                : "Nicho"
+                                                            }
+                                                        </button>
+                                                    );
+                                                })()}
                                             </div>
                                             {/* Right: destructive actions */}
                                             <div className="flex items-center gap-1.5 shrink-0 pl-2 border-l border-white/[0.06]">
@@ -4007,22 +4027,29 @@ export function KdpFactoryApp() {
                                         </div>
                                     )}
                                     {/* Niche picker inline */}
-                                    {catalogNichePickerId === catalog._id && niches.length > 0 && (
-                                        <div className="px-4 pb-3 border-t border-white/5 pt-3 space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Vincular nichos</p>
-                                                <button onClick={() => setCatalogNichePickerId(null)} className="text-[9px] text-neutral-600 hover:text-white transition-colors font-black uppercase">Cerrar</button>
+                                    {catalogNichePickerId === catalog._id && (
+                                        <div className="px-4 pb-4 border-t border-sky-500/10 pt-3 space-y-3 bg-gradient-to-b from-sky-500/[0.04] to-transparent">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-5 h-5 rounded-lg bg-sky-500/15 border border-sky-500/25 flex items-center justify-center">
+                                                        <Target size={10} className="text-sky-400" />
+                                                    </div>
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-sky-400/80">Vincular nichos</span>
+                                                </div>
+                                                <button onClick={() => setCatalogNichePickerId(null)} className="w-5 h-5 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-neutral-600 hover:text-white hover:bg-white/10 transition-all">
+                                                    <X size={9} />
+                                                </button>
                                             </div>
-                                            <div className="rounded-xl border border-white/8 bg-white/[0.02] overflow-hidden max-h-44 overflow-y-auto">
+                                            <div className="rounded-2xl border border-white/8 bg-white/[0.015] overflow-hidden max-h-48 overflow-y-auto">
                                                 {niches.map((n, ni) => {
                                                     const assigned = (catalog.nicheIds ?? []).includes(n._id);
+                                                    const catCount = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).length;
                                                     return (
                                                         <button key={n._id}
                                                             onClick={() => {
                                                                 const cur = catalog.nicheIds ?? [];
                                                                 const next = assigned ? cur.filter(id => id !== n._id) : [...cur, n._id];
                                                                 setIaCatalogs(prev => prev.map(c => c._id === catalog._id ? { ...c, nicheIds: next } : c));
-                                                                // Update niches local state bidirectionally
                                                                 setNiches(prev => prev.map(nx => {
                                                                     if (nx._id === n._id) {
                                                                         const cats = nx.catalogIds ?? [];
@@ -4041,13 +4068,16 @@ export function KdpFactoryApp() {
                                                                     body: JSON.stringify({ nicheIds: next }),
                                                                 }).catch(() => { });
                                                             }}
-                                                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-all ${ni > 0 ? "border-t border-white/5" : ""} ${assigned ? "bg-sky-500/8" : "hover:bg-white/[0.03]"}`}
+                                                            className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all ${ni > 0 ? "border-t border-white/[0.05]" : ""} ${assigned ? "bg-sky-500/[0.07]" : "hover:bg-white/[0.03]"}`}
                                                         >
-                                                            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${assigned ? "bg-sky-500 border-violet-500" : "border-neutral-700 bg-transparent"}`}>
-                                                                {assigned && <Check size={9} className="text-white" strokeWidth={3} />}
+                                                            <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${assigned ? "bg-sky-500 border-sky-400 shadow-[0_0_8px_rgba(14,165,233,0.4)]" : "border-neutral-700 bg-transparent"}`}>
+                                                                {assigned && <Check size={8} className="text-white" strokeWidth={3} />}
                                                             </div>
-                                                            <span className={`text-[11px] font-semibold flex-1 truncate ${assigned ? "text-white" : "text-neutral-400"}`}>{n.name}</span>
-                                                            {n.status && <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full ${n.status === "active" ? "text-emerald-400 bg-emerald-500/10" : "text-neutral-600 bg-white/5"}`}>{n.status}</span>}
+                                                            <span className={`text-[11px] font-bold flex-1 truncate ${assigned ? "text-white" : "text-neutral-400"}`}>{n.name}</span>
+                                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                                {catCount > 0 && <span className="text-[8px] font-black text-sky-400/60 bg-sky-500/10 border border-sky-500/15 px-1.5 py-0.5 rounded-full">{catCount} cat</span>}
+                                                                {n.status && <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full ${n.status === "active" ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/15" : "text-neutral-600 bg-white/5 border border-white/8"}`}>{n.status}</span>}
+                                                            </div>
                                                         </button>
                                                     );
                                                 })}

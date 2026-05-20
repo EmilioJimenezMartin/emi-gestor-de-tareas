@@ -132,8 +132,39 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
     const [isGeneratingPreNichos, setIsGeneratingPreNichos] = useState(false);
     const [creatingNicheIdx, setCreatingNicheIdx] = useState<number | null>(null);
     const [createdNicheIdxs, setCreatedNicheIdxs] = useState<Set<number>>(new Set());
+    const [geminiModel, setGeminiModel] = useState("gemini-2.0-flash");
     const logsEndRef = useRef<HTMLDivElement>(null);
     const isFirstLog = useRef(true);
+    const activeJobId = useRef<string | null>(null);
+
+    // Restore state from backend on mount (persists through page refresh)
+    useEffect(() => {
+        fetch(`${apiUrl}/radar/jobs/latest`)
+            .then(r => r.json())
+            .then(({ job }: any) => {
+                if (!job) return;
+                if (job.status === "running") {
+                    setIsAnalyzing(true);
+                    activeJobId.current = job.jobId;
+                    setLogs((job.logs ?? []).map((l: any) => ({
+                        id: Math.random().toString(),
+                        timestamp: new Date(l.timestamp).toLocaleTimeString(),
+                        level: l.level,
+                        message: l.message,
+                    })));
+                } else if (job.status === "completed" && job.result) {
+                    if (job.mode === "etsy-niches") setEtsyResult(job.result);
+                    else setGeneralResult(job.result);
+                    setLogs((job.logs ?? []).map((l: any) => ({
+                        id: Math.random().toString(),
+                        timestamp: new Date(l.timestamp).toLocaleTimeString(),
+                        level: l.level,
+                        message: l.message,
+                    })));
+                }
+            })
+            .catch(() => { /* silencioso si mongo no está */ });
+    }, [apiUrl]);
 
     useEffect(() => {
         const socket = createApiSocket(apiUrl);
@@ -155,11 +186,13 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
         });
         socket.on("radar:done", () => {
             setIsAnalyzing(false);
+            activeJobId.current = null;
             toast.success("Análisis completado");
         });
         socket.on("radar:error", (data: any) => {
             toast.error(data.message ?? "Error en el análisis");
             setIsAnalyzing(false);
+            activeJobId.current = null;
         });
         return () => { socket.disconnect(); };
     }, [apiUrl, url]);
@@ -183,7 +216,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
         isFirstLog.current = true;
         toast.info(`Iniciando análisis · modo: ${mode === "etsy-niches" ? "Etsy Nichos" : "General"}...`);
         try {
-            const body: Record<string, string> = { url: url.trim(), mode };
+            const body: Record<string, string> = { url: url.trim(), mode, geminiModel };
             if (mode === "general") {
                 if (nicheName.trim()) body.nicheName = nicheName.trim();
                 if (context.trim()) body.context = context.trim();
@@ -197,6 +230,8 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                 const err = await res.json().catch(() => ({}));
                 throw new Error((err as any).error || `Error ${res.status}`);
             }
+            const { jobId } = await res.json().catch(() => ({}));
+            if (jobId) activeJobId.current = jobId;
         } catch (e: any) {
             toast.error(e.message ?? "Error al conectar");
             setIsAnalyzing(false);
@@ -558,6 +593,33 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                             </div>
                         </div>
                     )}
+
+                    {/* Model selector */}
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                            <Zap size={11} className="text-violet-400/70" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Modelo Gemini</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1.5">
+                            {[
+                                { id: "gemini-2.0-flash", label: "Flash 2.0", hint: "Rápido" },
+                                { id: "gemini-2.0-flash-lite", label: "Flash Lite", hint: "Más cuota" },
+                                { id: "gemini-1.5-flash", label: "Flash 1.5", hint: "Cuota sep." },
+                            ].map(m => (
+                                <button
+                                    key={m.id}
+                                    onClick={() => setGeminiModel(m.id)}
+                                    className={`flex flex-col items-center gap-0.5 py-2 px-2 rounded-xl border transition-all text-center ${geminiModel === m.id
+                                        ? "bg-violet-500/15 border-violet-500/35 text-violet-300"
+                                        : "bg-white/[0.02] border-white/8 text-neutral-600 hover:border-violet-500/20 hover:text-violet-400"
+                                    }`}
+                                >
+                                    <span className="text-[10px] font-black">{m.label}</span>
+                                    <span className="text-[8px] font-medium opacity-60">{m.hint}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
 
                     {/* Analyze button */}
                     <button
