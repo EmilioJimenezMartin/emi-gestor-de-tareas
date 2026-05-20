@@ -351,74 +351,102 @@ function KdpSelect({ value, onChange, options, accent = "white" }: {
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 // ── Gelato Upload Modal ───────────────────────────────────────────────────────
+const WIRE_O_UID = "wire-o-multi-page-brochures_pf_a4_pt_115-gsm-uncoated_cl_4-4_bt_wire-o-left_cpt_300-gsm-uncoated_ver";
+
 function GelatoUploadModal({
     bookPages,
     bookFileName,
     buildPdf,
+    apiUrl,
     onClose,
 }: {
     bookPages: BookPage[];
     bookFileName: string;
     buildPdf: () => Promise<Uint8Array | null>;
+    apiUrl: string;
     onClose: () => void;
 }) {
     const pageCount = bookPages.length;
-    // Valid Wire-O page counts are even numbers 20–300
     const validPageCount = Math.max(20, pageCount % 2 === 0 ? pageCount : pageCount + 1);
-    const isValidForWireO = validPageCount >= 20 && validPageCount <= 300;
-    const WIRE_O_UID = "wire-o-multi-page-brochures_pf_a4_pt_115-gsm-uncoated_cl_4-4_bt_wire-o-left_cpt_300-gsm-uncoated_ver";
+    const isValidForWireO = pageCount >= 20 && pageCount <= 300;
 
-    const [step, setStep] = useState<"info" | "uploading" | "done" | "order">("info");
-    const [cloudinaryUrl, setCloudinaryUrl] = useState("");
-    const [log, setLog] = useState<string[]>([]);
-    const [error, setError] = useState("");
-    const [orderForm, setOrderForm] = useState({ firstName: "", lastName: "", address: "", city: "", postCode: "", country: "ES", email: "", quantity: 1 });
-    const [ordering, setOrdering] = useState(false);
+    // Manual flow
+    const [manualGenerating, setManualGenerating] = useState(false);
+    const [manualDone, setManualDone] = useState(false);
+    const [manualError, setManualError] = useState("");
+
+    // Auto flow
+    type AutoStep = "idle" | "generating" | "uploading" | "ordering" | "done" | "error";
+    const [autoStep, setAutoStep] = useState<AutoStep>("idle");
+    const [autoLog, setAutoLog] = useState<string[]>([]);
+    const [autoError, setAutoError] = useState("");
     const [orderId, setOrderId] = useState("");
+    const [orderForm, setOrderForm] = useState({
+        firstName: "", lastName: "", address: "", city: "", postCode: "", country: "ES", email: "", quantity: 1,
+    });
 
-    const addLog = (msg: string) => setLog(p => [...p, msg]);
+    const addLog = (msg: string) => setAutoLog(p => [...p, msg]);
 
-    const uploadAndPrepare = async () => {
-        setStep("uploading");
-        setLog([]);
-        setError("");
+    const handleDownload = async () => {
+        setManualGenerating(true);
+        setManualError("");
+        setManualDone(false);
+        try {
+            const bytes = await buildPdf();
+            if (!bytes) throw new Error("No se pudo generar el PDF");
+            const blob = new Blob([bytes], { type: "application/pdf" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${bookFileName || "libro-kdp"}.pdf`;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 10_000);
+            setManualDone(true);
+        } catch (e: any) {
+            setManualError(e.message);
+        } finally {
+            setManualGenerating(false);
+        }
+    };
+
+    const handleAutoUpload = async () => {
+        setAutoStep("generating");
+        setAutoLog([]);
+        setAutoError("");
         try {
             addLog("Generando PDF...");
             const bytes = await buildPdf();
             if (!bytes) throw new Error("No se pudo generar el PDF");
-            addLog(`✓ PDF generado (${Math.round(bytes.length / 1024)} KB)`);
+            const sizeMb = (bytes.length / 1048576).toFixed(1);
+            addLog(`✓ PDF generado · ${sizeMb} MB`);
 
-            addLog("Subiendo a Cloudinary...");
-            const base64 = btoa(String.fromCharCode(...bytes));
-            const res = await fetch(`${API_URL}/cloudinary/upload-pdf`, {
+            setAutoStep("uploading");
+            addLog("Subiendo al servidor...");
+            let binary = "";
+            const chunk = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunk) {
+                binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+            }
+            const base64 = btoa(binary);
+            const upRes = await fetch(`${apiUrl}/uploads/pdf`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ base64, fileName: bookFileName }),
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error ?? "Error al subir PDF");
-            const url = data.url;
-            setCloudinaryUrl(url);
-            addLog(`✓ PDF disponible en Cloudinary`);
-            setStep("done");
-        } catch (e: any) {
-            setError(e.message);
-            setStep("info");
-        }
-    };
+            const upData = await upRes.json();
+            if (!upRes.ok) throw new Error(upData.error ?? "Error al subir PDF");
+            const fileUrl = upData.url as string;
+            addLog(`✓ PDF disponible · expira en ${upData.expiresInMinutes} min`);
 
-    const placeOrder = async () => {
-        if (!cloudinaryUrl) return;
-        setOrdering(true);
-        setError("");
-        try {
-            const res = await fetch(`${API_URL}/gelato/orders/draft`, {
+            setAutoStep("ordering");
+            addLog("Creando pedido borrador en Gelato...");
+            const orderRes = await fetch(`${apiUrl}/gelato/orders/draft`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     productUid: WIRE_O_UID,
                     pageCount: validPageCount,
-                    fileUrl: cloudinaryUrl,
+                    fileUrl,
                     quantity: orderForm.quantity,
                     shippingAddress: {
                         firstName: orderForm.firstName,
@@ -431,21 +459,38 @@ function GelatoUploadModal({
                     },
                 }),
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error ?? "Error al crear pedido");
-            setOrderId(data.id ?? "");
-            setStep("order");
+            const orderData = await orderRes.json();
+            if (!orderRes.ok) throw new Error(orderData.error ?? "Error al crear pedido");
+            setOrderId(orderData.id ?? orderData.orderId ?? "");
+            addLog("✓ Pedido borrador creado en Gelato");
+            setAutoStep("done");
         } catch (e: any) {
-            setError(e.message);
-        } finally {
-            setOrdering(false);
+            setAutoError(e.message);
+            setAutoStep("error");
         }
     };
+
+    const SPECS = [
+        ["Páginas", `${pageCount}${pageCount !== validPageCount ? ` → ${validPageCount} (par)` : ""}`],
+        ["Formato", "A4 · 210×297 mm"],
+        ["Interior", "115 gsm · 4+4 color"],
+        ["Encuadernado", "Wire-O izquierda"],
+    ];
+
+    const MANUAL_STEPS = [
+        { n: "1", text: "Descarga el PDF con el botón de abajo" },
+        { n: "2", text: "Abre el Gelato Dashboard → Products → Create new" },
+        { n: "3", text: 'Elige "Wire-O Brochure" · A4 · 115 gsm · 4+4 · Wire-O left' },
+        { n: "4", text: "Sube el PDF en el paso Print files" },
+        { n: "5", text: "Configura título, precio y publica → sincroniza a Etsy" },
+    ];
 
     return (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={onClose} />
             <div className="relative w-full max-w-lg rounded-3xl border border-white/15 bg-neutral-950/95 p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+
+                {/* Header */}
                 <div className="flex items-center gap-3 mb-5">
                     <div className="w-10 h-10 rounded-2xl bg-orange-500/15 border border-orange-500/25 flex items-center justify-center">
                         <Package size={17} className="text-orange-400" />
@@ -454,192 +499,174 @@ function GelatoUploadModal({
                         <p className="font-bold text-white">Subir a Gelato</p>
                         <p className="text-[11px] text-neutral-500">Impresión Wire-O bajo demanda</p>
                     </div>
-                    <button onClick={onClose} className="ml-auto p-1.5 rounded-lg hover:bg-white/8"><X size={14} className="text-neutral-400" /></button>
+                    <button onClick={onClose} className="ml-auto p-1.5 rounded-lg hover:bg-white/8">
+                        <X size={14} className="text-neutral-400" />
+                    </button>
                 </div>
 
-                {step === "info" && (
-                    <div className="space-y-4">
-                        {/* Specs */}
-                        <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 space-y-3">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Specs del libro</p>
-                            <div className="grid grid-cols-2 gap-2">
-                                {[
-                                    ["Páginas", `${pageCount} → ${validPageCount}${pageCount !== validPageCount ? " (ajustado)" : ""}`],
-                                    ["Formato", "A4 (210×297 mm)"],
-                                    ["Papel interior", "115 gsm uncoated"],
-                                    ["Portada", "300 gsm uncoated"],
-                                    ["Encuadernado", "Wire-O left"],
-                                    ["Color", "4+4 (full color)"],
-                                    ["Bleed", "4 mm"],
-                                    ["Zona segura", "12 mm (encuadernado)"],
-                                ].map(([k, v]) => (
-                                    <div key={k} className="rounded-xl bg-white/[0.03] px-3 py-2">
-                                        <p className="text-[9px] text-neutral-600 uppercase tracking-wider">{k}</p>
-                                        <p className="text-[11px] text-white font-medium">{v}</p>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
+                {!isValidForWireO && (
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 flex gap-2 mb-4">
+                        <AlertTriangle size={14} className="text-amber-400 shrink-0 mt-0.5" />
+                        <p className="text-[11px] text-amber-300">
+                            Wire-O requiere entre 20 y 300 páginas (pares). Tu libro tiene {pageCount} páginas.
+                            {pageCount < 20 && " Añade más páginas antes de continuar."}
+                        </p>
+                    </div>
+                )}
 
-                        {!isValidForWireO && (
-                            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 flex gap-2">
-                                <AlertTriangle size={14} className="text-amber-400 shrink-0 mt-0.5" />
-                                <p className="text-[11px] text-amber-300">
-                                    Wire-O requiere entre 20 y 300 páginas (pares). Tu libro tiene {pageCount} páginas.
-                                    {pageCount < 20 && " Añade más páginas antes de subir."}
-                                </p>
+                {/* Specs strip */}
+                <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3 mb-4">
+                    {SPECS.map(([k, v]) => (
+                        <div key={k} className="flex items-baseline gap-1">
+                            <span className="text-[9px] text-neutral-600">{k}:</span>
+                            <span className="text-[10px] text-neutral-300 font-medium">{v}</span>
+                        </div>
+                    ))}
+                </div>
+
+                <div className="space-y-3">
+                    {/* ── Manual ── */}
+                    <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                            <div className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                                <Check size={9} className="text-emerald-400" />
+                            </div>
+                            <p className="text-sm font-bold text-white">Manual</p>
+                            <span className="ml-auto text-[9px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/15 border border-emerald-500/25 rounded-full px-2 py-0.5">Disponible</span>
+                        </div>
+                        <ol className="space-y-2 mb-4">
+                            {MANUAL_STEPS.map(({ n, text }) => (
+                                <li key={n} className="flex gap-2.5 items-start">
+                                    <span className="w-4 h-4 rounded-full bg-white/8 flex items-center justify-center text-[8px] font-black text-neutral-400 shrink-0 mt-0.5">{n}</span>
+                                    <span className="text-[11px] text-neutral-400 leading-relaxed">{text}</span>
+                                </li>
+                            ))}
+                        </ol>
+                        {manualError && <p className="text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2 mb-3">{manualError}</p>}
+                        {manualDone && (
+                            <div className="flex items-center gap-2 text-[11px] text-emerald-400 mb-3">
+                                <Check size={12} /> PDF descargado — continúa en Gelato Dashboard
                             </div>
                         )}
-
-                        {/* What you can do */}
-                        <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 space-y-3">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Opciones</p>
-
-                            <div className="space-y-2">
-                                <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-3">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <div className="w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
-                                            <Check size={8} className="text-emerald-400" />
-                                        </div>
-                                        <p className="text-[11px] font-bold text-white">Pedir copia física (para ti)</p>
-                                    </div>
-                                    <p className="text-[10px] text-neutral-500 pl-6">Sube el PDF y pide una copia Wire-O a tu dirección. API v3 funciona hoy.</p>
-                                </div>
-
-                                <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <div className="w-4 h-4 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center">
-                                            <ExternalLink size={8} className="text-amber-400" />
-                                        </div>
-                                        <p className="text-[11px] font-bold text-white">Publicar en Etsy via Gelato</p>
-                                    </div>
-                                    <p className="text-[10px] text-neutral-500 pl-6">Sube el PDF → copia la URL → crea el producto en Gelato Dashboard.</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {error && <p className="text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2">{error}</p>}
-
                         <div className="flex gap-2">
-                            <button onClick={onClose} className="flex-1 py-2.5 rounded-2xl border border-white/10 text-neutral-400 text-sm hover:bg-white/5">Cancelar</button>
                             <button
-                                onClick={uploadAndPrepare}
-                                disabled={!isValidForWireO || pageCount < 20}
-                                className="flex-1 py-2.5 rounded-2xl bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/30 text-orange-300 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40"
+                                onClick={handleDownload}
+                                disabled={manualGenerating || !isValidForWireO}
+                                className="flex-1 py-2.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-40 transition-all"
                             >
-                                <Upload size={14} /> Generar + Subir PDF
+                                {manualGenerating ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                                {manualGenerating ? "Generando..." : "1. Descargar PDF"}
                             </button>
+                            <a
+                                href="https://dashboard.gelato.com/store-products/product-list"
+                                target="_blank" rel="noreferrer"
+                                className="flex-1 py-2.5 rounded-2xl bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 font-bold text-xs flex items-center justify-center gap-2 transition-all"
+                            >
+                                <ExternalLink size={12} /> 2. Abrir Gelato
+                            </a>
                         </div>
                     </div>
-                )}
 
-                {step === "uploading" && (
-                    <div className="space-y-3 py-4">
-                        <div className="flex items-center gap-2 mb-4">
-                            <Loader2 size={16} className="text-orange-400 animate-spin" />
-                            <p className="text-sm font-bold text-white">Procesando...</p>
-                        </div>
-                        {log.map((l, i) => (
-                            <p key={i} className={`text-xs font-mono ${l.startsWith("✓") ? "text-emerald-400" : "text-neutral-400"}`}>{l}</p>
-                        ))}
-                    </div>
-                )}
-
-                {step === "done" && (
-                    <div className="space-y-4">
-                        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-2">
-                            <div className="flex items-center gap-2">
-                                <Check size={14} className="text-emerald-400" />
-                                <p className="text-xs font-bold text-white">PDF subido correctamente</p>
+                    {/* ── Automática ── */}
+                    <div className="rounded-2xl border border-orange-500/20 bg-orange-500/[0.04] p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                            <div className="w-5 h-5 rounded-full bg-orange-500/20 border border-orange-500/40 flex items-center justify-center shrink-0">
+                                <Zap size={9} className="text-orange-400" />
                             </div>
-                            <p className="text-[10px] text-neutral-500 break-all">{cloudinaryUrl}</p>
-                            <button onClick={() => navigator.clipboard.writeText(cloudinaryUrl)} className="text-[10px] text-sky-400 hover:text-sky-300 transition-colors">
-                                Copiar URL
-                            </button>
+                            <p className="text-sm font-bold text-white">Automática</p>
+                            <span className="ml-auto text-[9px] font-black uppercase tracking-widest text-orange-400 bg-orange-500/15 border border-orange-500/25 rounded-full px-2 py-0.5">Requiere ngrok / prod</span>
                         </div>
 
-                        <div className="space-y-2">
-                            {/* Option A: order proof */}
-                            <div className="rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4">
-                                <p className="text-xs font-bold text-white mb-2">Opción A — Pedir copia de muestra</p>
-                                <div className="grid grid-cols-2 gap-2 mb-3">
-                                    {[
+                        {/* Hint about PUBLIC_API_URL */}
+                        <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3 mb-3 flex gap-2">
+                            <Info size={12} className="text-neutral-500 shrink-0 mt-0.5" />
+                            <p className="text-[10px] text-neutral-500 leading-relaxed">
+                                Necesita <span className="font-mono text-neutral-400">PUBLIC_API_URL</span> configurada en Ajustes.
+                                En local ejecuta <span className="font-mono text-neutral-300">ngrok http 3001</span> y pega la URL HTTPS.
+                            </p>
+                        </div>
+
+                        {/* Address form */}
+                        {(autoStep === "idle" || autoStep === "error") && (
+                            <div className="space-y-3 mb-3">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Dirección de envío</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {([
                                         ["firstName", "Nombre"],
                                         ["lastName", "Apellido"],
                                         ["email", "Email"],
                                         ["address", "Dirección"],
                                         ["city", "Ciudad"],
-                                        ["postCode", "CP"],
-                                    ].map(([field, label]) => (
+                                        ["postCode", "C.P."],
+                                    ] as [keyof typeof orderForm, string][]).map(([field, label]) => (
                                         <div key={field}>
                                             <p className="text-[9px] text-neutral-600 mb-1">{label}</p>
                                             <input
-                                                value={(orderForm as any)[field]}
+                                                value={orderForm[field] as string}
                                                 onChange={e => setOrderForm(p => ({ ...p, [field]: e.target.value }))}
                                                 className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-orange-500/40"
                                             />
                                         </div>
                                     ))}
                                 </div>
-                                <div className="flex items-center gap-2 mb-3">
+                                <div className="flex items-center gap-2">
                                     <p className="text-[9px] text-neutral-600 shrink-0">Cantidad</p>
                                     <input type="number" min={1} max={10} value={orderForm.quantity}
                                         onChange={e => setOrderForm(p => ({ ...p, quantity: Number(e.target.value) }))}
                                         className="w-16 bg-white/[0.04] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-orange-500/40" />
-                                    <p className="text-[9px] text-neutral-500">· {validPageCount} páginas · €{(9.30 * orderForm.quantity).toFixed(2)} aprox.</p>
+                                    <p className="text-[9px] text-neutral-500">·  ~€{(9.30 * orderForm.quantity).toFixed(2)}</p>
                                 </div>
-                                {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
-                                <button
-                                    onClick={placeOrder}
-                                    disabled={ordering || !orderForm.firstName || !orderForm.email || !orderForm.address}
-                                    className="w-full py-2 rounded-xl bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/30 text-orange-300 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-40"
-                                >
-                                    {ordering ? <Loader2 size={12} className="animate-spin" /> : <Package size={12} />}
-                                    Crear pedido borrador en Gelato
-                                </button>
                             </div>
+                        )}
 
-                            {/* Option B: manual Gelato dashboard */}
-                            <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
-                                <p className="text-xs font-bold text-white mb-2">Opción B — Publicar en Etsy via Gelato Dashboard</p>
-                                <ol className="text-[10px] text-neutral-500 space-y-1 list-decimal list-inside mb-3">
-                                    <li>Copia la URL del PDF de arriba</li>
-                                    <li>Ve al Gelato Dashboard → New Product → Wire-O</li>
-                                    <li>Selecciona "Upload PDF" y pega la URL</li>
-                                    <li>Configura precio y publica → se sincroniza a Etsy</li>
-                                </ol>
+                        {/* Progress log */}
+                        {(autoStep === "generating" || autoStep === "uploading" || autoStep === "ordering") && (
+                            <div className="space-y-1.5 mb-3 py-2">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Loader2 size={13} className="text-orange-400 animate-spin shrink-0" />
+                                    <p className="text-xs font-bold text-white">
+                                        {autoStep === "generating" ? "Generando PDF..." : autoStep === "uploading" ? "Subiendo..." : "Creando pedido..."}
+                                    </p>
+                                </div>
+                                {autoLog.map((l, i) => (
+                                    <p key={i} className={`text-[10px] font-mono pl-5 ${l.startsWith("✓") ? "text-emerald-400" : "text-neutral-500"}`}>{l}</p>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Done state */}
+                        {autoStep === "done" && (
+                            <div className="space-y-2 mb-3">
+                                {autoLog.map((l, i) => (
+                                    <p key={i} className={`text-[10px] font-mono ${l.startsWith("✓") ? "text-emerald-400" : "text-neutral-500"}`}>{l}</p>
+                                ))}
+                                {orderId && <p className="text-[10px] text-neutral-400">ID pedido: <span className="font-mono text-white">{orderId}</span></p>}
                                 <a
-                                    href="https://dashboard.gelato.com/store-products/product-list"
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 text-xs font-bold flex items-center justify-center gap-2 transition-all"
+                                    href="https://dashboard.gelato.com/orders"
+                                    target="_blank" rel="noreferrer"
+                                    className="flex items-center gap-2 text-[10px] text-orange-400 hover:text-orange-300"
                                 >
-                                    <ExternalLink size={12} /> Abrir Gelato Dashboard
+                                    <ExternalLink size={10} /> Confirmar pedido en Gelato Dashboard
                                 </a>
                             </div>
-                        </div>
-                    </div>
-                )}
+                        )}
 
-                {step === "order" && (
-                    <div className="flex flex-col items-center gap-3 py-6">
-                        <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-                            <Check size={28} className="text-emerald-400" />
-                        </div>
-                        <p className="font-bold text-white">¡Pedido creado!</p>
-                        <p className="text-xs text-neutral-400">ID: <span className="font-mono text-white">{orderId}</span></p>
-                        <p className="text-[11px] text-neutral-500 text-center">El pedido está en estado borrador en Gelato. Confírmalo desde el dashboard para que entre en producción.</p>
-                        <a
-                            href="https://dashboard.gelato.com/orders"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500/15 border border-orange-500/30 text-orange-300 text-xs font-bold"
-                        >
-                            <ExternalLink size={12} /> Ver pedidos en Gelato
-                        </a>
-                        <button onClick={onClose} className="text-xs text-neutral-500 hover:text-neutral-300">Cerrar</button>
+                        {autoError && <p className="text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2 mb-3">{autoError}</p>}
+
+                        {autoStep !== "done" && (
+                            <button
+                                onClick={handleAutoUpload}
+                                disabled={!isValidForWireO || ["generating", "uploading", "ordering"].includes(autoStep) || !orderForm.firstName || !orderForm.email || !orderForm.address}
+                                className="w-full py-2.5 rounded-2xl bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/30 text-orange-300 font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-40 transition-all"
+                            >
+                                {["generating", "uploading", "ordering"].includes(autoStep)
+                                    ? <Loader2 size={12} className="animate-spin" />
+                                    : <Zap size={12} />}
+                                Generar, subir y pedir en Gelato
+                            </button>
+                        )}
                     </div>
-                )}
+                </div>
             </div>
         </div>
     );
@@ -2093,7 +2120,7 @@ export function KdpFactoryApp() {
         setBookEditorOpen(true);
     };
 
-    const buildBookPdf = async (onBytes?: (bytes: Uint8Array) => void) => {
+    const buildBookPdf = async (onBytes?: (bytes: Uint8Array) => void, compressImages = false) => {
         if (bookPages.length === 0) return null;
         setIsBuildingPdf(true);
         try {
@@ -2102,7 +2129,53 @@ export function KdpFactoryApp() {
             const pageHeight = 841.89;
             const margin = 48;
 
+            // Compress an image via Canvas → JPEG. Fetches bytes first to avoid CORS issues.
+            const compressToJpeg = async (url: string, quality = 0.68): Promise<Uint8Array> => {
+                // Fetch bytes directly (works for any origin via fetch)
+                let rawBytes: Uint8Array;
+                try {
+                    const res = await fetch(url);
+                    rawBytes = new Uint8Array(await res.arrayBuffer());
+                } catch {
+                    const objectUrl = await ensureObjectUrl(url);
+                    const res = await fetch(objectUrl);
+                    rawBytes = new Uint8Array(await res.arrayBuffer());
+                }
+                // Create a local blob URL — canvas loads this without CORS restrictions
+                const blobUrl = URL.createObjectURL(new Blob([rawBytes]));
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        URL.revokeObjectURL(blobUrl);
+                        const MAX = 1400;
+                        let { naturalWidth: w, naturalHeight: h } = img;
+                        if (w > MAX || h > MAX) {
+                            const r = Math.min(MAX / w, MAX / h);
+                            w = Math.round(w * r); h = Math.round(h * r);
+                        }
+                        const canvas = document.createElement("canvas");
+                        canvas.width = w; canvas.height = h;
+                        const ctx = canvas.getContext("2d")!;
+                        ctx.fillStyle = "#fff";
+                        ctx.fillRect(0, 0, w, h);
+                        ctx.drawImage(img, 0, 0, w, h);
+                        canvas.toBlob(blob => {
+                            if (!blob) { reject(new Error("Canvas blob failed")); return; }
+                            blob.arrayBuffer().then(buf => resolve(new Uint8Array(buf)));
+                        }, "image/jpeg", quality);
+                    };
+                    img.onerror = () => { URL.revokeObjectURL(blobUrl); reject(new Error("img load failed")); };
+                    img.src = blobUrl;
+                });
+            };
+
             const embedImage = async (url: string) => {
+                if (compressImages) {
+                    try {
+                        const jpegBytes = await compressToJpeg(url);
+                        return await pdf.embedJpg(jpegBytes);
+                    } catch { /* fall through to original method */ }
+                }
                 let bytes: Uint8Array;
                 try {
                     const res = await fetch(url);
@@ -5524,6 +5597,7 @@ export function KdpFactoryApp() {
                 <GelatoUploadModal
                     bookPages={bookPages}
                     bookFileName={bookFileName}
+                    apiUrl={API_BASE_URL}
                     buildPdf={async () => {
                         let result: Uint8Array | null = null;
                         await buildBookPdf(bytes => { result = bytes; });

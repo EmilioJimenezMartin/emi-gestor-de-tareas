@@ -109,7 +109,7 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
         }
     });
 
-    // POST /cloudinary/upload-pdf — upload a PDF file (base64 string) as raw resource
+    // POST /cloudinary/upload-pdf — upload a PDF file (base64 string) via upload_stream
     app.post("/cloudinary/upload-pdf", async (request: any, reply) => {
         try {
             const config = await getCloudinaryConfig();
@@ -121,18 +121,26 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
             }
 
             const cld = await initCloudinary(config);
-            const dataUri = base64.startsWith("data:") ? base64 : `data:application/pdf;base64,${base64}`;
             const publicId = (fileName ?? `book-${Date.now()}`).replace(/\.pdf$/i, "");
-            const result = await cld.uploader.upload(dataUri, {
-                folder: "kdp-books",
-                resource_type: "raw",
-                public_id: publicId,
+
+            // Use upload_stream to avoid data URI size limits in the SDK
+            const buffer = Buffer.from(base64.replace(/^data:[^;]+;base64,/, ""), "base64");
+
+            const result = await new Promise<any>((resolve, reject) => {
+                const stream = cld.uploader.upload_stream(
+                    { folder: "kdp-books", resource_type: "raw", public_id: publicId },
+                    (error: any, result: any) => {
+                        if (error) reject(error);
+                        else resolve(result);
+                    }
+                );
+                stream.end(buffer);
             });
 
             return reply.status(201).send({ url: result.secure_url, publicId: result.public_id });
         } catch (error: any) {
             app.log.error(error);
-            return reply.status(500).send({ error: "Error subiendo PDF", message: error.message });
+            return reply.status(500).send({ error: error.message ?? "Error subiendo PDF" });
         }
     });
 

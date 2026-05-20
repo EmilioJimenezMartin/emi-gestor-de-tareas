@@ -22,11 +22,12 @@ import { registerZipRoutes } from "./routes/zip.js";
 import { registerRadarRoutes } from "./routes/radar.js";
 import { registerGelatoRoutes } from "./routes/gelato.js";
 import { registerEtsyRoutes } from "./routes/etsy.js";
+import { registerUploadsRoutes } from "./routes/uploads.js";
 import { Settings } from "./models/settings.js";
 
 const env = loadEnv(process.env);
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: true, bodyLimit: 52_428_800 }); // 50 MB para PDFs con imágenes
 
 await app.register(cors, {
   origin: env.CORS_ORIGIN,
@@ -53,6 +54,7 @@ await registerZipRoutes(app);
 await registerRadarRoutes(app, deps);
 await registerGelatoRoutes(app);
 await registerEtsyRoutes(app);
+await registerUploadsRoutes(app);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {
@@ -165,6 +167,11 @@ const seedSettings = async () => {
     await Settings.findOneAndUpdate(
       { key: "ETSY_REFRESH_TOKEN" },
       { $setOnInsert: { key: "ETSY_REFRESH_TOKEN", value: "", is_secret: true } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "PUBLIC_API_URL" },
+      { $setOnInsert: { key: "PUBLIC_API_URL", value: "", is_secret: false } },
       { upsert: true, new: true }
     );
     app.log.info("System config keys seeded into DB (setOnInsert).");

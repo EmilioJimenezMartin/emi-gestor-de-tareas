@@ -7,10 +7,11 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently -n web,api -c blue,green \"npm --workspace apps/web run dev\" \"npm --workspace apps/api run dev\"",
+    "dev": "concurrently -n web,api,ngrok -c blue,green,yellow \"npm --workspace apps/web run dev\" \"npm --workspace apps/api run dev\" \"./ngrok-start.sh\"",
     "build": "npm --workspace apps/api run build && npm --workspace apps/web run build",
     "lint": "npm --workspace apps/web run lint",
-    "start:api": "npm --workspace apps/api run start"
+    "start:api": "npm --workspace apps/api run start",
+    "ngrok": "./ngrok-start.sh"
   },
   "keywords": [],
   "author": "",

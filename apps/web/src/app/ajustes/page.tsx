@@ -47,6 +47,7 @@ export default function AjustesPage() {
     const [gelatoApiKey, setGelatoApiKey] = useState("");
     const [gelatoStoreId, setGelatoStoreId] = useState("");
     const [showGelatoKey, setShowGelatoKey] = useState(false);
+    const [publicApiUrl, setPublicApiUrl] = useState("");
 
     // Etsy
     const [etsyApiKey, setEtsyApiKey] = useState("");
@@ -78,6 +79,7 @@ export default function AjustesPage() {
                 if (map.has("CLOUDINARY_API_SECRET")) setCloudinaryApiSecret(map.get("CLOUDINARY_API_SECRET"));
                 if (map.has("GELATO_API_KEY")) setGelatoApiKey(map.get("GELATO_API_KEY"));
                 if (map.has("GELATO_STORE_ID")) setGelatoStoreId(map.get("GELATO_STORE_ID"));
+                if (map.has("PUBLIC_API_URL")) setPublicApiUrl(map.get("PUBLIC_API_URL"));
                 if (map.has("ETSY_API_KEY")) setEtsyApiKey(map.get("ETSY_API_KEY"));
                 if (map.has("ETSY_API_SECRET")) setEtsyApiSecret(map.get("ETSY_API_SECRET"));
                 if (map.has("ETSY_SHOP_ID")) setEtsyShopId(map.get("ETSY_SHOP_ID"));
@@ -114,6 +116,7 @@ export default function AjustesPage() {
                 { key: "CLOUDINARY_API_SECRET", value: cloudinaryApiSecret },
                 { key: "GELATO_API_KEY", value: gelatoApiKey },
                 { key: "GELATO_STORE_ID", value: gelatoStoreId },
+                { key: "PUBLIC_API_URL", value: publicApiUrl },
                 { key: "ETSY_API_KEY", value: etsyApiKey },
                 { key: "ETSY_API_SECRET", value: etsyApiSecret },
                 { key: "ETSY_SHOP_ID", value: etsyShopId },
@@ -565,6 +568,62 @@ export default function AjustesPage() {
                                     />
                                 </div>
                             </div>
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* Servidor / Túnel */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Servidor & Túnel</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-sky-500/10 text-sky-400 border-sky-500/20">INFRA</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/20">
+                                    <Globe size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">URL Pública del Servidor</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">ngrok · Producción · Gelato automático</p>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-sky-500/20 bg-sky-500/5 p-4 space-y-2">
+                                <p className="text-xs text-sky-300 font-medium">¿Para qué sirve?</p>
+                                <p className="text-[11px] text-neutral-400 leading-relaxed">
+                                    Gelato necesita descargar el PDF desde una URL pública para crear pedidos automáticamente.
+                                    En local usa <span className="font-mono text-sky-400">ngrok</span>; en producción pon la URL de tu servidor.
+                                </p>
+                                <div className="rounded-xl bg-black/40 border border-white/8 px-3 py-2 mt-1">
+                                    <p className="text-[10px] font-mono text-neutral-500">
+                                        <span className="text-neutral-300">npm run ngrok</span>
+                                        <span className="text-neutral-600 ml-3"># arranca el túnel y actualiza este campo automáticamente</span>
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">PUBLIC_API_URL</label>
+                                <input
+                                    type="text"
+                                    value={publicApiUrl}
+                                    onChange={(e) => setPublicApiUrl(e.target.value)}
+                                    className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-mono text-white outline-none focus:border-sky-500/40 transition-all"
+                                    placeholder="https://xxxx-xxxx-xxxx.ngrok-free.app"
+                                />
+                                <p className="text-[10px] text-neutral-600 italic">
+                                    Se actualiza automáticamente con <span className="font-mono text-neutral-500">npm run ngrok</span>.
+                                    En producción escribe aquí la URL base de tu API.
+                                </p>
+                            </div>
+
                             <div className="flex justify-end border-t border-white/5 pt-4">
                                 <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
                                     {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
