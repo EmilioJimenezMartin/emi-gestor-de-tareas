@@ -18,7 +18,10 @@ import {
     Loader2,
     Cloud,
     Eye,
-    EyeOff
+    EyeOff,
+    Package,
+    ShoppingBag,
+    Store,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { createApiSocket } from "@/lib/socket";
@@ -40,6 +43,17 @@ export default function AjustesPage() {
     const [showCloudinaryKey, setShowCloudinaryKey] = useState(false);
     const [showCloudinarySecret, setShowCloudinarySecret] = useState(false);
 
+    // Gelato
+    const [gelatoApiKey, setGelatoApiKey] = useState("");
+    const [gelatoStoreId, setGelatoStoreId] = useState("");
+    const [showGelatoKey, setShowGelatoKey] = useState(false);
+
+    // Etsy
+    const [etsyApiKey, setEtsyApiKey] = useState("");
+    const [etsyApiSecret, setEtsyApiSecret] = useState("");
+    const [etsyShopId, setEtsyShopId] = useState("");
+    const [etsyRedirectUri, setEtsyRedirectUri] = useState("");
+    const [showEtsySecret, setShowEtsySecret] = useState(false);
 
     const apiUrl = useMemo(() => (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, ""), []);
 
@@ -62,6 +76,12 @@ export default function AjustesPage() {
                 if (map.has("CLOUDINARY_CLOUD_NAME")) setCloudinaryCloudName(map.get("CLOUDINARY_CLOUD_NAME"));
                 if (map.has("CLOUDINARY_API_KEY")) setCloudinaryApiKey(map.get("CLOUDINARY_API_KEY"));
                 if (map.has("CLOUDINARY_API_SECRET")) setCloudinaryApiSecret(map.get("CLOUDINARY_API_SECRET"));
+                if (map.has("GELATO_API_KEY")) setGelatoApiKey(map.get("GELATO_API_KEY"));
+                if (map.has("GELATO_STORE_ID")) setGelatoStoreId(map.get("GELATO_STORE_ID"));
+                if (map.has("ETSY_API_KEY")) setEtsyApiKey(map.get("ETSY_API_KEY"));
+                if (map.has("ETSY_API_SECRET")) setEtsyApiSecret(map.get("ETSY_API_SECRET"));
+                if (map.has("ETSY_SHOP_ID")) setEtsyShopId(map.get("ETSY_SHOP_ID"));
+                if (map.has("ETSY_REDIRECT_URI")) setEtsyRedirectUri(map.get("ETSY_REDIRECT_URI"));
             } catch (err) {
                 console.error(err);
                 toast.error("Error de red conectando con la API");
@@ -92,6 +112,12 @@ export default function AjustesPage() {
                 { key: "CLOUDINARY_CLOUD_NAME", value: cloudinaryCloudName },
                 { key: "CLOUDINARY_API_KEY", value: cloudinaryApiKey },
                 { key: "CLOUDINARY_API_SECRET", value: cloudinaryApiSecret },
+                { key: "GELATO_API_KEY", value: gelatoApiKey },
+                { key: "GELATO_STORE_ID", value: gelatoStoreId },
+                { key: "ETSY_API_KEY", value: etsyApiKey },
+                { key: "ETSY_API_SECRET", value: etsyApiSecret },
+                { key: "ETSY_SHOP_ID", value: etsyShopId },
+                { key: "ETSY_REDIRECT_URI", value: etsyRedirectUri },
             ];
             const res = await fetch(`${apiUrl}/settings`, {
                 method: "PATCH",
@@ -408,6 +434,142 @@ export default function AjustesPage() {
                             <p className="text-[11px] text-neutral-600 leading-relaxed italic">
                                 Las credenciales se guardan cifradas en MongoDB. Se usan exclusivamente para subir y eliminar imágenes del IA Asset Studio.
                             </p>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* Gelato */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Gelato Print-on-Demand</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-orange-500/10 text-orange-400 border-orange-500/20">POD</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center text-white shadow-lg shadow-orange-500/20">
+                                    <Package size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Gelato API</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Impresión bajo demanda · Wire-O · España</p>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">GELATO_API_KEY</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showGelatoKey ? "text" : "password"}
+                                            value={gelatoApiKey}
+                                            onChange={(e) => setGelatoApiKey(e.target.value)}
+                                            className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-orange-500/40 transition-all"
+                                            placeholder="xxxxxxxx-xxxx-xxxx:xxxxxxxx-xxxx"
+                                        />
+                                        <button type="button" onClick={() => setShowGelatoKey(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                            {showGelatoKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">GELATO_STORE_ID (auto-detectado)</label>
+                                    <input
+                                        type="text"
+                                        value={gelatoStoreId}
+                                        onChange={(e) => setGelatoStoreId(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-mono text-white outline-none focus:border-orange-500/40 transition-all"
+                                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                    />
+                                    <p className="text-[10px] text-neutral-600 italic">Se auto-rellena al hacer ping desde la app Etsy+Gelato</p>
+                                </div>
+                            </div>
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* Etsy */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Etsy Marketplace</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-amber-500/10 text-amber-400 border-amber-500/20">MARKET</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-400 flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
+                                    <ShoppingBag size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Etsy API v3</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Listings · Ventas · OAuth PKCE</p>
+                                </div>
+                            </div>
+                            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
+                                <p className="text-xs text-amber-300 font-medium mb-1">Cómo obtener las credenciales:</p>
+                                <ol className="text-[11px] text-neutral-400 space-y-1 list-decimal list-inside">
+                                    <li>Ve a <span className="text-amber-400 font-mono">etsy.com/developers</span> → Create App</li>
+                                    <li>Copia la <span className="font-bold text-white">Keystring</span> (API Key) y el <span className="font-bold text-white">Shared Secret</span></li>
+                                    <li>En Callback URL pon: <span className="font-mono text-amber-400">http://localhost:3000/etsy/callback</span></li>
+                                    <li>Guarda aquí y luego conecta desde la app Etsy+Gelato</li>
+                                </ol>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">ETSY_API_KEY (Keystring)</label>
+                                    <input
+                                        type="text"
+                                        value={etsyApiKey}
+                                        onChange={(e) => setEtsyApiKey(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-mono text-white outline-none focus:border-amber-500/40 transition-all"
+                                        placeholder="xxxxxxxxxxxxxxxxxxxxxxxx"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">ETSY_API_SECRET (Shared Secret)</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showEtsySecret ? "text" : "password"}
+                                            value={etsyApiSecret}
+                                            onChange={(e) => setEtsyApiSecret(e.target.value)}
+                                            className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-amber-500/40 transition-all"
+                                            placeholder="••••••••••••••••••••••••"
+                                        />
+                                        <button type="button" onClick={() => setShowEtsySecret(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                            {showEtsySecret ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">ETSY_SHOP_ID (auto-detectado al conectar)</label>
+                                    <input
+                                        type="text"
+                                        value={etsyShopId}
+                                        onChange={(e) => setEtsyShopId(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-mono text-white outline-none focus:border-amber-500/40 transition-all"
+                                        placeholder="66013248"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">ETSY_REDIRECT_URI</label>
+                                    <input
+                                        type="text"
+                                        value={etsyRedirectUri}
+                                        onChange={(e) => setEtsyRedirectUri(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-mono text-white outline-none focus:border-amber-500/40 transition-all"
+                                        placeholder="http://localhost:3000/etsy/callback"
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
                         </div>
                     </Card>
                 </section>

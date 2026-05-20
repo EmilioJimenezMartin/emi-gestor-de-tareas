@@ -20,6 +20,8 @@ import { registerSavedPromptsRoutes } from "./routes/savedPrompts.js";
 import { registerNicheRoutes } from "./routes/niches.js";
 import { registerZipRoutes } from "./routes/zip.js";
 import { registerRadarRoutes } from "./routes/radar.js";
+import { registerGelatoRoutes } from "./routes/gelato.js";
+import { registerEtsyRoutes } from "./routes/etsy.js";
 import { Settings } from "./models/settings.js";
 
 const env = loadEnv(process.env);
@@ -49,6 +51,8 @@ await registerSavedPromptsRoutes(app);
 await registerNicheRoutes(app);
 await registerZipRoutes(app);
 await registerRadarRoutes(app, deps);
+await registerGelatoRoutes(app);
+await registerEtsyRoutes(app);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {
@@ -126,6 +130,41 @@ const seedSettings = async () => {
     await Settings.findOneAndUpdate(
       { key: "IDEOGRAM_API_KEY" },
       { $setOnInsert: { key: "IDEOGRAM_API_KEY", value: process.env.IDEOGRAM_API_KEY || "", is_secret: true } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "GELATO_API_KEY" },
+      { $setOnInsert: { key: "GELATO_API_KEY", value: process.env.GELATO_API_KEY || "", is_secret: true } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "GELATO_STORE_ID" },
+      { $setOnInsert: { key: "GELATO_STORE_ID", value: process.env.GELATO_STORE_ID || "", is_secret: false } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "ETSY_API_KEY" },
+      { $setOnInsert: { key: "ETSY_API_KEY", value: process.env.ETSY_API_KEY || "", is_secret: true } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "ETSY_API_SECRET" },
+      { $setOnInsert: { key: "ETSY_API_SECRET", value: process.env.ETSY_API_SECRET || "", is_secret: true } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "ETSY_SHOP_ID" },
+      { $setOnInsert: { key: "ETSY_SHOP_ID", value: process.env.ETSY_SHOP_ID || "", is_secret: false } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "ETSY_ACCESS_TOKEN" },
+      { $setOnInsert: { key: "ETSY_ACCESS_TOKEN", value: "", is_secret: true } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "ETSY_REFRESH_TOKEN" },
+      { $setOnInsert: { key: "ETSY_REFRESH_TOKEN", value: "", is_secret: true } },
       { upsert: true, new: true }
     );
     app.log.info("System config keys seeded into DB (setOnInsert).");

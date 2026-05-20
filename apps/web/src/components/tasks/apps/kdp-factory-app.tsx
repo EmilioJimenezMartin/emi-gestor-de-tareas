@@ -1637,6 +1637,7 @@ export function KdpFactoryApp() {
     const [bookEditorOpen, setBookEditorOpen] = useState(false);
     const [bookFileName, setBookFileName] = useState("libro-kdp");
     const [isBuildingPdf, setIsBuildingPdf] = useState(false);
+    const [includeOwnerPage, setIncludeOwnerPage] = useState(true);
     const [isSavingDraft, setIsSavingDraft] = useState(false);
     const [bookDrafts, setBookDrafts] = useState<{ id: string; fileName: string; pages: BookPage[]; savedAt: string }[]>([]);
     const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
@@ -1864,6 +1865,88 @@ export function KdpFactoryApp() {
                 });
             };
 
+            // ── Página de propietario / copyright (primera página) ──
+            if (includeOwnerPage) {
+                const ownerPage = pdf.addPage([pageWidth, pageHeight]);
+                const fontNormal = await pdf.embedFont(StandardFonts.Helvetica);
+                const centerX = pageWidth / 2;
+                const grayMid = rgb(0.5, 0.5, 0.5);
+                const grayLight = rgb(0.78, 0.78, 0.78);
+                const grayVeryLight = rgb(0.88, 0.88, 0.88);
+
+                // ── Sección "pertenece a" ──
+                const spanishText = "Este libro pertenece a:";
+                const englishText = "This book belongs to:";
+                const labelSize = 15;
+                ownerPage.drawText(spanishText, {
+                    x: centerX - fontNormal.widthOfTextAtSize(spanishText, labelSize) / 2,
+                    y: 560, size: labelSize, font: fontNormal, color: grayMid,
+                });
+                ownerPage.drawText(englishText, {
+                    x: centerX - fontNormal.widthOfTextAtSize(englishText, labelSize - 1) / 2,
+                    y: 536, size: labelSize - 1, font: fontNormal, color: grayLight,
+                });
+
+                // Línea punteada para el nombre
+                const lineY = 508;
+                const lineX1 = margin + 50;
+                const lineX2 = pageWidth - margin - 50;
+                for (let x = lineX1; x < lineX2; x += 8) {
+                    ownerPage.drawLine({
+                        start: { x, y: lineY },
+                        end: { x: Math.min(x + 4, lineX2), y: lineY },
+                        thickness: 0.8,
+                        color: grayLight,
+                    });
+                }
+
+                // ── Sección de prueba de colores ──
+                const squareSize = 30;
+                const squareCount = 6;
+                const squareGap = 9;
+                const totalW = squareCount * squareSize + (squareCount - 1) * squareGap;
+                const squareStartX = centerX - totalW / 2;
+                const squareY = 108;
+
+                const colorTestLabel = "Prueba tus colores aquí  ·  Test your colors here";
+                const colorLabelSize = 7.5;
+                ownerPage.drawText(colorTestLabel, {
+                    x: centerX - fontNormal.widthOfTextAtSize(colorTestLabel, colorLabelSize) / 2,
+                    y: squareY + squareSize + 10, size: colorLabelSize, font: fontNormal, color: grayMid,
+                });
+
+                // Recuadro exterior del grupo de cuadraditos
+                ownerPage.drawRectangle({
+                    x: squareStartX - 6,
+                    y: squareY - 6,
+                    width: totalW + 12,
+                    height: squareSize + 12,
+                    borderColor: grayVeryLight,
+                    borderWidth: 0.5,
+                    color: rgb(1, 1, 1),
+                });
+
+                for (let i = 0; i < squareCount; i++) {
+                    ownerPage.drawRectangle({
+                        x: squareStartX + i * (squareSize + squareGap),
+                        y: squareY,
+                        width: squareSize,
+                        height: squareSize,
+                        borderColor: grayLight,
+                        borderWidth: 0.6,
+                        color: rgb(1, 1, 1),
+                    });
+                }
+
+                // ── Copyright ──
+                const copyrightText = `© ${new Date().getFullYear()} Emilio Jiménez. Todos los derechos reservados.`;
+                const copyrightSize = 7;
+                ownerPage.drawText(copyrightText, {
+                    x: centerX - fontNormal.widthOfTextAtSize(copyrightText, copyrightSize) / 2,
+                    y: margin - 10, size: copyrightSize, font: fontNormal, color: grayVeryLight,
+                });
+            }
+
             for (const bookPage of bookPages) {
                 const pdfPage = pdf.addPage([pageWidth, pageHeight]);
                 if (bookPage.image) {
@@ -1965,7 +2048,7 @@ export function KdpFactoryApp() {
             void fetchCloudinaryImages();
             void fetchSavedPrompts();
         }
-        if (activeTab === "studio" && niches.length === 0) {
+        if ((activeTab === "studio" || activeTab === "catalog") && niches.length === 0) {
             void fetchNiches();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5118,6 +5201,14 @@ export function KdpFactoryApp() {
                                     {isSavingDraft ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                                     <span className="hidden sm:inline">Guardar</span>
                                 </button>
+                                {/* Owner page toggle */}
+                                <button
+                                    onClick={() => setIncludeOwnerPage(v => !v)}
+                                    title={includeOwnerPage ? "Primera página: propietario + copyright (activa)" : "Primera página: desactivada"}
+                                    className={`w-9 h-9 rounded-xl border shrink-0 flex items-center justify-center transition-all text-[9px] ${includeOwnerPage ? "bg-amber-500/15 border-amber-500/30 text-amber-400" : "bg-white/5 border-white/10 text-neutral-600 hover:text-neutral-400"}`}
+                                >
+                                    <BookOpen size={14} />
+                                </button>
                                 {/* Generate PDF — always shows text on mobile */}
                                 <button onClick={() => void buildBookPdf()} disabled={isBuildingPdf || bookPages.length === 0}
                                     className="h-9 px-3 sm:px-4 rounded-xl bg-amber-500 text-black hover:bg-amber-400 shrink-0 flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-[10px] sm:text-[11px] font-black uppercase"
@@ -6175,7 +6266,7 @@ export function KdpFactoryApp() {
                             )}
 
                             {/* ── Añadir nicho entero de golpe ── */}
-                            {niches.length > 0 && iaCatalogs.some(c => c.status === "completed" && c.images.length > 0 && (c.nicheIds?.length ?? 0) > 0) && (
+                            {niches.length > 0 && iaCatalogs.some(c => c.images.length > 0 && (c.nicheIds?.length ?? 0) > 0) && (
                                 <div className="space-y-2.5">
                                     <div className="flex items-center gap-2">
                                         <div className="h-px flex-1 bg-white/8" />
@@ -6185,8 +6276,8 @@ export function KdpFactoryApp() {
                                         <div className="h-px flex-1 bg-white/8" />
                                     </div>
                                     <div className="grid grid-cols-2 gap-2">
-                                        {niches.filter(n => iaCatalogs.some(c => c.status === "completed" && c.images.length > 0 && (c.nicheIds ?? []).includes(n._id))).map(n => {
-                                            const nicheCats = iaCatalogs.filter(c => c.status === "completed" && c.images.length > 0 && (c.nicheIds ?? []).includes(n._id));
+                                        {niches.filter(n => iaCatalogs.some(c => c.images.length > 0 && (c.nicheIds ?? []).includes(n._id))).map(n => {
+                                            const nicheCats = iaCatalogs.filter(c => c.images.length > 0 && (c.nicheIds ?? []).includes(n._id));
                                             const nicheImgs = nicheCats.reduce((s, c) => s + c.images.length, 0);
                                             const allSel = nicheCats.every(c => kdpTemplateCatalogSel.has(c._id));
                                             const someSel = nicheCats.some(c => kdpTemplateCatalogSel.has(c._id));
@@ -6206,7 +6297,7 @@ export function KdpFactoryApp() {
                                                     </div>
                                                     <div className="flex-1 min-w-0">
                                                         <p className={`text-[11px] font-black truncate ${allSel ? "text-sky-300" : "text-neutral-300"}`}>{n.name}</p>
-                                                        <p className="text-[9px] text-neutral-600">{nicheCats.length} cat. · {nicheImgs} imgs</p>
+                                                        <p className="text-[9px] text-neutral-600">{nicheCats.length} cat. · {nicheImgs} imgs completadas</p>
                                                     </div>
                                                 </button>
                                             );
@@ -6216,10 +6307,10 @@ export function KdpFactoryApp() {
                             )}
 
                             {/* Completed catalogs */}
-                            {iaCatalogs.filter(c => c.status === "completed" && c.images.length > 0).length > 0 && (
+                            {iaCatalogs.filter(c => c.images.length > 0).length > 0 && (
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Catálogos completados</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Catálogos con imágenes</p>
                                         <div className="flex items-center gap-1.5 flex-wrap">
                                             {niches.length > 0 && (
                                                 <>
@@ -6237,7 +6328,7 @@ export function KdpFactoryApp() {
                                             )}
                                             <button
                                                 onClick={() => {
-                                                    const completed = iaCatalogs.filter(c => c.status === "completed" && c.images.length > 0 && (!kdpTemplateNicheFilter || (c.nicheIds ?? []).includes(kdpTemplateNicheFilter)));
+                                                    const completed = iaCatalogs.filter(c => c.images.length > 0 && (!kdpTemplateNicheFilter || (c.nicheIds ?? []).includes(kdpTemplateNicheFilter)));
                                                     const allSel = completed.every(c => kdpTemplateCatalogSel.has(c._id));
                                                     setKdpTemplateCatalogSel(allSel ? new Set() : new Set(completed.map(c => c._id)));
                                                 }}
@@ -6248,7 +6339,7 @@ export function KdpFactoryApp() {
                                         </div>
                                     </div>
                                     <div className="space-y-2">
-                                        {iaCatalogs.filter(c => c.status === "completed" && c.images.length > 0 && (!kdpTemplateNicheFilter || (c.nicheIds ?? []).includes(kdpTemplateNicheFilter))).map(catalog => {
+                                        {iaCatalogs.filter(c => c.images.length > 0 && (!kdpTemplateNicheFilter || (c.nicheIds ?? []).includes(kdpTemplateNicheFilter))).map(catalog => {
                                             const sel = kdpTemplateCatalogSel.has(catalog._id);
                                             return (
                                                 <button
@@ -6300,6 +6391,22 @@ export function KdpFactoryApp() {
                                 </div>
                                 <div className={`w-8 h-4 rounded-full transition-all relative ${kdpTemplateRandom ? "bg-sky-500" : "bg-white/10"}`}>
                                     <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${kdpTemplateRandom ? "left-4" : "left-0.5"}`} />
+                                </div>
+                            </button>
+                            {/* Owner page toggle */}
+                            <button
+                                onClick={() => setIncludeOwnerPage(v => !v)}
+                                className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border transition-all ${includeOwnerPage ? "border-amber-500/40 bg-amber-500/[0.07]" : "border-white/8 bg-white/[0.02] hover:border-white/12"}`}
+                            >
+                                <div className="flex items-center gap-2.5">
+                                    <BookOpen size={13} className={includeOwnerPage ? "text-amber-400" : "text-neutral-600"} />
+                                    <div className="text-left">
+                                        <p className={`text-[10px] font-black ${includeOwnerPage ? "text-amber-300" : "text-neutral-400"}`}>Primera página: propietario + colores</p>
+                                        <p className="text-[9px] text-neutral-600">«Este libro pertenece a» · cuadraditos de prueba · copyright © {new Date().getFullYear()}</p>
+                                    </div>
+                                </div>
+                                <div className={`w-8 h-4 rounded-full transition-all relative ${includeOwnerPage ? "bg-amber-500" : "bg-white/10"}`}>
+                                    <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${includeOwnerPage ? "left-4" : "left-0.5"}`} />
                                 </div>
                             </button>
                             {/* Summary */}
