@@ -109,6 +109,33 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
         }
     });
 
+    // POST /cloudinary/upload-pdf — upload a PDF file (base64 string) as raw resource
+    app.post("/cloudinary/upload-pdf", async (request: any, reply) => {
+        try {
+            const config = await getCloudinaryConfig();
+            if (!config) return reply.status(503).send({ error: "Cloudinary no configurado." });
+
+            const { base64, fileName } = request.body || {};
+            if (!base64 || typeof base64 !== "string") {
+                return reply.status(400).send({ error: "base64 es requerido" });
+            }
+
+            const cld = await initCloudinary(config);
+            const dataUri = base64.startsWith("data:") ? base64 : `data:application/pdf;base64,${base64}`;
+            const publicId = (fileName ?? `book-${Date.now()}`).replace(/\.pdf$/i, "");
+            const result = await cld.uploader.upload(dataUri, {
+                folder: "kdp-books",
+                resource_type: "raw",
+                public_id: publicId,
+            });
+
+            return reply.status(201).send({ url: result.secure_url, publicId: result.public_id });
+        } catch (error: any) {
+            app.log.error(error);
+            return reply.status(500).send({ error: "Error subiendo PDF", message: error.message });
+        }
+    });
+
     // POST /cloudinary/delete — delete by publicId (POST avoids URL encoding issues with slashes)
     app.post("/cloudinary/delete", async (request: any, reply) => {
         try {

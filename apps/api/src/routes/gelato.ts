@@ -246,6 +246,23 @@ export async function registerGelatoRoutes(app: FastifyInstance) {
         }
     });
 
+    // POST /gelato/orders/draft — create Wire-O draft order from PDF URL
+    app.post("/gelato/orders/draft", async (req: any, reply) => {
+        const { productUid, pageCount, fileUrl, quantity = 1, shippingAddress } = req.body || {};
+        if (!fileUrl) return reply.status(400).send({ error: "fileUrl es requerido" });
+        if (!shippingAddress?.firstName || !shippingAddress?.email) {
+            return reply.status(400).send({ error: "shippingAddress.firstName y email son requeridos" });
+        }
+        const uid = productUid ?? "wire-o-multi-page-brochures_pf_a4_pt_115-gsm-uncoated_cl_4-4_bt_wire-o-left_cpt_300-gsm-uncoated_ver";
+        const pages = Number(pageCount) || 28;
+        try {
+            const data = await gelato.createDraftOrder({ productUid: uid, pageCount: pages, fileUrl, quantity: Number(quantity), shippingAddress });
+            return reply.send(data);
+        } catch (err: any) {
+            return reply.status(500).send({ error: err.message });
+        }
+    });
+
     app.post("/gelato/orders/:orderId/cancel", async (req: any, reply) => {
         try {
             const data = await gelato.cancelOrder(req.params.orderId);

@@ -67,6 +67,10 @@ import {
     ExternalLink,
     Archive,
     FolderArchive,
+    Package,
+    Upload,
+    AlertTriangle,
+    Info,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -291,7 +295,7 @@ interface PageTextStyle {
 
 interface BookPage {
     id: string;
-    type: "image" | "text" | "both";
+    type: "image" | "text" | "both" | "owner";
     image?: { url: string; scale: number; label?: string; border?: { width: number; color: string } };
     text: PageTextStyle;
 }
@@ -344,6 +348,302 @@ function KdpSelect({ value, onChange, options, accent = "white" }: {
     );
 }
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
+// ── Gelato Upload Modal ───────────────────────────────────────────────────────
+function GelatoUploadModal({
+    bookPages,
+    bookFileName,
+    buildPdf,
+    onClose,
+}: {
+    bookPages: BookPage[];
+    bookFileName: string;
+    buildPdf: () => Promise<Uint8Array | null>;
+    onClose: () => void;
+}) {
+    const pageCount = bookPages.length;
+    // Valid Wire-O page counts are even numbers 20–300
+    const validPageCount = Math.max(20, pageCount % 2 === 0 ? pageCount : pageCount + 1);
+    const isValidForWireO = validPageCount >= 20 && validPageCount <= 300;
+    const WIRE_O_UID = "wire-o-multi-page-brochures_pf_a4_pt_115-gsm-uncoated_cl_4-4_bt_wire-o-left_cpt_300-gsm-uncoated_ver";
+
+    const [step, setStep] = useState<"info" | "uploading" | "done" | "order">("info");
+    const [cloudinaryUrl, setCloudinaryUrl] = useState("");
+    const [log, setLog] = useState<string[]>([]);
+    const [error, setError] = useState("");
+    const [orderForm, setOrderForm] = useState({ firstName: "", lastName: "", address: "", city: "", postCode: "", country: "ES", email: "", quantity: 1 });
+    const [ordering, setOrdering] = useState(false);
+    const [orderId, setOrderId] = useState("");
+
+    const addLog = (msg: string) => setLog(p => [...p, msg]);
+
+    const uploadAndPrepare = async () => {
+        setStep("uploading");
+        setLog([]);
+        setError("");
+        try {
+            addLog("Generando PDF...");
+            const bytes = await buildPdf();
+            if (!bytes) throw new Error("No se pudo generar el PDF");
+            addLog(`✓ PDF generado (${Math.round(bytes.length / 1024)} KB)`);
+
+            addLog("Subiendo a Cloudinary...");
+            const base64 = btoa(String.fromCharCode(...bytes));
+            const res = await fetch(`${API_URL}/cloudinary/upload-pdf`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ base64, fileName: bookFileName }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error al subir PDF");
+            const url = data.url;
+            setCloudinaryUrl(url);
+            addLog(`✓ PDF disponible en Cloudinary`);
+            setStep("done");
+        } catch (e: any) {
+            setError(e.message);
+            setStep("info");
+        }
+    };
+
+    const placeOrder = async () => {
+        if (!cloudinaryUrl) return;
+        setOrdering(true);
+        setError("");
+        try {
+            const res = await fetch(`${API_URL}/gelato/orders/draft`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    productUid: WIRE_O_UID,
+                    pageCount: validPageCount,
+                    fileUrl: cloudinaryUrl,
+                    quantity: orderForm.quantity,
+                    shippingAddress: {
+                        firstName: orderForm.firstName,
+                        lastName: orderForm.lastName,
+                        addressLine1: orderForm.address,
+                        city: orderForm.city,
+                        postCode: orderForm.postCode,
+                        country: orderForm.country,
+                        email: orderForm.email,
+                    },
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error al crear pedido");
+            setOrderId(data.id ?? "");
+            setStep("order");
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setOrdering(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative w-full max-w-lg rounded-3xl border border-white/15 bg-neutral-950/95 p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center gap-3 mb-5">
+                    <div className="w-10 h-10 rounded-2xl bg-orange-500/15 border border-orange-500/25 flex items-center justify-center">
+                        <Package size={17} className="text-orange-400" />
+                    </div>
+                    <div>
+                        <p className="font-bold text-white">Subir a Gelato</p>
+                        <p className="text-[11px] text-neutral-500">Impresión Wire-O bajo demanda</p>
+                    </div>
+                    <button onClick={onClose} className="ml-auto p-1.5 rounded-lg hover:bg-white/8"><X size={14} className="text-neutral-400" /></button>
+                </div>
+
+                {step === "info" && (
+                    <div className="space-y-4">
+                        {/* Specs */}
+                        <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 space-y-3">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Specs del libro</p>
+                            <div className="grid grid-cols-2 gap-2">
+                                {[
+                                    ["Páginas", `${pageCount} → ${validPageCount}${pageCount !== validPageCount ? " (ajustado)" : ""}`],
+                                    ["Formato", "A4 (210×297 mm)"],
+                                    ["Papel interior", "115 gsm uncoated"],
+                                    ["Portada", "300 gsm uncoated"],
+                                    ["Encuadernado", "Wire-O left"],
+                                    ["Color", "4+4 (full color)"],
+                                    ["Bleed", "4 mm"],
+                                    ["Zona segura", "12 mm (encuadernado)"],
+                                ].map(([k, v]) => (
+                                    <div key={k} className="rounded-xl bg-white/[0.03] px-3 py-2">
+                                        <p className="text-[9px] text-neutral-600 uppercase tracking-wider">{k}</p>
+                                        <p className="text-[11px] text-white font-medium">{v}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {!isValidForWireO && (
+                            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 flex gap-2">
+                                <AlertTriangle size={14} className="text-amber-400 shrink-0 mt-0.5" />
+                                <p className="text-[11px] text-amber-300">
+                                    Wire-O requiere entre 20 y 300 páginas (pares). Tu libro tiene {pageCount} páginas.
+                                    {pageCount < 20 && " Añade más páginas antes de subir."}
+                                </p>
+                            </div>
+                        )}
+
+                        {/* What you can do */}
+                        <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 space-y-3">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Opciones</p>
+
+                            <div className="space-y-2">
+                                <div className="rounded-xl border border-orange-500/20 bg-orange-500/5 p-3">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <div className="w-4 h-4 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
+                                            <Check size={8} className="text-emerald-400" />
+                                        </div>
+                                        <p className="text-[11px] font-bold text-white">Pedir copia física (para ti)</p>
+                                    </div>
+                                    <p className="text-[10px] text-neutral-500 pl-6">Sube el PDF y pide una copia Wire-O a tu dirección. API v3 funciona hoy.</p>
+                                </div>
+
+                                <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <div className="w-4 h-4 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center">
+                                            <ExternalLink size={8} className="text-amber-400" />
+                                        </div>
+                                        <p className="text-[11px] font-bold text-white">Publicar en Etsy via Gelato</p>
+                                    </div>
+                                    <p className="text-[10px] text-neutral-500 pl-6">Sube el PDF → copia la URL → crea el producto en Gelato Dashboard.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {error && <p className="text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2">{error}</p>}
+
+                        <div className="flex gap-2">
+                            <button onClick={onClose} className="flex-1 py-2.5 rounded-2xl border border-white/10 text-neutral-400 text-sm hover:bg-white/5">Cancelar</button>
+                            <button
+                                onClick={uploadAndPrepare}
+                                disabled={!isValidForWireO || pageCount < 20}
+                                className="flex-1 py-2.5 rounded-2xl bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/30 text-orange-300 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40"
+                            >
+                                <Upload size={14} /> Generar + Subir PDF
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {step === "uploading" && (
+                    <div className="space-y-3 py-4">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Loader2 size={16} className="text-orange-400 animate-spin" />
+                            <p className="text-sm font-bold text-white">Procesando...</p>
+                        </div>
+                        {log.map((l, i) => (
+                            <p key={i} className={`text-xs font-mono ${l.startsWith("✓") ? "text-emerald-400" : "text-neutral-400"}`}>{l}</p>
+                        ))}
+                    </div>
+                )}
+
+                {step === "done" && (
+                    <div className="space-y-4">
+                        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-2">
+                            <div className="flex items-center gap-2">
+                                <Check size={14} className="text-emerald-400" />
+                                <p className="text-xs font-bold text-white">PDF subido correctamente</p>
+                            </div>
+                            <p className="text-[10px] text-neutral-500 break-all">{cloudinaryUrl}</p>
+                            <button onClick={() => navigator.clipboard.writeText(cloudinaryUrl)} className="text-[10px] text-sky-400 hover:text-sky-300 transition-colors">
+                                Copiar URL
+                            </button>
+                        </div>
+
+                        <div className="space-y-2">
+                            {/* Option A: order proof */}
+                            <div className="rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4">
+                                <p className="text-xs font-bold text-white mb-2">Opción A — Pedir copia de muestra</p>
+                                <div className="grid grid-cols-2 gap-2 mb-3">
+                                    {[
+                                        ["firstName", "Nombre"],
+                                        ["lastName", "Apellido"],
+                                        ["email", "Email"],
+                                        ["address", "Dirección"],
+                                        ["city", "Ciudad"],
+                                        ["postCode", "CP"],
+                                    ].map(([field, label]) => (
+                                        <div key={field}>
+                                            <p className="text-[9px] text-neutral-600 mb-1">{label}</p>
+                                            <input
+                                                value={(orderForm as any)[field]}
+                                                onChange={e => setOrderForm(p => ({ ...p, [field]: e.target.value }))}
+                                                className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-orange-500/40"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="flex items-center gap-2 mb-3">
+                                    <p className="text-[9px] text-neutral-600 shrink-0">Cantidad</p>
+                                    <input type="number" min={1} max={10} value={orderForm.quantity}
+                                        onChange={e => setOrderForm(p => ({ ...p, quantity: Number(e.target.value) }))}
+                                        className="w-16 bg-white/[0.04] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-orange-500/40" />
+                                    <p className="text-[9px] text-neutral-500">· {validPageCount} páginas · €{(9.30 * orderForm.quantity).toFixed(2)} aprox.</p>
+                                </div>
+                                {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
+                                <button
+                                    onClick={placeOrder}
+                                    disabled={ordering || !orderForm.firstName || !orderForm.email || !orderForm.address}
+                                    className="w-full py-2 rounded-xl bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/30 text-orange-300 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-40"
+                                >
+                                    {ordering ? <Loader2 size={12} className="animate-spin" /> : <Package size={12} />}
+                                    Crear pedido borrador en Gelato
+                                </button>
+                            </div>
+
+                            {/* Option B: manual Gelato dashboard */}
+                            <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+                                <p className="text-xs font-bold text-white mb-2">Opción B — Publicar en Etsy via Gelato Dashboard</p>
+                                <ol className="text-[10px] text-neutral-500 space-y-1 list-decimal list-inside mb-3">
+                                    <li>Copia la URL del PDF de arriba</li>
+                                    <li>Ve al Gelato Dashboard → New Product → Wire-O</li>
+                                    <li>Selecciona "Upload PDF" y pega la URL</li>
+                                    <li>Configura precio y publica → se sincroniza a Etsy</li>
+                                </ol>
+                                <a
+                                    href="https://dashboard.gelato.com/store-products/product-list"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 text-xs font-bold flex items-center justify-center gap-2 transition-all"
+                                >
+                                    <ExternalLink size={12} /> Abrir Gelato Dashboard
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {step === "order" && (
+                    <div className="flex flex-col items-center gap-3 py-6">
+                        <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+                            <Check size={28} className="text-emerald-400" />
+                        </div>
+                        <p className="font-bold text-white">¡Pedido creado!</p>
+                        <p className="text-xs text-neutral-400">ID: <span className="font-mono text-white">{orderId}</span></p>
+                        <p className="text-[11px] text-neutral-500 text-center">El pedido está en estado borrador en Gelato. Confírmalo desde el dashboard para que entre en producción.</p>
+                        <a
+                            href="https://dashboard.gelato.com/orders"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500/15 border border-orange-500/30 text-orange-300 text-xs font-bold"
+                        >
+                            <ExternalLink size={12} /> Ver pedidos en Gelato
+                        </a>
+                        <button onClick={onClose} className="text-xs text-neutral-500 hover:text-neutral-300">Cerrar</button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
 
 export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
@@ -1234,6 +1534,11 @@ export function KdpFactoryApp() {
 
         const pages: BookPage[] = [];
 
+        // Owner/copyright first page (if enabled)
+        if (includeOwnerPage) {
+            pages.push({ id: genPageId(), type: "owner", text: defaultTextStyle() });
+        }
+
         // Title page + blank back
         const titleStyle = defaultTextStyle();
         titleStyle.content = titleText;
@@ -1253,7 +1558,8 @@ export function KdpFactoryApp() {
         setBookPages(pages);
         setSelectedPageId(pages[0].id);
         setBookEditorOpen(true);
-        toast.success(`Plantilla KDP · ${pages.length} páginas (${entries.length} imágenes${randomOrder ? " · orden aleatorio" : ""})`);
+        const ownerNote = includeOwnerPage ? " + pág. propietario" : "";
+        toast.success(`Plantilla KDP · ${pages.length} páginas (${entries.length} imágenes${randomOrder ? " · orden aleatorio" : ""}${ownerNote})`);
     };
 
     const deletePage = (id: string) => {
@@ -1638,6 +1944,7 @@ export function KdpFactoryApp() {
     const [bookFileName, setBookFileName] = useState("libro-kdp");
     const [isBuildingPdf, setIsBuildingPdf] = useState(false);
     const [includeOwnerPage, setIncludeOwnerPage] = useState(true);
+    const [showGelatoUpload, setShowGelatoUpload] = useState(false);
     const [isSavingDraft, setIsSavingDraft] = useState(false);
     const [bookDrafts, setBookDrafts] = useState<{ id: string; fileName: string; pages: BookPage[]; savedAt: string }[]>([]);
     const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
@@ -1786,8 +2093,8 @@ export function KdpFactoryApp() {
         setBookEditorOpen(true);
     };
 
-    const buildBookPdf = async () => {
-        if (bookPages.length === 0) return;
+    const buildBookPdf = async (onBytes?: (bytes: Uint8Array) => void) => {
+        if (bookPages.length === 0) return null;
         setIsBuildingPdf(true);
         try {
             const pdf = await PDFDocument.create();
@@ -1865,8 +2172,8 @@ export function KdpFactoryApp() {
                 });
             };
 
-            // ── Página de propietario / copyright (primera página) ──
-            if (includeOwnerPage) {
+            // ── Página de propietario / copyright (primera página, si no viene en bookPages) ──
+            if (includeOwnerPage && !bookPages.some(p => p.type === "owner")) {
                 const ownerPage = pdf.addPage([pageWidth, pageHeight]);
                 const fontNormal = await pdf.embedFont(StandardFonts.Helvetica);
                 const centerX = pageWidth / 2;
@@ -1948,6 +2255,39 @@ export function KdpFactoryApp() {
             }
 
             for (const bookPage of bookPages) {
+                // ── Owner page type: render same content as standalone owner page ──
+                if (bookPage.type === "owner") {
+                    const ownerPage = pdf.addPage([pageWidth, pageHeight]);
+                    const fontOwner = await pdf.embedFont(StandardFonts.Helvetica);
+                    const centerX = pageWidth / 2;
+                    const grayMid = rgb(0.5, 0.5, 0.5);
+                    const grayLight = rgb(0.78, 0.78, 0.78);
+                    const grayVeryLight2 = rgb(0.88, 0.88, 0.88);
+                    const spanishText = "Este libro pertenece a:";
+                    const englishText = "This book belongs to:";
+                    const labelSize = 15;
+                    ownerPage.drawText(spanishText, { x: centerX - fontOwner.widthOfTextAtSize(spanishText, labelSize) / 2, y: 560, size: labelSize, font: fontOwner, color: grayMid });
+                    ownerPage.drawText(englishText, { x: centerX - fontOwner.widthOfTextAtSize(englishText, labelSize - 1) / 2, y: 536, size: labelSize - 1, font: fontOwner, color: grayLight });
+                    const lineY = 508; const lineX1 = margin + 50; const lineX2 = pageWidth - margin - 50;
+                    for (let x = lineX1; x < lineX2; x += 8) {
+                        ownerPage.drawLine({ start: { x, y: lineY }, end: { x: Math.min(x + 4, lineX2), y: lineY }, thickness: 0.8, color: grayLight });
+                    }
+                    const squareSize = 30; const squareCount = 6; const squareGap = 9;
+                    const totalW = squareCount * squareSize + (squareCount - 1) * squareGap;
+                    const squareStartX = centerX - totalW / 2; const squareY = 108;
+                    const colorTestLabel = "Prueba tus colores aquí  ·  Test your colors here";
+                    const colorLabelSize = 7.5;
+                    ownerPage.drawText(colorTestLabel, { x: centerX - fontOwner.widthOfTextAtSize(colorTestLabel, colorLabelSize) / 2, y: squareY + squareSize + 10, size: colorLabelSize, font: fontOwner, color: grayMid });
+                    ownerPage.drawRectangle({ x: squareStartX - 6, y: squareY - 6, width: totalW + 12, height: squareSize + 12, borderColor: grayVeryLight2, borderWidth: 0.5, color: rgb(1, 1, 1) });
+                    for (let i = 0; i < squareCount; i++) {
+                        ownerPage.drawRectangle({ x: squareStartX + i * (squareSize + squareGap), y: squareY, width: squareSize, height: squareSize, borderColor: grayLight, borderWidth: 0.6, color: rgb(1, 1, 1) });
+                    }
+                    const copyrightText2 = `© ${new Date().getFullYear()} Emilio Jiménez. Todos los derechos reservados.`;
+                    const copyrightSize2 = 7;
+                    ownerPage.drawText(copyrightText2, { x: centerX - fontOwner.widthOfTextAtSize(copyrightText2, copyrightSize2) / 2, y: margin - 10, size: copyrightSize2, font: fontOwner, color: grayVeryLight2 });
+                    continue;
+                }
+
                 const pdfPage = pdf.addPage([pageWidth, pageHeight]);
                 if (bookPage.image) {
                     const embedded = await embedImage(bookPage.image.url);
@@ -1976,14 +2316,20 @@ export function KdpFactoryApp() {
             }
 
             const pdfBytes = await pdf.save();
+            if (onBytes) {
+                onBytes(pdfBytes as Uint8Array);
+                return pdfBytes as Uint8Array;
+            }
             const blob = new Blob([pdfBytes as Uint8Array<ArrayBuffer>], { type: "application/pdf" });
             const url = URL.createObjectURL(blob);
             downloadFile(url, `${(bookFileName.trim() || "libro-kdp")}.pdf`);
             setTimeout(() => URL.revokeObjectURL(url), 30_000);
             toast.success("PDF generado");
+            return pdfBytes as Uint8Array;
         } catch (e) {
             console.error(e);
             toast.error("No se pudo generar el PDF");
+            return null;
         } finally {
             setIsBuildingPdf(false);
         }
@@ -5173,6 +5519,20 @@ export function KdpFactoryApp() {
                 );
             })()}
 
+            {/* Gelato Upload Modal */}
+            {showGelatoUpload && (
+                <GelatoUploadModal
+                    bookPages={bookPages}
+                    bookFileName={bookFileName}
+                    buildPdf={async () => {
+                        let result: Uint8Array | null = null;
+                        await buildBookPdf(bytes => { result = bytes; });
+                        return result;
+                    }}
+                    onClose={() => setShowGelatoUpload(false)}
+                />
+            )}
+
             {/* Book Editor Modal */}
             {bookEditorOpen && (
                 <div
@@ -5203,11 +5563,28 @@ export function KdpFactoryApp() {
                                 </button>
                                 {/* Owner page toggle */}
                                 <button
-                                    onClick={() => setIncludeOwnerPage(v => !v)}
+                                    onClick={() => {
+                                        const next = !includeOwnerPage;
+                                        setIncludeOwnerPage(next);
+                                        if (next) {
+                                            // Add owner page at position 0 if not already there
+                                            setBookPages(prev => prev[0]?.type === "owner" ? prev : [{ id: genPageId(), type: "owner", text: defaultTextStyle() }, ...prev]);
+                                        } else {
+                                            // Remove owner page(s) from front
+                                            setBookPages(prev => prev.filter(p => p.type !== "owner"));
+                                        }
+                                    }}
                                     title={includeOwnerPage ? "Primera página: propietario + copyright (activa)" : "Primera página: desactivada"}
                                     className={`w-9 h-9 rounded-xl border shrink-0 flex items-center justify-center transition-all text-[9px] ${includeOwnerPage ? "bg-amber-500/15 border-amber-500/30 text-amber-400" : "bg-white/5 border-white/10 text-neutral-600 hover:text-neutral-400"}`}
                                 >
                                     <BookOpen size={14} />
+                                </button>
+                                {/* Subir a Gelato */}
+                                <button onClick={() => setShowGelatoUpload(true)} disabled={bookPages.length === 0}
+                                    className="h-9 px-3 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 shrink-0 flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 text-[10px] font-black uppercase"
+                                    title="Subir a Gelato">
+                                    <Package size={13} />
+                                    <span className="hidden sm:inline">Gelato</span>
                                 </button>
                                 {/* Generate PDF — always shows text on mobile */}
                                 <button onClick={() => void buildBookPdf()} disabled={isBuildingPdf || bookPages.length === 0}
@@ -5253,29 +5630,37 @@ export function KdpFactoryApp() {
                                             {bookPages.map((page, idx) => (
                                                 <div key={page.id}
                                                     data-page-idx={idx}
-                                                    draggable
-                                                    onDragStart={() => handleBookDragStart(idx)}
-                                                    onDragOver={e => handleBookDragOver(e, idx)}
-                                                    onDrop={() => handleBookDrop(idx)}
+                                                    draggable={page.type !== "owner"}
+                                                    onDragStart={() => page.type !== "owner" && handleBookDragStart(idx)}
+                                                    onDragOver={e => page.type !== "owner" && handleBookDragOver(e, idx)}
+                                                    onDrop={() => page.type !== "owner" && handleBookDrop(idx)}
                                                     onDragEnd={handleBookDragEnd}
-                                                    onTouchStart={e => handleThumbnailTouchStart(e, idx)}
+                                                    onTouchStart={e => page.type !== "owner" && handleThumbnailTouchStart(e, idx)}
                                                     onTouchMove={handleThumbnailTouchMove}
                                                     onTouchEnd={handleThumbnailTouchEnd}
                                                     onClick={() => { setSelectedPageId(page.id); setShowInlineImagePicker(false); }}
-                                                    className={`group shrink-0 w-14 h-[80px] sm:w-12 sm:h-[68px] rounded-xl border-2 cursor-grab active:cursor-grabbing relative overflow-hidden transition-all select-none touch-none
+                                                    className={`group shrink-0 w-14 h-[80px] sm:w-12 sm:h-[68px] rounded-xl border-2 relative overflow-hidden transition-all select-none touch-none
+                                                        ${page.type === "owner" ? "cursor-default" : "cursor-grab active:cursor-grabbing"}
                                                         ${selectedPageId === page.id
                                                             ? "border-amber-500 shadow-[0_0_12px_rgba(245,158,11,0.4)]"
                                                             : bookDragOverIdx === idx && bookDragIdx !== idx
                                                                 ? "border-amber-500/40 scale-105"
                                                                 : bookDragIdx === idx
                                                                     ? "border-white/10 opacity-25"
-                                                                    : "border-white/10 hover:border-white/30"}`}>
+                                                                    : page.type === "owner"
+                                                                        ? "border-amber-500/20"
+                                                                        : "border-white/10 hover:border-white/30"}`}>
                                                     <div className="w-full h-full bg-[#1a1a1a]">
-                                                        {page.image
-                                                            ? <img src={page.image.url} alt="" className="w-full h-full object-cover" />
-                                                            : <div className="w-full h-full flex flex-col items-center justify-center gap-0.5">
-                                                                <Type size={14} className="text-neutral-700" />
-                                                            </div>}
+                                                        {page.type === "owner"
+                                                            ? <div className="w-full h-full flex flex-col items-center justify-center gap-1 bg-amber-500/8">
+                                                                <BookOpen size={13} className="text-amber-500/70" />
+                                                                <span className="text-[6px] text-amber-500/60 uppercase font-black tracking-wider leading-tight text-center px-1">Prop.</span>
+                                                            </div>
+                                                            : page.image
+                                                                ? <img src={page.image.url} alt="" className="w-full h-full object-cover" />
+                                                                : <div className="w-full h-full flex flex-col items-center justify-center gap-0.5">
+                                                                    <Type size={14} className="text-neutral-700" />
+                                                                </div>}
                                                     </div>
                                                     {/* Page number */}
                                                     <div className="absolute bottom-0 inset-x-0 h-5 bg-gradient-to-t from-black/80 to-transparent flex items-end px-1 pb-0.5">
@@ -5284,12 +5669,14 @@ export function KdpFactoryApp() {
                                                     {/* Type badge */}
                                                     {page.type === "text" && <div className="absolute top-1 left-1 w-3 h-3 rounded bg-blue-500/80 flex items-center justify-center"><Type size={6} className="text-white" /></div>}
                                                     {page.type === "both" && <div className="absolute top-1 left-1 w-3 h-3 rounded bg-purple-500/80 flex items-center justify-center"><Layers size={6} className="text-white" /></div>}
-                                                    {/* Delete — always visible on mobile, hover-only on desktop */}
-                                                    <button onClick={e => { e.stopPropagation(); deletePage(page.id); }}
-                                                        className="absolute top-0.5 right-0.5 w-5 h-5 rounded bg-black/80 text-red-400 sm:opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
-                                                        title="Eliminar">
-                                                        <X size={9} />
-                                                    </button>
+                                                    {/* Delete — hidden for owner page */}
+                                                    {page.type !== "owner" && (
+                                                        <button onClick={e => { e.stopPropagation(); deletePage(page.id); }}
+                                                            className="absolute top-0.5 right-0.5 w-5 h-5 rounded bg-black/80 text-red-400 sm:opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+                                                            title="Eliminar">
+                                                            <X size={9} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             ))}
                                             {bookPages.length === 0 && (
@@ -5336,17 +5723,47 @@ export function KdpFactoryApp() {
                                                         className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-neutral-400 hover:text-white disabled:opacity-20 flex items-center justify-center transition-all">
                                                         <ChevronRight size={15} />
                                                     </button>
-                                                    <button onClick={() => duplicatePage(selectedPage.id)}
-                                                        className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-white flex items-center justify-center transition-all" title="Duplicar página">
-                                                        <Copy size={14} />
-                                                    </button>
-                                                    <button onClick={() => deletePage(selectedPage.id)}
-                                                        className="ml-auto flex items-center gap-1.5 h-9 px-3 sm:px-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all text-[11px] font-black">
-                                                        <Trash2 size={13} /><span className="hidden sm:inline">Eliminar</span>
-                                                    </button>
+                                                    {selectedPage.type !== "owner" && (
+                                                        <button onClick={() => duplicatePage(selectedPage.id)}
+                                                            className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-white flex items-center justify-center transition-all" title="Duplicar página">
+                                                            <Copy size={14} />
+                                                        </button>
+                                                    )}
+                                                    {selectedPage.type !== "owner" && (
+                                                        <button onClick={() => deletePage(selectedPage.id)}
+                                                            className="ml-auto flex items-center gap-1.5 h-9 px-3 sm:px-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all text-[11px] font-black">
+                                                            <Trash2 size={13} /><span className="hidden sm:inline">Eliminar</span>
+                                                        </button>
+                                                    )}
+                                                    {selectedPage.type === "owner" && (
+                                                        <button onClick={() => { setIncludeOwnerPage(false); deletePage(selectedPage.id); }}
+                                                            className="ml-auto flex items-center gap-1.5 h-9 px-3 sm:px-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all text-[11px] font-black">
+                                                            <Trash2 size={13} /><span className="hidden sm:inline">Quitar</span>
+                                                        </button>
+                                                    )}
                                                 </div>
 
-                                                {/* ── Type selector (compact pill row) ── */}
+                                                {/* ── Owner page special view ── */}
+                                                {selectedPage.type === "owner" && (
+                                                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5 space-y-3">
+                                                        <div className="flex items-center gap-2.5">
+                                                            <BookOpen size={16} className="text-amber-400 shrink-0" />
+                                                            <div>
+                                                                <p className="text-xs font-bold text-amber-300">Página de propietario + colores</p>
+                                                                <p className="text-[10px] text-neutral-500">Generada automáticamente al crear el PDF</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="rounded-xl bg-black/30 p-3 space-y-1.5 text-[11px] text-neutral-400">
+                                                            <p><span className="text-neutral-300 font-medium">«Este libro pertenece a:»</span> + línea de nombre</p>
+                                                            <p><span className="text-neutral-300 font-medium">6 cuadraditos</span> para probar colores</p>
+                                                            <p><span className="text-neutral-300 font-medium">Copyright</span> © {new Date().getFullYear()} Emilio Jiménez</p>
+                                                        </div>
+                                                        <p className="text-[10px] text-neutral-600">Esta página no es editable. Puedes quitarla con el botón «Quitar».</p>
+                                                    </div>
+                                                )}
+
+                                                {/* ── Type selector (compact pill row) — hidden for owner pages ── */}
+                                                {selectedPage.type !== "owner" && (
                                                 <div className="flex items-center gap-2 p-1 rounded-2xl bg-white/[0.03] border border-white/8">
                                                     <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600 pl-2 shrink-0">Tipo:</span>
                                                     {([
@@ -5365,6 +5782,7 @@ export function KdpFactoryApp() {
                                                         </button>
                                                     ))}
                                                 </div>
+                                                )}
 
                                                 {/* ── IMAGE SECTION ── */}
                                                 {needsImage && (
@@ -6395,7 +6813,15 @@ export function KdpFactoryApp() {
                             </button>
                             {/* Owner page toggle */}
                             <button
-                                onClick={() => setIncludeOwnerPage(v => !v)}
+                                onClick={() => {
+                                    const next = !includeOwnerPage;
+                                    setIncludeOwnerPage(next);
+                                    if (next) {
+                                        setBookPages(prev => prev[0]?.type === "owner" ? prev : [{ id: genPageId(), type: "owner", text: defaultTextStyle() }, ...prev]);
+                                    } else {
+                                        setBookPages(prev => prev.filter(p => p.type !== "owner"));
+                                    }
+                                }}
                                 className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border transition-all ${includeOwnerPage ? "border-amber-500/40 bg-amber-500/[0.07]" : "border-white/8 bg-white/[0.02] hover:border-white/12"}`}
                             >
                                 <div className="flex items-center gap-2.5">
@@ -6417,9 +6843,11 @@ export function KdpFactoryApp() {
                                     .filter(c => kdpTemplateCatalogSel.has(c._id))
                                     .reduce((acc, c) => acc + c.images.length, 0);
                                 const total = vaultCount + cloudCount + catalogCount;
+                                const pageTotal = total * 2 + 2 + (includeOwnerPage ? 1 : 0);
                                 return total > 0 ? (
                                     <p className="text-[10px] text-neutral-500 text-center">
-                                        <span className="text-sky-400 font-black">{total}</span> imágenes seleccionadas · <span className="text-neutral-400 font-black">{total * 2 + 2}</span> páginas totales (portada + blanco + imagen + blanco × {total})
+                                        <span className="text-sky-400 font-black">{total}</span> imágenes · <span className="text-neutral-400 font-black">{pageTotal}</span> páginas
+                                        {includeOwnerPage ? <span className="text-amber-400"> (+ pág. propietario)</span> : ""}
                                     </p>
                                 ) : (
                                     <p className="text-[10px] text-amber-400/70 text-center font-black">Selecciona al menos una imagen</p>

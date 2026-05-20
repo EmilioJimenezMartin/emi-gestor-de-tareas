@@ -115,6 +115,32 @@ export function createOrder(body: Record<string, any>) {
     });
 }
 
+export function createDraftOrder(opts: {
+    productUid: string;
+    pageCount: number;
+    fileUrl: string;
+    quantity: number;
+    shippingAddress: Record<string, any>;
+}) {
+    const ref = `kdp-draft-${Date.now()}`;
+    return gelatoFetch<any>(ORDER_BASE, "/v3/orders", {
+        method: "POST",
+        body: JSON.stringify({
+            orderType: "draft",
+            orderReferenceId: ref,
+            currency: "EUR",
+            items: [{
+                itemReferenceId: `item-${ref}`,
+                productUid: opts.productUid,
+                pageCount: opts.pageCount,
+                files: [{ type: "default", url: opts.fileUrl }],
+                quantity: opts.quantity,
+                shippingAddress: opts.shippingAddress,
+            }],
+        }),
+    });
+}
+
 export function getOrder(orderId: string) {
     return gelatoFetch<any>(ORDER_BASE, `/v3/orders/${orderId}`);
 }
