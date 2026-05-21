@@ -1929,6 +1929,9 @@ export function KdpFactoryApp() {
     const [isBuildingPdf, setIsBuildingPdf] = useState(false);
     const [includeOwnerPage, setIncludeOwnerPage] = useState(true);
     const [showGelatoUpload, setShowGelatoUpload] = useState(false);
+    const [showSplitModal, setShowSplitModal] = useState(false);
+    const [splitParts, setSplitParts] = useState(2);
+    const [splitProgress, setSplitProgress] = useState<{ current: number; total: number } | null>(null);
     const [gelatoStoreProducts, setGelatoStoreProducts] = useState<any[]>([]);
     const [gelatoOrders, setGelatoOrders] = useState<any[]>([]);
     const [loadingGelatoData, setLoadingGelatoData] = useState(false);
@@ -5690,6 +5693,120 @@ export function KdpFactoryApp() {
                 />
             )}
 
+            {/* Split Books Modal */}
+            {showSplitModal && (() => {
+                const contentPages = bookPages.filter(p => p.type !== "owner");
+                const n = contentPages.length;
+                const parts = Math.max(2, Math.min(splitParts, 20));
+
+                // Build even-sized chunks
+                const chunks: BookPage[][] = [];
+                let start = 0;
+                for (let i = 0; i < parts; i++) {
+                    const remaining = parts - i;
+                    let size = Math.ceil((n - start) / remaining);
+                    if (size % 2 !== 0) size++;
+                    const end = Math.min(start + size, n);
+                    if (start < n) chunks.push(contentPages.slice(start, end));
+                    start = end;
+                    if (start >= n) break;
+                }
+
+                // Blank separator: owner page (1) + blank (1) + images (even) = even total,
+                // so images always start on right-side (odd) pages.
+                const blankSep: BookPage = {
+                    id: "__blank-sep__",
+                    type: "image",
+                    text: { content: "", bold: false, italic: false, fontSize: 14, color: "#333333", align: "center", verticalAlign: "middle", fontFamily: "helvetica" },
+                };
+
+                const handleDownloadAll = async () => {
+                    setSplitProgress({ current: 0, total: chunks.length });
+                    for (let i = 0; i < chunks.length; i++) {
+                        setSplitProgress({ current: i + 1, total: chunks.length });
+                        const pagesForPdf = [blankSep, ...chunks[i]];
+                        let result: Uint8Array | null = null;
+                        await buildBookPdf(bytes => { result = bytes; }, false, pagesForPdf);
+                        if (result) {
+                            const blob = new Blob([result], { type: "application/pdf" });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.href = url;
+                            a.download = `${bookFileName}-parte-${i + 1}.pdf`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                        }
+                        if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 600));
+                    }
+                    setSplitProgress(null);
+                    setShowSplitModal(false);
+                };
+
+                return createPortal(
+                    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+                        <div className="w-full max-w-sm bg-[#111] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+                            {/* Header */}
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-white/8">
+                                <div className="flex items-center gap-2">
+                                    <BookOpen size={15} className="text-amber-400" />
+                                    <span className="text-[13px] font-black text-white uppercase tracking-widest">Dividir libro</span>
+                                </div>
+                                <button onClick={() => setShowSplitModal(false)} className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-neutral-400 hover:text-white flex items-center justify-center transition-all">
+                                    <X size={13} />
+                                </button>
+                            </div>
+
+                            <div className="p-5 flex flex-col gap-4">
+                                <p className="text-[11px] text-neutral-400 leading-relaxed">
+                                    Divide el libro en <span className="text-white font-bold">{chunks.length}</span> PDFs con páginas pares y página de propietario en cada uno.
+                                </p>
+
+                                {/* Parts selector */}
+                                <div className="flex items-center gap-3">
+                                    <span className="text-[11px] text-neutral-500 w-20 shrink-0">Nº de partes</span>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => setSplitParts(p => Math.max(2, p - 1))}
+                                            className="w-7 h-7 rounded-lg bg-white/8 hover:bg-white/15 text-neutral-300 flex items-center justify-center transition-all text-lg leading-none">−</button>
+                                        <span className="w-8 text-center text-white font-black text-[15px]">{parts}</span>
+                                        <button onClick={() => setSplitParts(p => Math.min(20, p + 1))}
+                                            className="w-7 h-7 rounded-lg bg-white/8 hover:bg-white/15 text-neutral-300 flex items-center justify-center transition-all text-lg leading-none">+</button>
+                                    </div>
+                                    <span className="text-[10px] text-neutral-600">{n} páginas en total</span>
+                                </div>
+
+                                {/* Preview of chunks */}
+                                <div className="flex flex-col gap-1.5">
+                                    {chunks.map((chunk, i) => (
+                                        <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.06]">
+                                            <BookOpen size={11} className="text-amber-400 shrink-0" />
+                                            <span className="text-[11px] text-neutral-300 flex-1">{bookFileName}-parte-{i + 1}.pdf</span>
+                                            <span className="text-[10px] font-mono text-neutral-500">{1 + 1 + chunk.length}p</span>
+                                            <span className="text-[9px] text-neutral-600">(prop+blank+{chunk.length})</span>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Progress */}
+                                {splitProgress && (
+                                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                                        <Loader2 size={12} className="animate-spin text-amber-400 shrink-0" />
+                                        <span className="text-[11px] text-amber-300">Generando parte {splitProgress.current} de {splitProgress.total}…</span>
+                                    </div>
+                                )}
+
+                                {/* Download button */}
+                                <button onClick={() => void handleDownloadAll()} disabled={!!splitProgress || chunks.length === 0}
+                                    className="w-full h-10 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all">
+                                    {splitProgress ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                                    {splitProgress ? `Parte ${splitProgress.current}/${splitProgress.total}…` : `Descargar ${chunks.length} PDFs`}
+                                </button>
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                );
+            })()}
+
             {/* Book Editor Modal */}
             {bookEditorOpen && (
                 <div
@@ -5742,6 +5859,13 @@ export function KdpFactoryApp() {
                                     title="Subir a Gelato">
                                     <Package size={13} />
                                     <span className="hidden sm:inline">Gelato</span>
+                                </button>
+                                {/* Split into X books */}
+                                <button onClick={() => setShowSplitModal(true)} disabled={bookPages.length === 0}
+                                    className="h-9 px-3 rounded-xl bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/30 text-violet-300 shrink-0 flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 text-[10px] font-black uppercase"
+                                    title="Dividir en varios PDFs">
+                                    <Layers size={13} />
+                                    <span className="hidden sm:inline">Dividir</span>
                                 </button>
                                 {/* Generate PDF — always shows text on mobile */}
                                 <button onClick={() => void buildBookPdf()} disabled={isBuildingPdf || bookPages.length === 0}
@@ -6292,12 +6416,19 @@ export function KdpFactoryApp() {
                                                 <BookOpen size={10} />
                                             </button>
                                         </div>
-                                        {/* PDF button */}
-                                        <button onClick={() => void buildBookPdf()} disabled={isBuildingPdf || bookPages.length === 0}
-                                            className="h-7 px-3 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase flex items-center gap-1.5 hover:bg-amber-400 active:scale-95 transition-all disabled:opacity-40">
-                                            {isBuildingPdf ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
-                                            <span>PDF</span>
-                                        </button>
+                                        {/* Split + PDF buttons */}
+                                        <div className="flex items-center gap-1.5">
+                                            <button onClick={() => setShowSplitModal(true)} disabled={bookPages.length === 0}
+                                                className="h-7 px-2.5 rounded-full bg-violet-500/20 border border-violet-500/30 text-violet-300 text-[10px] font-black uppercase flex items-center gap-1 hover:bg-violet-500/30 active:scale-95 transition-all disabled:opacity-40">
+                                                <Layers size={10} />
+                                                <span>Dividir</span>
+                                            </button>
+                                            <button onClick={() => void buildBookPdf()} disabled={isBuildingPdf || bookPages.length === 0}
+                                                className="h-7 px-3 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase flex items-center gap-1.5 hover:bg-amber-400 active:scale-95 transition-all disabled:opacity-40">
+                                                {isBuildingPdf ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
+                                                <span>PDF</span>
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {bookPages.length === 0 ? (
