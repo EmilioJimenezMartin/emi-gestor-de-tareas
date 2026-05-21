@@ -5696,10 +5696,16 @@ export function KdpFactoryApp() {
             {/* Split Books Modal */}
             {showSplitModal && (() => {
                 const contentPages = bookPages.filter(p => p.type !== "owner");
-                const n = contentPages.length;
+
+                // Pages before the first real image = preamble (title, blank, etc.)
+                const firstImageIdx = contentPages.findIndex(p => p.image);
+                const preamble = firstImageIdx > 0 ? contentPages.slice(0, firstImageIdx) : [];
+                const imagePages = firstImageIdx >= 0 ? contentPages.slice(firstImageIdx) : contentPages;
+
+                const n = imagePages.length;
                 const parts = Math.max(2, Math.min(splitParts, 20));
 
-                // Build even-sized chunks
+                // Build even-sized chunks from image pages only
                 const chunks: BookPage[][] = [];
                 let start = 0;
                 for (let i = 0; i < parts; i++) {
@@ -5707,24 +5713,28 @@ export function KdpFactoryApp() {
                     let size = Math.ceil((n - start) / remaining);
                     if (size % 2 !== 0) size++;
                     const end = Math.min(start + size, n);
-                    if (start < n) chunks.push(contentPages.slice(start, end));
+                    if (start < n) chunks.push(imagePages.slice(start, end));
                     start = end;
                     if (start >= n) break;
                 }
 
-                // Blank separator: owner page (1) + blank (1) + images (even) = even total,
-                // so images always start on right-side (odd) pages.
+                // Blank separator so images land on right-side pages:
+                // owner(1) + blank(1) + preamble(P) + images(even) — if P is odd add extra blank
                 const blankSep: BookPage = {
                     id: "__blank-sep__",
                     type: "image",
                     text: { content: "", bold: false, italic: false, fontSize: 14, color: "#333333", align: "center", verticalAlign: "middle", fontFamily: "helvetica" },
                 };
+                // Extra blank after preamble if preamble length is odd (keeps images on right)
+                const preambleWithPad = preamble.length % 2 !== 0 ? [...preamble, blankSep] : preamble;
 
                 const handleDownloadAll = async () => {
                     setSplitProgress({ current: 0, total: chunks.length });
                     for (let i = 0; i < chunks.length; i++) {
                         setSplitProgress({ current: i + 1, total: chunks.length });
-                        const pagesForPdf = [blankSep, ...chunks[i]];
+                        // First chunk already has preamble; subsequent chunks need it prepended
+                        const preamblePart = i === 0 ? [] : preambleWithPad;
+                        const pagesForPdf = [blankSep, ...preamblePart, ...chunks[i]];
                         let result: Uint8Array | null = null;
                         await buildBookPdf(bytes => { result = bytes; }, false, pagesForPdf);
                         if (result) {
@@ -5776,14 +5786,18 @@ export function KdpFactoryApp() {
 
                                 {/* Preview of chunks */}
                                 <div className="flex flex-col gap-1.5">
-                                    {chunks.map((chunk, i) => (
-                                        <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.06]">
-                                            <BookOpen size={11} className="text-amber-400 shrink-0" />
-                                            <span className="text-[11px] text-neutral-300 flex-1">{bookFileName}-parte-{i + 1}.pdf</span>
-                                            <span className="text-[10px] font-mono text-neutral-500">{1 + 1 + chunk.length}p</span>
-                                            <span className="text-[9px] text-neutral-600">(prop+blank+{chunk.length})</span>
-                                        </div>
-                                    ))}
+                                    {chunks.map((chunk, i) => {
+                                        const pre = i === 0 ? 0 : preambleWithPad.length;
+                                        const total = 1 + 1 + pre + chunk.length; // owner+blank+preamble+imgs
+                                        return (
+                                            <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.06]">
+                                                <BookOpen size={11} className="text-amber-400 shrink-0" />
+                                                <span className="text-[11px] text-neutral-300 flex-1">{bookFileName}-parte-{i + 1}.pdf</span>
+                                                <span className="text-[10px] font-mono text-neutral-500">{total}p</span>
+                                                <span className="text-[9px] text-neutral-600">{chunk.length} imgs</span>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
 
                                 {/* Progress */}
