@@ -71,6 +71,7 @@ import {
     Upload,
     AlertTriangle,
     Info,
+    ShoppingBag,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -353,6 +354,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 // ── Gelato Upload Modal ───────────────────────────────────────────────────────
 const WIRE_O_UID = "wire-o-multi-page-brochures_pf_a4_pt_115-gsm-uncoated_cl_4-4_bt_wire-o-left_cpt_300-gsm-uncoated_ver";
 
+const MAX_GELATO_PAGES = 148; // max even image pages per PDF (+ owner page = 149 total, within 150 limit)
+
 function GelatoUploadModal({
     bookPages,
     bookFileName,
@@ -362,13 +365,37 @@ function GelatoUploadModal({
 }: {
     bookPages: BookPage[];
     bookFileName: string;
-    buildPdf: () => Promise<Uint8Array | null>;
+    buildPdf: (pages?: BookPage[]) => Promise<Uint8Array | null>;
     apiUrl: string;
     onClose: () => void;
 }) {
     const pageCount = bookPages.length;
+    const needsSplit = pageCount > MAX_GELATO_PAGES;
+    // Build even-sized chunks of max MAX_GELATO_PAGES content pages.
+    // Each PDF will be: owner page (1) + blank separator (1) + chunk pages (even) = even total.
+    const chunks: BookPage[][] = [];
+    if (needsSplit) {
+        let i = 0;
+        while (i < bookPages.length) {
+            let end = Math.min(i + MAX_GELATO_PAGES, bookPages.length);
+            // ensure even content count
+            if ((end - i) % 2 !== 0) {
+                if (end < bookPages.length) end--;   // trim last to keep even
+                else end--;                          // last chunk: drop one rather than overflow
+                if (end <= i) end = i + 2;          // floor at 2 if near end
+            }
+            chunks.push(bookPages.slice(i, Math.min(end, bookPages.length)));
+            i = end;
+        }
+    }
+    // blank page inserted after owner page so images always start on a right-side (odd) page
+    const blankSeparator: BookPage = {
+        id: "__blank-sep__",
+        type: "image",
+        text: { content: "", bold: false, italic: false, fontSize: 14, color: "#333333", align: "center", verticalAlign: "middle", fontFamily: "helvetica" },
+    };
     const validPageCount = Math.max(20, pageCount % 2 === 0 ? pageCount : pageCount + 1);
-    const isValidForWireO = pageCount >= 20 && pageCount <= 300;
+    const isValidForWireO = pageCount >= 20;
 
     // Manual flow
     const [manualGenerating, setManualGenerating] = useState(false);
@@ -384,6 +411,18 @@ function GelatoUploadModal({
 
     const addLog = (msg: string) => setAutoLog(p => [...p, msg]);
 
+    const [multiProgress, setMultiProgress] = useState<{ current: number; total: number } | null>(null);
+
+    const downloadBlob = (bytes: Uint8Array, name: string) => {
+        const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    };
+
     const handleDownload = async () => {
         setManualGenerating(true);
         setManualError("");
@@ -391,18 +430,38 @@ function GelatoUploadModal({
         try {
             const bytes = await buildPdf();
             if (!bytes) throw new Error("No se pudo generar el PDF");
-            const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `${bookFileName || "libro-kdp"}.pdf`;
-            a.click();
-            setTimeout(() => URL.revokeObjectURL(url), 10_000);
+            downloadBlob(bytes, `${bookFileName || "libro-kdp"}.pdf`);
             setManualDone(true);
         } catch (e: any) {
             setManualError(e.message);
         } finally {
             setManualGenerating(false);
+        }
+    };
+
+    const handleDownloadMultiple = async () => {
+        setManualGenerating(true);
+        setManualError("");
+        setManualDone(false);
+        setMultiProgress({ current: 0, total: chunks.length });
+        try {
+            for (let i = 0; i < chunks.length; i++) {
+                setMultiProgress({ current: i + 1, total: chunks.length });
+                // owner page (auto-added by buildBookPdf) + blank separator + even content pages = even total
+                const firstIsBlank = !chunks[i][0]?.image;
+                const pagesForPdf = firstIsBlank ? chunks[i] : [blankSeparator, ...chunks[i]];
+                const bytes = await buildPdf(pagesForPdf);
+                if (!bytes) throw new Error(`Error generando parte ${i + 1}`);
+                const partName = `${bookFileName || "libro-kdp"}-parte${i + 1}.pdf`;
+                downloadBlob(bytes, partName);
+                if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 600));
+            }
+            setManualDone(true);
+        } catch (e: any) {
+            setManualError(e.message);
+        } finally {
+            setManualGenerating(false);
+            setMultiProgress(null);
         }
     };
 
@@ -475,13 +534,19 @@ function GelatoUploadModal({
                     </button>
                 </div>
 
-                {!isValidForWireO && (
+                {pageCount < 20 && (
                     <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 flex gap-2 mb-4">
                         <AlertTriangle size={14} className="text-amber-400 shrink-0 mt-0.5" />
-                        <p className="text-[11px] text-amber-300">
-                            Wire-O requiere entre 20 y 300 páginas (pares). Tu libro tiene {pageCount} páginas.
-                            {pageCount < 20 && " Añade más páginas antes de continuar."}
-                        </p>
+                        <p className="text-[11px] text-amber-300">Wire-O requiere mínimo 20 páginas. Tu libro tiene {pageCount}.</p>
+                    </div>
+                )}
+                {needsSplit && (
+                    <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 p-3 flex gap-2 mb-4">
+                        <AlertTriangle size={14} className="text-sky-400 shrink-0 mt-0.5" />
+                        <div className="text-[11px] text-sky-300 space-y-1">
+                            <p className="font-bold">Tu libro tiene {pageCount} páginas — máximo {MAX_GELATO_PAGES} imágenes por PDF en Gelato.</p>
+                            <p>Se dividirá en <span className="font-bold">{chunks.length} archivos</span>. Cada uno: <span className="font-mono text-white/70">prueba colores + blanco + {chunks.map(c => c.length).join(" / ")} imágenes</span> = <span className="font-bold">{chunks.map(c => 2 + c.length).join(" / ")} páginas totales (par ✓)</span>.</p>
+                        </div>
                     </div>
                 )}
 
@@ -516,17 +581,22 @@ function GelatoUploadModal({
                         {manualError && <p className="text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2 mb-3">{manualError}</p>}
                         {manualDone && (
                             <div className="flex items-center gap-2 text-[11px] text-emerald-400 mb-3">
-                                <Check size={12} /> PDF descargado — continúa en Gelato Dashboard
+                                <Check size={12} /> {needsSplit ? `${chunks.length} PDFs descargados` : "PDF descargado"} — continúa en Gelato Dashboard
+                            </div>
+                        )}
+                        {multiProgress && (
+                            <div className="flex items-center gap-2 text-[11px] text-sky-400 mb-3">
+                                <Loader2 size={12} className="animate-spin" /> Generando parte {multiProgress.current} de {multiProgress.total}...
                             </div>
                         )}
                         <div className="flex gap-2">
                             <button
-                                onClick={handleDownload}
+                                onClick={needsSplit ? handleDownloadMultiple : handleDownload}
                                 disabled={manualGenerating || !isValidForWireO}
                                 className="flex-1 py-2.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-40 transition-all"
                             >
                                 {manualGenerating ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                                {manualGenerating ? "Generando..." : "1. Descargar PDF"}
+                                {manualGenerating ? (multiProgress ? `Parte ${multiProgress.current}/${multiProgress.total}...` : "Generando...") : needsSplit ? `1. Descargar ${chunks.length} PDFs` : "1. Descargar PDF"}
                             </button>
                             <a
                                 href="https://dashboard.gelato.com/store-products/product-list"
@@ -557,310 +627,7 @@ function GelatoUploadModal({
     );
 }
 
-// ─── Gelato Product Creation Modal ───────────────────────────────────────────
-
 type CloudinaryImage = { publicId: string; url: string; width: number; height: number; bytes: number };
-type GelatoProductStep = "template" | "image" | "details" | "creating" | "done";
-
-function GelatoProductModal({ apiUrl, onClose }: { apiUrl: string; onClose: () => void }) {
-    const [step, setStep] = useState<GelatoProductStep>("template");
-
-    // Step 1: template ID (entered manually — Gelato API doesn't expose store templates)
-    const [templateId, setTemplateId] = useState("");
-    const [templateName, setTemplateName] = useState("");
-
-    // Step 2: image
-    const [cloudinaryImages, setCloudinaryImages] = useState<CloudinaryImage[]>([]);
-    const [loadingImages, setLoadingImages] = useState(false);
-    const [selectedImage, setSelectedImage] = useState<CloudinaryImage | null>(null);
-
-    // Step 3: details
-    const [title, setTitle] = useState("");
-    const [description, setDescription] = useState("");
-    const [price, setPrice] = useState("29.99");
-    const [currency, setCurrency] = useState("EUR");
-
-    const [createdProduct, setCreatedProduct] = useState<any>(null);
-    const [createError, setCreateError] = useState("");
-
-    // Load Cloudinary images when entering image step
-    useEffect(() => {
-        if (step !== "image" || cloudinaryImages.length > 0) return;
-        setLoadingImages(true);
-        fetch(`${apiUrl}/cloudinary/images`)
-            .then(r => r.json())
-            .then(d => setCloudinaryImages(d.images ?? []))
-            .catch(() => {})
-            .finally(() => setLoadingImages(false));
-    }, [step, apiUrl, cloudinaryImages.length]);
-
-    const handleCreate = async () => {
-        if (!templateId || !selectedImage) return;
-        setStep("creating");
-        setCreateError("");
-        try {
-            const res = await fetch(`${apiUrl}/gelato/store/products`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    title,
-                    description,
-                    templateId,
-                    variants: [{ templateVariantId: "default", imagePlaceholders: { default: selectedImage.url } }],
-                    retailPrice: parseFloat(price) || 29.99,
-                    currency,
-                }),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error ?? "Error creando producto");
-            setCreatedProduct(data.product ?? data);
-            setStep("done");
-        } catch (e: any) {
-            setCreateError(e.message);
-            setStep("details");
-        }
-    };
-
-    const STEP_LABELS: Record<GelatoProductStep, string> = {
-        template: "1 · Template ID",
-        image: "2 · Diseño",
-        details: "3 · Detalles",
-        creating: "Publicando...",
-        done: "¡Listo!",
-    };
-
-    const STEPS_NAV: GelatoProductStep[] = ["template", "image", "details"];
-
-    return (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={step === "creating" ? undefined : onClose} />
-            <div className="relative w-full max-w-2xl rounded-3xl border border-white/15 bg-neutral-950/95 shadow-2xl max-h-[90vh] flex flex-col overflow-hidden">
-
-                {/* Header */}
-                <div className="flex items-center gap-3 px-6 pt-6 pb-4 border-b border-white/8 shrink-0">
-                    <div className="w-10 h-10 rounded-2xl bg-orange-500/15 border border-orange-500/25 flex items-center justify-center shrink-0">
-                        <Store size={17} className="text-orange-400" />
-                    </div>
-                    <div className="min-w-0">
-                        <p className="font-bold text-white">Crear Producto en Gelato</p>
-                        <p className="text-[11px] text-neutral-500">{STEP_LABELS[step]}</p>
-                    </div>
-                    <div className="flex items-center gap-1.5 ml-auto mr-3">
-                        {STEPS_NAV.map((s, i) => (
-                            <div key={s} className={`rounded-full transition-all ${step === s ? "w-5 h-2 bg-orange-400" : (STEPS_NAV.indexOf(step) > i || step === "done" || step === "creating") ? "w-2 h-2 bg-emerald-500" : "w-2 h-2 bg-white/15"}`} />
-                        ))}
-                    </div>
-                    <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/8 shrink-0" disabled={step === "creating"}>
-                        <X size={14} className="text-neutral-400" />
-                    </button>
-                </div>
-
-                {/* Body */}
-                <div className="overflow-y-auto flex-1 px-6 py-5">
-
-                    {/* STEP 1: Template ID */}
-                    {step === "template" && (
-                        <div className="space-y-4">
-                            {/* Explanation */}
-                            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.05] p-4 space-y-2">
-                                <div className="flex items-center gap-2">
-                                    <Info size={13} className="text-amber-400 shrink-0" />
-                                    <p className="text-xs font-bold text-amber-300">Cómo obtener el Template ID</p>
-                                </div>
-                                <ol className="text-[11px] text-neutral-400 space-y-1.5 list-decimal list-inside pl-1">
-                                    <li>Ve al <a href="https://dashboard.gelato.com/store-products/product-list" target="_blank" rel="noreferrer" className="text-orange-400 hover:text-orange-300 underline-offset-2 underline">Gelato Dashboard</a> → Products</li>
-                                    <li>Crea un nuevo producto (camiseta, taza, poster…) o abre uno existente</li>
-                                    <li>En la URL verás el ID: <span className="font-mono text-neutral-300">/products/<span className="text-amber-300">xxxxxxxx-xxxx</span>/edit</span></li>
-                                    <li>Copia ese ID y pégalo aquí</li>
-                                </ol>
-                                <a href="https://dashboard.gelato.com/store-products/product-list" target="_blank" rel="noreferrer"
-                                    className="inline-flex items-center gap-1.5 text-[10px] text-orange-400 hover:text-orange-300 mt-1">
-                                    <ExternalLink size={10} /> Abrir Gelato Dashboard
-                                </a>
-                            </div>
-
-                            <div className="space-y-3">
-                                <div>
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600 ml-1">Template ID</label>
-                                    <input
-                                        value={templateId}
-                                        onChange={e => setTemplateId(e.target.value.trim())}
-                                        className="mt-1.5 w-full bg-white/[0.04] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm font-mono text-white outline-none focus:border-orange-500/40"
-                                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600 ml-1">Nombre del template <span className="normal-case font-normal text-neutral-700">(para referencia)</span></label>
-                                    <input
-                                        value={templateName}
-                                        onChange={e => setTemplateName(e.target.value)}
-                                        className="mt-1.5 w-full bg-white/[0.04] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none focus:border-orange-500/40"
-                                        placeholder="Ej: Camiseta Premium Unisex"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* STEP 2: Image */}
-                    {step === "image" && (
-                        <div className="space-y-4">
-                            <p className="text-[11px] text-neutral-500">Selecciona el diseño de tu biblioteca de Cloudinary. Esta imagen se usará como print file en el producto.</p>
-                            {loadingImages && (
-                                <div className="flex items-center justify-center py-16 gap-3">
-                                    <Loader2 size={18} className="text-orange-400 animate-spin" />
-                                    <p className="text-sm text-neutral-500">Cargando imágenes...</p>
-                                </div>
-                            )}
-                            {!loadingImages && cloudinaryImages.length === 0 && (
-                                <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-8 text-center">
-                                    <ImageIcon size={28} className="text-neutral-700 mx-auto mb-3" />
-                                    <p className="text-sm text-neutral-500">No hay imágenes en Cloudinary</p>
-                                    <p className="text-[11px] text-neutral-600 mt-1">Genera imágenes en el Studio IA y súbelas a la nube primero.</p>
-                                </div>
-                            )}
-                            {!loadingImages && cloudinaryImages.length > 0 && (
-                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                                    {cloudinaryImages.map(img => (
-                                        <button
-                                            key={img.publicId}
-                                            onClick={() => setSelectedImage(img)}
-                                            className={`group relative aspect-square rounded-xl overflow-hidden border-2 transition-all ${selectedImage?.publicId === img.publicId ? "border-orange-500 shadow-[0_0_14px_rgba(249,115,22,0.4)]" : "border-transparent hover:border-white/30"}`}
-                                        >
-                                            <img src={img.url} alt="" className="w-full h-full object-cover" />
-                                            {selectedImage?.publicId === img.publicId && (
-                                                <div className="absolute inset-0 bg-orange-500/20 flex items-center justify-center">
-                                                    <div className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center">
-                                                        <Check size={12} className="text-white" />
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* STEP 3: Details */}
-                    {step === "details" && (
-                        <div className="space-y-4">
-                            <p className="text-[11px] text-neutral-500">Configura los detalles del listing. Se publicará en tu tienda Etsy conectada a Gelato.</p>
-
-                            {/* Preview */}
-                            <div className="flex gap-4 p-4 rounded-2xl border border-white/8 bg-white/[0.02]">
-                                {selectedImage && <img src={selectedImage.url} alt="" className="w-20 h-20 rounded-xl object-cover shrink-0" />}
-                                <div className="min-w-0">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-1">Template</p>
-                                    <p className="text-sm font-bold text-white truncate">{templateName || templateId}</p>
-                                    <p className="text-[9px] font-mono text-neutral-600 mt-0.5 truncate">{templateId}</p>
-                                </div>
-                            </div>
-
-                            <div className="space-y-3">
-                                <div>
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600 ml-1">Título del producto</label>
-                                    <input value={title} onChange={e => setTitle(e.target.value)}
-                                        className="mt-1.5 w-full bg-white/[0.04] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none focus:border-orange-500/40"
-                                        placeholder="Ej: Camiseta Mandala Floral · Premium" />
-                                </div>
-                                <div>
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600 ml-1">Descripción</label>
-                                    <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3}
-                                        className="mt-1.5 w-full bg-white/[0.04] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none focus:border-orange-500/40 resize-none"
-                                        placeholder="Descripción del producto para el listing de Etsy..." />
-                                </div>
-                                <div className="flex gap-3">
-                                    <div className="flex-1">
-                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600 ml-1">Precio de venta</label>
-                                        <div className="relative mt-1.5">
-                                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-500 text-sm">{currency === "EUR" ? "€" : "$"}</span>
-                                            <input type="number" value={price} onChange={e => setPrice(e.target.value)} step="0.01" min="1"
-                                                className="w-full bg-white/[0.04] border border-white/10 rounded-xl pl-8 pr-3.5 py-2.5 text-sm text-white outline-none focus:border-orange-500/40" />
-                                        </div>
-                                    </div>
-                                    <div className="w-28">
-                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600 ml-1">Divisa</label>
-                                        <select value={currency} onChange={e => setCurrency(e.target.value)}
-                                            className="mt-1.5 w-full bg-white/[0.04] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none focus:border-orange-500/40">
-                                            <option value="EUR">EUR</option>
-                                            <option value="USD">USD</option>
-                                            <option value="GBP">GBP</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                            {createError && <p className="text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2">{createError}</p>}
-                        </div>
-                    )}
-
-                    {/* Creating */}
-                    {step === "creating" && (
-                        <div className="flex flex-col items-center justify-center py-16 gap-4">
-                            <div className="w-16 h-16 rounded-full bg-orange-500/15 border border-orange-500/25 flex items-center justify-center">
-                                <Loader2 size={28} className="text-orange-400 animate-spin" />
-                            </div>
-                            <p className="font-bold text-white">Creando producto en Gelato...</p>
-                            <p className="text-[11px] text-neutral-500 text-center">Esto puede tardar unos segundos. No cierres el modal.</p>
-                        </div>
-                    )}
-
-                    {/* Done */}
-                    {step === "done" && (
-                        <div className="flex flex-col items-center justify-center py-10 gap-4">
-                            <div className="w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-                                <Check size={28} className="text-emerald-400" />
-                            </div>
-                            <p className="font-bold text-white text-lg">¡Producto creado!</p>
-                            <p className="text-[11px] text-neutral-500 text-center max-w-xs">El producto está en Gelato. Puede tardar unos minutos en sincronizarse con tu tienda Etsy.</p>
-                            {createdProduct?.gelatoProductId && (
-                                <p className="text-[10px] font-mono text-neutral-600">ID: {createdProduct.gelatoProductId}</p>
-                            )}
-                            <div className="flex gap-2 mt-2">
-                                <a href="https://dashboard.gelato.com/store-products/product-list" target="_blank" rel="noreferrer"
-                                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 text-xs font-bold transition-all">
-                                    <ExternalLink size={12} /> Ver en Gelato
-                                </a>
-                                <button onClick={onClose} className="px-4 py-2.5 rounded-2xl border border-white/10 text-neutral-400 text-xs hover:bg-white/5">Cerrar</button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Footer nav */}
-                {step !== "creating" && step !== "done" && (
-                    <div className="flex gap-2 px-6 py-4 border-t border-white/8 shrink-0">
-                        <button
-                            onClick={() => {
-                                if (step === "template") onClose();
-                                if (step === "image") setStep("template");
-                                if (step === "details") setStep("image");
-                            }}
-                            className="flex-1 py-2.5 rounded-2xl border border-white/10 text-neutral-400 text-sm hover:bg-white/5 transition-all"
-                        >
-                            {step === "template" ? "Cancelar" : "Atrás"}
-                        </button>
-                        <button
-                            onClick={() => {
-                                if (step === "template" && templateId) { setTitle(templateName); setStep("image"); }
-                                if (step === "image" && selectedImage) setStep("details");
-                                if (step === "details" && title) handleCreate();
-                            }}
-                            disabled={
-                                (step === "template" && !templateId) ||
-                                (step === "image" && !selectedImage) ||
-                                (step === "details" && !title)
-                            }
-                            className="flex-1 py-2.5 rounded-2xl bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/30 text-orange-300 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40 transition-all"
-                        >
-                            {step === "details" ? <><Zap size={14} /> Publicar en Gelato</> : <>Siguiente <ChevronRight size={14} /></>}
-                        </button>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-}
 
 export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
@@ -2162,9 +1929,9 @@ export function KdpFactoryApp() {
     const [isBuildingPdf, setIsBuildingPdf] = useState(false);
     const [includeOwnerPage, setIncludeOwnerPage] = useState(true);
     const [showGelatoUpload, setShowGelatoUpload] = useState(false);
-    const [showGelatoProductModal, setShowGelatoProductModal] = useState(false);
-    const [gelatoMyProducts, setGelatoMyProducts] = useState<any[]>([]);
-    const [loadingGelatoProducts, setLoadingGelatoProducts] = useState(false);
+    const [gelatoStoreProducts, setGelatoStoreProducts] = useState<any[]>([]);
+    const [gelatoOrders, setGelatoOrders] = useState<any[]>([]);
+    const [loadingGelatoData, setLoadingGelatoData] = useState(false);
     const [isSavingDraft, setIsSavingDraft] = useState(false);
     const [bookDrafts, setBookDrafts] = useState<{ id: string; fileName: string; pages: BookPage[]; savedAt: string }[]>([]);
     const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
@@ -2313,8 +2080,9 @@ export function KdpFactoryApp() {
         setBookEditorOpen(true);
     };
 
-    const buildBookPdf = async (onBytes?: (bytes: Uint8Array) => void, compressImages = false) => {
-        if (bookPages.length === 0) return null;
+    const buildBookPdf = async (onBytes?: (bytes: Uint8Array) => void, compressImages = false, pagesToUse?: BookPage[]) => {
+        const pages = pagesToUse ?? bookPages;
+        if (pages.length === 0) return null;
         setIsBuildingPdf(true);
         try {
             const pdf = await PDFDocument.create();
@@ -2438,8 +2206,8 @@ export function KdpFactoryApp() {
                 });
             };
 
-            // ── Página de propietario / copyright (primera página, si no viene en bookPages) ──
-            if (includeOwnerPage && !bookPages.some(p => p.type === "owner")) {
+            // ── Página de propietario / copyright (primera página, si no viene en pages) ──
+            if (includeOwnerPage && !pages.some(p => p.type === "owner")) {
                 const ownerPage = pdf.addPage([pageWidth, pageHeight]);
                 const fontNormal = await pdf.embedFont(StandardFonts.Helvetica);
                 const centerX = pageWidth / 2;
@@ -2520,7 +2288,7 @@ export function KdpFactoryApp() {
                 });
             }
 
-            for (const bookPage of bookPages) {
+            for (const bookPage of pages) {
                 // ── Owner page type: render same content as standalone owner page ──
                 if (bookPage.type === "owner") {
                     const ownerPage = pdf.addPage([pageWidth, pageHeight]);
@@ -2663,13 +2431,15 @@ export function KdpFactoryApp() {
         if (activeTab === "studio" && niches.length === 0) {
             void fetchNiches();
         }
-        if (activeTab === "gelato" && gelatoMyProducts.length === 0) {
-            setLoadingGelatoProducts(true);
-            fetch(`${API_BASE_URL}/gelato/my-products`)
-                .then(r => r.json())
-                .then(d => setGelatoMyProducts(d.products ?? []))
-                .catch(() => {})
-                .finally(() => setLoadingGelatoProducts(false));
+        if (activeTab === "gelato" && gelatoStoreProducts.length === 0 && !loadingGelatoData) {
+            setLoadingGelatoData(true);
+            Promise.all([
+                fetch(`${API_BASE_URL}/gelato/store/products?limit=50`).then(r => r.ok ? r.json() : { products: [] }).catch(() => ({ products: [] })),
+                fetch(`${API_BASE_URL}/gelato/orders?limit=10`).then(r => r.ok ? r.json() : { orders: [] }).catch(() => ({ orders: [] })),
+            ]).then(([prod, ord]) => {
+                setGelatoStoreProducts(prod.products ?? []);
+                setGelatoOrders(ord.orders ?? []);
+            }).finally(() => setLoadingGelatoData(false));
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab]);
@@ -5012,17 +4782,6 @@ export function KdpFactoryApp() {
     const DEMAND_ICONS: Record<string, React.ReactElement> = { rising: <ArrowUpRight size={12} className="text-emerald-400" />, stable: <ArrowRight size={12} className="text-amber-400" />, declining: <ArrowDownRight size={12} className="text-rose-400" /> };
 
     const renderGelato = () => {
-        const loadProducts = async () => {
-            if (loadingGelatoProducts) return;
-            setLoadingGelatoProducts(true);
-            try {
-                const res = await fetch(`${API_BASE_URL}/gelato/my-products`);
-                const data = await res.json();
-                setGelatoMyProducts(data.products ?? []);
-            } catch { /* ignore */ }
-            finally { setLoadingGelatoProducts(false); }
-        };
-
         return (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-8">
 
@@ -5030,98 +4789,119 @@ export function KdpFactoryApp() {
                 <div className="flex items-start justify-between gap-4">
                     <div>
                         <h2 className="text-3xl font-black text-white tracking-tight">
-                            <span className="bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">Gelato</span> Products
+                            <span className="bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">Factory</span>
                         </h2>
-                        <p className="text-sm text-neutral-500 mt-1">Crea y gestiona productos de print-on-demand sincronizados con Etsy</p>
+                        <p className="text-sm text-neutral-500 mt-1">Herramientas de producción · libros, zips, contenido y print-on-demand</p>
                     </div>
-                    <button
-                        onClick={() => setShowGelatoProductModal(true)}
+                    <a
+                        href="https://dashboard.gelato.com/store-products/product-list"
+                        target="_blank"
+                        rel="noreferrer"
                         className="shrink-0 flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-orange-500/20 to-amber-500/20 hover:from-orange-500/30 hover:to-amber-500/30 border border-orange-500/30 text-orange-300 font-bold text-sm transition-all shadow-lg shadow-orange-500/10"
                     >
-                        <Plus size={15} /> Crear Producto
-                    </button>
+                        <ExternalLink size={15} /> Gelato Dashboard
+                    </a>
                 </div>
 
-                {/* Quick info cards */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[
-                        { label: "Productos creados", value: gelatoMyProducts.length, icon: <Package size={16} className="text-orange-400" />, color: "orange" },
-                        { label: "Publicados", value: gelatoMyProducts.filter(p => p.status === "active").length, icon: <Store size={16} className="text-emerald-400" />, color: "emerald" },
-                        { label: "Borradores", value: gelatoMyProducts.filter(p => p.status === "draft").length, icon: <FileText size={16} className="text-sky-400" />, color: "sky" },
-                        { label: "Tipos disponibles", value: "Camisetas, tazas, posters...", icon: <Shirt size={16} className="text-purple-400" />, color: "purple", small: true },
-                    ].map(({ label, value, icon, color, small }) => (
-                        <div key={label} className={`rounded-2xl border border-${color}-500/15 bg-${color}-500/[0.04] p-4`}>
-                            <div className="flex items-center gap-2 mb-2">{icon}<span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">{label}</span></div>
-                            <p className={`${small ? "text-[11px]" : "text-2xl font-black"} text-white`}>{value}</p>
-                        </div>
-                    ))}
-                </div>
-
-                {/* How it works */}
-                <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-5">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 mb-4">Cómo funciona</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                        {[
-                            { n: "01", icon: <ImageIcon size={16} className="text-sky-400" />, title: "Diseño", desc: "Genera tu imagen en Studio IA o usa una de Cloudinary" },
-                            { n: "02", icon: <Store size={16} className="text-orange-400" />, title: "Template", desc: "Elige el tipo de producto: camiseta, taza, poster, etc." },
-                            { n: "03", icon: <Tag size={16} className="text-amber-400" />, title: "Detalles", desc: "Pon título, descripción y precio de venta" },
-                            { n: "04", icon: <Zap size={16} className="text-emerald-400" />, title: "Publicar", desc: "Gelato crea el producto y lo sincroniza con tu tienda Etsy" },
-                        ].map(({ n, icon, title, desc }) => (
-                            <div key={n} className="flex gap-3">
-                                <span className="text-[10px] font-black text-neutral-700 mt-0.5 shrink-0">{n}</span>
-                                <div>
-                                    <div className="flex items-center gap-1.5 mb-1">{icon}<p className="text-xs font-bold text-white">{title}</p></div>
-                                    <p className="text-[10px] text-neutral-600 leading-relaxed">{desc}</p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Products list */}
-                <div>
-                    <div className="flex items-center justify-between mb-3">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Mis productos</p>
-                        <button onClick={loadProducts} disabled={loadingGelatoProducts} className="flex items-center gap-1.5 text-[10px] text-neutral-500 hover:text-white transition-colors">
-                            {loadingGelatoProducts ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Actualizar
+                {/* ── Gelato real data ── */}
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Tu tienda Gelato</p>
+                        <button
+                            onClick={() => {
+                                setGelatoStoreProducts([]);
+                                setLoadingGelatoData(true);
+                                Promise.all([
+                                    fetch(`${API_BASE_URL}/gelato/store/products?limit=50`).then(r => r.ok ? r.json() : { products: [] }).catch(() => ({ products: [] })),
+                                    fetch(`${API_BASE_URL}/gelato/orders?limit=10`).then(r => r.ok ? r.json() : { orders: [] }).catch(() => ({ orders: [] })),
+                                ]).then(([prod, ord]) => {
+                                    setGelatoStoreProducts(prod.products ?? []);
+                                    setGelatoOrders(ord.orders ?? []);
+                                }).finally(() => setLoadingGelatoData(false));
+                            }}
+                            disabled={loadingGelatoData}
+                            className="flex items-center gap-1.5 text-[10px] text-neutral-500 hover:text-white transition-colors"
+                        >
+                            {loadingGelatoData ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Actualizar
                         </button>
                     </div>
 
-                    {gelatoMyProducts.length === 0 && !loadingGelatoProducts && (
-                        <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.01] p-12 text-center">
-                            <Store size={32} className="text-neutral-800 mx-auto mb-3" />
-                            <p className="text-sm text-neutral-500 mb-1">Aún no has creado ningún producto</p>
-                            <p className="text-[11px] text-neutral-700 mb-4">Pulsa "Crear Producto" para empezar</p>
-                            <button onClick={() => setShowGelatoProductModal(true)}
-                                className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 text-xs font-bold transition-all">
-                                <Plus size={12} /> Crear mi primer producto
-                            </button>
+                    {loadingGelatoData && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            {[1,2,3,4].map(i => <div key={i} className="h-20 rounded-2xl bg-white/[0.03] animate-pulse border border-white/5" />)}
                         </div>
                     )}
 
-                    {gelatoMyProducts.length > 0 && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {gelatoMyProducts.map(p => (
-                                <div key={p._id} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 flex gap-3 hover:border-white/15 transition-all">
-                                    {p.coverFileUrl || p.printFileUrl
-                                        ? <img src={p.coverFileUrl ?? p.printFileUrl} alt={p.title} className="w-14 h-14 rounded-xl object-cover shrink-0 bg-white/5" />
-                                        : <div className="w-14 h-14 rounded-xl bg-white/5 flex items-center justify-center shrink-0"><Package size={20} className="text-neutral-700" /></div>
-                                    }
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-bold text-white truncate">{p.title}</p>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${p.status === "active" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/25" : p.status === "deleted" ? "text-red-400 bg-red-500/10 border-red-500/25" : "text-neutral-400 bg-white/5 border-white/10"}`}>{p.status}</span>
-                                            {p.retailPrice && <span className="text-[10px] text-neutral-500">{p.currency} {p.retailPrice}</span>}
-                                        </div>
-                                        {p.gelatoProductId && <p className="text-[9px] font-mono text-neutral-700 mt-1 truncate">{p.gelatoProductId}</p>}
+                    {!loadingGelatoData && (
+                        <>
+                            {/* Stats row */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                {[
+                                    { label: "Productos totales", value: gelatoStoreProducts.length, icon: <Package size={15} className="text-orange-400" />, color: "orange" },
+                                    { label: "Publicados", value: gelatoStoreProducts.filter(p => p.status === "active" || p.status === "published").length, icon: <Store size={15} className="text-emerald-400" />, color: "emerald" },
+                                    { label: "Borradores", value: gelatoStoreProducts.filter(p => p.status === "draft").length, icon: <FileText size={15} className="text-sky-400" />, color: "sky" },
+                                    { label: "Pedidos (últimos 10)", value: gelatoOrders.length, icon: <ShoppingBag size={15} className="text-purple-400" />, color: "purple" },
+                                ].map(({ label, value, icon, color }) => (
+                                    <div key={label} className={`rounded-2xl border border-${color}-500/15 bg-${color}-500/[0.04] p-4`}>
+                                        <div className="flex items-center gap-2 mb-2">{icon}<span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">{label}</span></div>
+                                        <p className="text-2xl font-black text-white">{value}</p>
                                     </div>
-                                    <a href={`https://dashboard.gelato.com/store-products/product-list`} target="_blank" rel="noreferrer"
-                                        className="shrink-0 self-center p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all">
-                                        <ExternalLink size={13} />
-                                    </a>
+                                ))}
+                            </div>
+
+                            {/* Products list */}
+                            {gelatoStoreProducts.length > 0 && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {gelatoStoreProducts.slice(0, 6).map((p: any) => (
+                                        <div key={p.id ?? p.productUid} className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-3 hover:border-white/15 transition-all">
+                                            {p.previewUrl || p.thumbnail
+                                                ? <img src={p.previewUrl ?? p.thumbnail} alt={p.title} className="w-10 h-10 rounded-lg object-cover shrink-0 bg-white/5" />
+                                                : <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center shrink-0"><Package size={16} className="text-neutral-700" /></div>
+                                            }
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-xs font-bold text-white truncate">{p.title ?? p.externalId ?? "Sin título"}</p>
+                                                <div className="flex items-center gap-2 mt-0.5">
+                                                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full border ${(p.status === "active" || p.status === "published") ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/25" : "text-neutral-400 bg-white/5 border-white/10"}`}>{p.status}</span>
+                                                    {p.retailPrice && <span className="text-[9px] text-neutral-500">{p.currency ?? "EUR"} {p.retailPrice}</span>}
+                                                </div>
+                                            </div>
+                                            <a href="https://dashboard.gelato.com/store-products/product-list" target="_blank" rel="noreferrer" className="shrink-0 p-1 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all">
+                                                <ExternalLink size={11} />
+                                            </a>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
-                        </div>
+                            )}
+
+                            {/* Recent orders */}
+                            {gelatoOrders.length > 0 && (
+                                <div>
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-700 mb-2">Pedidos recientes</p>
+                                    <div className="space-y-1.5">
+                                        {gelatoOrders.slice(0, 5).map((o: any) => {
+                                            const statusColor = o.fulfillmentStatus === "fulfilled" ? "text-emerald-400" : o.fulfillmentStatus === "canceled" ? "text-red-400" : "text-amber-400";
+                                            return (
+                                                <div key={o.id ?? o.orderId} className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.01] px-3 py-2 hover:border-white/10 transition-all">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-[10px] font-bold text-white truncate">{o.orderReferenceId ?? o.id ?? "—"}</p>
+                                                        <p className="text-[9px] text-neutral-600">{o.createdAt ? new Date(o.createdAt).toLocaleDateString("es-ES") : ""}</p>
+                                                    </div>
+                                                    <span className={`text-[9px] font-black uppercase ${statusColor}`}>{o.fulfillmentStatus ?? o.status ?? "—"}</span>
+                                                    {o.totalAmount && <span className="text-[9px] text-neutral-500 tabular-nums">{o.currency} {o.totalAmount}</span>}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {gelatoStoreProducts.length === 0 && gelatoOrders.length === 0 && (
+                                <div className="rounded-2xl border border-dashed border-white/8 bg-white/[0.01] p-8 text-center text-neutral-600">
+                                    <Store size={24} className="mx-auto mb-2 opacity-40" />
+                                    <p className="text-[11px]">Sin datos — comprueba que GELATO_API_KEY y GELATO_STORE_ID están configurados en Ajustes</p>
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
 
@@ -5910,22 +5690,14 @@ export function KdpFactoryApp() {
                 );
             })()}
 
-            {/* Gelato Upload Modal */}
-            {showGelatoProductModal && (
-                <GelatoProductModal
-                    apiUrl={API_BASE_URL}
-                    onClose={() => { setShowGelatoProductModal(false); }}
-                />
-            )}
-
             {showGelatoUpload && (
                 <GelatoUploadModal
                     bookPages={bookPages}
                     bookFileName={bookFileName}
                     apiUrl={API_BASE_URL}
-                    buildPdf={async () => {
+                    buildPdf={async (pages?) => {
                         let result: Uint8Array | null = null;
-                        await buildBookPdf(bytes => { result = bytes; });
+                        await buildBookPdf(bytes => { result = bytes; }, false, pages);
                         return result;
                     }}
                     onClose={() => setShowGelatoUpload(false)}
