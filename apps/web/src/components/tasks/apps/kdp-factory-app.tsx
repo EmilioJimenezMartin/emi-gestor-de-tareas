@@ -3856,20 +3856,29 @@ export function KdpFactoryApp() {
                                     <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-[9px] font-black text-neutral-500 flex items-center justify-center shrink-0">02</span>
                                     <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Prompt del Activo</p>
                                 </div>
-                                {imagePrompt && (
-                                    <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5">
+                                    {(promptTheme || promptSpecs || promptDetails || promptParticulars || negativePrompt) && (
                                         <button type="button"
-                                            onClick={() => navigator.clipboard.writeText(imagePrompt).then(() => toast.success("Prompt copiado"))}
-                                            className="p-1.5 rounded-lg bg-white/5 text-neutral-600 hover:text-white hover:bg-white/10 transition-all border border-white/8" title="Copiar">
-                                            <Copy size={10} />
+                                            onClick={() => { setPromptTheme(""); setPromptSpecs(""); setPromptDetails(""); setPromptParticulars(""); setNegativePrompt(""); }}
+                                            className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20" title="Limpiar prompt">
+                                            <X size={10} />
                                         </button>
-                                        <button type="button"
-                                            onClick={() => { setSavePromptName(""); setSavePromptCategory("General"); setShowSavePromptDialog(true); }}
-                                            className="p-1.5 rounded-lg bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-all border border-sky-500/20" title="Guardar en biblioteca">
-                                            <BookMarked size={10} />
-                                        </button>
-                                    </div>
-                                )}
+                                    )}
+                                    {imagePrompt && (
+                                        <>
+                                            <button type="button"
+                                                onClick={() => navigator.clipboard.writeText(imagePrompt).then(() => toast.success("Prompt copiado"))}
+                                                className="p-1.5 rounded-lg bg-white/5 text-neutral-600 hover:text-white hover:bg-white/10 transition-all border border-white/8" title="Copiar">
+                                                <Copy size={10} />
+                                            </button>
+                                            <button type="button"
+                                                onClick={() => { setSavePromptName(""); setSavePromptCategory("General"); setShowSavePromptDialog(true); }}
+                                                className="p-1.5 rounded-lg bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-all border border-sky-500/20" title="Guardar en biblioteca">
+                                                <BookMarked size={10} />
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
                             </div>
                             <div className="space-y-2">
                                 <input value={promptTheme} onChange={e => setPromptTheme(e.target.value)}

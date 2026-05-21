@@ -147,10 +147,13 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
                 app.log.warn(e, "Could not delete Cloudinary image");
             }
 
-            catalog.images = catalog.images.filter((img) => img.publicId !== publicId);
-            await catalog.save();
+            const updated = await Catalog.findByIdAndUpdate(
+                request.params.id,
+                { $pull: { images: { publicId } } },
+                { new: true }
+            );
 
-            return reply.send({ success: true, catalog });
+            return reply.send({ success: true, catalog: updated });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
         }
