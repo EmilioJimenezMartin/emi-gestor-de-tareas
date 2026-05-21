@@ -23,6 +23,7 @@ import { registerRadarRoutes } from "./routes/radar.js";
 import { registerGelatoRoutes } from "./routes/gelato.js";
 import { registerEtsyRoutes } from "./routes/etsy.js";
 import { registerUploadsRoutes } from "./routes/uploads.js";
+import { registerDigitalProductRoutes } from "./routes/digitalProducts.js";
 import { Settings } from "./models/settings.js";
 
 const env = loadEnv(process.env);
@@ -55,6 +56,7 @@ await registerRadarRoutes(app, deps);
 await registerGelatoRoutes(app);
 await registerEtsyRoutes(app);
 await registerUploadsRoutes(app);
+await registerDigitalProductRoutes(app);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {
