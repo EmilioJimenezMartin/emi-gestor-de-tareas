@@ -849,6 +849,26 @@ export function KdpFactoryApp() {
     const [isLoadingTrends, setIsLoadingTrends] = useState(false);
     const [selectedTrend, setSelectedTrend] = useState<any | null>(null);
 
+    // --- Integrations ---
+    type IntegrationStatus = "dev" | "paused" | "study" | "active";
+    interface Integration {
+        _id?: string;
+        id: string;
+        name: string;
+        icon: string;
+        status: IntegrationStatus;
+        statusLabel: string;
+        desc: string;
+        url?: string;
+    }
+    const [integrations, setIntegrations] = useState<Integration[]>([]);
+    const [isLoadingIntegrations, setIsLoadingIntegrations] = useState(false);
+    const [showIntegrationModal, setShowIntegrationModal] = useState(false);
+    const [editingIntegration, setEditingIntegration] = useState<Integration | null>(null);
+    const [integrationDraft, setIntegrationDraft] = useState<Partial<Integration>>({});
+    const [confirmDeleteIntegrationId, setConfirmDeleteIntegrationId] = useState<string | null>(null);
+    const [isSavingIntegration, setIsSavingIntegration] = useState(false);
+
     // --- Favorites (persisted to MongoDB via /settings as FavoriteImage[]) ---
     const [favorites, setFavorites] = useState<Map<string, FavoriteImage>>(new Map());
 
@@ -2365,8 +2385,9 @@ export function KdpFactoryApp() {
             void fetchCloudinaryImages();
             void fetchSavedPrompts();
         }
-        if (activeTab === "insights" && products.length === 0) {
-            void fetchProducts();
+        if (activeTab === "insights") {
+            if (products.length === 0) void fetchProducts();
+            if (integrations.length === 0) void fetchIntegrations();
         }
         if (activeTab === "studio" && niches.length === 0) {
             void fetchNiches();
@@ -2662,6 +2683,58 @@ export function KdpFactoryApp() {
         }
         setProducts(products.filter(p => p.id !== id));
         toast.success("Producto eliminado");
+    };
+
+    const fetchIntegrations = async () => {
+        setIsLoadingIntegrations(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/integrations`);
+            if (!res.ok) return;
+            const data = await res.json();
+            setIntegrations((data.integrations ?? []).map((i: any) => ({ ...i, id: i._id })));
+        } catch { /* keep empty */ } finally {
+            setIsLoadingIntegrations(false);
+        }
+    };
+
+    const handleSaveIntegration = async () => {
+        if (!integrationDraft.name?.trim()) { toast.error("El nombre es obligatorio"); return; }
+        setIsSavingIntegration(true);
+        try {
+            if (editingIntegration?._id) {
+                const res = await fetch(`${API_BASE_URL}/integrations/${editingIntegration._id}`, {
+                    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(integrationDraft),
+                });
+                if (res.ok) {
+                    const d = await res.json();
+                    setIntegrations(prev => prev.map(i => i.id === editingIntegration.id ? { ...d.integration, id: d.integration._id } : i));
+                    toast.success("Integración actualizada");
+                }
+            } else {
+                const res = await fetch(`${API_BASE_URL}/integrations`, {
+                    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(integrationDraft),
+                });
+                if (res.ok) {
+                    const d = await res.json();
+                    setIntegrations(prev => [...prev, { ...d.integration, id: d.integration._id }]);
+                    toast.success("Integración añadida");
+                }
+            }
+            setShowIntegrationModal(false);
+            setEditingIntegration(null);
+            setIntegrationDraft({});
+        } catch { toast.error("Error al guardar"); } finally {
+            setIsSavingIntegration(false);
+        }
+    };
+
+    const handleDeleteIntegration = async (id: string) => {
+        const integ = integrations.find(i => i.id === id);
+        if (integ?._id) {
+            await fetch(`${API_BASE_URL}/integrations/${integ._id}`, { method: "DELETE" }).catch(() => {});
+        }
+        setIntegrations(prev => prev.filter(i => i.id !== id));
+        toast.success("Integración eliminada");
     };
 
     const COMPETITION_LABELS: Record<NicheFE["competition"], { label: string; color: string }> = {
@@ -3234,40 +3307,69 @@ export function KdpFactoryApp() {
 
             {/* ── Tabla de integraciones ── */}
             {(() => {
-                const INTEGRATIONS = [
-                    { name: "Amazon KDP",      icon: "📦", status: "dev",     statusLabel: "En desarrollo", desc: "Subida manual de PDFs + seguimiento de ventas" },
-                    { name: "Gelato",           icon: "🖨️", status: "dev",     statusLabel: "En desarrollo", desc: "Print on demand conectado vía API" },
-                    { name: "Etsy",             icon: "🛍️", status: "paused",  statusLabel: "Pausado",       desc: "Marketplace de productos digitales y físicos" },
-                    { name: "Gumroad",          icon: "💚", status: "study",   statusLabel: "En estudio",    desc: "Venta directa de PDFs y productos digitales" },
-                    { name: "Lemon Squeezy",    icon: "🍋", status: "study",   statusLabel: "En estudio",    desc: "Alternativa moderna a Gumroad con API REST" },
-                    { name: "Printify",         icon: "👕", status: "study",   statusLabel: "En estudio",    desc: "Print on demand, API gratuita" },
-                    { name: "Ko-fi",            icon: "☕", status: "study",   statusLabel: "En estudio",    desc: "Shop con webhooks gratuitos" },
-                ] as const;
-                const badge = {
+                const badge: Record<string, string> = {
                     dev:    "bg-amber-500/15 border-amber-500/30 text-amber-400",
                     paused: "bg-neutral-500/15 border-neutral-500/30 text-neutral-500",
                     study:  "bg-sky-500/15 border-sky-500/30 text-sky-400",
+                    active: "bg-emerald-500/15 border-emerald-500/30 text-emerald-400",
                 };
                 return (
                     <section className="space-y-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-between gap-2">
                             <SectionHeader icon={<Store size={15} />} title="Integraciones" subtitle="Estado de los marketplaces conectados o en hoja de ruta" color="indigo" size="sm" />
+                            <button
+                                onClick={() => { setEditingIntegration(null); setIntegrationDraft({ status: "study", statusLabel: "En estudio", icon: "🔗" }); setShowIntegrationModal(true); }}
+                                className="flex items-center gap-1.5 h-8 px-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20 hover:border-indigo-500/40 transition-all text-[10px] font-black uppercase tracking-wider shrink-0"
+                            >
+                                <Plus size={11} /> Añadir
+                            </button>
                         </div>
                         <Card variant="outline" className="overflow-hidden border-white/5 bg-white/[0.01]">
-                            <div className="divide-y divide-white/[0.05]">
-                                {INTEGRATIONS.map((int) => (
-                                    <div key={int.name} className="flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.02] transition-all">
-                                        <span className="text-lg w-7 shrink-0">{int.icon}</span>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-[12px] font-black text-white">{int.name}</p>
-                                            <p className="text-[10px] text-neutral-600 truncate">{int.desc}</p>
+                            {isLoadingIntegrations ? (
+                                <div className="divide-y divide-white/[0.05]">
+                                    {[...Array(4)].map((_, i) => (
+                                        <div key={i} className="flex items-center gap-4 px-5 py-3.5 animate-pulse">
+                                            <div className="w-7 h-5 rounded bg-white/5 shrink-0" />
+                                            <div className="flex-1 space-y-1.5">
+                                                <div className="h-2.5 w-28 rounded bg-white/5" />
+                                                <div className="h-2 w-44 rounded bg-white/5" />
+                                            </div>
+                                            <div className="h-5 w-20 rounded-lg bg-white/5 shrink-0" />
                                         </div>
-                                        <span className={`shrink-0 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${badge[int.status]}`}>
-                                            {int.statusLabel}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                            ) : integrations.length === 0 ? (
+                                <div className="flex flex-col items-center gap-3 py-10 text-center">
+                                    <Store size={28} className="text-neutral-700" />
+                                    <p className="text-[11px] text-neutral-600">No hay integraciones. Añade la primera.</p>
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-white/[0.05]">
+                                    {integrations.map((int) => (
+                                        <div key={int.id} className="group flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.02] transition-all">
+                                            <span className="text-lg w-7 shrink-0">{int.icon}</span>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-[12px] font-black text-white">{int.name}</p>
+                                                <p className="text-[10px] text-neutral-600 truncate">{int.desc}</p>
+                                                {int.url && <a href={int.url} target="_blank" rel="noreferrer" className="text-[9px] text-indigo-500 hover:text-indigo-400 truncate block">{int.url}</a>}
+                                            </div>
+                                            <span className={`shrink-0 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${badge[int.status] ?? badge.study}`}>
+                                                {int.statusLabel}
+                                            </span>
+                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                                <button
+                                                    onClick={() => { setEditingIntegration(int); setIntegrationDraft({ name: int.name, icon: int.icon, status: int.status, statusLabel: int.statusLabel, desc: int.desc, url: int.url ?? "" }); setShowIntegrationModal(true); }}
+                                                    className="w-6 h-6 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/10 transition-all"
+                                                ><Pencil size={10} /></button>
+                                                <button
+                                                    onClick={() => setConfirmDeleteIntegrationId(int.id)}
+                                                    className="w-6 h-6 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-neutral-500 hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/20 transition-all"
+                                                ><Trash2 size={10} /></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </Card>
                     </section>
                 );
@@ -6985,7 +7087,108 @@ export function KdpFactoryApp() {
                 </div>
             )}
 
+            {/* ── Integration modal ── */}
+            {showIntegrationModal && (() => {
+                const STATUS_OPTIONS: { value: string; label: string; color: string }[] = [
+                    { value: "active", label: "Activo",       color: "bg-emerald-500/15 border-emerald-500/30 text-emerald-400" },
+                    { value: "dev",    label: "En desarrollo", color: "bg-amber-500/15 border-amber-500/30 text-amber-400" },
+                    { value: "paused", label: "Pausado",       color: "bg-neutral-500/15 border-neutral-500/30 text-neutral-500" },
+                    { value: "study",  label: "En estudio",    color: "bg-sky-500/15 border-sky-500/30 text-sky-400" },
+                ];
+                const STATUS_LABELS: Record<string, string> = { active: "Activo", dev: "En desarrollo", paused: "Pausado", study: "En estudio" };
+                return (
+                    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) { setShowIntegrationModal(false); setEditingIntegration(null); setIntegrationDraft({}); } }}>
+                        <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0a0a0b] shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
+                            <div className="h-px w-full bg-gradient-to-r from-indigo-500/80 via-violet-400/40 to-transparent" />
+                            <div className="px-6 pt-5 pb-2 flex items-center justify-between">
+                                <div>
+                                    <p className="text-[13px] font-black text-white">{editingIntegration ? "Editar integración" : "Nueva integración"}</p>
+                                    <p className="text-[10px] text-neutral-600 mt-0.5">Añade un marketplace o plataforma a tu hoja de ruta</p>
+                                </div>
+                                <button onClick={() => { setShowIntegrationModal(false); setEditingIntegration(null); setIntegrationDraft({}); }} className="w-7 h-7 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-neutral-500 hover:text-white transition-all"><X size={13} /></button>
+                            </div>
+                            <div className="px-6 py-4 space-y-4">
+                                {/* Icon + Name */}
+                                <div className="flex gap-3">
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Icono</label>
+                                        <input
+                                            type="text"
+                                            value={integrationDraft.icon ?? "🔗"}
+                                            onChange={e => setIntegrationDraft(d => ({ ...d, icon: e.target.value }))}
+                                            className="w-14 h-10 text-center text-xl bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-indigo-500/50"
+                                        />
+                                    </div>
+                                    <div className="flex-1 flex flex-col gap-1">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Nombre <span className="text-rose-500">*</span></label>
+                                        <input
+                                            type="text"
+                                            placeholder="Ej: Printful, Redbubble…"
+                                            value={integrationDraft.name ?? ""}
+                                            onChange={e => setIntegrationDraft(d => ({ ...d, name: e.target.value }))}
+                                            className="h-10 px-3 bg-white/5 border border-white/10 rounded-xl text-[12px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-indigo-500/50"
+                                        />
+                                    </div>
+                                </div>
+                                {/* Status */}
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Estado</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {STATUS_OPTIONS.map(opt => (
+                                            <button key={opt.value} onClick={() => setIntegrationDraft(d => ({ ...d, status: opt.value as any, statusLabel: STATUS_LABELS[opt.value] }))}
+                                                className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl border transition-all ${integrationDraft.status === opt.value ? opt.color : "bg-white/5 border-white/10 text-neutral-600 hover:text-neutral-400"}`}
+                                            >{opt.label}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {/* Description */}
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Descripción</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Breve descripción de la integración"
+                                        value={integrationDraft.desc ?? ""}
+                                        onChange={e => setIntegrationDraft(d => ({ ...d, desc: e.target.value }))}
+                                        className="h-10 px-3 bg-white/5 border border-white/10 rounded-xl text-[12px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-indigo-500/50"
+                                    />
+                                </div>
+                                {/* URL */}
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">URL <span className="text-neutral-700">(opcional)</span></label>
+                                    <input
+                                        type="url"
+                                        placeholder="https://..."
+                                        value={integrationDraft.url ?? ""}
+                                        onChange={e => setIntegrationDraft(d => ({ ...d, url: e.target.value }))}
+                                        className="h-10 px-3 bg-white/5 border border-white/10 rounded-xl text-[12px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-indigo-500/50"
+                                    />
+                                </div>
+                            </div>
+                            <div className="px-6 pb-5 flex gap-2 justify-end">
+                                <button onClick={() => { setShowIntegrationModal(false); setEditingIntegration(null); setIntegrationDraft({}); }} className="h-9 px-4 rounded-xl bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-wider text-neutral-500 hover:text-white transition-all">
+                                    Cancelar
+                                </button>
+                                <button onClick={handleSaveIntegration} disabled={isSavingIntegration || !integrationDraft.name?.trim()} className="h-9 px-5 rounded-xl bg-indigo-600 border border-indigo-500/60 text-[10px] font-black uppercase tracking-wider text-white hover:bg-indigo-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
+                                    {isSavingIntegration && <Loader2 size={11} className="animate-spin" />}
+                                    {editingIntegration ? "Guardar" : "Añadir"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* ── Confirm modals (generic) ── */}
+            <ConfirmModal
+                open={!!confirmDeleteIntegrationId}
+                onClose={() => setConfirmDeleteIntegrationId(null)}
+                onConfirm={() => { if (confirmDeleteIntegrationId) { handleDeleteIntegration(confirmDeleteIntegrationId); setConfirmDeleteIntegrationId(null); } }}
+                title="¿Eliminar integración?"
+                description={<>Se eliminará <span className="text-white font-bold">{integrations.find(i => i.id === confirmDeleteIntegrationId)?.name ?? "esta integración"}</span>. Esta acción no se puede deshacer.</>}
+                confirmLabel="Eliminar"
+                variant="danger"
+                icon={<Trash2 size={24} className="text-red-400" />}
+            />
             <ConfirmModal
                 open={!!confirmDeleteProductId}
                 onClose={() => setConfirmDeleteProductId(null)}

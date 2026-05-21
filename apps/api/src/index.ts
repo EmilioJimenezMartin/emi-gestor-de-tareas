@@ -24,6 +24,7 @@ import { registerGelatoRoutes } from "./routes/gelato.js";
 import { registerEtsyRoutes } from "./routes/etsy.js";
 import { registerUploadsRoutes } from "./routes/uploads.js";
 import { registerDigitalProductRoutes } from "./routes/digitalProducts.js";
+import { registerIntegrationRoutes } from "./routes/integrations.js";
 import { Settings } from "./models/settings.js";
 
 const env = loadEnv(process.env);
@@ -57,6 +58,7 @@ await registerGelatoRoutes(app);
 await registerEtsyRoutes(app);
 await registerUploadsRoutes(app);
 await registerDigitalProductRoutes(app);
+await registerIntegrationRoutes(app);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {
