@@ -100,6 +100,7 @@ interface DigitalProduct {
     platforms: ProductPlatform[];
     totalEarnings: number;
     createdAt: string;
+    nicheId?: string;
 }
 
 const PRODUCT_TYPES = [
@@ -1628,6 +1629,16 @@ export function KdpFactoryApp() {
         "a4": { label: "A4", w: 595.28, h: 841.89 },
     } as const;
 
+    const KDP_BOOK_SIZES = [
+        { id: "8.5x11",  label: '8.5"×11"', sublabel: "21,59×27,94 cm", w: 612,    h: 792,    margin: 40 },
+        { id: "8x10",    label: '8"×10"',   sublabel: "20,32×25,4 cm",  w: 576,    h: 720,    margin: 38 },
+        { id: "7x10",    label: '7"×10"',   sublabel: "17,78×25,4 cm",  w: 504,    h: 720,    margin: 36 },
+        { id: "6x9",     label: '6"×9"',    sublabel: "15,24×22,86 cm", w: 432,    h: 648,    margin: 32 },
+        { id: "5.5x8.5", label: '5.5"×8.5"', sublabel: "13,97×21,59 cm", w: 396,  h: 612,    margin: 30 },
+        { id: "5x8",     label: '5"×8"',    sublabel: "12,7×20,32 cm",  w: 360,    h: 576,    margin: 28 },
+        { id: "a4",      label: "A4",        sublabel: "21,0×29,7 cm",   w: 595.28, h: 841.89, margin: 40 },
+    ];
+
     const exportKdpPdf = async () => {
         const urls = [...selectedImageUrls];
         if (urls.length === 0) return;
@@ -1930,6 +1941,7 @@ export function KdpFactoryApp() {
 
     const [bookEditorOpen, setBookEditorOpen] = useState(false);
     const [bookFileName, setBookFileName] = useState("libro-kdp");
+    const [bookPdfSize, setBookPdfSize] = useState("8.5x11");
     const [isBuildingPdf, setIsBuildingPdf] = useState(false);
     const [includeOwnerPage, setIncludeOwnerPage] = useState(true);
     const [showGelatoUpload, setShowGelatoUpload] = useState(false);
@@ -1941,6 +1953,15 @@ export function KdpFactoryApp() {
     const [gelatoOrders, setGelatoOrders] = useState<any[]>([]);
     const [loadingGelatoData, setLoadingGelatoData] = useState(false);
     const [isSavingDraft, setIsSavingDraft] = useState(false);
+
+    const selectedSizeConfig = useMemo(
+        () => KDP_BOOK_SIZES.find(s => s.id === bookPdfSize) ?? KDP_BOOK_SIZES[0],
+        [bookPdfSize]
+    );
+    const previewW = selectedSizeConfig.w;
+    const previewH = selectedSizeConfig.h;
+    const previewMargin = selectedSizeConfig.margin;
+
     const [bookDrafts, setBookDrafts] = useState<{ id: string; fileName: string; pages: BookPage[]; savedAt: string }[]>([]);
     const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
     const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState<string | null>(null);
@@ -2096,9 +2117,10 @@ export function KdpFactoryApp() {
             const pdf = await PDFDocument.create();
             const fontkitMod = await import("@pdf-lib/fontkit");
             pdf.registerFontkit(fontkitMod.default ?? fontkitMod);
-            const pageWidth = 595.28;
-            const pageHeight = 841.89;
-            const margin = 48;
+            const sizeConfig = KDP_BOOK_SIZES.find(s => s.id === bookPdfSize) ?? KDP_BOOK_SIZES[0];
+            const pageWidth = sizeConfig.w;
+            const pageHeight = sizeConfig.h;
+            const margin = sizeConfig.margin;
 
             // Compress an image via Canvas → JPEG. Fetches bytes first to avoid CORS issues.
             const compressToJpeg = async (url: string, quality = 0.68): Promise<Uint8Array> => {
@@ -2200,119 +2222,62 @@ export function KdpFactoryApp() {
                 });
             };
 
-            // ── Página de propietario / copyright (primera página, si no viene en pages) ──
-            if (includeOwnerPage && !pages.some(p => p.type === "owner")) {
-                const ownerPage = pdf.addPage([pageWidth, pageHeight]);
-                const fontNormal = embeddedFont;
-                const centerX = pageWidth / 2;
+            // ── Helper: draws the owner/copyright page content scaled to any page size ──
+            const drawOwnerPageContent = (pg: any, font: any) => {
+                const cx = pageWidth / 2;
                 const grayMid = rgb(0.5, 0.5, 0.5);
                 const grayLight = rgb(0.78, 0.78, 0.78);
                 const grayVeryLight = rgb(0.88, 0.88, 0.88);
 
-                // ── Sección "pertenece a" ──
+                // "pertenece a" section — positioned at ~66.5% and ~63.7% from bottom
+                const belongsY  = pageHeight * 0.665;
+                const belongsEnY = pageHeight * 0.637;
+                const labelSize = Math.round(15 * (pageHeight / 841.89));
                 const spanishText = "Este libro pertenece a:";
                 const englishText = "This book belongs to:";
-                const labelSize = 15;
-                ownerPage.drawText(spanishText, {
-                    x: centerX - fontNormal.widthOfTextAtSize(spanishText, labelSize) / 2,
-                    y: 560, size: labelSize, font: fontNormal, color: grayMid,
-                });
-                ownerPage.drawText(englishText, {
-                    x: centerX - fontNormal.widthOfTextAtSize(englishText, labelSize - 1) / 2,
-                    y: 536, size: labelSize - 1, font: fontNormal, color: grayLight,
-                });
+                pg.drawText(spanishText, { x: cx - font.widthOfTextAtSize(spanishText, labelSize) / 2, y: belongsY, size: labelSize, font, color: grayMid });
+                pg.drawText(englishText, { x: cx - font.widthOfTextAtSize(englishText, labelSize - 1) / 2, y: belongsEnY, size: labelSize - 1, font, color: grayLight });
 
-                // Línea punteada para el nombre
-                const lineY = 508;
-                const lineX1 = margin + 50;
-                const lineX2 = pageWidth - margin - 50;
+                // Dotted line at ~60.3% from bottom
+                const lineY = pageHeight * 0.603;
+                const lineX1 = margin + 50 * (pageWidth / 612);
+                const lineX2 = pageWidth - margin - 50 * (pageWidth / 612);
                 for (let x = lineX1; x < lineX2; x += 8) {
-                    ownerPage.drawLine({
-                        start: { x, y: lineY },
-                        end: { x: Math.min(x + 4, lineX2), y: lineY },
-                        thickness: 0.8,
-                        color: grayLight,
-                    });
+                    pg.drawLine({ start: { x, y: lineY }, end: { x: Math.min(x + 4, lineX2), y: lineY }, thickness: 0.8, color: grayLight });
                 }
 
-                // ── Sección de prueba de colores ──
-                const squareSize = 30;
+                // Color test squares at ~12.8% from bottom
+                const squareSize = Math.round(30 * (pageWidth / 612));
                 const squareCount = 6;
-                const squareGap = 9;
+                const squareGap = Math.round(9 * (pageWidth / 612));
                 const totalW = squareCount * squareSize + (squareCount - 1) * squareGap;
-                const squareStartX = centerX - totalW / 2;
-                const squareY = 108;
-
+                const squareStartX = cx - totalW / 2;
+                const squareY = pageHeight * 0.128;
                 const colorTestLabel = "Prueba tus colores aquí  ·  Test your colors here";
-                const colorLabelSize = 7.5;
-                ownerPage.drawText(colorTestLabel, {
-                    x: centerX - fontNormal.widthOfTextAtSize(colorTestLabel, colorLabelSize) / 2,
-                    y: squareY + squareSize + 10, size: colorLabelSize, font: fontNormal, color: grayMid,
-                });
-
-                // Recuadro exterior del grupo de cuadraditos
-                ownerPage.drawRectangle({
-                    x: squareStartX - 6,
-                    y: squareY - 6,
-                    width: totalW + 12,
-                    height: squareSize + 12,
-                    borderColor: grayVeryLight,
-                    borderWidth: 0.5,
-                    color: rgb(1, 1, 1),
-                });
-
+                const colorLabelSize = Math.max(5, 7.5 * (pageHeight / 841.89));
+                pg.drawText(colorTestLabel, { x: cx - font.widthOfTextAtSize(colorTestLabel, colorLabelSize) / 2, y: squareY + squareSize + 10, size: colorLabelSize, font, color: grayMid });
+                pg.drawRectangle({ x: squareStartX - 6, y: squareY - 6, width: totalW + 12, height: squareSize + 12, borderColor: grayVeryLight, borderWidth: 0.5, color: rgb(1, 1, 1) });
                 for (let i = 0; i < squareCount; i++) {
-                    ownerPage.drawRectangle({
-                        x: squareStartX + i * (squareSize + squareGap),
-                        y: squareY,
-                        width: squareSize,
-                        height: squareSize,
-                        borderColor: grayLight,
-                        borderWidth: 0.6,
-                        color: rgb(1, 1, 1),
-                    });
+                    pg.drawRectangle({ x: squareStartX + i * (squareSize + squareGap), y: squareY, width: squareSize, height: squareSize, borderColor: grayLight, borderWidth: 0.6, color: rgb(1, 1, 1) });
                 }
 
-                // ── Copyright ──
+                // Copyright line — just above the margin
                 const copyrightText = `© ${new Date().getFullYear()} Emilio Jiménez. Todos los derechos reservados.`;
-                const copyrightSize = 7;
-                ownerPage.drawText(copyrightText, {
-                    x: centerX - fontNormal.widthOfTextAtSize(copyrightText, copyrightSize) / 2,
-                    y: margin + 8, size: copyrightSize, font: fontNormal, color: grayVeryLight,
-                });
+                const copyrightSize = Math.max(5, 7 * (pageHeight / 841.89));
+                pg.drawText(copyrightText, { x: cx - font.widthOfTextAtSize(copyrightText, copyrightSize) / 2, y: margin + 8, size: copyrightSize, font, color: grayVeryLight });
+            };
+
+            // ── Página de propietario / copyright (primera página, si no viene en pages) ──
+            if (includeOwnerPage && !pages.some(p => p.type === "owner")) {
+                const ownerPage = pdf.addPage([pageWidth, pageHeight]);
+                drawOwnerPageContent(ownerPage, embeddedFont);
             }
 
             for (const bookPage of pages) {
                 // ── Owner page type: render same content as standalone owner page ──
                 if (bookPage.type === "owner") {
                     const ownerPage = pdf.addPage([pageWidth, pageHeight]);
-                    const fontOwner = embeddedFont;
-                    const centerX = pageWidth / 2;
-                    const grayMid = rgb(0.5, 0.5, 0.5);
-                    const grayLight = rgb(0.78, 0.78, 0.78);
-                    const grayVeryLight2 = rgb(0.88, 0.88, 0.88);
-                    const spanishText = "Este libro pertenece a:";
-                    const englishText = "This book belongs to:";
-                    const labelSize = 15;
-                    ownerPage.drawText(spanishText, { x: centerX - fontOwner.widthOfTextAtSize(spanishText, labelSize) / 2, y: 560, size: labelSize, font: fontOwner, color: grayMid });
-                    ownerPage.drawText(englishText, { x: centerX - fontOwner.widthOfTextAtSize(englishText, labelSize - 1) / 2, y: 536, size: labelSize - 1, font: fontOwner, color: grayLight });
-                    const lineY = 508; const lineX1 = margin + 50; const lineX2 = pageWidth - margin - 50;
-                    for (let x = lineX1; x < lineX2; x += 8) {
-                        ownerPage.drawLine({ start: { x, y: lineY }, end: { x: Math.min(x + 4, lineX2), y: lineY }, thickness: 0.8, color: grayLight });
-                    }
-                    const squareSize = 30; const squareCount = 6; const squareGap = 9;
-                    const totalW = squareCount * squareSize + (squareCount - 1) * squareGap;
-                    const squareStartX = centerX - totalW / 2; const squareY = 108;
-                    const colorTestLabel = "Prueba tus colores aquí  ·  Test your colors here";
-                    const colorLabelSize = 7.5;
-                    ownerPage.drawText(colorTestLabel, { x: centerX - fontOwner.widthOfTextAtSize(colorTestLabel, colorLabelSize) / 2, y: squareY + squareSize + 10, size: colorLabelSize, font: fontOwner, color: grayMid });
-                    ownerPage.drawRectangle({ x: squareStartX - 6, y: squareY - 6, width: totalW + 12, height: squareSize + 12, borderColor: grayVeryLight2, borderWidth: 0.5, color: rgb(1, 1, 1) });
-                    for (let i = 0; i < squareCount; i++) {
-                        ownerPage.drawRectangle({ x: squareStartX + i * (squareSize + squareGap), y: squareY, width: squareSize, height: squareSize, borderColor: grayLight, borderWidth: 0.6, color: rgb(1, 1, 1) });
-                    }
-                    const copyrightText2 = `© ${new Date().getFullYear()} Emilio Jiménez. Todos los derechos reservados.`;
-                    const copyrightSize2 = 7;
-                    ownerPage.drawText(copyrightText2, { x: centerX - fontOwner.widthOfTextAtSize(copyrightText2, copyrightSize2) / 2, y: margin + 8, size: copyrightSize2, font: fontOwner, color: grayVeryLight2 });
+                    drawOwnerPageContent(ownerPage, embeddedFont);
                     continue;
                 }
 
@@ -2350,7 +2315,7 @@ export function KdpFactoryApp() {
             }
             const blob = new Blob([pdfBytes as Uint8Array<ArrayBuffer>], { type: "application/pdf" });
             const url = URL.createObjectURL(blob);
-            downloadFile(url, `${(bookFileName.trim() || "libro-kdp")}.pdf`);
+            downloadFile(url, `${(bookFileName.trim() || "libro-kdp")}_${bookPdfSize}.pdf`);
             setTimeout(() => URL.revokeObjectURL(url), 30_000);
             toast.success("PDF generado");
             return pdfBytes as Uint8Array;
@@ -2963,6 +2928,24 @@ export function KdpFactoryApp() {
                                             className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2 text-neutral-300 text-sm outline-none focus:border-indigo-500/50 resize-none"
                                             placeholder="Descripción / subtítulo"
                                         />
+                                        {/* Niche link */}
+                                        <div className="space-y-1.5">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Nicho vinculado</p>
+                                            {niches.length === 0 ? (
+                                                <p className="text-[11px] text-neutral-600 italic px-1">No hay nichos creados todavía</p>
+                                            ) : (
+                                                <select
+                                                    value={editDraft.nicheId ?? ""}
+                                                    onChange={e => setEditDraft(d => d && ({ ...d, nicheId: e.target.value || undefined }))}
+                                                    className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 [color-scheme:dark]"
+                                                >
+                                                    <option value="">— Sin nicho —</option>
+                                                    {niches.map(n => (
+                                                        <option key={n._id} value={n._id}>{n.name}</option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                        </div>
                                         {/* Platforms edit */}
                                         <div className="space-y-2">
                                             <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Plataformas</p>
@@ -3028,10 +3011,18 @@ export function KdpFactoryApp() {
                                     <div className="flex flex-col md:flex-row gap-6 relative">
                                         <div className="flex-1 space-y-5">
                                             <div className="space-y-1">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-2 flex-wrap">
                                                     <Badge variant="neutral" className="bg-indigo-500/10 border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-[0.05em] px-2.5">
                                                         {product.type}
                                                     </Badge>
+                                                    {product.nicheId && (() => {
+                                                        const linkedNiche = niches.find(n => n._id === product.nicheId);
+                                                        return linkedNiche ? (
+                                                            <Badge variant="neutral" className="bg-violet-500/10 border-violet-500/20 text-violet-400 text-[10px] font-black px-2.5 flex items-center gap-1">
+                                                                <Target size={9} /> {linkedNiche.name}
+                                                            </Badge>
+                                                        ) : null;
+                                                    })()}
                                                     <span className="text-[10px] font-medium text-neutral-700 font-mono">#{product.id.slice(-6)}</span>
                                                 </div>
                                                 <h3 className="text-xl font-black text-white italic tracking-tight">{product.title}</h3>
@@ -4943,18 +4934,11 @@ export function KdpFactoryApp() {
                     {!loadingGelatoData && (
                         <>
                             {/* Stats row */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                {[
-                                    { label: "Productos totales", value: gelatoStoreProducts.length, icon: <Package size={15} className="text-orange-400" />, color: "orange" },
-                                    { label: "Publicados", value: gelatoStoreProducts.filter(p => p.status === "active" || p.status === "published").length, icon: <Store size={15} className="text-emerald-400" />, color: "emerald" },
-                                    { label: "Borradores", value: gelatoStoreProducts.filter(p => p.status === "draft").length, icon: <FileText size={15} className="text-sky-400" />, color: "sky" },
-                                    { label: "Pedidos (últimos 10)", value: gelatoOrders.length, icon: <ShoppingBag size={15} className="text-purple-400" />, color: "purple" },
-                                ].map(({ label, value, icon, color }) => (
-                                    <div key={label} className={`rounded-2xl border border-${color}-500/15 bg-${color}-500/[0.04] p-4`}>
-                                        <div className="flex items-center gap-2 mb-2">{icon}<span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">{label}</span></div>
-                                        <p className="text-2xl font-black text-white">{value}</p>
-                                    </div>
-                                ))}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <KdpStatCard label="Productos totales" value={gelatoStoreProducts.length} icon={<Package size={16} />} color="orange" />
+                                <KdpStatCard label="Publicados" value={gelatoStoreProducts.filter((p: any) => p.status === "active" || p.status === "published").length} icon={<Store size={16} />} color="emerald" />
+                                <KdpStatCard label="Borradores" value={gelatoStoreProducts.filter((p: any) => p.status === "draft").length} icon={<FileText size={16} />} color="sky" />
+                                <KdpStatCard label="Pedidos (últimos 10)" value={gelatoOrders.length} icon={<ShoppingBag size={16} />} color="purple" />
                             </div>
 
                             {/* Products list */}
@@ -6268,14 +6252,14 @@ export function KdpFactoryApp() {
 
                                                         {selectedPage.image && (() => {
                                                             const zoom = selectedPage.image.scale ?? 1;
-                                                            const hPct = Math.min(35, (48 / Math.max(zoom, 0.1) / 595.28) * 100);
-                                                            const vPct = Math.min(35, (48 / Math.max(zoom, 0.1) / 841.89) * 100);
+                                                            const hPct = Math.min(35, (previewMargin / Math.max(zoom, 0.1) / previewW) * 100);
+                                                            const vPct = Math.min(35, (previewMargin / Math.max(zoom, 0.1) / previewH) * 100);
                                                             const brd = selectedPage.image.border;
                                                             return (
                                                                 <div
                                                                     className="relative w-full rounded-xl overflow-hidden border border-white/15 shadow-lg bg-white"
                                                                     style={{
-                                                                        aspectRatio: "595/842",
+                                                                        aspectRatio: `${previewW}/${previewH}`,
                                                                         ...(brd ? { boxShadow: `inset 0 0 0 ${brd.width}px ${brd.color}` } : {}),
                                                                     }}
                                                                 >
@@ -6453,15 +6437,15 @@ export function KdpFactoryApp() {
                                                                     <span className="text-[9px] text-neutral-600 font-mono">{selectedPage.text.fontSize}pt · {vAlign === "top" ? "Arriba" : vAlign === "middle" ? "Centro" : "Abajo"}</span>
                                                                 </div>
 
-                                                                {/* A4 page mock */}
+                                                                {/* Page mock */}
                                                                 <div className="relative w-full rounded-xl overflow-hidden border border-white/15 shadow-2xl"
-                                                                    style={{ aspectRatio: "595/842" }}>
+                                                                    style={{ aspectRatio: `${previewW}/${previewH}` }}>
                                                                     {/* Page background */}
                                                                     <div className="absolute inset-0 bg-white" />
                                                                     {(selectedPage.type === "both" && selectedPage.image) && (() => {
                                                                         const z = selectedPage.image.scale ?? 1;
-                                                                        const hP = Math.min(35, (48 / Math.max(z, 0.1) / 595.28) * 100);
-                                                                        const vP = Math.min(35, (48 / Math.max(z, 0.1) / 841.89) * 100);
+                                                                        const hP = Math.min(35, (previewMargin / Math.max(z, 0.1) / previewW) * 100);
+                                                                        const vP = Math.min(35, (previewMargin / Math.max(z, 0.1) / previewH) * 100);
                                                                         return (
                                                                             <div className="absolute" style={{ left: `${hP}%`, right: `${hP}%`, top: `${vP}%`, bottom: `${vP}%` }}>
                                                                                 <img src={selectedPage.image.url} alt="" className="w-full h-full object-contain" />
@@ -6537,9 +6521,9 @@ export function KdpFactoryApp() {
                             /* Renders a page's content correctly — mirrors PDF logic */
                             const renderPageInner = (page: BookPage, scale: number = 1) => {
                                 const zoom = page.image?.scale ?? 1;
-                                /* Match drawImageCentered: effectiveMargin = 48/zoom pts on 595×842 page */
-                                const mH = (48 / Math.max(zoom, 0.1) / 595.28) * 100;
-                                const mV = (48 / Math.max(zoom, 0.1) / 841.89) * 100;
+                                /* Match drawImageCentered: effectiveMargin/zoom pts on selected page size */
+                                const mH = (previewMargin / Math.max(zoom, 0.1) / previewW) * 100;
+                                const mV = (previewMargin / Math.max(zoom, 0.1) / previewH) * 100;
                                 const brd = page.image?.border;
                                 const isEmpty = !page.image && !page.text.content.trim();
                                 const textFontPx = Math.max(4, page.text.fontSize * scale * 0.42);
@@ -6595,19 +6579,17 @@ export function KdpFactoryApp() {
                                                 <BookOpen size={10} />
                                             </button>
                                         </div>
-                                        {/* Split + PDF buttons */}
-                                        <div className="flex items-center gap-1.5">
-                                            <button onClick={() => setShowSplitModal(true)} disabled={bookPages.length === 0}
-                                                className="h-7 px-2.5 rounded-full bg-violet-500/20 border border-violet-500/30 text-violet-300 text-[10px] font-black uppercase flex items-center gap-1 hover:bg-violet-500/30 active:scale-95 transition-all disabled:opacity-40">
-                                                <Layers size={10} />
-                                                <span>Dividir</span>
-                                            </button>
-                                            <button onClick={() => void buildBookPdf()} disabled={isBuildingPdf || bookPages.length === 0}
-                                                className="h-7 px-3 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase flex items-center gap-1.5 hover:bg-amber-400 active:scale-95 transition-all disabled:opacity-40">
-                                                {isBuildingPdf ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
-                                                <span>PDF</span>
-                                            </button>
-                                        </div>
+                                        {/* Size picker */}
+                                        <select
+                                            value={bookPdfSize}
+                                            onChange={e => setBookPdfSize(e.target.value)}
+                                            title="Tamaño de página KDP"
+                                            className="h-7 rounded-full bg-white/[0.07] border border-white/10 px-2.5 text-[10px] font-black text-amber-400 outline-none [color-scheme:dark] cursor-pointer hover:bg-white/10 transition-all"
+                                        >
+                                            {KDP_BOOK_SIZES.map(s => (
+                                                <option key={s.id} value={s.id}>{s.label}</option>
+                                            ))}
+                                        </select>
                                     </div>
 
                                     {bookPages.length === 0 ? (
@@ -6632,7 +6614,7 @@ export function KdpFactoryApp() {
                                                 <div className="flex-1 flex items-center justify-center min-w-0">
                                                     <div
                                                         className="relative overflow-hidden rounded-xl shadow-[0_16px_64px_rgba(0,0,0,0.8)] transition-all cursor-pointer group"
-                                                        style={{ aspectRatio: "595/842", width: "min(100%, calc((min(90vh, 100dvh) - 280px) * 595 / 842))", height: "auto" }}
+                                                        style={{ aspectRatio: `${previewW}/${previewH}`, width: `min(100%, calc((min(90vh, 100dvh) - 280px) * ${previewW} / ${previewH}))`, height: "auto" }}
                                                         onClick={() => { setBookEditorTab("editor"); setShowInlineImagePicker(false); }}
                                                     >
                                                         {curPage && renderPageInner(curPage, 0.5)}
@@ -6670,7 +6652,7 @@ export function KdpFactoryApp() {
                                                                     key={page.id}
                                                                     onClick={() => setSelectedPageId(page.id)}
                                                                     className={`shrink-0 w-10 relative rounded-md overflow-hidden transition-all ${isActive ? "ring-2 ring-amber-500 ring-offset-1 ring-offset-[#0f0f11] scale-105" : "opacity-50 hover:opacity-80"}`}
-                                                                    style={{ aspectRatio: "595/842" }}
+                                                                    style={{ aspectRatio: `${previewW}/${previewH}` }}
                                                                 >
                                                                     <div className="w-full h-full bg-white relative"
                                                                         style={brd ? { boxShadow: `inset 0 0 0 1px ${brd.color}` } : {}}>
@@ -6695,13 +6677,13 @@ export function KdpFactoryApp() {
                                                 const right = bookPages[spreadIdx * 2 + 1];
                                                 const renderSpreadPage = (page: BookPage | undefined, absIdx: number) => {
                                                     if (!page) return (
-                                                        <div className="flex-1 aspect-[595/842] bg-white/[0.03] rounded-lg border border-dashed border-white/8 flex items-center justify-center">
+                                                        <div className="flex-1 bg-white/[0.03] rounded-lg border border-dashed border-white/8 flex items-center justify-center" style={{ aspectRatio: `${previewW}/${previewH}` }}>
                                                             <span className="text-[8px] text-neutral-700">—</span>
                                                         </div>
                                                     );
                                                     return (
                                                         <div className="flex-1 cursor-pointer group" onClick={() => { setSelectedPageId(page.id); setBookEditorTab("editor"); }}>
-                                                            <div className="w-full aspect-[595/842] relative overflow-hidden rounded-l-sm rounded-r-sm shadow-[0_4px_20px_rgba(0,0,0,0.5)] group-hover:shadow-[0_4px_28px_rgba(0,0,0,0.7)] transition-shadow">
+                                                            <div className="w-full relative overflow-hidden rounded-l-sm rounded-r-sm shadow-[0_4px_20px_rgba(0,0,0,0.5)] group-hover:shadow-[0_4px_28px_rgba(0,0,0,0.7)] transition-shadow" style={{ aspectRatio: `${previewW}/${previewH}` }}>
                                                                 {renderPageInner(page, 0.3)}
                                                             </div>
                                                             <p className="text-[8px] font-mono text-neutral-700 text-center mt-1.5">{absIdx + 1}</p>

@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 
-type StatColor = "indigo" | "blue" | "emerald" | "sky" | "amber" | "violet" | "cyan" | "fuchsia";
+type StatColor = "indigo" | "blue" | "emerald" | "sky" | "amber" | "violet" | "cyan" | "fuchsia" | "orange" | "purple";
 
 const colorMap: Record<StatColor, { border: string; shadow: string; glow: string; iconBg: string; iconText: string }> = {
     indigo:  { border: "hover:border-indigo-500/30",  shadow: "hover:shadow-[0_0_30px_rgba(99,102,241,0.12)]",  glow: "bg-indigo-500/10",  iconBg: "bg-indigo-500/10",  iconText: "text-indigo-400"  },
@@ -11,6 +11,8 @@ const colorMap: Record<StatColor, { border: string; shadow: string; glow: string
     violet:  { border: "hover:border-violet-500/30",  shadow: "hover:shadow-[0_0_30px_rgba(139,92,246,0.12)]",  glow: "bg-violet-500/10",  iconBg: "bg-violet-500/10",  iconText: "text-violet-400"  },
     cyan:    { border: "hover:border-cyan-500/30",    shadow: "hover:shadow-[0_0_30px_rgba(6,182,212,0.12)]",   glow: "bg-cyan-500/10",    iconBg: "bg-cyan-500/10",    iconText: "text-cyan-400"    },
     fuchsia: { border: "hover:border-fuchsia-500/30", shadow: "hover:shadow-[0_0_30px_rgba(217,70,239,0.12)]",  glow: "bg-fuchsia-500/10", iconBg: "bg-fuchsia-500/10", iconText: "text-fuchsia-400" },
+    orange:  { border: "hover:border-orange-500/30",  shadow: "hover:shadow-[0_0_30px_rgba(249,115,22,0.12)]",  glow: "bg-orange-500/10",  iconBg: "bg-orange-500/10",  iconText: "text-orange-400"  },
+    purple:  { border: "hover:border-purple-500/30",  shadow: "hover:shadow-[0_0_30px_rgba(168,85,247,0.12)]",  glow: "bg-purple-500/10",  iconBg: "bg-purple-500/10",  iconText: "text-purple-400"  },
 };
 
 interface KdpStatCardProps {
