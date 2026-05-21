@@ -88,6 +88,8 @@ import { NicheRadar } from "@/components/extractor/NicheRadar";
 interface ProductPlatform {
     name: string;
     earnings: number;
+    url?: string;
+    date?: string;
 }
 
 interface DigitalProduct {
@@ -654,8 +656,8 @@ export function KdpFactoryApp() {
             title: "Ocean Wonders: Extreme Mandala",
             description: "Libro de colorear premium con 50 diseños de mandalas marinos.",
             platforms: [
-                { name: "Amazon KDP", earnings: 450.20 },
-                { name: "Etsy", earnings: 120.50 }
+                { name: "Amazon KDP", earnings: 450.20, url: "", date: "" },
+                { name: "Etsy", earnings: 120.50, url: "", date: "" }
             ],
             totalEarnings: 570.70,
             createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
@@ -666,8 +668,8 @@ export function KdpFactoryApp() {
             title: "Cyberpunk Cityscape Vol.1",
             description: "Poster digital en alta resolución para decoración gamer.",
             platforms: [
-                { name: "Etsy", earnings: 230.15 },
-                { name: "Creative Fabrica", earnings: 45.00 }
+                { name: "Creative Fabrica", earnings: 45.00, url: "", date: "" },
+                { name: "Etsy", earnings: 230.15, url: "", date: "" }
             ],
             totalEarnings: 275.15,
             createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
@@ -678,13 +680,15 @@ export function KdpFactoryApp() {
             title: "Boho Floral Textile Set",
             description: "Colección de patrones repetibles para impresión en tela.",
             platforms: [
-                { name: "Printify", earnings: 890.00 },
-                { name: "Etsy", earnings: 140.00 }
+                { name: "Printify", earnings: 890.00, url: "", date: "" },
+                { name: "Etsy", earnings: 140.00, url: "", date: "" }
             ],
             totalEarnings: 1030.00,
             createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
         }
     ]);
+    const [editingProductId, setEditingProductId] = useState<string | null>(null);
+    const [editDraft, setEditDraft] = useState<DigitalProduct | null>(null);
 
     const [selectedType, setSelectedType] = useState(PRODUCT_TYPES[0].id);
     const [newTitle, setNewTitle] = useState("");
@@ -2878,13 +2882,34 @@ export function KdpFactoryApp() {
 
             {/* ── Productos ── */}
             <section className="space-y-6">
-                <SectionHeader
-                    icon={<Box size={16} />}
-                    title="Productos"
-                    subtitle="Catálogo de activos digitales publicados"
-                    color="indigo"
-                    size="sm"
-                />
+                <div className="flex items-center justify-between gap-4">
+                    <SectionHeader
+                        icon={<Box size={16} />}
+                        title="Productos"
+                        subtitle="Catálogo de activos digitales publicados"
+                        color="indigo"
+                        size="sm"
+                    />
+                    <button
+                        onClick={() => {
+                            const newP: DigitalProduct = {
+                                id: `prod_${Date.now()}`,
+                                type: PRODUCT_TYPES[0].name,
+                                title: "Nuevo producto",
+                                description: "",
+                                platforms: [{ name: "Amazon KDP", earnings: 0, url: "", date: "" }],
+                                totalEarnings: 0,
+                                createdAt: new Date().toISOString(),
+                            };
+                            setProducts(ps => [newP, ...ps]);
+                            setEditingProductId(newP.id);
+                            setEditDraft({ ...newP, platforms: [{ ...newP.platforms[0] }] });
+                        }}
+                        className="shrink-0 h-9 px-4 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-all"
+                    >
+                        <Plus size={12} /> Añadir
+                    </button>
+                </div>
                 <div className="flex flex-col md:flex-row items-center justify-between gap-6 px-2">
                     <div className="flex-1 w-full md:w-auto space-y-2">
                         <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1">Filtrar por Categoría</label>
@@ -2918,9 +2943,90 @@ export function KdpFactoryApp() {
                         filteredProducts.map((product) => (
                             <Card key={product.id} variant="glass" className="group relative p-6 border-white/5 bg-white/[0.01] hover:border-white/20 transition-all duration-300 overflow-hidden">
                                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500 via-blue-500 to-cyan-500 opacity-30 group-hover:opacity-100 transition-opacity" />
-                                <div className="flex flex-col md:flex-row gap-6 relative">
-                                    <div className="flex-1 space-y-5">
-                                        <div className="flex items-start justify-between">
+                                {editingProductId === product.id && editDraft ? (
+                                    /* ── EDIT MODE ── */
+                                    <div className="space-y-4 relative">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Badge variant="neutral" className="bg-indigo-500/10 border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-[0.05em] px-2.5">{product.type}</Badge>
+                                            <span className="text-[10px] font-medium text-neutral-700 font-mono">#{product.id.slice(-6)}</span>
+                                        </div>
+                                        <input
+                                            value={editDraft.title}
+                                            onChange={e => setEditDraft(d => d && ({ ...d, title: e.target.value }))}
+                                            className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2 text-white font-black text-lg italic outline-none focus:border-indigo-500/50"
+                                            placeholder="Título del producto"
+                                        />
+                                        <textarea
+                                            value={editDraft.description}
+                                            onChange={e => setEditDraft(d => d && ({ ...d, description: e.target.value }))}
+                                            rows={2}
+                                            className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2 text-neutral-300 text-sm outline-none focus:border-indigo-500/50 resize-none"
+                                            placeholder="Descripción / subtítulo"
+                                        />
+                                        {/* Platforms edit */}
+                                        <div className="space-y-2">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Plataformas</p>
+                                            {editDraft.platforms.map((plat, pi) => (
+                                                <div key={pi} className="flex flex-wrap gap-2 items-center p-3 rounded-xl bg-white/[0.02] border border-white/8">
+                                                    <input
+                                                        value={plat.name}
+                                                        onChange={e => setEditDraft(d => { if (!d) return d; const p = [...d.platforms]; p[pi] = { ...p[pi], name: e.target.value }; return { ...d, platforms: p }; })}
+                                                        className="w-28 bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 text-[11px] font-black text-white outline-none focus:border-indigo-500/40"
+                                                        placeholder="Plataforma"
+                                                    />
+                                                    <div className="flex items-center gap-1">
+                                                        <input
+                                                            type="number"
+                                                            value={plat.earnings}
+                                                            onChange={e => setEditDraft(d => { if (!d) return d; const p = [...d.platforms]; p[pi] = { ...p[pi], earnings: parseFloat(e.target.value) || 0 }; return { ...d, platforms: p, totalEarnings: p.reduce((s, x) => s + (x.earnings || 0), 0) }; })}
+                                                            className="w-24 bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 text-[11px] font-black text-emerald-400 outline-none focus:border-emerald-500/40"
+                                                            placeholder="0.00"
+                                                        />
+                                                        <span className="text-[10px] text-neutral-600">€</span>
+                                                    </div>
+                                                    <input
+                                                        type="date"
+                                                        value={plat.date ?? ""}
+                                                        onChange={e => setEditDraft(d => { if (!d) return d; const p = [...d.platforms]; p[pi] = { ...p[pi], date: e.target.value }; return { ...d, platforms: p }; })}
+                                                        className="bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 text-[11px] text-neutral-400 outline-none focus:border-indigo-500/40 [color-scheme:dark]"
+                                                    />
+                                                    <input
+                                                        value={plat.url ?? ""}
+                                                        onChange={e => setEditDraft(d => { if (!d) return d; const p = [...d.platforms]; p[pi] = { ...p[pi], url: e.target.value }; return { ...d, platforms: p }; })}
+                                                        className="flex-1 min-w-[120px] bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 text-[11px] text-neutral-500 outline-none focus:border-indigo-500/40"
+                                                        placeholder="https://... (URL oculta)"
+                                                    />
+                                                    <button onClick={() => setEditDraft(d => { if (!d) return d; const p = d.platforms.filter((_, i) => i !== pi); return { ...d, platforms: p, totalEarnings: p.reduce((s, x) => s + x.earnings, 0) }; })}
+                                                        className="w-6 h-6 rounded-md text-neutral-600 hover:text-rose-400 flex items-center justify-center transition-all">
+                                                        <X size={11} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            <button onClick={() => setEditDraft(d => d && ({ ...d, platforms: [...d.platforms, { name: "", earnings: 0, url: "", date: "" }] }))}
+                                                className="flex items-center gap-1.5 text-[10px] font-black text-neutral-600 hover:text-neutral-300 transition-all px-1">
+                                                <Plus size={11} /> Añadir plataforma
+                                            </button>
+                                        </div>
+                                        {/* Actions */}
+                                        <div className="flex items-center justify-end gap-2 pt-1">
+                                            <button onClick={() => { setEditingProductId(null); setEditDraft(null); }}
+                                                className="h-8 px-3 rounded-xl border border-white/10 text-[10px] font-black text-neutral-400 hover:text-white transition-all">
+                                                Cancelar
+                                            </button>
+                                            <button onClick={() => {
+                                                if (!editDraft) return;
+                                                setProducts(ps => ps.map(p => p.id === editDraft.id ? editDraft : p));
+                                                setEditingProductId(null); setEditDraft(null);
+                                            }}
+                                                className="h-8 px-4 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-[10px] font-black transition-all flex items-center gap-1.5">
+                                                <Check size={11} /> Guardar
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    /* ── VIEW MODE ── */
+                                    <div className="flex flex-col md:flex-row gap-6 relative">
+                                        <div className="flex-1 space-y-5">
                                             <div className="space-y-1">
                                                 <div className="flex items-center gap-2">
                                                     <Badge variant="neutral" className="bg-indigo-500/10 border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-[0.05em] px-2.5">
@@ -2930,38 +3036,50 @@ export function KdpFactoryApp() {
                                                 </div>
                                                 <h3 className="text-xl font-black text-white italic tracking-tight">{product.title}</h3>
                                             </div>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => setConfirmDeleteProductId(product.id)}
-                                                className="h-9 w-9 p-0 rounded-xl text-neutral-700 hover:text-rose-500 hover:bg-rose-500/10 transition-all"
-                                            >
-                                                <Trash2 size={16} />
+                                            <p className="text-sm text-neutral-500 leading-relaxed max-w-2xl font-medium tracking-tight">{product.description}</p>
+                                            <div className="flex flex-wrap gap-2 pt-1">
+                                                {product.platforms.map((plat) => (
+                                                    <div key={plat.name} className="flex flex-col gap-1 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/5 hover:border-white/10 transition-all">
+                                                        <div className="flex items-center gap-2">
+                                                            {plat.url ? (
+                                                                <a href={plat.url} target="_blank" rel="noopener noreferrer"
+                                                                    className="text-[10px] font-black uppercase text-neutral-500 hover:text-indigo-400 tracking-tighter transition-colors flex items-center gap-1">
+                                                                    {plat.name} <ExternalLink size={9} />
+                                                                </a>
+                                                            ) : (
+                                                                <span className="text-[10px] font-black uppercase text-neutral-600 tracking-tighter">{plat.name}</span>
+                                                            )}
+                                                            <div className="w-px h-2.5 bg-white/10" />
+                                                            <span className="text-[11px] font-black italic tracking-tighter text-emerald-400 tabular-nums">{plat.earnings.toFixed(2)}€</span>
+                                                        </div>
+                                                        {plat.date && (
+                                                            <span className="text-[9px] text-neutral-700 font-mono">{new Date(plat.date).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}</span>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="flex md:flex-col justify-between items-end md:items-end gap-3 md:gap-4 md:w-48 md:border-l border-white/5 md:pl-8 pt-5 md:pt-0 border-t md:border-t-0">
+                                            <div className="text-right space-y-0.5">
+                                                <span className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-600 block">Total Profit</span>
+                                                <span className="text-2xl md:text-3xl font-black italic tracking-tighter text-white tabular-nums">{product.totalEarnings.toFixed(2)}€</span>
+                                            </div>
+                                            <Button className="h-9 md:h-10 px-4 md:w-full rounded-xl bg-white text-black text-[10px] font-black uppercase tracking-widest hover:bg-neutral-200 transition-all shadow-xl shadow-white/10">
+                                                Informe
                                             </Button>
-                                        </div>
-                                        <p className="text-sm text-neutral-500 leading-relaxed max-w-2xl font-medium tracking-tight">{product.description}</p>
-                                        <div className="flex flex-wrap gap-2 pt-2">
-                                            {product.platforms.map((plat) => (
-                                                <div key={plat.name} className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/5 hover:border-white/10 transition-all group/plat cursor-default">
-                                                    <span className="text-[10px] font-black uppercase text-neutral-600 group-hover/plat:text-neutral-400 tracking-tighter transition-colors">{plat.name}</span>
-                                                    <div className="w-px h-2.5 bg-white/10" />
-                                                    <span className="text-[11px] font-black italic tracking-tighter text-emerald-400 tabular-nums">
-                                                        {plat.earnings.toFixed(2)}€
-                                                    </span>
-                                                </div>
-                                            ))}
+                                            <div className="flex items-center gap-1 md:w-full">
+                                                <button onClick={() => { setEditingProductId(product.id); setEditDraft({ ...product, platforms: product.platforms.map(p => ({ ...p })) }); }}
+                                                    className="flex-1 h-8 rounded-xl border border-white/8 text-neutral-600 hover:text-indigo-400 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-all flex items-center justify-center gap-1.5 text-[9px] font-black uppercase tracking-widest">
+                                                    <Pencil size={11} /> Editar
+                                                </button>
+                                                <button onClick={() => setConfirmDeleteProductId(product.id)}
+                                                    className="h-8 w-8 rounded-xl border border-white/8 text-neutral-600 hover:text-rose-500 hover:border-rose-500/30 hover:bg-rose-500/5 transition-all flex items-center justify-center">
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="flex md:flex-col justify-between items-end md:items-end gap-4 md:gap-6 md:w-48 md:border-l border-white/5 md:pl-8 pt-5 md:pt-0 border-t md:border-t-0">
-                                        <div className="text-right space-y-0.5">
-                                            <span className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-600 block">Total Profit</span>
-                                            <span className="text-2xl md:text-3xl font-black italic tracking-tighter text-white tabular-nums">{product.totalEarnings.toFixed(2)}€</span>
-                                        </div>
-                                        <Button variant="outline" className="h-9 md:h-10 px-4 md:w-full rounded-xl border-white/10 text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all shadow-xl shadow-white/5">
-                                            Informe
-                                        </Button>
-                                    </div>
-                                </div>
+                                )}
                             </Card>
                         ))
                     )}
