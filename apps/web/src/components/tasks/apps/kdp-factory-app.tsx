@@ -1930,6 +1930,7 @@ export function KdpFactoryApp() {
     const [includeOwnerPage, setIncludeOwnerPage] = useState(true);
     const [showGelatoUpload, setShowGelatoUpload] = useState(false);
     const [showSplitModal, setShowSplitModal] = useState(false);
+    const [showKdpTips, setShowKdpTips] = useState(false);
     const [splitParts, setSplitParts] = useState(2);
     const [splitProgress, setSplitProgress] = useState<{ current: number; total: number } | null>(null);
     const [gelatoStoreProducts, setGelatoStoreProducts] = useState<any[]>([]);
@@ -2703,7 +2704,7 @@ export function KdpFactoryApp() {
 
 
     const renderInsights = () => (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 flex flex-col gap-8">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-indigo-500/30 hover:shadow-[0_0_30px_rgba(99,102,241,0.12)] transition-all duration-500 group relative overflow-hidden">
                     <div className="absolute -right-4 -top-4 w-16 h-16 bg-indigo-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
@@ -4975,6 +4976,52 @@ export function KdpFactoryApp() {
                                         ))}
                                     </div>
                                 )}
+
+                                {/* Consejos KDP */}
+                                <div className="border border-white/[0.06] rounded-xl overflow-hidden">
+                                    <button
+                                        onClick={() => setShowKdpTips(v => !v)}
+                                        className="w-full flex items-center gap-2.5 px-4 py-3 bg-white/[0.02] hover:bg-white/[0.04] transition-all text-left"
+                                    >
+                                        <Lightbulb size={12} className="text-amber-400 shrink-0" />
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400 flex-1">Consejos Amazon KDP</span>
+                                        <ChevronDown size={12} className={`text-neutral-600 transition-transform duration-300 ${showKdpTips ? "rotate-180" : ""}`} />
+                                    </button>
+                                    {showKdpTips && (
+                                        <div className="px-4 pb-4 pt-2 space-y-3 border-t border-white/[0.05]">
+                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                                {[
+                                                    { label: "Tamaño", value: "8,5 × 11 pulgadas", icon: <FileText size={11} />, color: "text-blue-400 bg-blue-500/10" },
+                                                    { label: "Máx. ilustraciones", value: "~50 por libro", icon: <ImageIcon size={11} />, color: "text-violet-400 bg-violet-500/10" },
+                                                    { label: "Interior", value: "Color estándar · Papel blanco", icon: <Layers size={11} />, color: "text-emerald-400 bg-emerald-500/10" },
+                                                ].map(({ label, value, icon, color }) => (
+                                                    <div key={label} className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/[0.05]">
+                                                        <div className={`mt-0.5 p-1 rounded-md ${color} shrink-0`}>{icon}</div>
+                                                        <div>
+                                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-0.5">{label}</p>
+                                                            <p className="text-[11px] font-bold text-white leading-tight">{value}</p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div>
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-1.5 flex items-center gap-1.5"><Tag size={9} />Categorías activas</p>
+                                                <div className="space-y-1">
+                                                    {[
+                                                        "Libros para Colorear para Adultos › Fantasía y Ciencia Ficción",
+                                                        "Libros para Colorear para Adultos › Ciudades y Arquitectura",
+                                                        "Libros para Colorear para Adultos › General",
+                                                    ].map(cat => (
+                                                        <div key={cat} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/[0.025] border border-white/[0.05]">
+                                                            <div className="w-1 h-1 rounded-full bg-amber-400 shrink-0" />
+                                                            <span className="text-[10px] text-neutral-400 leading-snug">Libros › … › Manualidades › <span className="text-white font-semibold">{cat}</span></span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </Card>
                     </div>
