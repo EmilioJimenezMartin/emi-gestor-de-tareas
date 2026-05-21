@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, rgb } from "pdf-lib";
 import {
     Sparkles,
     Wand2,
@@ -2086,6 +2086,8 @@ export function KdpFactoryApp() {
         setIsBuildingPdf(true);
         try {
             const pdf = await PDFDocument.create();
+            const fontkitMod = await import("@pdf-lib/fontkit");
+            pdf.registerFontkit(fontkitMod.default ?? fontkitMod);
             const pageWidth = 595.28;
             const pageHeight = 841.89;
             const margin = 48;
@@ -2162,30 +2164,14 @@ export function KdpFactoryApp() {
                 return { x: imgX, y: imgY, w: drawW, h: drawH };
             };
 
-            const getFontKey = (style: PageTextStyle): StandardFonts => {
-                const { bold, italic, fontFamily } = style;
-                if (fontFamily === "times") {
-                    if (bold && italic) return StandardFonts.TimesRomanBoldItalic;
-                    if (bold) return StandardFonts.TimesRomanBold;
-                    if (italic) return StandardFonts.TimesRomanItalic;
-                    return StandardFonts.TimesRoman;
-                }
-                if (fontFamily === "courier") {
-                    if (bold && italic) return StandardFonts.CourierBoldOblique;
-                    if (bold) return StandardFonts.CourierBold;
-                    if (italic) return StandardFonts.CourierOblique;
-                    return StandardFonts.Courier;
-                }
-                if (bold && italic) return StandardFonts.HelveticaBoldOblique;
-                if (bold) return StandardFonts.HelveticaBold;
-                if (italic) return StandardFonts.HelveticaOblique;
-                return StandardFonts.Helvetica;
-            };
+            // Fetch and embed Roboto TTF so all fonts are fully embedded (KDP requirement)
+            const fontRes = await fetch("/fonts/Geist-Regular.ttf");
+            const embeddedFont = await pdf.embedFont(new Uint8Array(await fontRes.arrayBuffer()));
 
             const drawTextOnPage = async (pdfPage: any, style: PageTextStyle) => {
                 const text = style.content.trim();
                 if (!text) return;
-                const font = await pdf.embedFont(getFontKey(style));
+                const font = embeddedFont;
                 const fontSize = style.fontSize;
                 const hex = style.color.replace("#", "");
                 const textColor = rgb(parseInt(hex.slice(0, 2), 16) / 255, parseInt(hex.slice(2, 4), 16) / 255, parseInt(hex.slice(4, 6), 16) / 255);
@@ -2209,7 +2195,7 @@ export function KdpFactoryApp() {
             // ── Página de propietario / copyright (primera página, si no viene en pages) ──
             if (includeOwnerPage && !pages.some(p => p.type === "owner")) {
                 const ownerPage = pdf.addPage([pageWidth, pageHeight]);
-                const fontNormal = await pdf.embedFont(StandardFonts.Helvetica);
+                const fontNormal = embeddedFont;
                 const centerX = pageWidth / 2;
                 const grayMid = rgb(0.5, 0.5, 0.5);
                 const grayLight = rgb(0.78, 0.78, 0.78);
@@ -2284,7 +2270,7 @@ export function KdpFactoryApp() {
                 const copyrightSize = 7;
                 ownerPage.drawText(copyrightText, {
                     x: centerX - fontNormal.widthOfTextAtSize(copyrightText, copyrightSize) / 2,
-                    y: margin - 10, size: copyrightSize, font: fontNormal, color: grayVeryLight,
+                    y: margin + 8, size: copyrightSize, font: fontNormal, color: grayVeryLight,
                 });
             }
 
@@ -2292,7 +2278,7 @@ export function KdpFactoryApp() {
                 // ── Owner page type: render same content as standalone owner page ──
                 if (bookPage.type === "owner") {
                     const ownerPage = pdf.addPage([pageWidth, pageHeight]);
-                    const fontOwner = await pdf.embedFont(StandardFonts.Helvetica);
+                    const fontOwner = embeddedFont;
                     const centerX = pageWidth / 2;
                     const grayMid = rgb(0.5, 0.5, 0.5);
                     const grayLight = rgb(0.78, 0.78, 0.78);
@@ -2318,7 +2304,7 @@ export function KdpFactoryApp() {
                     }
                     const copyrightText2 = `© ${new Date().getFullYear()} Emilio Jiménez. Todos los derechos reservados.`;
                     const copyrightSize2 = 7;
-                    ownerPage.drawText(copyrightText2, { x: centerX - fontOwner.widthOfTextAtSize(copyrightText2, copyrightSize2) / 2, y: margin - 10, size: copyrightSize2, font: fontOwner, color: grayVeryLight2 });
+                    ownerPage.drawText(copyrightText2, { x: centerX - fontOwner.widthOfTextAtSize(copyrightText2, copyrightSize2) / 2, y: margin + 8, size: copyrightSize2, font: fontOwner, color: grayVeryLight2 });
                     continue;
                 }
 
