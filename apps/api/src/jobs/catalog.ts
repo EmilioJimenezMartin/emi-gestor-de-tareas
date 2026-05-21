@@ -51,6 +51,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             total: catalog.totalImages,
             skipped: catalog.skippedImages ?? 0,
         });
+        // promptSnippet emitted after prompt is built (below)
 
         try {
             // Build prompt
@@ -94,6 +95,16 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
 
             console.log(`${tag} Prompt (${finalPrompt.length} chars): ${finalPrompt.slice(0, 100)}...`);
             if (finalNegativePrompt) console.log(`${tag} Negative prompt: ${finalNegativePrompt.slice(0, 80)}...`);
+
+            // Emit prompt snippet so UI can show what's being generated
+            io.emit("catalog:progress", {
+                catalogId,
+                status: "running",
+                current: catalog.images.length,
+                total: catalog.totalImages,
+                skipped: catalog.skippedImages ?? 0,
+                promptSnippet: finalPrompt.slice(0, 80),
+            });
 
             // Generate image
             let imageBuffer: Buffer;

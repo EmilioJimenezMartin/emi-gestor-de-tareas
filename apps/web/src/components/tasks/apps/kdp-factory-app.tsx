@@ -283,6 +283,7 @@ interface IACatalogFE {
     lastError?: string;
     skippedImages?: number;
     nicheIds?: string[];
+    currentPrompt?: string;
     createdAt: string;
 }
 
@@ -1950,7 +1951,7 @@ export function KdpFactoryApp() {
     const [previewMagnifier, setPreviewMagnifier] = useState(false);
     const previewImgRef = useRef<HTMLImageElement | null>(null);
     const previewLensRef = useRef<HTMLDivElement | null>(null);
-    const [vaultImages, setVaultImages] = useState<{ url: string, model: string, dim: string }[]>([]);
+    const [vaultImages, setVaultImages] = useState<{ url: string, model: string, dim: string, seed?: number }[]>([]);
     const generatedImageObjectUrlRef = useRef<string | null>(null);
     const previewImageObjectUrlRef = useRef<string | null>(null);
 
@@ -2352,6 +2353,26 @@ export function KdpFactoryApp() {
         }
     };
 
+    // Vault persistence: load non-blob images from localStorage on mount
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem("kdp-vault-images");
+            if (saved) {
+                const parsed: { url: string; model: string; dim: string; seed?: number }[] = JSON.parse(saved);
+                const valid = parsed.filter(img => !img.url.startsWith("blob:"));
+                if (valid.length > 0) setVaultImages(valid);
+            }
+        } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        try {
+            const toSave = vaultImages.filter(img => !img.url.startsWith("blob:"));
+            localStorage.setItem("kdp-vault-images", JSON.stringify(toSave));
+        } catch { /* ignore */ }
+    }, [vaultImages]);
+
     // Load favorites + book draft from MongoDB on mount
     useEffect(() => {
         const load = async () => {
@@ -2459,7 +2480,7 @@ export function KdpFactoryApp() {
         const socket = createApiSocket(API_BASE_URL);
         catalogSocketRef.current = socket;
 
-        socket.on("catalog:progress", (data: { catalogId: string; status: string; current: number; total: number; image?: CatalogImageFE; lastError?: string; skipped?: number }) => {
+        socket.on("catalog:progress", (data: { catalogId: string; status: string; current: number; total: number; image?: CatalogImageFE; lastError?: string; skipped?: number; promptSnippet?: string }) => {
             setIaCatalogs((prev) =>
                 prev.map((c) => {
                     if (c._id !== data.catalogId) return c;
@@ -2468,6 +2489,7 @@ export function KdpFactoryApp() {
                         status: data.status as IACatalogFE["status"],
                         lastError: data.lastError !== undefined ? data.lastError : c.lastError,
                         skippedImages: data.skipped !== undefined ? data.skipped : c.skippedImages,
+                        currentPrompt: data.promptSnippet !== undefined ? data.promptSnippet : c.currentPrompt,
                     };
                     if (data.image) {
                         const alreadyExists = updated.images.some((img) => img.publicId === data.image!.publicId);
@@ -2634,7 +2656,8 @@ export function KdpFactoryApp() {
             setVaultImages([{
                 url: urlToStore,
                 model: modelName,
-                dim: dimName
+                dim: dimName,
+                seed: fixedSeed ? Number(fixedSeed) : undefined,
             }, ...vaultImages]);
             setGeneratedImage(null);
         }
@@ -2947,6 +2970,47 @@ export function KdpFactoryApp() {
                 );
             })()}
 
+            {/* ── Top 3 productos ── */}
+            {products.length > 0 && (() => {
+                const top3 = [...products]
+                    .filter(p => p.totalEarnings > 0)
+                    .sort((a, b) => b.totalEarnings - a.totalEarnings)
+                    .slice(0, 3);
+                if (top3.length === 0) return null;
+                const medals = ["🥇", "🥈", "🥉"];
+                const colors = [
+                    "from-amber-500/20 to-amber-500/5 border-amber-500/20",
+                    "from-neutral-400/15 to-neutral-400/5 border-neutral-400/15",
+                    "from-orange-700/15 to-orange-700/5 border-orange-700/15",
+                ];
+                const textColors = ["text-amber-400", "text-neutral-300", "text-orange-500"];
+                return (
+                    <Card variant="outline" className="p-5 border-white/5 bg-white/[0.01] space-y-4">
+                        <div className="flex items-center justify-between gap-4">
+                            <SectionHeader icon={<Star size={15} />} title="Top Productos" subtitle="Ranking por ingresos acumulados" color="amber" size="sm" />
+                            <span className="text-[9px] font-mono text-neutral-700">{products.filter(p => p.totalEarnings > 0).length} con ingresos</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {top3.map((p, i) => (
+                                <div key={p.id} className={`rounded-2xl bg-gradient-to-br ${colors[i]} border p-4 space-y-2 relative overflow-hidden`}>
+                                    <div className="flex items-start justify-between gap-2">
+                                        <span className="text-xl leading-none">{medals[i]}</span>
+                                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-black/30 ${textColors[i]}`}>{p.type?.split(" ")[0] ?? "KDP"}</span>
+                                    </div>
+                                    <p className="text-[11px] font-black text-white leading-snug line-clamp-2">{p.title}</p>
+                                    <p className={`text-lg font-black tabular-nums ${textColors[i]}`}>{p.totalEarnings.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p>
+                                    <div className="flex flex-wrap gap-1">
+                                        {p.platforms?.map((pl: any) => (
+                                            <span key={pl.name} className="text-[8px] text-neutral-600 bg-white/5 border border-white/8 px-1.5 py-0.5 rounded-full">{pl.name}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+                );
+            })()}
+
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <Card variant="glass" className="lg:col-span-2 p-8 border-white/5 bg-white/[0.01] space-y-8 relative overflow-hidden hover:shadow-[0_0_40px_rgba(99,102,241,0.08)] transition-all duration-500">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -3225,6 +3289,37 @@ export function KdpFactoryApp() {
                         size="sm"
                     />
                     <div className="flex items-center gap-2 shrink-0">
+                        {/* Export CSV */}
+                        {products.length > 0 && (
+                            <button
+                                onClick={() => {
+                                    const header = "Título,Tipo,Estado,Ganancias (€),Plataformas,Fecha";
+                                    const rows = products.map(p => {
+                                        const plats = p.platforms.map((pl: any) => pl.name).join(" | ");
+                                        const date = p.createdAt ? new Date(p.createdAt).toLocaleDateString("es-ES") : "";
+                                        return [
+                                            `"${(p.title ?? "").replace(/"/g, '""')}"`,
+                                            `"${(p.type ?? "").replace(/"/g, '""')}"`,
+                                            p.status ?? "",
+                                            p.totalEarnings?.toFixed(2) ?? "0.00",
+                                            `"${plats}"`,
+                                            date,
+                                        ].join(",");
+                                    });
+                                    const csv = [header, ...rows].join("\n");
+                                    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement("a");
+                                    a.href = url; a.download = "productos-kdp.csv"; a.click();
+                                    setTimeout(() => URL.revokeObjectURL(url), 10000);
+                                    toast.success("CSV exportado");
+                                }}
+                                className="h-9 px-3 rounded-xl bg-white/5 border border-white/10 text-neutral-400 hover:text-white hover:border-white/20 flex items-center gap-1.5 transition-all text-[10px] font-black uppercase"
+                                title="Exportar CSV"
+                            >
+                                <Download size={12} /> CSV
+                            </button>
+                        )}
                         {/* View toggle compact/list */}
                         <div className="flex p-1 bg-white/[0.04] border border-white/8 rounded-xl gap-0.5">
                             <button onClick={() => setProductViewMode("list")} title="Vista detallada"
@@ -4678,6 +4773,11 @@ export function KdpFactoryApp() {
                                                 <Heart size={11} className="fill-rose-400" />
                                             </div>
                                         )}
+                                        {!isVaultSelectMode && img.seed !== undefined && (
+                                            <div className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-1 rounded-lg bg-black/70 backdrop-blur-sm pointer-events-none">
+                                                <span className="text-[8px] font-mono text-amber-400/80">seed {img.seed}</span>
+                                            </div>
+                                        )}
                                         {isVaultSelectMode && isSelected && (
                                             <div className="absolute inset-0 bg-amber-500/15 pointer-events-none" />
                                         )}
@@ -5128,6 +5228,17 @@ export function KdpFactoryApp() {
                                             <div className="flex items-center justify-between gap-2">
                                                 <span className="text-[9px] text-neutral-700 font-mono">{catalog.images.length} imgs</span>
                                                 <div className="flex items-center gap-1.5">
+                                                    {bulkDeleteCatalogId === catalog._id && (
+                                                        <button
+                                                            onClick={() => {
+                                                                const allIds = catalog.images.map(i => i.publicId);
+                                                                const allSelected = allIds.every(id => bulkDeleteSelection.has(id));
+                                                                setBulkDeleteSelection(allSelected ? new Set() : new Set(allIds));
+                                                            }}
+                                                            className="h-6 px-2 rounded-lg bg-white/5 border border-white/10 text-[9px] text-neutral-500 hover:text-white transition-all">
+                                                            {catalog.images.every(i => bulkDeleteSelection.has(i.publicId)) ? "Desel. todo" : "Sel. todo"}
+                                                        </button>
+                                                    )}
                                                     {bulkDeleteCatalogId === catalog._id && bulkDeleteSelection.size > 0 && (
                                                         <button
                                                             onClick={() => void bulkDeleteSelectedImages(catalog._id)}
@@ -5308,10 +5419,15 @@ export function KdpFactoryApp() {
                                                 </div>
                                                 <div className="flex-1 min-w-0 space-y-1.5">
                                                     <div className="flex items-center justify-between gap-3">
-                                                        <p className="text-[10px] font-black text-sky-300 leading-tight">
-                                                            {running.length > 0 ? `Generando catálogo ${running.length > 1 ? `(${running.length})` : `"${running[0].name}"`}` : `En cola — ${queued.length} catálogo${queued.length !== 1 ? "s" : ""}`}
-                                                            {queued.length > 0 && running.length > 0 && <span className="text-sky-500/60 font-normal"> · {queued.length} en cola</span>}
-                                                        </p>
+                                                        <div className="space-y-0.5">
+                                                            <p className="text-[10px] font-black text-sky-300 leading-tight">
+                                                                {running.length > 0 ? `Generando catálogo ${running.length > 1 ? `(${running.length})` : `"${running[0].name}"`}` : `En cola — ${queued.length} catálogo${queued.length !== 1 ? "s" : ""}`}
+                                                                {queued.length > 0 && running.length > 0 && <span className="text-sky-500/60 font-normal"> · {queued.length} en cola</span>}
+                                                            </p>
+                                                            {running[0]?.currentPrompt && (
+                                                                <p className="text-[9px] text-sky-500/70 font-mono truncate max-w-[260px]" title={running[0].currentPrompt}>"{running[0].currentPrompt}"</p>
+                                                            )}
+                                                        </div>
                                                         <span className="text-[11px] font-black text-white tabular-nums shrink-0">~{timeLabel}</span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
@@ -6865,6 +6981,12 @@ export function KdpFactoryApp() {
                                     <div className="flex items-center gap-2">
                                         {/* Scrollable pages strip */}
                                         <div className="flex-1 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar min-w-0">
+                                            {/* Page counter badge — always visible */}
+                                            <div className={`shrink-0 h-7 px-2.5 rounded-lg border flex items-center gap-1 text-[9px] font-black tabular-nums ${bookPages.length === 0 ? "bg-white/4 border-white/8 text-neutral-600" : bookPages.length < 20 ? "bg-amber-500/10 border-amber-500/25 text-amber-400" : "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"}`}>
+                                                <FileText size={9} />
+                                                {bookPages.length} pág{bookPages.length !== 1 ? "s" : "."}
+                                                {bookPages.length > 0 && bookPages.length < 20 && <span className="text-amber-500/60 font-normal">· mín 20</span>}
+                                            </div>
                                             {bookPages.map((page, idx) => (
                                                 <div key={page.id}
                                                     data-page-idx={idx}
