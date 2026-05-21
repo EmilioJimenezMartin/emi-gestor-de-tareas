@@ -95,6 +95,18 @@ export async function registerAIRoutes(app: FastifyInstance) {
                     const ideogramSetting = await Settings.findOne({ key: "IDEOGRAM_API_KEY" });
                     apiKey = ideogramSetting?.value || "";
                 }
+            } else if (provider === "fal.ai") {
+                apiKey = process.env.FALAI_API_KEY || "";
+                if (!apiKey && getMongoStatus() === "connected") {
+                    const s = await Settings.findOne({ key: "FALAI_API_KEY" });
+                    apiKey = s?.value || "";
+                }
+            } else if (provider === "Segmind") {
+                apiKey = process.env.SEGMIND_API_KEY || "";
+                if (!apiKey && getMongoStatus() === "connected") {
+                    const s = await Settings.findOne({ key: "SEGMIND_API_KEY" });
+                    apiKey = s?.value || "";
+                }
             }
 
             // --- GOOGLE (GEMINI IMAGE) ---
@@ -464,6 +476,87 @@ export async function registerAIRoutes(app: FastifyInstance) {
                             .send({ error: "Límite de peticiones alcanzado", details: `Ideogram: espera ${retryAfterSeconds}s` });
                     }
                     app.log.warn({ err: ideogramErr, status }, "AI image: Ideogram failed, trying fallback");
+                }
+            }
+
+            // --- FAL.AI ---
+            if (provider === "fal.ai" && apiKey) {
+                try {
+                    app.log.info({ modelId }, "AI image: using fal.ai");
+                    const falModelPath = typeof modelId === "string" && modelId.trim().length > 0
+                        ? modelId.trim()
+                        : "fal-ai/flux/schnell";
+                    const falResp = await axios({
+                        url: `https://fal.run/${falModelPath}`,
+                        method: "POST",
+                        headers: {
+                            "Authorization": `Key ${apiKey.trim()}`,
+                            "Content-Type": "application/json",
+                        },
+                        data: {
+                            prompt,
+                            image_size: { width: width || 1024, height: height || 1024 },
+                            num_inference_steps: steps ?? 4,
+                            num_images: 1,
+                            enable_safety_checker: false,
+                            ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
+                        },
+                        timeout: 60000,
+                    });
+                    const imageUrl = falResp.data?.images?.[0]?.url;
+                    if (!imageUrl) throw new Error("fal.ai: no image URL in response");
+                    const imgResp = await axios({ url: imageUrl, method: "GET", responseType: "arraybuffer", timeout: 30000 });
+                    return reply.type("image/jpeg").send(Buffer.from(imgResp.data));
+                } catch (falErr: any) {
+                    const status = falErr?.response?.status;
+                    if (status === 429) {
+                        const retryAfterSeconds = getRetryAfterSecondsFromError(falErr, 30);
+                        nextAllowedAtByKey.set(cooldownKey, Date.now() + retryAfterSeconds * 1000);
+                        return reply.status(429).header("Retry-After", String(retryAfterSeconds))
+                            .send({ error: "Límite de peticiones alcanzado", details: `fal.ai: espera ${retryAfterSeconds}s` });
+                    }
+                    app.log.warn({ err: falErr, status }, "AI image: fal.ai failed, trying fallback");
+                }
+            }
+
+            // --- SEGMIND ---
+            if (provider === "Segmind" && apiKey) {
+                try {
+                    app.log.info({ modelId }, "AI image: using Segmind");
+                    const segModelPath = typeof modelId === "string" && modelId.trim().length > 0
+                        ? modelId.trim()
+                        : "flux-schnell";
+                    const segResp = await axios({
+                        url: `https://api.segmind.com/v1/${segModelPath}`,
+                        method: "POST",
+                        headers: {
+                            "x-api-key": apiKey.trim(),
+                            "Content-Type": "application/json",
+                        },
+                        data: {
+                            prompt,
+                            negative_prompt: negativePrompt || "ugly, blurry, low quality",
+                            samples: 1,
+                            width: width || 1024,
+                            height: height || 1024,
+                            steps: steps ?? 4,
+                            seed: fixedSeed ?? Math.floor(Math.random() * 1000000),
+                            base64: false,
+                        },
+                        responseType: "arraybuffer",
+                        timeout: 60000,
+                    });
+                    const contentType = String(segResp.headers?.["content-type"] || "image/jpeg");
+                    return reply.type(contentType.includes("png") ? "image/png" : "image/jpeg").send(Buffer.from(segResp.data));
+                } catch (segErr: any) {
+                    const status = segErr?.response?.status;
+                    if (status === 429) {
+                        const retryAfterSeconds = getRetryAfterSecondsFromError(segErr, 30);
+                        nextAllowedAtByKey.set(cooldownKey, Date.now() + retryAfterSeconds * 1000);
+                        return reply.status(429).header("Retry-After", String(retryAfterSeconds))
+                            .send({ error: "Límite de peticiones alcanzado", details: `Segmind: espera ${retryAfterSeconds}s` });
+                    }
+                    app.log.warn({ err: segErr, status }, "AI image: Segmind failed, trying fallback");
                 }
             }
 

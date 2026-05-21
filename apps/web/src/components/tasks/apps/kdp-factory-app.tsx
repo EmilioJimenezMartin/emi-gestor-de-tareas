@@ -139,6 +139,15 @@ const AI_MODELS = [
     { id: "pollinations-flux-anime", name: "FLUX Anime (Pollinations)", provider: "Pollinations", type: "Gratis · Anime/Ilustración", modelId: "flux-anime" },
     { id: "pollinations-turbo", name: "Turbo (Pollinations)", provider: "Pollinations", type: "Gratis · Ultra Rápido", modelId: "turbo" },
 
+    // fal.ai — API key requerida ($0.003/img), inferencia muy rápida (<1s)
+    { id: "falai-flux-schnell", name: "FLUX Schnell (fal.ai)", provider: "fal.ai", type: "Rápido · $0.003/img", modelId: "fal-ai/flux/schnell" },
+    { id: "falai-flux-dev", name: "FLUX Dev (fal.ai)", provider: "fal.ai", type: "Alta calidad · fal.ai", modelId: "fal-ai/flux/dev" },
+    { id: "falai-flux-lora-coloring", name: "FLUX LoRA Coloring (fal.ai)", provider: "fal.ai", type: "Línea art · Coloring Book", modelId: "fal-ai/flux/dev/lora" },
+
+    // Segmind — 100 créditos gratis/día, sin tarjeta
+    { id: "segmind-flux-schnell", name: "FLUX Schnell (Segmind)", provider: "Segmind", type: "100 gratis/día · Rápido", modelId: "flux-schnell" },
+    { id: "segmind-sdxl", name: "SDXL 1.0 (Segmind)", provider: "Segmind", type: "100 gratis/día · General", modelId: "sdxl1.0" },
+    { id: "segmind-canny", name: "SDXL Canny (Segmind)", provider: "Segmind", type: "100 gratis/día · Línea art", modelId: "canny-sdxl" },
 ];
 
 const AI_DIMENSIONS = [
@@ -663,7 +672,15 @@ export function KdpFactoryApp() {
     const [catalogFilter, setCatalogFilter] = useState("all");
     const [productSearch, setProductSearch] = useState("");
     const [productSort, setProductSort] = useState<"earnings" | "date" | "status">("earnings");
+    const [productViewMode, setProductViewMode] = useState<"list" | "compact">("list");
+    const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+    const [isBulkDeletingProducts, setIsBulkDeletingProducts] = useState(false);
+    const [bulkStatusTarget, setBulkStatusTarget] = useState<"activo" | "pausado" | "borrador" | null>(null);
     const [quickEditEarnings, setQuickEditEarnings] = useState<{ productId: string; platIdx: number; value: string } | null>(null);
+    const [listingTopic, setListingTopic] = useState("");
+    const [listingResult, setListingResult] = useState<any | null>(null);
+    const [isGeneratingListing, setIsGeneratingListing] = useState(false);
+    const [listingCardOpen, setListingCardOpen] = useState(false);
 
     const stats = useMemo(() => {
         const total = products.reduce((acc, p) => acc + p.totalEarnings, 0);
@@ -1937,6 +1954,15 @@ export function KdpFactoryApp() {
     const generatedImageObjectUrlRef = useRef<string | null>(null);
     const previewImageObjectUrlRef = useRef<string | null>(null);
 
+    const [coverTitle, setCoverTitle] = useState("");
+    const [coverSubtitle, setCoverSubtitle] = useState("");
+    const [coverStyle, setCoverStyle] = useState("vibrant illustration, fantasy");
+    const [coverColorTheme, setCoverColorTheme] = useState("deep blue and gold");
+    const [coverModelId, setCoverModelId] = useState("pollinations-flux");
+    const [isBuildingCover, setIsBuildingCover] = useState(false);
+    const [generatedCoverUrl, setGeneratedCoverUrl] = useState<string | null>(null);
+    const [coverSectionOpen, setCoverSectionOpen] = useState(false);
+
     const [bookEditorOpen, setBookEditorOpen] = useState(false);
     const [bookFileName, setBookFileName] = useState("libro-kdp");
     const [bookPdfSize, setBookPdfSize] = useState("8.5x11");
@@ -2685,6 +2711,83 @@ export function KdpFactoryApp() {
         toast.success("Producto eliminado");
     };
 
+    const handleDuplicateProduct = async (product: DigitalProduct) => {
+        const body = {
+            type: product.type,
+            title: `${product.title} (copia)`,
+            description: product.description,
+            status: "borrador" as const,
+            platforms: product.platforms.map(p => ({ ...p, earnings: 0 })),
+            nicheId: product.nicheId ?? "",
+        };
+        try {
+            const res = await fetch(`${API_BASE_URL}/digital-products`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            if (res.ok) {
+                const d = await res.json();
+                setProducts(ps => [{ ...d.product, id: d.product._id }, ...ps]);
+                toast.success("Producto duplicado");
+            }
+        } catch { toast.error("Error al duplicar"); }
+    };
+
+    const handleBulkDelete = async () => {
+        setIsBulkDeletingProducts(true);
+        try {
+            await Promise.all([...selectedProductIds].map(id => {
+                const p = products.find(x => x.id === id);
+                return p?._id ? fetch(`${API_BASE_URL}/digital-products/${p._id}`, { method: "DELETE" }).catch(() => {}) : Promise.resolve();
+            }));
+            setProducts(ps => ps.filter(p => !selectedProductIds.has(p.id)));
+            setSelectedProductIds(new Set());
+            toast.success("Productos eliminados");
+        } catch { toast.error("Error al eliminar"); } finally { setIsBulkDeletingProducts(false); }
+    };
+
+    const handleBulkStatus = async (newStatus: "activo" | "pausado" | "borrador") => {
+        try {
+            await Promise.all([...selectedProductIds].map(id => {
+                const p = products.find(x => x.id === id);
+                return p?._id ? fetch(`${API_BASE_URL}/digital-products/${p._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: newStatus }) }).catch(() => {}) : Promise.resolve();
+            }));
+            setProducts(ps => ps.map(p => selectedProductIds.has(p.id) ? { ...p, status: newStatus } : p));
+            setSelectedProductIds(new Set());
+            toast.success("Estado actualizado");
+        } catch { toast.error("Error al actualizar"); }
+    };
+
+    const generateListing = async () => {
+        if (!listingTopic.trim()) { toast.error("Describe el producto"); return; }
+        setIsGeneratingListing(true);
+        setListingResult(null);
+        try {
+            const res = await fetch(`${API_BASE_URL}/ai/generate-text`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ type: "kdp-physical-book", niche: listingTopic, productType: "KDP coloring book", language: "es" }),
+            });
+            const data = await res.json();
+            if (!res.ok) { toast.error(data.error ?? "Error"); return; }
+            setListingResult(data.result);
+        } catch { toast.error("Error conectando con la API"); } finally { setIsGeneratingListing(false); }
+    };
+
+    const monthlyEarningsData = useMemo(() => {
+        const map = new Map<string, number>();
+        products.forEach(p => {
+            p.platforms.forEach(pl => {
+                const raw = pl.date?.trim();
+                let key = "";
+                if (raw && raw.length >= 7) {
+                    key = raw.slice(0, 7);
+                } else {
+                    key = p.createdAt ? p.createdAt.slice(0, 7) : "";
+                }
+                if (key) map.set(key, (map.get(key) ?? 0) + (pl.earnings || 0));
+            });
+        });
+        return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-12).map(([month, earnings]) => ({ month, earnings }));
+    }, [products]);
+
     const fetchIntegrations = async () => {
         setIsLoadingIntegrations(true);
         try {
@@ -2787,6 +2890,63 @@ export function KdpFactoryApp() {
                     <div className="space-y-1 text-xl font-black italic tracking-tighter text-white flex flex-col"><span>Mandala Art</span><span className="text-[11px] uppercase font-black text-blue-400 tracking-widest">+45% Demand</span></div>
                 </Card>
             </div>
+
+            {/* ── Monthly earnings line chart ── */}
+            {monthlyEarningsData.length > 1 && (() => {
+                const maxVal = Math.max(...monthlyEarningsData.map(d => d.earnings), 1);
+                const totalMo = monthlyEarningsData.reduce((s, d) => s + d.earnings, 0);
+                const lastMo = monthlyEarningsData.at(-1)?.earnings ?? 0;
+                const prevMo = monthlyEarningsData.at(-2)?.earnings ?? 0;
+                const trend = prevMo > 0 ? ((lastMo - prevMo) / prevMo * 100).toFixed(1) : null;
+                const pts = monthlyEarningsData.map((d, i) => {
+                    const x = (i / (monthlyEarningsData.length - 1)) * 100;
+                    const y = 100 - (d.earnings / maxVal) * 85;
+                    return `${x},${y}`;
+                }).join(" ");
+                return (
+                    <Card variant="outline" className="p-5 border-white/5 bg-white/[0.01] space-y-4 overflow-hidden relative">
+                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/[0.03] to-transparent pointer-events-none" />
+                        <div className="flex items-center justify-between gap-4 relative">
+                            <SectionHeader icon={<TrendingUp size={15} />} title="Ingresos Mensuales" subtitle="Evolución real por plataforma · últimos 12 meses" color="emerald" size="sm" />
+                            <div className="flex items-center gap-4 shrink-0">
+                                {trend !== null && (
+                                    <span className={`text-[10px] font-black tabular-nums flex items-center gap-1 ${Number(trend) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                                        {Number(trend) >= 0 ? <ArrowUpRight size={12} /> : <ArrowUpRight size={12} className="rotate-90" />}
+                                        {Number(trend) >= 0 ? "+" : ""}{trend}% vs mes ant.
+                                    </span>
+                                )}
+                                <span className="text-[11px] font-black text-white tabular-nums">{totalMo.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€ total</span>
+                            </div>
+                        </div>
+                        <div className="relative h-28">
+                            <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
+                                <defs>
+                                    <linearGradient id="meLine" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#10b981" stopOpacity="0.6" />
+                                        <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+                                    </linearGradient>
+                                </defs>
+                                <polyline points={pts} fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                                <polygon points={`0,100 ${pts} 100,100`} fill="url(#meLine)" opacity="0.25" />
+                                {monthlyEarningsData.map((d, i) => {
+                                    const x = (i / (monthlyEarningsData.length - 1)) * 100;
+                                    const y = 100 - (d.earnings / maxVal) * 85;
+                                    return <circle key={i} cx={x} cy={y} r="1.8" fill="#10b981" vectorEffect="non-scaling-stroke" />;
+                                })}
+                            </svg>
+                        </div>
+                        <div className="flex justify-between gap-1 overflow-x-auto">
+                            {monthlyEarningsData.map((d, i) => (
+                                <div key={i} className="flex flex-col items-center gap-0.5 shrink-0">
+                                    <span className="text-[9px] font-black text-white tabular-nums">{d.earnings > 0 ? `${d.earnings.toFixed(0)}€` : ""}</span>
+                                    <span className="text-[8px] text-neutral-700 font-mono">{d.month.slice(5)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+                );
+            })()}
+
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <Card variant="glass" className="lg:col-span-2 p-8 border-white/5 bg-white/[0.01] space-y-8 relative overflow-hidden hover:shadow-[0_0_40px_rgba(99,102,241,0.08)] transition-all duration-500">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -2976,6 +3136,84 @@ export function KdpFactoryApp() {
                 );
             })()}
 
+            {/* ── KDP Listing Generator ── */}
+            <Card variant="outline" className="overflow-hidden border-white/5 bg-white/[0.01]">
+                <button
+                    onClick={() => setListingCardOpen(v => !v)}
+                    className="w-full flex items-center gap-3 px-5 py-4 hover:bg-white/[0.02] transition-all"
+                >
+                    <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
+                        <Sparkles size={14} className="text-amber-400" />
+                    </div>
+                    <div className="flex-1 text-left min-w-0">
+                        <p className="text-[12px] font-black text-white">Generador de Listing KDP</p>
+                        <p className="text-[10px] text-neutral-600">Título · 7 keywords · Descripción HTML lista para publicar</p>
+                    </div>
+                    <ChevronDown size={14} className={`text-neutral-600 transition-transform shrink-0 ${listingCardOpen ? "rotate-180" : ""}`} />
+                </button>
+                {listingCardOpen && (
+                    <div className="border-t border-white/[0.05] px-5 pb-5 pt-4 space-y-4">
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={listingTopic}
+                                onChange={e => setListingTopic(e.target.value)}
+                                onKeyDown={e => { if (e.key === "Enter") void generateListing(); }}
+                                placeholder="Ej: Libro de colorear de mandalas zen para adultos"
+                                className="flex-1 h-10 px-3 bg-white/5 border border-white/10 rounded-xl text-[12px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40"
+                            />
+                            <button
+                                onClick={() => void generateListing()}
+                                disabled={isGeneratingListing || !listingTopic.trim()}
+                                className="h-10 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all disabled:opacity-40 shrink-0"
+                            >
+                                {isGeneratingListing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                Generar
+                            </button>
+                        </div>
+                        {listingResult && (() => {
+                            const r = listingResult;
+                            const copy = (text: string) => { navigator.clipboard.writeText(text); toast.success("Copiado"); };
+                            const Field = ({ label, value, mono }: { label: string; value: string; mono?: boolean }) => (
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">{label}</span>
+                                        <button onClick={() => copy(value)} className="flex items-center gap-1 text-[9px] text-neutral-700 hover:text-indigo-400 transition-all"><Copy size={9} />Copiar</button>
+                                    </div>
+                                    <div className={`px-3 py-2.5 bg-white/[0.03] border border-white/[0.06] rounded-xl text-[11px] text-neutral-300 leading-relaxed ${mono ? "font-mono" : ""}`}>
+                                        {value || <span className="text-neutral-700 italic">—</span>}
+                                    </div>
+                                </div>
+                            );
+                            const keywords = Array.isArray(r.keywords) ? r.keywords : (typeof r.keywords === "string" ? r.keywords.split(/[,\n]/).map((k: string) => k.trim()).filter(Boolean) : []);
+                            const descText = typeof r.description === "string" ? r.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
+                            return (
+                                <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    {r.title && <Field label="Título" value={r.title} />}
+                                    {r.subtitle && <Field label="Subtítulo" value={r.subtitle} />}
+                                    {keywords.length > 0 && (
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Keywords ({keywords.length})</span>
+                                                <button onClick={() => copy(keywords.join(", "))} className="flex items-center gap-1 text-[9px] text-neutral-700 hover:text-indigo-400 transition-all"><Copy size={9} />Copiar todo</button>
+                                            </div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {keywords.map((kw: string, i: number) => (
+                                                    <button key={i} onClick={() => copy(kw)} className="px-2.5 py-1 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-[9px] text-indigo-300 hover:bg-indigo-500/20 transition-all font-mono">
+                                                        {kw}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {descText && <Field label="Descripción" value={descText} />}
+                                </div>
+                            );
+                        })()}
+                    </div>
+                )}
+            </Card>
+
             {/* ── Productos ── */}
             <section className="space-y-6">
                 <div className="flex items-center justify-between gap-4">
@@ -2986,32 +3224,66 @@ export function KdpFactoryApp() {
                         color="indigo"
                         size="sm"
                     />
-                    <button
-                        onClick={async () => {
-                            const tempId = `temp_${Date.now()}`;
-                            const newP: DigitalProduct = {
-                                id: tempId,
-                                type: PRODUCT_TYPES[0].name,
-                                title: "Nuevo producto",
-                                description: "",
-                                status: "borrador",
-                                platforms: [{ name: "Amazon KDP", earnings: 0, url: "", date: "" }],
-                                totalEarnings: 0,
-                                createdAt: new Date().toISOString(),
-                            };
-                            try {
-                                const res = await fetch(`${API_BASE_URL}/digital-products`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: newP.type, title: newP.title, description: newP.description, status: newP.status, platforms: newP.platforms }) });
-                                if (res.ok) { const d = await res.json(); const saved = { ...d.product, id: d.product._id }; setProducts(ps => [saved, ...ps]); setEditingProductId(saved.id); setEditDraft({ ...saved, platforms: saved.platforms.map((p: any) => ({ ...p })) }); return; }
-                            } catch { /* fall through to temp */ }
-                            setProducts(ps => [newP, ...ps]);
-                            setEditingProductId(tempId);
-                            setEditDraft({ ...newP, platforms: [{ ...newP.platforms[0] }] });
-                        }}
-                        className="shrink-0 h-9 px-4 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-all"
-                    >
-                        <Plus size={12} /> Añadir
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                        {/* View toggle compact/list */}
+                        <div className="flex p-1 bg-white/[0.04] border border-white/8 rounded-xl gap-0.5">
+                            <button onClick={() => setProductViewMode("list")} title="Vista detallada"
+                                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${productViewMode === "list" ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="0" y="1" width="12" height="2" rx="1" fill="currentColor"/><rect x="0" y="5" width="12" height="2" rx="1" fill="currentColor"/><rect x="0" y="9" width="12" height="2" rx="1" fill="currentColor"/></svg>
+                            </button>
+                            <button onClick={() => setProductViewMode("compact")} title="Vista compacta"
+                                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${productViewMode === "compact" ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="0" y="0" width="12" height="1.5" rx="0.75" fill="currentColor"/><rect x="0" y="3.5" width="12" height="1.5" rx="0.75" fill="currentColor"/><rect x="0" y="7" width="12" height="1.5" rx="0.75" fill="currentColor"/><rect x="0" y="10.5" width="12" height="1.5" rx="0.75" fill="currentColor"/></svg>
+                            </button>
+                        </div>
+                        <button
+                            onClick={async () => {
+                                const tempId = `temp_${Date.now()}`;
+                                const newP: DigitalProduct = {
+                                    id: tempId,
+                                    type: PRODUCT_TYPES[0].name,
+                                    title: "Nuevo producto",
+                                    description: "",
+                                    status: "borrador",
+                                    platforms: [{ name: "Amazon KDP", earnings: 0, url: "", date: "" }],
+                                    totalEarnings: 0,
+                                    createdAt: new Date().toISOString(),
+                                };
+                                try {
+                                    const res = await fetch(`${API_BASE_URL}/digital-products`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: newP.type, title: newP.title, description: newP.description, status: newP.status, platforms: newP.platforms }) });
+                                    if (res.ok) { const d = await res.json(); const saved = { ...d.product, id: d.product._id }; setProducts(ps => [saved, ...ps]); setEditingProductId(saved.id); setEditDraft({ ...saved, platforms: saved.platforms.map((p: any) => ({ ...p })) }); return; }
+                                } catch { /* fall through to temp */ }
+                                setProducts(ps => [newP, ...ps]);
+                                setEditingProductId(tempId);
+                                setEditDraft({ ...newP, platforms: [{ ...newP.platforms[0] }] });
+                            }}
+                            className="h-9 px-4 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-all"
+                        >
+                            <Plus size={12} /> Añadir
+                        </button>
+                    </div>
                 </div>
+
+                {/* ── Bulk action bar ── */}
+                {selectedProductIds.size > 0 && (
+                    <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <span className="text-[11px] font-black text-indigo-300 mr-auto">{selectedProductIds.size} seleccionado{selectedProductIds.size !== 1 ? "s" : ""}</span>
+                        {(["activo", "pausado", "borrador"] as const).map(s => (
+                            <button key={s} onClick={() => void handleBulkStatus(s)}
+                                className="h-7 px-3 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all border-white/10 bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10">
+                                {s}
+                            </button>
+                        ))}
+                        <button onClick={() => void handleBulkDelete()} disabled={isBulkDeletingProducts}
+                            className="h-7 px-3 rounded-xl bg-rose-500/15 border border-rose-500/20 text-[9px] font-black uppercase tracking-widest text-rose-400 hover:bg-rose-500/25 transition-all flex items-center gap-1.5 disabled:opacity-50">
+                            {isBulkDeletingProducts ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />} Eliminar
+                        </button>
+                        <button onClick={() => setSelectedProductIds(new Set())} className="h-7 px-2 rounded-xl text-neutral-600 hover:text-white transition-all">
+                            <X size={12} />
+                        </button>
+                    </div>
+                )}
+
                 {/* ── Toolbar ── */}
                 <div className="flex flex-wrap items-center gap-2">
                     {/* Search */}
@@ -3086,8 +3358,33 @@ export function KdpFactoryApp() {
                             <button onClick={() => { setProductSearch(""); setCatalogFilter("all"); }} className="text-[10px] font-black text-indigo-400 hover:text-indigo-300 transition-all">Limpiar filtros</button>
                         </Card>
                     ) : !isLoadingProducts && (
-                        filteredProducts.map((product) => (
-                            <Card key={product.id} variant="glass" className="group relative p-6 border-white/5 bg-white/[0.01] hover:border-white/20 transition-all duration-300 overflow-hidden">
+                        filteredProducts.map((product) => {
+                            const isSelected = selectedProductIds.has(product.id);
+                            if (productViewMode === "compact") return (
+                                <div key={product.id} onClick={() => setSelectedProductIds(prev => { const n = new Set(prev); isSelected ? n.delete(product.id) : n.add(product.id); return n; })}
+                                    className={`group flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all cursor-pointer ${isSelected ? "border-indigo-500/40 bg-indigo-500/8" : "border-white/5 bg-white/[0.01] hover:border-white/12 hover:bg-white/[0.02]"}`}>
+                                    <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? "border-indigo-400 bg-indigo-500" : "border-white/15 group-hover:border-white/30"}`}>
+                                        {isSelected && <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><polyline points="1,4 3.2,6.2 7,1.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                                    </div>
+                                    <span className="text-[10px] text-neutral-600 shrink-0 font-mono w-16 truncate">{product.type}</span>
+                                    <span className="flex-1 text-[12px] font-black text-white truncate">{product.title}</span>
+                                    <span className={`text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border shrink-0 ${{ activo: "bg-emerald-500/15 border-emerald-500/20 text-emerald-400", pausado: "bg-neutral-500/15 border-neutral-500/20 text-neutral-500", borrador: "bg-amber-500/15 border-amber-500/20 text-amber-500" }[product.status] ?? ""}`}>{product.status}</span>
+                                    <span className="text-[11px] font-black text-white tabular-nums shrink-0 w-20 text-right">{product.totalEarnings.toFixed(2)}€</span>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={e => e.stopPropagation()}>
+                                        <button onClick={() => void handleDuplicateProduct(product)} className="w-6 h-6 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center text-neutral-600 hover:text-sky-400 transition-all"><Copy size={9} /></button>
+                                        <button onClick={() => setConfirmDeleteProductId(product.id)} className="w-6 h-6 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center text-neutral-600 hover:text-rose-400 transition-all"><Trash2 size={9} /></button>
+                                    </div>
+                                </div>
+                            );
+                            return (
+                            <Card key={product.id} variant="glass" className={`group relative p-6 border-white/5 bg-white/[0.01] hover:border-white/20 transition-all duration-300 overflow-hidden ${isSelected ? "ring-1 ring-indigo-500/40 border-indigo-500/20" : ""}`}>
+                                {/* Checkbox on hover */}
+                                <div className={`absolute top-3 left-3 z-10 transition-opacity ${isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+                                    onClick={e => { e.stopPropagation(); setSelectedProductIds(prev => { const n = new Set(prev); isSelected ? n.delete(product.id) : n.add(product.id); return n; }); }}>
+                                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center cursor-pointer transition-all ${isSelected ? "border-indigo-400 bg-indigo-500" : "border-white/30 bg-black/40 backdrop-blur"}`}>
+                                        {isSelected && <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><polyline points="1.5,4.5 3.8,7 7.5,1.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                                    </div>
+                                </div>
                                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500 via-blue-500 to-cyan-500 opacity-30 group-hover:opacity-100 transition-opacity" />
                                 {editingProductId === product.id && editDraft ? (
                                     /* ── EDIT MODE ── */
@@ -3291,6 +3588,10 @@ export function KdpFactoryApp() {
                                                     className="flex-1 h-8 rounded-xl border border-white/8 text-neutral-600 hover:text-indigo-400 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-all flex items-center justify-center gap-1.5 text-[9px] font-black uppercase tracking-widest">
                                                     <Pencil size={11} /> Editar
                                                 </button>
+                                                <button onClick={() => void handleDuplicateProduct(product)} title="Duplicar"
+                                                    className="h-8 w-8 rounded-xl border border-white/8 text-neutral-600 hover:text-sky-400 hover:border-sky-500/30 hover:bg-sky-500/5 transition-all flex items-center justify-center">
+                                                    <Copy size={12} />
+                                                </button>
                                                 <button onClick={() => setConfirmDeleteProductId(product.id)}
                                                     className="h-8 w-8 rounded-xl border border-white/8 text-neutral-600 hover:text-rose-500 hover:border-rose-500/30 hover:bg-rose-500/5 transition-all flex items-center justify-center">
                                                     <Trash2 size={12} />
@@ -3300,7 +3601,8 @@ export function KdpFactoryApp() {
                                     </div>
                                 )}
                             </Card>
-                        ))
+                            );
+                        })
                     )}
                 </div>
             </section>
@@ -3388,6 +3690,8 @@ export function KdpFactoryApp() {
             "Google": "sky",
             "Leonardo": "orange",
             "Ideogram": "violet",
+            "fal.ai": "fuchsia",
+            "Segmind": "cyan",
         };
         const pColor = providerColor[currentModel?.provider || ""] || "neutral";
 
@@ -5140,6 +5444,25 @@ export function KdpFactoryApp() {
 
     const copyText = (text: string) => { navigator.clipboard.writeText(text); toast.success("Copiado"); };
 
+    const generateCover = async () => {
+        if (!coverTitle.trim()) { toast.error("Escribe el título del libro"); return; }
+        setIsBuildingCover(true);
+        setGeneratedCoverUrl(null);
+        try {
+            const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
+            const prompt = `Professional KDP book cover for a coloring book titled "${coverTitle}"${coverSubtitle ? `, subtitle "${coverSubtitle}"` : ""}. Style: ${coverStyle}. Color theme: ${coverColorTheme}. Beautiful, eye-catching, high-quality illustration, book cover composition, no text, clean professional design`;
+            const res = await fetch(`${API_BASE_URL}/ai/generate-image`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prompt, provider: model.provider, modelId: model.modelId, width: 1600, height: 2560 }),
+            });
+            if (!res.ok) { const err = await res.json(); toast.error(err.error ?? "Error generando portada"); return; }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            setGeneratedCoverUrl(url);
+        } catch { toast.error("Error conectando con la API"); } finally { setIsBuildingCover(false); }
+    };
+
     const fetchTrends = async (forceRefresh = false) => {
         setIsLoadingTrends(true);
         if (!forceRefresh) { setTrendsData(null); setSelectedTrend(null); }
@@ -5483,6 +5806,105 @@ export function KdpFactoryApp() {
                                     <span className="flex items-center gap-1"><AlignLeft size={10} className="text-amber-600" />Listings Etsy</span>
                                 </div>
                             </div>
+                        </Card>
+                    </div>
+
+                    {/* Cover Factory */}
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                        <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
+                            <div className="absolute -top-16 -right-16 w-48 h-48 bg-fuchsia-500/8 blur-[60px] pointer-events-none" />
+                            {/* Header row */}
+                            <button className="w-full p-5 flex items-center gap-3 hover:bg-white/[0.015] transition-all" onClick={() => setCoverSectionOpen(v => !v)}>
+                                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-fuchsia-500/20 to-violet-600/10 border border-fuchsia-500/20 flex items-center justify-center shadow-lg shadow-fuchsia-500/10 shrink-0">
+                                    <ImageIcon size={19} className="text-fuchsia-400" />
+                                </div>
+                                <div className="flex-1 min-w-0 text-left">
+                                    <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Cover Factory</h4>
+                                    <p className="text-[10px] text-neutral-500 font-medium">Portada tall-format · 1600×2560px · Lista para KDP</p>
+                                </div>
+                                <ChevronDown size={15} className={`text-neutral-600 transition-transform shrink-0 ${coverSectionOpen ? "rotate-180" : ""}`} />
+                            </button>
+
+                            {coverSectionOpen && (
+                                <div className="border-t border-white/[0.06] p-5 space-y-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        {/* Left: form */}
+                                        <div className="space-y-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Título <span className="text-fuchsia-500">*</span></label>
+                                                <input type="text" value={coverTitle} onChange={e => setCoverTitle(e.target.value)} placeholder="Ej: Mandala Zen Coloring Book"
+                                                    className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Subtítulo <span className="text-neutral-700">(opcional)</span></label>
+                                                <input type="text" value={coverSubtitle} onChange={e => setCoverSubtitle(e.target.value)} placeholder="Ej: 50 Relaxing Designs for Adults"
+                                                    className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Estilo visual</label>
+                                                <input type="text" value={coverStyle} onChange={e => setCoverStyle(e.target.value)} placeholder="Ej: vibrant illustration, fantasy"
+                                                    className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Paleta de colores</label>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {["deep blue and gold", "pastel pink and mint", "dark forest green", "warm sunset orange", "purple and silver"].map(p => (
+                                                        <button key={p} onClick={() => setCoverColorTheme(p)}
+                                                            className={`px-2 py-1 rounded-lg border text-[8px] font-black transition-all ${coverColorTheme === p ? "border-fuchsia-500/40 bg-fuchsia-500/15 text-fuchsia-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-400"}`}>
+                                                            {p}
+                                                        </button>
+                                                    ))}
+                                                    <input type="text" value={coverColorTheme} onChange={e => setCoverColorTheme(e.target.value)}
+                                                        className="flex-1 min-w-[90px] h-7 px-2 bg-white/[0.04] border border-white/10 rounded-lg text-[9px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" placeholder="tema libre..." />
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Modelo</label>
+                                                <select value={coverModelId} onChange={e => setCoverModelId(e.target.value)}
+                                                    className="w-full h-8 px-2.5 bg-white/[0.04] border border-white/10 rounded-xl text-[10px] text-white focus:outline-none focus:border-fuchsia-500/40 [color-scheme:dark]">
+                                                    {AI_MODELS.filter(m => ["Pollinations", "fal.ai", "Ideogram", "Google"].includes(m.provider)).map(m => (
+                                                        <option key={m.id} value={m.id}>{m.name} · {m.provider}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <button onClick={() => void generateCover()} disabled={isBuildingCover || !coverTitle.trim()}
+                                                className="w-full h-9 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-95">
+                                                {isBuildingCover ? <><Loader2 size={12} className="animate-spin" /> Generando...</> : <><ImageIcon size={12} /> Generar Portada</>}
+                                            </button>
+                                        </div>
+
+                                        {/* Right: preview */}
+                                        <div className="flex items-start justify-center">
+                                            {generatedCoverUrl ? (
+                                                <div className="space-y-2.5 w-full">
+                                                    <div className="relative mx-auto overflow-hidden rounded-xl border border-white/10 shadow-2xl shadow-black/60" style={{ maxWidth: 160 }}>
+                                                        <img src={generatedCoverUrl} alt="Portada KDP" className="w-full object-cover" style={{ aspectRatio: "1600/2560" }} />
+                                                        <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent pointer-events-none" />
+                                                    </div>
+                                                    <div className="flex gap-2 justify-center">
+                                                        <a href={generatedCoverUrl} download={`portada-${coverTitle.toLowerCase().replace(/\s+/g, "-")}.jpg`}
+                                                            className="flex items-center gap-1 h-7 px-3 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-[9px] font-black uppercase tracking-widest text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all">
+                                                            <Download size={9} /> Descargar
+                                                        </a>
+                                                        <button onClick={() => void generateCover()}
+                                                            className="flex items-center gap-1 h-7 px-3 rounded-xl bg-white/5 border border-white/10 text-[9px] font-black uppercase tracking-widest text-neutral-500 hover:text-white hover:bg-white/10 transition-all">
+                                                            <RefreshCw size={9} /> Regen.
+                                                        </button>
+                                                    </div>
+                                                    <p className="text-[8px] text-neutral-700 text-center">1600×2560px · KDP tall-format</p>
+                                                </div>
+                                            ) : (
+                                                <div className="w-full flex flex-col items-center justify-center gap-2.5 py-8 border border-dashed border-fuchsia-500/15 rounded-2xl bg-fuchsia-500/[0.02]">
+                                                    <div className="w-14 h-24 rounded-xl border-2 border-dashed border-fuchsia-500/20 flex items-center justify-center">
+                                                        <ImageIcon size={18} className="text-fuchsia-500/25" />
+                                                    </div>
+                                                    <p className="text-[9px] text-neutral-700 text-center">La portada aparecerá aquí<br/><span className="text-neutral-800">1600×2560 · tall-format</span></p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </Card>
                     </div>
                 </div>

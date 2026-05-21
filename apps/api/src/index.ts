@@ -139,6 +139,16 @@ const seedSettings = async () => {
       { upsert: true, new: true }
     );
     await Settings.findOneAndUpdate(
+      { key: "FALAI_API_KEY" },
+      { $setOnInsert: { key: "FALAI_API_KEY", value: process.env.FALAI_API_KEY || "", is_secret: true } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "SEGMIND_API_KEY" },
+      { $setOnInsert: { key: "SEGMIND_API_KEY", value: process.env.SEGMIND_API_KEY || "", is_secret: true } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
       { key: "GELATO_API_KEY" },
       { $setOnInsert: { key: "GELATO_API_KEY", value: process.env.GELATO_API_KEY || "", is_secret: true } },
       { upsert: true, new: true }
