@@ -661,6 +661,9 @@ export function KdpFactoryApp() {
     const [newTitle, setNewTitle] = useState("");
     const [newDesc, setNewDesc] = useState("");
     const [catalogFilter, setCatalogFilter] = useState("all");
+    const [productSearch, setProductSearch] = useState("");
+    const [productSort, setProductSort] = useState<"earnings" | "date" | "status">("earnings");
+    const [quickEditEarnings, setQuickEditEarnings] = useState<{ productId: string; platIdx: number; value: string } | null>(null);
 
     const stats = useMemo(() => {
         const total = products.reduce((acc, p) => acc + p.totalEarnings, 0);
@@ -670,10 +673,18 @@ export function KdpFactoryApp() {
     }, [products]);
 
     const filteredProducts = useMemo(() => {
-        if (catalogFilter === "all") return products;
-        const typeName = PRODUCT_TYPES.find(t => t.id === catalogFilter)?.name;
-        return products.filter(p => p.type === typeName);
-    }, [products, catalogFilter]);
+        let list = catalogFilter === "all" ? products : products.filter(p => p.type === (PRODUCT_TYPES.find(t => t.id === catalogFilter)?.name ?? ""));
+        if (productSearch.trim()) {
+            const q = productSearch.toLowerCase();
+            list = list.filter(p => p.title.toLowerCase().includes(q) || p.description.toLowerCase().includes(q) || p.platforms.some(pl => pl.name.toLowerCase().includes(q)));
+        }
+        return [...list].sort((a, b) => {
+            if (productSort === "earnings") return b.totalEarnings - a.totalEarnings;
+            if (productSort === "date") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            const order = { activo: 0, borrador: 1, pausado: 2 };
+            return (order[a.status ?? "borrador"] ?? 1) - (order[b.status ?? "borrador"] ?? 1);
+        });
+    }, [products, catalogFilter, productSearch, productSort]);
 
     const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
@@ -2928,36 +2939,80 @@ export function KdpFactoryApp() {
                         <Plus size={12} /> Añadir
                     </button>
                 </div>
-                <div className="flex flex-col md:flex-row items-center justify-between gap-6 px-2">
-                    <div className="flex-1 w-full md:w-auto space-y-2">
-                        <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1">Filtrar por Categoría</label>
-                        <KdpSelect value={catalogFilter} onChange={setCatalogFilter}
-                            options={[{ value: "all", label: "Todos los Activos" }, ...PRODUCT_TYPES.map(t => ({ value: t.id, label: t.name }))]} />
+                {/* ── Toolbar ── */}
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* Search */}
+                    <div className="relative flex-1 min-w-[160px]">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600 pointer-events-none" size={13} />
+                        <input
+                            type="text"
+                            value={productSearch}
+                            onChange={e => setProductSearch(e.target.value)}
+                            placeholder="Buscar producto…"
+                            className="h-9 w-full bg-white/[0.04] border border-white/8 rounded-xl pl-9 pr-3 text-[11px] text-white placeholder:text-neutral-700 outline-none focus:border-indigo-500/40 transition-all"
+                        />
+                        {productSearch && (
+                            <button onClick={() => setProductSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-all">
+                                <X size={11} />
+                            </button>
+                        )}
                     </div>
-                    <div className="w-full md:w-auto space-y-2">
-                        <label className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-500 ml-1">Búsqueda rápida</label>
-                        <div className="relative group">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-600 group-focus-within:text-white transition-colors" size={14} />
-                            <input
-                                type="text"
-                                placeholder="Ej: Cyberpunk Series"
-                                className="h-12 w-full md:w-72 bg-white/5 border border-white/10 rounded-2xl pl-12 pr-4 text-[10px] font-bold text-white focus:outline-none focus:border-white/20 transition-all placeholder:text-neutral-700"
-                            />
-                        </div>
+                    {/* Category filter */}
+                    <select value={catalogFilter} onChange={e => setCatalogFilter(e.target.value)}
+                        className="h-9 rounded-xl bg-white/[0.04] border border-white/8 px-3 text-[11px] text-white outline-none [color-scheme:dark] cursor-pointer hover:border-white/15 transition-all">
+                        <option value="all">Todos los tipos</option>
+                        {PRODUCT_TYPES.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                    {/* Sort */}
+                    <div className="flex p-1 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5">
+                        {([["earnings", "€"], ["date", "Fecha"], ["status", "Estado"]] as const).map(([val, label]) => (
+                            <button key={val} onClick={() => setProductSort(val)}
+                                className={`h-7 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${productSort === val ? "bg-indigo-500/20 text-indigo-300" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                {label}
+                            </button>
+                        ))}
                     </div>
+                    {/* Result count */}
+                    {(productSearch || catalogFilter !== "all") && (
+                        <span className="text-[10px] font-mono text-neutral-600">{filteredProducts.length} resultado{filteredProducts.length !== 1 ? "s" : ""}</span>
+                    )}
                 </div>
                 <div className="grid grid-cols-1 gap-5">
-                    {filteredProducts.length === 0 ? (
-                        <Card variant="outline" className="p-20 border-dashed border-white/10 bg-white/[0.01] flex flex-col items-center justify-center text-center space-y-4">
-                            <div className="p-6 rounded-[32px] bg-white/5 text-neutral-700">
-                                <Box size={48} strokeWidth={1.5} />
+                    {/* Skeleton loaders */}
+                    {isLoadingProducts && [1,2,3].map(i => (
+                        <div key={i} className="h-36 rounded-2xl bg-white/[0.03] animate-pulse border border-white/5" />
+                    ))}
+                    {!isLoadingProducts && filteredProducts.length === 0 && products.length === 0 ? (
+                        /* ── Empty state (sin productos todavía) ── */
+                        <Card variant="outline" className="p-16 border-dashed border-indigo-500/20 bg-indigo-500/[0.02] flex flex-col items-center justify-center text-center space-y-5">
+                            <div className="p-5 rounded-3xl bg-indigo-500/10 border border-indigo-500/20">
+                                <Box size={36} strokeWidth={1.2} className="text-indigo-400" />
                             </div>
-                            <div className="space-y-1">
-                                <p className="text-xl font-black text-white italic tracking-tighter uppercase">Sin coincidencias</p>
-                                <p className="text-sm text-neutral-500 font-medium tracking-tight">Prueba con otra categoría o término de búsqueda.</p>
+                            <div className="space-y-1.5">
+                                <p className="text-lg font-black text-white italic tracking-tight">Sin productos todavía</p>
+                                <p className="text-sm text-neutral-500 max-w-xs">Registra tu primer activo digital publicado para empezar a seguir tus ganancias.</p>
                             </div>
+                            <button onClick={async () => {
+                                const tempId = `temp_${Date.now()}`;
+                                const newP: DigitalProduct = { id: tempId, type: PRODUCT_TYPES[0].name, title: "Nuevo producto", description: "", status: "borrador", platforms: [{ name: "Amazon KDP", earnings: 0, url: "", date: "" }], totalEarnings: 0, createdAt: new Date().toISOString() };
+                                try {
+                                    const res = await fetch(`${API_BASE_URL}/digital-products`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: newP.type, title: newP.title, description: newP.description, status: newP.status, platforms: newP.platforms }) });
+                                    if (res.ok) { const d = await res.json(); const saved = { ...d.product, id: d.product._id }; setProducts([saved]); setEditingProductId(saved.id); setEditDraft({ ...saved, platforms: saved.platforms.map((p: any) => ({ ...p })) }); return; }
+                                } catch { /**/ }
+                                setProducts([newP]); setEditingProductId(tempId); setEditDraft({ ...newP, platforms: [{ ...newP.platforms[0] }] });
+                            }}
+                                className="h-10 px-6 rounded-2xl bg-indigo-500 hover:bg-indigo-400 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-[0_4px_20px_rgba(99,102,241,0.4)]">
+                                <Plus size={13} /> Añadir mi primer producto
+                            </button>
                         </Card>
-                    ) : (
+                    ) : !isLoadingProducts && filteredProducts.length === 0 ? (
+                        /* ── Empty state (filtro sin resultados) ── */
+                        <Card variant="outline" className="p-14 border-dashed border-white/8 bg-white/[0.01] flex flex-col items-center justify-center text-center space-y-3">
+                            <Search size={28} strokeWidth={1.2} className="text-neutral-700" />
+                            <p className="text-sm font-black text-neutral-500 italic">Sin resultados para «{productSearch || catalogFilter}»</p>
+                            <button onClick={() => { setProductSearch(""); setCatalogFilter("all"); }} className="text-[10px] font-black text-indigo-400 hover:text-indigo-300 transition-all">Limpiar filtros</button>
+                        </Card>
+                    ) : !isLoadingProducts && (
                         filteredProducts.map((product) => (
                             <Card key={product.id} variant="glass" className="group relative p-6 border-white/5 bg-white/[0.01] hover:border-white/20 transition-all duration-300 overflow-hidden">
                                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500 via-blue-500 to-cyan-500 opacity-30 group-hover:opacity-100 transition-opacity" />
@@ -3103,25 +3158,51 @@ export function KdpFactoryApp() {
                                             </div>
                                             <p className="text-sm text-neutral-500 leading-relaxed max-w-2xl font-medium tracking-tight">{product.description}</p>
                                             <div className="flex flex-wrap gap-2 pt-1">
-                                                {product.platforms.map((plat) => (
-                                                    <div key={plat.name} className="flex flex-col gap-1 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/5 hover:border-white/10 transition-all">
-                                                        <div className="flex items-center gap-2">
-                                                            {plat.url ? (
-                                                                <a href={plat.url} target="_blank" rel="noopener noreferrer"
-                                                                    className="text-[10px] font-black uppercase text-neutral-500 hover:text-indigo-400 tracking-tighter transition-colors flex items-center gap-1">
-                                                                    {plat.name} <ExternalLink size={9} />
-                                                                </a>
-                                                            ) : (
-                                                                <span className="text-[10px] font-black uppercase text-neutral-600 tracking-tighter">{plat.name}</span>
+                                                {product.platforms.map((plat, platIdx) => {
+                                                    const qeKey = `${product.id}-${platIdx}`;
+                                                    const isQE = quickEditEarnings?.productId === product.id && quickEditEarnings.platIdx === platIdx;
+                                                    return (
+                                                        <div key={plat.name + platIdx} className="flex flex-col gap-1 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/5 hover:border-white/10 transition-all group/plat">
+                                                            <div className="flex items-center gap-2">
+                                                                {plat.url ? (
+                                                                    <a href={plat.url} target="_blank" rel="noopener noreferrer"
+                                                                        className="text-[10px] font-black uppercase text-neutral-500 hover:text-indigo-400 tracking-tighter transition-colors flex items-center gap-1">
+                                                                        {plat.name} <ExternalLink size={9} />
+                                                                    </a>
+                                                                ) : (
+                                                                    <span className="text-[10px] font-black uppercase text-neutral-600 tracking-tighter">{plat.name}</span>
+                                                                )}
+                                                                <div className="w-px h-2.5 bg-white/10" />
+                                                                {isQE ? (
+                                                                    <form onSubmit={async e => {
+                                                                        e.preventDefault();
+                                                                        const val = parseFloat(quickEditEarnings!.value) || 0;
+                                                                        const updated = { ...product, platforms: product.platforms.map((p, i) => i === platIdx ? { ...p, earnings: val } : p) };
+                                                                        updated.totalEarnings = updated.platforms.reduce((s, p) => s + p.earnings, 0);
+                                                                        await handleSaveProduct(updated);
+                                                                        setProducts(ps => ps.map(p => p.id === product.id ? updated : p));
+                                                                        setQuickEditEarnings(null);
+                                                                    }} className="flex items-center gap-1">
+                                                                        <input autoFocus type="number" step="0.01" value={quickEditEarnings!.value}
+                                                                            onChange={e => setQuickEditEarnings(q => q && ({ ...q, value: e.target.value }))}
+                                                                            onKeyDown={e => e.key === "Escape" && setQuickEditEarnings(null)}
+                                                                            className="w-20 bg-white/[0.08] border border-emerald-500/40 rounded-lg px-2 py-0.5 text-[11px] font-black text-emerald-400 outline-none tabular-nums" />
+                                                                        <button type="submit" className="text-emerald-400 hover:text-emerald-300"><Check size={11} /></button>
+                                                                        <button type="button" onClick={() => setQuickEditEarnings(null)} className="text-neutral-600 hover:text-white"><X size={11} /></button>
+                                                                    </form>
+                                                                ) : (
+                                                                    <button onClick={() => setQuickEditEarnings({ productId: product.id, platIdx, value: String(plat.earnings) })}
+                                                                        className="text-[11px] font-black italic tracking-tighter text-emerald-400 tabular-nums hover:text-emerald-300 transition-colors" title="Click para editar">
+                                                                        {plat.earnings.toFixed(2)}€
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                            {plat.date && (
+                                                                <span className="text-[9px] text-neutral-700 font-mono">{new Date(plat.date).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}</span>
                                                             )}
-                                                            <div className="w-px h-2.5 bg-white/10" />
-                                                            <span className="text-[11px] font-black italic tracking-tighter text-emerald-400 tabular-nums">{plat.earnings.toFixed(2)}€</span>
                                                         </div>
-                                                        {plat.date && (
-                                                            <span className="text-[9px] text-neutral-700 font-mono">{new Date(plat.date).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}</span>
-                                                        )}
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                         <div className="flex md:flex-col justify-between items-end md:items-end gap-3 md:gap-4 md:w-48 md:border-l border-white/5 md:pl-8 pt-5 md:pt-0 border-t md:border-t-0">
@@ -3150,6 +3231,47 @@ export function KdpFactoryApp() {
                     )}
                 </div>
             </section>
+
+            {/* ── Tabla de integraciones ── */}
+            {(() => {
+                const INTEGRATIONS = [
+                    { name: "Amazon KDP",      icon: "📦", status: "dev",     statusLabel: "En desarrollo", desc: "Subida manual de PDFs + seguimiento de ventas" },
+                    { name: "Gelato",           icon: "🖨️", status: "dev",     statusLabel: "En desarrollo", desc: "Print on demand conectado vía API" },
+                    { name: "Etsy",             icon: "🛍️", status: "paused",  statusLabel: "Pausado",       desc: "Marketplace de productos digitales y físicos" },
+                    { name: "Gumroad",          icon: "💚", status: "study",   statusLabel: "En estudio",    desc: "Venta directa de PDFs y productos digitales" },
+                    { name: "Lemon Squeezy",    icon: "🍋", status: "study",   statusLabel: "En estudio",    desc: "Alternativa moderna a Gumroad con API REST" },
+                    { name: "Printify",         icon: "👕", status: "study",   statusLabel: "En estudio",    desc: "Print on demand, API gratuita" },
+                    { name: "Ko-fi",            icon: "☕", status: "study",   statusLabel: "En estudio",    desc: "Shop con webhooks gratuitos" },
+                ] as const;
+                const badge = {
+                    dev:    "bg-amber-500/15 border-amber-500/30 text-amber-400",
+                    paused: "bg-neutral-500/15 border-neutral-500/30 text-neutral-500",
+                    study:  "bg-sky-500/15 border-sky-500/30 text-sky-400",
+                };
+                return (
+                    <section className="space-y-3">
+                        <div className="flex items-center gap-2">
+                            <SectionHeader icon={<Store size={15} />} title="Integraciones" subtitle="Estado de los marketplaces conectados o en hoja de ruta" color="indigo" size="sm" />
+                        </div>
+                        <Card variant="outline" className="overflow-hidden border-white/5 bg-white/[0.01]">
+                            <div className="divide-y divide-white/[0.05]">
+                                {INTEGRATIONS.map((int) => (
+                                    <div key={int.name} className="flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.02] transition-all">
+                                        <span className="text-lg w-7 shrink-0">{int.icon}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[12px] font-black text-white">{int.name}</p>
+                                            <p className="text-[10px] text-neutral-600 truncate">{int.desc}</p>
+                                        </div>
+                                        <span className={`shrink-0 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${badge[int.status]}`}>
+                                            {int.statusLabel}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </Card>
+                    </section>
+                );
+            })()}
         </div>
     );
 
