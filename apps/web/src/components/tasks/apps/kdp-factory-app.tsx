@@ -1962,7 +1962,7 @@ export function KdpFactoryApp() {
     const [coverModelId, setCoverModelId] = useState("pollinations-flux");
     const [isBuildingCover, setIsBuildingCover] = useState(false);
     const [generatedCoverUrl, setGeneratedCoverUrl] = useState<string | null>(null);
-    const [coverSectionOpen, setCoverSectionOpen] = useState(false);
+    const [showCoverModal, setShowCoverModal] = useState(false);
 
     const [bookEditorOpen, setBookEditorOpen] = useState(false);
     const [bookFileName, setBookFileName] = useState("libro-kdp");
@@ -5938,98 +5938,36 @@ export function KdpFactoryApp() {
                     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
                         <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
                             <div className="absolute -top-16 -right-16 w-48 h-48 bg-fuchsia-500/8 blur-[60px] pointer-events-none" />
-                            {/* Header row */}
-                            <button className="w-full p-5 flex items-center gap-3 hover:bg-white/[0.015] transition-all" onClick={() => setCoverSectionOpen(v => !v)}>
-                                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-fuchsia-500/20 to-violet-600/10 border border-fuchsia-500/20 flex items-center justify-center shadow-lg shadow-fuchsia-500/10 shrink-0">
-                                    <ImageIcon size={19} className="text-fuchsia-400" />
-                                </div>
-                                <div className="flex-1 min-w-0 text-left">
-                                    <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Cover Factory</h4>
-                                    <p className="text-[10px] text-neutral-500 font-medium">Portada tall-format · 1600×2560px · Lista para KDP</p>
-                                </div>
-                                <ChevronDown size={15} className={`text-neutral-600 transition-transform shrink-0 ${coverSectionOpen ? "rotate-180" : ""}`} />
-                            </button>
-
-                            {coverSectionOpen && (
-                                <div className="border-t border-white/[0.06] p-5 space-y-4">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        {/* Left: form */}
-                                        <div className="space-y-3">
-                                            <div className="space-y-1">
-                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Título <span className="text-fuchsia-500">*</span></label>
-                                                <input type="text" value={coverTitle} onChange={e => setCoverTitle(e.target.value)} placeholder="Ej: Mandala Zen Coloring Book"
-                                                    className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Subtítulo <span className="text-neutral-700">(opcional)</span></label>
-                                                <input type="text" value={coverSubtitle} onChange={e => setCoverSubtitle(e.target.value)} placeholder="Ej: 50 Relaxing Designs for Adults"
-                                                    className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Estilo visual</label>
-                                                <input type="text" value={coverStyle} onChange={e => setCoverStyle(e.target.value)} placeholder="Ej: vibrant illustration, fantasy"
-                                                    className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Paleta de colores</label>
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    {["deep blue and gold", "pastel pink and mint", "dark forest green", "warm sunset orange", "purple and silver"].map(p => (
-                                                        <button key={p} onClick={() => setCoverColorTheme(p)}
-                                                            className={`px-2 py-1 rounded-lg border text-[8px] font-black transition-all ${coverColorTheme === p ? "border-fuchsia-500/40 bg-fuchsia-500/15 text-fuchsia-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-400"}`}>
-                                                            {p}
-                                                        </button>
-                                                    ))}
-                                                    <input type="text" value={coverColorTheme} onChange={e => setCoverColorTheme(e.target.value)}
-                                                        className="flex-1 min-w-[90px] h-7 px-2 bg-white/[0.04] border border-white/10 rounded-lg text-[9px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" placeholder="tema libre..." />
-                                                </div>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Modelo</label>
-                                                <select value={coverModelId} onChange={e => setCoverModelId(e.target.value)}
-                                                    className="w-full h-8 px-2.5 bg-white/[0.04] border border-white/10 rounded-xl text-[10px] text-white focus:outline-none focus:border-fuchsia-500/40 [color-scheme:dark]">
-                                                    {AI_MODELS.filter(m => ["Pollinations", "fal.ai", "Ideogram", "Google"].includes(m.provider)).map(m => (
-                                                        <option key={m.id} value={m.id}>{m.name} · {m.provider}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                            <button onClick={() => void generateCover()} disabled={isBuildingCover || !coverTitle.trim()}
-                                                className="w-full h-9 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-95">
-                                                {isBuildingCover ? <><Loader2 size={12} className="animate-spin" /> Generando...</> : <><ImageIcon size={12} /> Generar Portada</>}
-                                            </button>
-                                        </div>
-
-                                        {/* Right: preview */}
-                                        <div className="flex items-start justify-center">
-                                            {generatedCoverUrl ? (
-                                                <div className="space-y-2.5 w-full">
-                                                    <div className="relative mx-auto overflow-hidden rounded-xl border border-white/10 shadow-2xl shadow-black/60" style={{ maxWidth: 160 }}>
-                                                        <img src={generatedCoverUrl} alt="Portada KDP" className="w-full object-cover" style={{ aspectRatio: "1600/2560" }} />
-                                                        <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent pointer-events-none" />
-                                                    </div>
-                                                    <div className="flex gap-2 justify-center">
-                                                        <a href={generatedCoverUrl} download={`portada-${coverTitle.toLowerCase().replace(/\s+/g, "-")}.jpg`}
-                                                            className="flex items-center gap-1 h-7 px-3 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-[9px] font-black uppercase tracking-widest text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all">
-                                                            <Download size={9} /> Descargar
-                                                        </a>
-                                                        <button onClick={() => void generateCover()}
-                                                            className="flex items-center gap-1 h-7 px-3 rounded-xl bg-white/5 border border-white/10 text-[9px] font-black uppercase tracking-widest text-neutral-500 hover:text-white hover:bg-white/10 transition-all">
-                                                            <RefreshCw size={9} /> Regen.
-                                                        </button>
-                                                    </div>
-                                                    <p className="text-[8px] text-neutral-700 text-center">1600×2560px · KDP tall-format</p>
-                                                </div>
-                                            ) : (
-                                                <div className="w-full flex flex-col items-center justify-center gap-2.5 py-8 border border-dashed border-fuchsia-500/15 rounded-2xl bg-fuchsia-500/[0.02]">
-                                                    <div className="w-14 h-24 rounded-xl border-2 border-dashed border-fuchsia-500/20 flex items-center justify-center">
-                                                        <ImageIcon size={18} className="text-fuchsia-500/25" />
-                                                    </div>
-                                                    <p className="text-[9px] text-neutral-700 text-center">La portada aparecerá aquí<br/><span className="text-neutral-800">1600×2560 · tall-format</span></p>
-                                                </div>
-                                            )}
-                                        </div>
+                            <div className="p-5 space-y-3">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-fuchsia-500/20 to-violet-600/10 border border-fuchsia-500/20 flex items-center justify-center shadow-lg shadow-fuchsia-500/10 shrink-0">
+                                        <ImageIcon size={19} className="text-fuchsia-400" />
                                     </div>
+                                    <div className="flex-1 min-w-0">
+                                        <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Cover Factory</h4>
+                                        <p className="text-[10px] text-neutral-500 font-medium">Portada tall-format · 1600×2560px · Lista para KDP</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowCoverModal(true)}
+                                        className="h-8 px-3 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_16px_rgba(192,38,211,0.25)] active:scale-95 shrink-0"
+                                    >
+                                        <ImageIcon size={11} /> Abrir
+                                    </button>
                                 </div>
-                            )}
+                                {generatedCoverUrl && (
+                                    <div className="flex items-center gap-3 p-3 rounded-2xl bg-fuchsia-500/[0.04] border border-fuchsia-500/15">
+                                        <img src={generatedCoverUrl} alt="" className="w-8 h-12 rounded-lg object-cover border border-fuchsia-500/20 shrink-0" />
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[10px] font-black text-white truncate">{coverTitle || "Portada generada"}</p>
+                                            <p className="text-[9px] text-neutral-600">1600×2560px · Lista para descargar</p>
+                                        </div>
+                                        <a href={generatedCoverUrl} download={`portada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
+                                            className="shrink-0 flex items-center gap-1 h-7 px-2.5 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-[9px] font-black uppercase text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all">
+                                            <Download size={9} /> DL
+                                        </a>
+                                    </div>
+                                )}
+                            </div>
                         </Card>
                     </div>
                 </div>
@@ -6879,6 +6817,118 @@ export function KdpFactoryApp() {
                     document.body
                 );
             })()}
+
+            {/* Cover Factory Modal */}
+            {showCoverModal && (
+                <div className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
+                    onClick={() => setShowCoverModal(false)} role="dialog" aria-modal="true">
+                    <div className="relative w-full max-w-2xl rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col"
+                        onClick={e => e.stopPropagation()}>
+                        <div className="absolute -top-24 -right-24 w-72 h-72 bg-fuchsia-500/8 blur-[80px] pointer-events-none" />
+                        {/* Header */}
+                        <div className="shrink-0 border-b border-white/8 px-5 py-4 flex items-center gap-3 relative">
+                            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-fuchsia-500/20 to-violet-600/10 border border-fuchsia-500/20 flex items-center justify-center shrink-0">
+                                <ImageIcon size={15} className="text-fuchsia-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Cover Factory</p>
+                                <p className="text-[10px] text-neutral-600">1600×2560px · Tall-format para Amazon KDP</p>
+                            </div>
+                            <button onClick={() => setShowCoverModal(false)}
+                                className="w-9 h-9 rounded-xl bg-white/5 text-neutral-400 hover:bg-rose-500 hover:text-white transition-all border border-white/10 shrink-0 flex items-center justify-center">
+                                <X size={15} />
+                            </button>
+                        </div>
+                        {/* Body */}
+                        <div className="overflow-y-auto p-5 space-y-5 relative" style={{ maxHeight: "80dvh" }}>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                {/* Left: form */}
+                                <div className="space-y-3">
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Título <span className="text-fuchsia-500">*</span></label>
+                                        <input type="text" value={coverTitle} onChange={e => setCoverTitle(e.target.value)} placeholder="Ej: Mandala Zen Coloring Book"
+                                            className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Subtítulo <span className="text-neutral-700">(opcional)</span></label>
+                                        <input type="text" value={coverSubtitle} onChange={e => setCoverSubtitle(e.target.value)} placeholder="Ej: 50 Relaxing Designs for Adults"
+                                            className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Estilo visual</label>
+                                        <input type="text" value={coverStyle} onChange={e => setCoverStyle(e.target.value)} placeholder="Ej: vibrant illustration, fantasy"
+                                            className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Paleta de colores</label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {["deep blue and gold", "pastel pink and mint", "dark forest green", "warm sunset orange", "purple and silver"].map(p => (
+                                                <button key={p} onClick={() => setCoverColorTheme(p)}
+                                                    className={`px-2 py-1 rounded-lg border text-[8px] font-black transition-all ${coverColorTheme === p ? "border-fuchsia-500/40 bg-fuchsia-500/15 text-fuchsia-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-400"}`}>
+                                                    {p}
+                                                </button>
+                                            ))}
+                                            <input type="text" value={coverColorTheme} onChange={e => setCoverColorTheme(e.target.value)}
+                                                className="flex-1 min-w-[90px] h-7 px-2 bg-white/[0.04] border border-white/10 rounded-lg text-[9px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" placeholder="tema libre..." />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Modelo</label>
+                                        <select value={coverModelId} onChange={e => setCoverModelId(e.target.value)}
+                                            className="w-full h-8 px-2.5 bg-white/[0.04] border border-white/10 rounded-xl text-[10px] text-white focus:outline-none focus:border-fuchsia-500/40 [color-scheme:dark]">
+                                            {AI_MODELS.filter(m => ["Pollinations", "fal.ai", "Ideogram", "Google"].includes(m.provider)).map(m => (
+                                                <option key={m.id} value={m.id}>{m.name} · {m.provider}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <button onClick={() => void generateCover()} disabled={isBuildingCover || !coverTitle.trim()}
+                                        className="w-full h-10 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-95">
+                                        {isBuildingCover ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><ImageIcon size={13} /> Generar Portada</>}
+                                    </button>
+                                </div>
+                                {/* Right: preview */}
+                                <div className="flex items-start justify-center">
+                                    {generatedCoverUrl ? (
+                                        <div className="space-y-3 w-full flex flex-col items-center">
+                                            <div className="relative overflow-hidden rounded-2xl border border-white/10 shadow-2xl shadow-black/60 shadow-[0_0_40px_rgba(192,38,211,0.15)]" style={{ maxWidth: 180 }}>
+                                                <img src={generatedCoverUrl} alt="Portada KDP" className="w-full object-cover" style={{ aspectRatio: "1600/2560" }} />
+                                                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
+                                            </div>
+                                            <p className="text-[8px] text-neutral-700 text-center font-mono">1600×2560px · KDP tall-format</p>
+                                            <div className="flex gap-2">
+                                                <a href={generatedCoverUrl} download={`portada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
+                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-[9px] font-black uppercase tracking-widest text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all">
+                                                    <Download size={10} /> Descargar
+                                                </a>
+                                                <button onClick={() => void generateCover()} disabled={isBuildingCover}
+                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/5 border border-white/10 text-[9px] font-black uppercase tracking-widest text-neutral-500 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40">
+                                                    <RefreshCw size={10} /> Regen.
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="w-full flex flex-col items-center justify-center gap-3 py-10 border border-dashed border-fuchsia-500/15 rounded-2xl bg-fuchsia-500/[0.02]">
+                                            {isBuildingCover ? (
+                                                <>
+                                                    <Loader2 size={28} className="text-fuchsia-500/50 animate-spin" />
+                                                    <p className="text-[10px] text-neutral-600">Generando portada…</p>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div className="w-16 h-24 rounded-2xl border-2 border-dashed border-fuchsia-500/20 flex items-center justify-center">
+                                                        <ImageIcon size={20} className="text-fuchsia-500/20" />
+                                                    </div>
+                                                    <p className="text-[9px] text-neutral-700 text-center">La portada aparecerá aquí<br /><span className="text-neutral-800">1600×2560 · tall-format</span></p>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Book Editor Modal */}
             {bookEditorOpen && (
