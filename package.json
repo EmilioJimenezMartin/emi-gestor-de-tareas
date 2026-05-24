@@ -7,7 +7,7 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently -n web,api,ngrok -c blue,green,yellow \"npm --workspace apps/web run dev\" \"npm --workspace apps/api run dev\" \"./ngrok-start.sh\"",
+    "dev": "./dev.sh",
     "build": "npm --workspace apps/api run build && npm --workspace apps/web run build",
     "lint": "npm --workspace apps/web run lint",
     "start:api": "npm --workspace apps/api run start",
@@ -18,7 +18,7 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^6.5.1"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1"

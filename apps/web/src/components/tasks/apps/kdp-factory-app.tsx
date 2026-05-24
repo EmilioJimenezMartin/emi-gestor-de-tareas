@@ -2426,31 +2426,23 @@ export function KdpFactoryApp() {
         };
     }, []);
 
-    // Fetch Cloudinary images + saved prompts when entering the creation tab
+    // Load all data on mount in parallel — no tab gating so every section is ready when first visited
     useEffect(() => {
-        if (activeTab === "creation") {
-            void fetchCloudinaryImages();
-            void fetchSavedPrompts();
-        }
-        if (activeTab === "insights") {
-            if (products.length === 0) void fetchProducts();
-            if (integrations.length === 0) void fetchIntegrations();
-        }
-        if (activeTab === "studio" && niches.length === 0) {
-            void fetchNiches();
-        }
-        if (activeTab === "gelato" && gelatoStoreProducts.length === 0 && !loadingGelatoData) {
-            setLoadingGelatoData(true);
-            Promise.all([
-                fetch(`${API_BASE_URL}/gelato/store/products?limit=50`).then(r => r.ok ? r.json() : { products: [] }).catch(() => ({ products: [] })),
-                fetch(`${API_BASE_URL}/gelato/orders?limit=10`).then(r => r.ok ? r.json() : { orders: [] }).catch(() => ({ orders: [] })),
-            ]).then(([prod, ord]) => {
-                setGelatoStoreProducts(prod.products ?? []);
-                setGelatoOrders(ord.orders ?? []);
-            }).finally(() => setLoadingGelatoData(false));
-        }
+        void fetchProducts();
+        void fetchIntegrations();
+        void fetchNiches();
+        void fetchCloudinaryImages();
+        void fetchSavedPrompts();
+        setLoadingGelatoData(true);
+        Promise.all([
+            fetch(`${API_BASE_URL}/gelato/store/products?limit=50`).then(r => r.ok ? r.json() : { products: [] }).catch(() => ({ products: [] })),
+            fetch(`${API_BASE_URL}/gelato/orders?limit=10`).then(r => r.ok ? r.json() : { orders: [] }).catch(() => ({ orders: [] })),
+        ]).then(([prod, ord]) => {
+            setGelatoStoreProducts(prod.products ?? []);
+            setGelatoOrders(ord.orders ?? []);
+        }).finally(() => setLoadingGelatoData(false));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab]);
+    }, []);
 
     // Global paste listener: when in creation tab and no image is being shown/generated,
     // paste goes directly to the vault (no need to click the card first)
@@ -2472,10 +2464,12 @@ export function KdpFactoryApp() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, generatedImage, isGenerating]);
 
-    // Fetch catalogs + connect socket when entering the creation tab
+    // Fetch catalogs on mount (socket connects when entering creation tab)
+    useEffect(() => { void fetchCatalogs(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Connect socket when entering the creation tab (catalog real-time updates)
     useEffect(() => {
         if (activeTab !== "creation") return;
-        void fetchCatalogs();
 
         const socket = createApiSocket(API_BASE_URL);
         catalogSocketRef.current = socket;
@@ -2886,32 +2880,36 @@ export function KdpFactoryApp() {
     const renderInsights = () => (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 flex flex-col gap-8">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-indigo-500/30 hover:shadow-[0_0_30px_rgba(99,102,241,0.12)] transition-all duration-500 group relative overflow-hidden">
-                    <div className="absolute -right-4 -top-4 w-16 h-16 bg-indigo-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
-                    <div className="flex items-center justify-between relative">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Ganancias Totales</span>
-                        <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400"><TrendingUp size={16} /></div>
-                    </div>
-                    <div className="space-y-1 relative">
-                        <p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.total.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p>
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400"><ArrowUpRight size={12} /><span>+12.5% vs mes anterior</span></div>
-                    </div>
-                </Card>
-                <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.12)] transition-all duration-500 group relative overflow-hidden">
-                    <div className="absolute -right-4 -top-4 w-16 h-16 bg-blue-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
-                    <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Promedio / Asset</span><div className="p-2 rounded-xl bg-blue-500/10 text-blue-400"><BarChart size={16} /></div></div>
-                    <div className="space-y-1"><p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.avg.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p><div className="text-[10px] font-bold text-blue-400 italic">Rendimiento Saludable</div></div>
-                </Card>
-                <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.12)] transition-all duration-500 group relative overflow-hidden">
-                    <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
-                    <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Market Reach</span><div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400"><Globe size={16} /></div></div>
-                    <div className="space-y-1 text-3xl font-black italic tracking-tighter text-white">4/4 <span className="text-xs uppercase text-neutral-500 tracking-widest not-italic ml-2">Platforms</span></div>
-                </Card>
-                <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.12)] transition-all duration-500 group relative overflow-hidden">
-                    <div className="absolute -right-4 -top-4 w-16 h-16 bg-blue-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
-                    <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Top Nicho</span><div className="p-2 rounded-xl bg-blue-500/10 text-blue-400"><Activity size={16} /></div></div>
-                    <div className="space-y-1 text-xl font-black italic tracking-tighter text-white flex flex-col"><span>Mandala Art</span><span className="text-[11px] uppercase font-black text-blue-400 tracking-widest">+45% Demand</span></div>
-                </Card>
+                {isLoadingProducts ? [1,2,3,4].map(i => (
+                    <div key={i} className="h-28 rounded-2xl bg-white/[0.03] animate-pulse border border-white/5" />
+                )) : <>
+                    <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-indigo-500/30 hover:shadow-[0_0_30px_rgba(99,102,241,0.12)] transition-all duration-500 group relative overflow-hidden">
+                        <div className="absolute -right-4 -top-4 w-16 h-16 bg-indigo-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
+                        <div className="flex items-center justify-between relative">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Ganancias Totales</span>
+                            <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400"><TrendingUp size={16} /></div>
+                        </div>
+                        <div className="space-y-1 relative">
+                            <p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.total.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p>
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400"><ArrowUpRight size={12} /><span>+12.5% vs mes anterior</span></div>
+                        </div>
+                    </Card>
+                    <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.12)] transition-all duration-500 group relative overflow-hidden">
+                        <div className="absolute -right-4 -top-4 w-16 h-16 bg-blue-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
+                        <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Promedio / Asset</span><div className="p-2 rounded-xl bg-blue-500/10 text-blue-400"><BarChart size={16} /></div></div>
+                        <div className="space-y-1"><p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.avg.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p><div className="text-[10px] font-bold text-blue-400 italic">Rendimiento Saludable</div></div>
+                    </Card>
+                    <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.12)] transition-all duration-500 group relative overflow-hidden">
+                        <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
+                        <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Market Reach</span><div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400"><Globe size={16} /></div></div>
+                        <div className="space-y-1 text-3xl font-black italic tracking-tighter text-white">4/4 <span className="text-xs uppercase text-neutral-500 tracking-widest not-italic ml-2">Platforms</span></div>
+                    </Card>
+                    <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.12)] transition-all duration-500 group relative overflow-hidden">
+                        <div className="absolute -right-4 -top-4 w-16 h-16 bg-blue-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
+                        <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Top Nicho</span><div className="p-2 rounded-xl bg-blue-500/10 text-blue-400"><Activity size={16} /></div></div>
+                        <div className="space-y-1 text-xl font-black italic tracking-tighter text-white flex flex-col"><span>Mandala Art</span><span className="text-[11px] uppercase font-black text-blue-400 tracking-widest">+45% Demand</span></div>
+                    </Card>
+                </>}
             </div>
 
             {/* ── Monthly earnings line chart ── */}
