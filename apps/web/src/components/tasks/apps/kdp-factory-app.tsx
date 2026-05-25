@@ -2877,7 +2877,26 @@ export function KdpFactoryApp() {
     };
 
 
-    const renderInsights = () => (
+    const renderInsights = () => {
+        const lastMo = monthlyEarningsData.at(-1)?.earnings ?? 0;
+        const prevMo = monthlyEarningsData.at(-2)?.earnings ?? 0;
+        const monthTrend = prevMo > 0 ? ((lastMo - prevMo) / prevMo * 100) : null;
+
+        const activePlatforms = new Set(
+            products.flatMap(p => p.platforms.filter(pl => pl.earnings > 0).map(pl => pl.name))
+        );
+        const totalPlatforms = new Set(products.flatMap(p => p.platforms.map(pl => pl.name)));
+
+        const topNiche = [...niches]
+            .filter(n => n.royalties && n.royalties.length > 0)
+            .sort((a, b) => {
+                const ea = (a.royalties ?? []).reduce((s, r) => s + r.revenue, 0);
+                const eb = (b.royalties ?? []).reduce((s, r) => s + r.revenue, 0);
+                return eb - ea;
+            })[0] ?? niches.find(n => n.phase === "published") ?? niches[0] ?? null;
+        const topNicheDemand = topNiche?.demand;
+
+        return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 flex flex-col gap-8">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {isLoadingProducts ? [1,2,3,4].map(i => (
@@ -2891,23 +2910,47 @@ export function KdpFactoryApp() {
                         </div>
                         <div className="space-y-1 relative">
                             <p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.total.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p>
-                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400"><ArrowUpRight size={12} /><span>+12.5% vs mes anterior</span></div>
+                            {monthTrend !== null ? (
+                                <div className={`flex items-center gap-1.5 text-[10px] font-bold ${monthTrend >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                                    {monthTrend >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+                                    <span>{monthTrend >= 0 ? "+" : ""}{monthTrend.toFixed(1)}% vs mes anterior</span>
+                                </div>
+                            ) : (
+                                <div className="text-[10px] font-bold text-neutral-600 italic">Sin datos comparativos</div>
+                            )}
                         </div>
                     </Card>
                     <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.12)] transition-all duration-500 group relative overflow-hidden">
                         <div className="absolute -right-4 -top-4 w-16 h-16 bg-blue-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
                         <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Promedio / Asset</span><div className="p-2 rounded-xl bg-blue-500/10 text-blue-400"><BarChart size={16} /></div></div>
-                        <div className="space-y-1"><p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.avg.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p><div className="text-[10px] font-bold text-blue-400 italic">Rendimiento Saludable</div></div>
+                        <div className="space-y-1"><p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.avg.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p><div className="text-[10px] font-bold text-blue-400 italic">{stats.avg >= 5 ? "Rendimiento Saludable" : stats.avg > 0 ? "En crecimiento" : "Sin ventas aún"}</div></div>
                     </Card>
                     <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.12)] transition-all duration-500 group relative overflow-hidden">
                         <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
                         <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Market Reach</span><div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400"><Globe size={16} /></div></div>
-                        <div className="space-y-1 text-3xl font-black italic tracking-tighter text-white">4/4 <span className="text-xs uppercase text-neutral-500 tracking-widest not-italic ml-2">Platforms</span></div>
+                        <div className="space-y-1">
+                            <div className="text-3xl font-black italic tracking-tighter text-white">
+                                {activePlatforms.size}<span className="text-sm font-bold text-neutral-500 not-italic">/{totalPlatforms.size}</span>
+                                <span className="text-xs uppercase text-neutral-500 tracking-widest not-italic ml-2">Platforms</span>
+                            </div>
+                            {totalPlatforms.size > 0 && (
+                                <div className="text-[10px] font-bold text-emerald-400 italic">{[...activePlatforms].slice(0, 2).join(" · ")}{activePlatforms.size > 2 ? ` +${activePlatforms.size - 2}` : ""}</div>
+                            )}
+                        </div>
                     </Card>
                     <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.12)] transition-all duration-500 group relative overflow-hidden">
                         <div className="absolute -right-4 -top-4 w-16 h-16 bg-blue-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
                         <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Top Nicho</span><div className="p-2 rounded-xl bg-blue-500/10 text-blue-400"><Activity size={16} /></div></div>
-                        <div className="space-y-1 text-xl font-black italic tracking-tighter text-white flex flex-col"><span>Mandala Art</span><span className="text-[11px] uppercase font-black text-blue-400 tracking-widest">+45% Demand</span></div>
+                        {topNiche ? (
+                            <div className="space-y-1 text-xl font-black italic tracking-tighter text-white flex flex-col">
+                                <span className="truncate">{topNiche.name}</span>
+                                <span className={`text-[11px] uppercase font-black tracking-widest ${topNicheDemand === "high" ? "text-emerald-400" : topNicheDemand === "medium" ? "text-amber-400" : "text-blue-400"}`}>
+                                    {topNicheDemand === "high" ? "Alta demanda" : topNicheDemand === "medium" ? "Demanda media" : topNicheDemand === "low" ? "Demanda baja" : topNiche.phase === "published" ? "Publicado" : "En desarrollo"}
+                                </span>
+                            </div>
+                        ) : (
+                            <div className="text-[11px] text-neutral-700 italic">Sin nichos aún</div>
+                        )}
                     </Card>
                 </>}
             </div>
@@ -3770,7 +3813,8 @@ export function KdpFactoryApp() {
                 );
             })()}
         </div>
-    );
+        );
+    };
 
 
 
@@ -3944,6 +3988,45 @@ export function KdpFactoryApp() {
 
                         {/* ── 02 PROMPT ── */}
                         <div className="p-6 space-y-4 relative z-10">
+                            {niches.length > 0 && (
+                                <div className="space-y-2">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Cargar desde nicho</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {niches.filter(n => n.status !== "archived").map(niche => (
+                                            <button
+                                                key={niche._id}
+                                                type="button"
+                                                onClick={() => {
+                                                    if (niche.productType === "coloring-book") {
+                                                        const parts = buildColoringBookPromptParts(niche.name, niche.styleCategory, "");
+                                                        setPromptTheme(parts.theme);
+                                                        setPromptSpecs(parts.specs);
+                                                        setPromptDetails(parts.details);
+                                                        setPromptParticulars("");
+                                                    } else {
+                                                        setPromptTheme(niche.name);
+                                                        setPromptSpecs(niche.tags.join(", "));
+                                                        setPromptDetails(niche.description || "");
+                                                        setPromptParticulars("");
+                                                    }
+                                                    if (niche.styleCategory && NICHE_STYLE_MODEL[niche.styleCategory]) {
+                                                        setSelectedModel(NICHE_STYLE_MODEL[niche.styleCategory]);
+                                                    }
+                                                    toast.success(`Prompt cargado desde "${niche.name}"`);
+                                                }}
+                                                className={`flex items-center gap-1.5 h-6 px-2.5 rounded-lg border text-[9px] font-black transition-all ${
+                                                    niche.phase === "published" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                                                    : niche.status === "active" ? "border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                                                    : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"
+                                                }`}
+                                            >
+                                                <Target size={8} />
+                                                {niche.name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                             <div className="flex items-center justify-between gap-3">
                                 <div className="flex items-center gap-3">
                                     <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-[9px] font-black text-neutral-500 flex items-center justify-center shrink-0">02</span>
@@ -5959,10 +6042,16 @@ export function KdpFactoryApp() {
                                             <p className="text-[10px] font-black text-white truncate">{coverTitle || "Portada generada"}</p>
                                             <p className="text-[9px] text-neutral-600">1600×2560px · Lista para descargar</p>
                                         </div>
-                                        <a href={generatedCoverUrl} download={`portada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
-                                            className="shrink-0 flex items-center gap-1 h-7 px-2.5 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-[9px] font-black uppercase text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all">
-                                            <Download size={9} /> DL
-                                        </a>
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                            <a href={generatedCoverUrl} download={`portada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
+                                                className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-[9px] font-black uppercase text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all">
+                                                <Download size={9} /> DL
+                                            </a>
+                                            <button onClick={() => setGeneratedCoverUrl(null)}
+                                                className="w-7 h-7 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 transition-all flex items-center justify-center">
+                                                <Trash2 size={10} />
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -6893,7 +6982,7 @@ export function KdpFactoryApp() {
                                                 <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
                                             </div>
                                             <p className="text-[8px] text-neutral-700 text-center font-mono">1600×2560px · KDP tall-format</p>
-                                            <div className="flex gap-2">
+                                            <div className="flex gap-2 flex-wrap justify-center">
                                                 <a href={generatedCoverUrl} download={`portada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
                                                     className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-[9px] font-black uppercase tracking-widest text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all">
                                                     <Download size={10} /> Descargar
@@ -6901,6 +6990,10 @@ export function KdpFactoryApp() {
                                                 <button onClick={() => void generateCover()} disabled={isBuildingCover}
                                                     className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/5 border border-white/10 text-[9px] font-black uppercase tracking-widest text-neutral-500 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40">
                                                     <RefreshCw size={10} /> Regen.
+                                                </button>
+                                                <button onClick={() => setGeneratedCoverUrl(null)}
+                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[9px] font-black uppercase tracking-widest text-rose-400 hover:bg-rose-500/20 transition-all">
+                                                    <Trash2 size={10} /> Eliminar
                                                 </button>
                                             </div>
                                         </div>
