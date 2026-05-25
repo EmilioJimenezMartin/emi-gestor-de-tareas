@@ -55,6 +55,16 @@ async function getGoogleKey(): Promise<string> {
     return key;
 }
 
+export async function getHFKey(): Promise<string> {
+    let key = process.env.HUGGINGFACE_API_KEY ?? "";
+    try {
+        const { Settings } = await import("../models/settings.js");
+        const row = await Settings.findOne({ key: "HUGGINGFACE_API_KEY" }).lean();
+        if (row?.value) key = row.value as string;
+    } catch { /* fallback to env */ }
+    return key;
+}
+
 export async function registerRadarRoutes(
     app: FastifyInstance,
     deps: { io?: SocketIOServer; agenda?: Agenda }
@@ -65,7 +75,8 @@ export async function registerRadarRoutes(
         if (!url?.trim()) return reply.status(400).send({ error: "url es requerida" });
 
         const googleKey = await getGoogleKey();
-        if (!googleKey) return reply.status(400).send({ error: "Google API key no configurada. Añádela en Ajustes." });
+        const hfKey = await getHFKey();
+        if (!googleKey && !hfKey) return reply.status(400).send({ error: "No hay API key configurada. Añade Google API key o HuggingFace API key en Ajustes." });
 
         if (!deps.agenda) return reply.status(503).send({ error: "Agenda no disponible aún, espera unos segundos" });
 

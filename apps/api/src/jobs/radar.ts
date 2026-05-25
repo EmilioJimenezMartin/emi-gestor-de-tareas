@@ -1,6 +1,6 @@
 import type { Agenda, Job } from "agenda";
 import { RadarJob } from "../models/radar-job.js";
-import { EtsyNicheResultSchema, NicheInsightSchema, ETSY_SYSTEM_PROMPT } from "../routes/radar.js";
+import { EtsyNicheResultSchema, NicheInsightSchema, ETSY_SYSTEM_PROMPT, getHFKey } from "../routes/radar.js";
 
 export const RADAR_JOB_NAME = "run-radar-analysis";
 
@@ -49,6 +49,38 @@ async function getGoogleKey(): Promise<string> {
         if (row?.value) key = row.value as string;
     } catch { /* fallback to env */ }
     return key;
+}
+
+async function analyzeWithHF(pageText: string, mode: string, hfKey: string): Promise<any> {
+    const { HfInference } = await import("@huggingface/inference");
+    const hf = new HfInference(hfKey);
+
+    const schemaHint = mode === "etsy-niches"
+        ? `{"nichos_detectados":[{"titulo":"string","bestseller":boolean,"urgencia_carrito":number,"resenas_totales":number,"micronicho":"string"}]}`
+        : `{"niche":"string","demand_level":"low|medium|high","competition_level":"low|medium|high","top_keywords":["string"],"avg_price_usd":number,"insights":["string"],"opportunities":["string"]}`;
+
+    const systemContent = mode === "etsy-niches"
+        ? `${ETSY_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con un JSON válido con esta estructura exacta (sin markdown, sin explicaciones):\n${schemaHint}`
+        : `Analiza la siguiente página de marketplace para investigar el nicho. Responde ÚNICAMENTE con un JSON válido con esta estructura exacta:\n${schemaHint}`;
+
+    // Truncate to avoid exceeding context limits (~10k chars ≈ 2500 tokens)
+    const truncated = pageText.slice(0, 10000);
+
+    const response = await hf.chatCompletion({
+        model: "meta-llama/Llama-3.1-8B-Instruct",
+        messages: [
+            { role: "system", content: systemContent },
+            { role: "user", content: `Contenido de la página:\n\n${truncated}` },
+        ],
+        max_tokens: 2048,
+        temperature: 0.1,
+    });
+
+    const text = (response.choices[0]?.message?.content ?? "").trim();
+    // Extract JSON block — handle markdown fences or raw JSON
+    const jsonMatch = text.match(/```json\s*([\s\S]*?)```/i) ?? text.match(/(\{[\s\S]*\})/);
+    if (!jsonMatch) throw new Error(`HuggingFace no devolvió JSON válido. Respuesta: ${text.slice(0, 200)}`);
+    return JSON.parse(jsonMatch[1] ?? jsonMatch[0]);
 }
 
 function pushLog(jobDoc: InstanceType<typeof RadarJob>, io: any, level: "info" | "success" | "error" | "warning", message: string) {
@@ -101,49 +133,80 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             `);
 
             pushLog(jobDoc, io, "success", `[FETCH] ✓ Página cargada y DOM podado`);
-            pushLog(jobDoc, io, "info", `[AI] Analizando con Gemini · modo: ${mode}...`);
             await jobDoc.save();
 
+            // Extract plain text for HF fallback (before Gemini call, browser still open)
+            const pageText: string = (await page.evaluate('document.body.innerText') as string) ?? "";
+
             const googleKey = await getGoogleKey();
-            const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
-            const { default: LLMScraper } = await import("llm-scraper");
-            const { Output } = await import("ai");
-
-            const google = createGoogleGenerativeAI({ apiKey: googleKey });
-            const scraper = new LLMScraper(google(geminiModel));
-
             let data: any;
 
-            if (mode === "etsy-niches") {
-                const output = Output.object(EtsyNicheResultSchema as any);
-                const result = await runWithRetry(
-                    () => scraper.run(page, output, { format: "markdown", system: ETSY_SYSTEM_PROMPT }),
-                    (secs, attempt) => {
-                        const msg = `[QUOTA] Límite RPM · esperando ${secs}s (intento ${attempt}/1)...`;
-                        pushLog(jobDoc, io, "warning", msg);
-                        jobDoc.save().catch(() => { });
+            if (googleKey) {
+                pushLog(jobDoc, io, "info", `[AI] Analizando con Gemini · modo: ${mode}...`);
+                await jobDoc.save();
+
+                const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
+                const { default: LLMScraper } = await import("llm-scraper");
+                const { Output } = await import("ai");
+
+                const google = createGoogleGenerativeAI({ apiKey: googleKey });
+                const scraper = new LLMScraper(google(geminiModel));
+
+                try {
+                    if (mode === "etsy-niches") {
+                        const output = Output.object(EtsyNicheResultSchema as any);
+                        const result = await runWithRetry(
+                            () => scraper.run(page, output, { format: "markdown", system: ETSY_SYSTEM_PROMPT }),
+                            (secs, attempt) => {
+                                const msg = `[QUOTA] Límite RPM · esperando ${secs}s (intento ${attempt}/1)...`;
+                                pushLog(jobDoc, io, "warning", msg);
+                                jobDoc.save().catch(() => { });
+                            }
+                        );
+                        data = result.data;
+                        const count = (data?.nichos_detectados ?? []).length;
+                        pushLog(jobDoc, io, "success", `[AI] ✓ ${count} productos/nichos detectados`);
+                    } else {
+                        const contextHint = [
+                            nicheName ? `Niche objetivo: "${nicheName}".` : "",
+                            context ? `Contexto adicional: ${context}.` : "",
+                            "Analiza esta página de marketplace para investigar el nicho de mercado.",
+                        ].filter(Boolean).join(" ");
+                        const output = Output.object(NicheInsightSchema as any);
+                        const result = await runWithRetry(
+                            () => scraper.run(page, output, { format: "markdown", system: contextHint || undefined }),
+                            (secs, attempt) => {
+                                const msg = `[QUOTA] Límite RPM · esperando ${secs}s (intento ${attempt}/1)...`;
+                                pushLog(jobDoc, io, "warning", msg);
+                                jobDoc.save().catch(() => { });
+                            }
+                        );
+                        data = result.data;
+                        pushLog(jobDoc, io, "success", `[AI] ✓ Análisis completado`);
                     }
-                );
-                data = result.data;
+                } catch (geminiErr: any) {
+                    if (!isHardQuota(geminiErr)) throw geminiErr;
+                    // Hard quota — fall through to HF below
+                    pushLog(jobDoc, io, "warning", `[QUOTA] Cuota diaria de Gemini agotada · intentando HuggingFace como respaldo...`);
+                    await jobDoc.save();
+                    data = null; // signal to use HF
+                }
+            }
+
+            // HF fallback: used when no Google key, or Gemini hard-quota
+            if (!data) {
+                const hfKey = await getHFKey();
+                if (!hfKey) {
+                    throw new Error("Cuota de Gemini agotada y no hay HuggingFace API key configurada. Añade una en Ajustes.");
+                }
+                pushLog(jobDoc, io, "info", `[AI] Analizando con HuggingFace (Llama 3.1) · modo: ${mode}...`);
+                await jobDoc.save();
+                data = await analyzeWithHF(pageText, mode, hfKey);
                 const count = (data?.nichos_detectados ?? []).length;
-                pushLog(jobDoc, io, "success", `[AI] ✓ ${count} productos/nichos detectados`);
-            } else {
-                const contextHint = [
-                    nicheName ? `Niche objetivo: "${nicheName}".` : "",
-                    context ? `Contexto adicional: ${context}.` : "",
-                    "Analiza esta página de marketplace para investigar el nicho de mercado.",
-                ].filter(Boolean).join(" ");
-                const output = Output.object(NicheInsightSchema as any);
-                const result = await runWithRetry(
-                    () => scraper.run(page, output, { format: "markdown", system: contextHint || undefined }),
-                    (secs, attempt) => {
-                        const msg = `[QUOTA] Límite RPM · esperando ${secs}s (intento ${attempt}/1)...`;
-                        pushLog(jobDoc, io, "warning", msg);
-                        jobDoc.save().catch(() => { });
-                    }
-                );
-                data = result.data;
-                pushLog(jobDoc, io, "success", `[AI] ✓ Análisis completado`);
+                const msg = mode === "etsy-niches"
+                    ? `[AI] ✓ HuggingFace · ${count} productos detectados`
+                    : `[AI] ✓ HuggingFace · análisis completado`;
+                pushLog(jobDoc, io, "success", msg);
             }
 
             jobDoc.status = "completed";
@@ -153,10 +216,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             io?.emit("radar:result", { jobId, mode, data });
             await page.close();
         } catch (err: any) {
-            const msg = isHardQuota(err)
-                ? `[QUOTA] Cuota diaria de Gemini agotada. Vuelve mañana o activa facturación en Google AI Studio.`
-                : `[ERROR] ${err?.message ?? "Error desconocido"}`;
-
+            const msg = `[ERROR] ${err?.message ?? "Error desconocido"}`;
             pushLog(jobDoc, io, "error", msg);
             jobDoc.status = "failed";
             jobDoc.error = msg;
