@@ -15,7 +15,16 @@ export const TASK_APPS_REGISTRY: Record<string, TaskAppMeta> = {
         description: "Plataforma de ventas integrada: gestiona listings de Etsy (productos digitales descargables) y productos físicos Wire-O a través de Gelato print-on-demand.",
         engineStatus: "READY_TO_BOOT",
     },
-    // Future apps go here
+    "ai-training-data-factory": {
+        title: "DataRefinery",
+        description: "Convierte tus catálogos generados en datasets de entrenamiento listos para vender en HuggingFace Hub y Civitai. Selecciona imágenes, añade ratings de calidad y exporta en formato JSONL con dataset card incluida.",
+        engineStatus: "READY_TO_BOOT",
+    },
+    "ai-seamless-pattern-automation": {
+        title: "Seamless Pattern Engine",
+        description: "Factoría de patrones textiles seamless para Redbubble, Spoonflower, Society6 y Merch by Amazon. Genera patrones tileables con preview 2×2 y 3×3, paletas de color predefinidas y guía de specs por plataforma.",
+        engineStatus: "READY_TO_BOOT",
+    },
 };
 
 export function getTaskAppMeta(slug: string): TaskAppMeta | null {

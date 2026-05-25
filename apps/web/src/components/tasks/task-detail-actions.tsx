@@ -9,6 +9,7 @@ import { Task } from "@/lib/tasks";
 import { AddTaskModal } from "./add-task-modal";
 import { deleteTask } from "@/app/actions/tasks";
 import { toast } from "sonner";
+import { getTaskAppMeta } from "@/config/task-apps-config";
 
 interface TaskDetailActionsProps {
     task: Task;
@@ -68,7 +69,7 @@ export function TaskDetailActions({ task }: TaskDetailActionsProps) {
                     </Button>
                 </div>
 
-                {task.slug === "amazon-kdp-ai-automation" ? (
+                {getTaskAppMeta(task.slug ?? "") ? (
                     <Button
                         variant="secondary"
                         className="w-full text-[10px] font-black uppercase tracking-widest h-12 shadow-lg shadow-primary/10 rounded-2xl bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-600 border-none hover:opacity-90 transition-all group"
