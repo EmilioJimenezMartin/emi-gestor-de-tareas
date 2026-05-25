@@ -223,6 +223,16 @@ const NICHE_STYLE_MODEL: Record<NicheStyle, string> = {
     abstract: "pollinations-flux",
 };
 
+const NICHE_STYLE_TO_COVER: Record<NicheStyle, { style: string; colorTheme: string }> = {
+    generic:      { style: "clean professional illustration, detailed decorative artwork, elegant composition",       colorTheme: "soft blue and white" },
+    anime:        { style: "anime manga illustration, vibrant colors, Japanese art style, bold linework",             colorTheme: "vibrant pink and purple" },
+    illustration: { style: "detailed artistic illustration, painterly fantasy art, rich textures",                    colorTheme: "deep forest green and gold" },
+    children:     { style: "cute children's book illustration, bright cheerful colors, friendly characters",          colorTheme: "pastel rainbow colors" },
+    realistic:    { style: "photorealistic detailed illustration, professional artwork, cinematic lighting",           colorTheme: "warm earth tones, natural colors" },
+    watercolor:   { style: "soft watercolor painting, artistic brushstrokes, delicate washes, paper texture",         colorTheme: "soft pastels and cream" },
+    abstract:     { style: "abstract geometric patterns, decorative mandala ornamental design, intricate linework",   colorTheme: "deep blue and gold" },
+};
+
 // Coloring book prompt templates — theme/specs/details are FIXED; AI decides only "particulars"
 const COLORING_BOOK_TEMPLATE = {
     anime: {
@@ -682,6 +692,7 @@ export function KdpFactoryApp() {
     const [listingResult, setListingResult] = useState<any | null>(null);
     const [isGeneratingListing, setIsGeneratingListing] = useState(false);
     const [listingCardOpen, setListingCardOpen] = useState(false);
+    const [selectedListingNicheId, setSelectedListingNicheId] = useState<string | null>(null);
 
     const stats = useMemo(() => {
         const total = products.reduce((acc, p) => acc + p.totalEarnings, 0);
@@ -1968,6 +1979,7 @@ export function KdpFactoryApp() {
     const [coverAuthor, setCoverAuthor] = useState("");
     const [generatedBackCoverUrl, setGeneratedBackCoverUrl] = useState<string | null>(null);
     const [isBuildingBackCover, setIsBuildingBackCover] = useState(false);
+    const [selectedCoverNicheId, setSelectedCoverNicheId] = useState<string | null>(null);
 
     const [bookEditorOpen, setBookEditorOpen] = useState(false);
     const [bookFileName, setBookFileName] = useState("libro-kdp");
@@ -2782,10 +2794,28 @@ export function KdpFactoryApp() {
         setIsGeneratingListing(true);
         setListingResult(null);
         try {
+            const selectedNiche = niches.find(n => n._id === selectedListingNicheId);
+            const productTypeLabel = selectedNiche?.productType === "coloring-book" ? "Libro de colorear KDP"
+                : selectedNiche?.productType === "printable-poster" ? "Poster imprimible KDP"
+                : "Libro KDP";
+            const extrasContext = selectedNiche
+                ? [
+                    selectedNiche.tags.length > 0 ? `tags: ${selectedNiche.tags.join(", ")}` : "",
+                    selectedNiche.styleCategory ? `estilo: ${selectedNiche.styleCategory}` : "",
+                    selectedNiche.description ? `descripción: ${selectedNiche.description}` : "",
+                    selectedNiche.demand !== "unknown" ? `demanda: ${selectedNiche.demand}` : "",
+                  ].filter(Boolean).join(" · ")
+                : undefined;
             const res = await fetch(`${API_BASE_URL}/ai/generate-text`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ type: "kdp-physical-book", niche: listingTopic, productType: "KDP coloring book", language: "es" }),
+                body: JSON.stringify({
+                    type: "kdp-physical-book",
+                    niche: listingTopic,
+                    productType: productTypeLabel,
+                    extras: extrasContext,
+                    language: "es",
+                }),
             });
             const data = await res.json();
             if (!res.ok) { toast.error(data.error ?? "Error"); return; }
@@ -3263,6 +3293,34 @@ export function KdpFactoryApp() {
                 </button>
                 {listingCardOpen && (
                     <div className="border-t border-white/[0.05] px-5 pb-5 pt-4 space-y-4">
+                        {/* Niche selector */}
+                        {niches.filter(n => n.status !== "archived").length > 0 && (
+                            <div className="space-y-1.5">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Desde nicho</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {niches.filter(n => n.status !== "archived").map(n => {
+                                        const isSelected = selectedListingNicheId === n._id;
+                                        return (
+                                            <button key={n._id} type="button"
+                                                onClick={() => {
+                                                    if (isSelected) { setSelectedListingNicheId(null); return; }
+                                                    setSelectedListingNicheId(n._id);
+                                                    setListingTopic(n.name);
+                                                }}
+                                                className={`flex items-center gap-1 h-6 px-2.5 rounded-lg border text-[9px] font-black transition-all ${
+                                                    isSelected ? "border-amber-500/50 bg-amber-500/15 text-amber-300"
+                                                    : n.phase === "published" ? "border-emerald-500/25 bg-emerald-500/8 text-emerald-400 hover:bg-emerald-500/15"
+                                                    : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"
+                                                }`}>
+                                                <Target size={8} />
+                                                {n.name}
+                                                {isSelected && <Check size={8} />}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                         <div className="flex gap-2">
                             <input
                                 type="text"
@@ -6960,6 +7018,63 @@ export function KdpFactoryApp() {
                         </div>
                         {/* Body */}
                         <div className="overflow-y-auto p-5 space-y-5 relative" style={{ maxHeight: "75dvh" }}>
+                            {/* ── Niche picker ── */}
+                            {niches.filter(n => n.status !== "archived").length > 0 && (
+                                <div className="space-y-2">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 flex items-center gap-1.5">
+                                        <Target size={9} /> Cargar desde nicho
+                                    </p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {niches.filter(n => n.status !== "archived").map(niche => {
+                                            const isSelected = selectedCoverNicheId === niche._id;
+                                            return (
+                                                <button
+                                                    key={niche._id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (isSelected) {
+                                                            setSelectedCoverNicheId(null);
+                                                            return;
+                                                        }
+                                                        setSelectedCoverNicheId(niche._id);
+                                                        const coverMap = NICHE_STYLE_TO_COVER[niche.styleCategory] ?? NICHE_STYLE_TO_COVER.generic;
+                                                        setCoverTitle(niche.name);
+                                                        if (niche.productType === "coloring-book") {
+                                                            setCoverSubtitle("Coloring Book for Adults");
+                                                        } else if (niche.productType === "printable-poster") {
+                                                            setCoverSubtitle("Premium Printable Artwork");
+                                                        } else {
+                                                            setCoverSubtitle("");
+                                                        }
+                                                        setCoverStyle(coverMap.style);
+                                                        setCoverColorTheme(coverMap.colorTheme);
+                                                        setCoverModelId(NICHE_STYLE_MODEL[niche.styleCategory] ?? "pollinations-flux");
+                                                        if (niche.description) setCoverDescription(niche.description);
+                                                        toast.success(`Campos cargados desde "${niche.name}"`);
+                                                    }}
+                                                    className={`flex items-center gap-1.5 h-6 px-2.5 rounded-lg border text-[9px] font-black transition-all ${
+                                                        isSelected
+                                                            ? "border-fuchsia-500/50 bg-fuchsia-500/20 text-fuchsia-300"
+                                                            : niche.phase === "published"
+                                                                ? "border-emerald-500/25 bg-emerald-500/8 text-emerald-400 hover:bg-emerald-500/15"
+                                                                : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"
+                                                    }`}
+                                                >
+                                                    <Target size={8} />
+                                                    {niche.name}
+                                                    {isSelected && <Check size={8} />}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    {selectedCoverNicheId && (
+                                        <p className="text-[8px] text-neutral-700 italic">
+                                            Campos auto-rellenados · puedes editarlos libremente antes de generar
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
                             {/* ── Shared fields (always visible) ── */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="space-y-1">
@@ -7735,15 +7850,37 @@ export function KdpFactoryApp() {
                                     <div className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06]">
                                         <span className="text-[11px] text-neutral-500 font-medium truncate max-w-[120px]">{bookFileName || "Sin título"}</span>
                                         {/* Mode pills */}
-                                        <div className="flex items-center gap-0.5 p-1 rounded-full bg-white/[0.07]">
-                                            <button onClick={() => setBookPreviewMode("single")} title="Una página"
-                                                className={`w-8 h-6 rounded-full flex items-center justify-center transition-all ${bookPreviewMode === "single" ? "bg-white/20 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                                <FileText size={10} />
-                                            </button>
-                                            <button onClick={() => setBookPreviewMode("spread")} title="Doble página"
-                                                className={`w-8 h-6 rounded-full flex items-center justify-center transition-all ${bookPreviewMode === "spread" ? "bg-white/20 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                                <BookOpen size={10} />
-                                            </button>
+                                        <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-0.5 p-1 rounded-full bg-white/[0.07]">
+                                                <button onClick={() => setBookPreviewMode("single")} title="Una página"
+                                                    className={`w-8 h-6 rounded-full flex items-center justify-center transition-all ${bookPreviewMode === "single" ? "bg-white/20 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                                    <FileText size={10} />
+                                                </button>
+                                                <button onClick={() => setBookPreviewMode("spread")} title="Doble página"
+                                                    className={`w-8 h-6 rounded-full flex items-center justify-center transition-all ${bookPreviewMode === "spread" ? "bg-white/20 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                                    <BookOpen size={10} />
+                                                </button>
+                                            </div>
+                                            {/* Download current page image */}
+                                            {bookPreviewMode === "single" && (() => {
+                                                const selIdx2 = bookPages.findIndex(p => p.id === selectedPageId);
+                                                const curPage2 = bookPages[selIdx2 >= 0 ? selIdx2 : 0];
+                                                return curPage2?.image?.url ? (
+                                                    <button
+                                                        onClick={() => {
+                                                            const url = curPage2.image!.url;
+                                                            const name = url.startsWith("blob:")
+                                                                ? `pagina-${(selIdx2 >= 0 ? selIdx2 : 0) + 1}`
+                                                                : (url.split("/").pop()?.split("?")[0] ?? "imagen");
+                                                            downloadPng(url, name);
+                                                        }}
+                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-full bg-white/[0.07] border border-white/10 text-[9px] font-black text-neutral-400 hover:text-white hover:bg-white/15 transition-all"
+                                                        title="Descargar imagen de esta página"
+                                                    >
+                                                        <Download size={10} /> Imagen
+                                                    </button>
+                                                ) : null;
+                                            })()}
                                         </div>
                                         {/* Size picker */}
                                         <select
@@ -7779,16 +7916,36 @@ export function KdpFactoryApp() {
                                                 {/* A4 page — width from viewport calc, height from aspect-ratio */}
                                                 <div className="flex-1 flex items-center justify-center min-w-0">
                                                     <div
-                                                        className="relative overflow-hidden rounded-xl shadow-[0_16px_64px_rgba(0,0,0,0.8)] transition-all cursor-pointer group"
+                                                        className="relative overflow-hidden rounded-xl shadow-[0_16px_64px_rgba(0,0,0,0.8)] transition-all group"
                                                         style={{ aspectRatio: `${previewW}/${previewH}`, width: `min(100%, calc((min(90vh, 100dvh) - 280px) * ${previewW} / ${previewH}))`, height: "auto" }}
-                                                        onClick={() => { setBookEditorTab("editor"); setShowInlineImagePicker(false); }}
                                                     >
                                                         {curPage && renderPageInner(curPage, 0.5)}
-                                                        {/* Edit hint */}
-                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                                            <span className="bg-black/60 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border border-white/20">
-                                                                Editar página
-                                                            </span>
+                                                        {/* Overlay actions */}
+                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 transition-all pointer-events-none group-hover:pointer-events-auto">
+                                                            {/* Edit hint — center */}
+                                                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                                                                onClick={() => { setBookEditorTab("editor"); setShowInlineImagePicker(false); }}>
+                                                                <span className="bg-black/60 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border border-white/20">
+                                                                    Editar página
+                                                                </span>
+                                                            </div>
+                                                            {/* Download — bottom-right, only when page has image */}
+                                                            {curPage?.image?.url && (
+                                                                <button
+                                                                    onClick={e => {
+                                                                        e.stopPropagation();
+                                                                        const url = curPage.image!.url;
+                                                                        const name = url.startsWith("blob:")
+                                                                            ? `pagina-${curIdx + 1}`
+                                                                            : (url.split("/").pop()?.split("?")[0] ?? `pagina-${curIdx + 1}`);
+                                                                        downloadPng(url, name);
+                                                                    }}
+                                                                    className="absolute bottom-2 right-2 w-8 h-8 rounded-xl bg-black/70 backdrop-blur-sm border border-white/20 text-white opacity-0 group-hover:opacity-100 transition-all hover:bg-white/20 flex items-center justify-center"
+                                                                    title="Descargar imagen"
+                                                                >
+                                                                    <Download size={13} />
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -7848,9 +8005,27 @@ export function KdpFactoryApp() {
                                                         </div>
                                                     );
                                                     return (
-                                                        <div className="flex-1 cursor-pointer group" onClick={() => { setSelectedPageId(page.id); setBookEditorTab("editor"); }}>
-                                                            <div className="w-full relative overflow-hidden rounded-l-sm rounded-r-sm shadow-[0_4px_20px_rgba(0,0,0,0.5)] group-hover:shadow-[0_4px_28px_rgba(0,0,0,0.7)] transition-shadow" style={{ aspectRatio: `${previewW}/${previewH}` }}>
+                                                        <div className="flex-1 cursor-pointer group">
+                                                            <div className="w-full relative overflow-hidden rounded-l-sm rounded-r-sm shadow-[0_4px_20px_rgba(0,0,0,0.5)] group-hover:shadow-[0_4px_28px_rgba(0,0,0,0.7)] transition-shadow"
+                                                                style={{ aspectRatio: `${previewW}/${previewH}` }}
+                                                                onClick={() => { setSelectedPageId(page.id); setBookEditorTab("editor"); }}>
                                                                 {renderPageInner(page, 0.3)}
+                                                                {page.image?.url && (
+                                                                    <button
+                                                                        onClick={e => {
+                                                                            e.stopPropagation();
+                                                                            const url = page.image!.url;
+                                                                            const name = url.startsWith("blob:")
+                                                                                ? `pagina-${absIdx + 1}`
+                                                                                : (url.split("/").pop()?.split("?")[0] ?? `pagina-${absIdx + 1}`);
+                                                                            downloadPng(url, name);
+                                                                        }}
+                                                                        className="absolute bottom-1 right-1 w-6 h-6 rounded-lg bg-black/70 border border-white/20 text-white opacity-0 group-hover:opacity-100 transition-all hover:bg-white/20 flex items-center justify-center"
+                                                                        title="Descargar imagen"
+                                                                    >
+                                                                        <Download size={10} />
+                                                                    </button>
+                                                                )}
                                                             </div>
                                                             <p className="text-[8px] font-mono text-neutral-700 text-center mt-1.5">{absIdx + 1}</p>
                                                         </div>

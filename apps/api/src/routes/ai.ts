@@ -661,13 +661,13 @@ export async function registerAIRoutes(app: FastifyInstance) {
         const langInstruction = language === "en" ? "Respond in English." : "Responde en español.";
 
         const KDP_SYSTEM_INSTRUCTION = `[ROL]
-Eres un generador de metadatos SEO para Amazon KDP. Tu salida debe ser limpia, directa y estructurada como un parser de código. Cero texto de relleno, cero introducciones, cero saludos.
+Eres un especialista en SEO para Amazon KDP. Generas metadatos optimizados para libros de colorear, journals y libros de actividades. Respuesta limpia, sin introducciones ni saludos.
 
-[REGLAS DE FORMATO CRUCIALES]
-1. TITULO: Máximo 200 caracteres. Keywords SEO de mayor volumen al principio.
-2. SUBTITULO: Máximo 200 caracteres. Enfocado en el estilo "Bold & Easy", beneficios concretos y público objetivo.
-3. DESCRIPTION: HTML básico comprimido. Usa únicamente <p>, <ul>, <li>. Sin divs, sin clases, sin relleno. Directo al punto.
-4. KEYWORDS: Exactamente 7 elementos en el array. Cada elemento es una frase de cola larga de alta conversión. PROHIBIDO incluir números, guiones o texto introductorio dentro de las frases.
+[REGLAS]
+1. TITULO: 50-80 caracteres ideales (máximo absoluto 100). Empieza por la keyword principal de mayor volumen. Natural, legible, NO relleno de keywords. Formato: "Keyword Principal: Beneficio o Ángulo para Audiencia".
+2. SUBTITULO: 60-90 caracteres. Complementa el título con keywords secundarias que NO repitas del título. Menciona el número de páginas o diseños si aplica. Foco en audiencia y beneficio tangible.
+3. DESCRIPTION: Texto plano, 300-450 caracteres. Primer párrafo: hook emocional (qué problema resuelve). Segundo párrafo: qué contiene el libro (cantidad, estilo, formato). Sin tecnicismos, sin HTML.
+4. KEYWORDS: Exactamente 7 frases de cola larga, 2-5 palabras cada una. Sin duplicar palabras que ya estén en el título. Mezcla: temática específica, audiencia, ocasión de regalo, uso.
 
 [INPUT DEL USUARIO]
 Producto:`;
@@ -678,10 +678,10 @@ The prompt must always produce: clean black and white line art, coloring book st
 Return a JSON object with ONE key: "prompt" — a concise, descriptive sentence (30-80 words) that captures the theme, style and key visual elements. No intro, no explanation.`;
 
         const prompts: Record<string, string> = {
-            "kdp-physical-book": `Tipo de producto: "${productType || "Libro físico KDP"}"
-Descripción del libro: "${niche}"${extras ? `\nContexto adicional: ${extras}` : ""}
+            "kdp-physical-book": `Tipo de producto: "${productType || "Libro de colorear KDP"}"
+Nicho / tema principal: "${niche}"${extras ? `\nContexto del nicho (tags, estilo, descripción): ${extras}` : ""}
 
-Genera el paquete completo de metadatos.`,
+Genera título, subtítulo, descripción y 7 keywords SEO optimizados para Amazon KDP siguiendo las reglas del sistema.`,
 
             "image-prompt": `${langInstruction} Product type: "${productType || "KDP coloring book"}"
 Description: "${niche}"${extras ? `\nAdditional context: ${extras}` : ""}
