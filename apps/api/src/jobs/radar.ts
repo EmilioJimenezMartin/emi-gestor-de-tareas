@@ -56,23 +56,23 @@ async function analyzeWithHF(pageText: string, mode: string, hfKey: string): Pro
     const hf = new HfInference(hfKey);
 
     const schemaHint = mode === "etsy-niches"
-        ? `{"nichos_detectados":[{"titulo":"string","bestseller":boolean,"urgencia_carrito":number,"resenas_totales":number,"micronicho":"string"}]}`
-        : `{"niche":"string","demand_level":"low|medium|high","competition_level":"low|medium|high","top_keywords":["string"],"avg_price_usd":number,"insights":["string"],"opportunities":["string"]}`;
+        ? `{"nichos_detectados":[{"titulo_producto":"string — título completo del listado","precio":"string — precio visible ej: '4,99 €'","bestseller":true/false,"personas_carrito":number,"total_reseñas":number,"sub_nicho_estimado":"string — micronicho deducido del título"}]}`
+        : `{"niche":"string","competition":"low|medium|high","demand":"low|medium|high","trend":"rising|stable|declining","topKeywords":["string"],"priceRange":"string","topCompetitors":["string"],"entryOpportunity":"string","buyerProfile":"string","summary":"string"}`;
 
     const systemContent = mode === "etsy-niches"
-        ? `${ETSY_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con un JSON válido con esta estructura exacta (sin markdown, sin explicaciones):\n${schemaHint}`
-        : `Analiza la siguiente página de marketplace para investigar el nicho. Responde ÚNICAMENTE con un JSON válido con esta estructura exacta:\n${schemaHint}`;
+        ? `${ETSY_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con un objeto JSON válido sin markdown ni explicaciones, con esta estructura exacta:\n${schemaHint}`
+        : `Analiza la siguiente página de marketplace para investigar el nicho de mercado. Responde ÚNICAMENTE con un objeto JSON válido sin markdown ni explicaciones, con esta estructura exacta:\n${schemaHint}`;
 
-    // Truncate to avoid exceeding context limits (~10k chars ≈ 2500 tokens)
-    const truncated = pageText.slice(0, 10000);
+    // Clean up whitespace and truncate (~14k chars ≈ 3500 tokens, fits 8B context comfortably)
+    const truncated = pageText.replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").trim().slice(0, 14000);
 
     const response = await hf.chatCompletion({
-        model: "meta-llama/Llama-3.1-8B-Instruct",
+        model: "meta-llama/Llama-3.3-70B-Instruct",
         messages: [
             { role: "system", content: systemContent },
             { role: "user", content: `Contenido de la página:\n\n${truncated}` },
         ],
-        max_tokens: 2048,
+        max_tokens: 4096,
         temperature: 0.1,
     });
 
@@ -199,7 +199,8 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 if (!hfKey) {
                     throw new Error("Cuota de Gemini agotada y no hay HuggingFace API key configurada. Añade una en Ajustes.");
                 }
-                pushLog(jobDoc, io, "info", `[AI] Analizando con HuggingFace (Llama 3.1) · modo: ${mode}...`);
+                pushLog(jobDoc, io, "info", `[AI] Analizando con HuggingFace (Llama 3.3-70B) · modo: ${mode}...`);
+                pushLog(jobDoc, io, "warning", `[INFO] HuggingFace puede tardar entre 30-90s — el modelo 70B se carga bajo demanda. Por favor, espera...`);
                 await jobDoc.save();
                 data = await analyzeWithHF(pageText, mode, hfKey);
                 const count = (data?.nichos_detectados ?? []).length;

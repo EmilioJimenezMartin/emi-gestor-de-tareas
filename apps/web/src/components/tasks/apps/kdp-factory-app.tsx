@@ -693,6 +693,8 @@ export function KdpFactoryApp() {
     const [isGeneratingListing, setIsGeneratingListing] = useState(false);
     const [listingCardOpen, setListingCardOpen] = useState(false);
     const [selectedListingNicheId, setSelectedListingNicheId] = useState<string | null>(null);
+    const [listingSaveProductId, setListingSaveProductId] = useState<string>("new");
+    const [isSavingListing, setIsSavingListing] = useState(false);
 
     const stats = useMemo(() => {
         const total = products.reduce((acc, p) => acc + p.totalEarnings, 0);
@@ -2512,10 +2514,12 @@ export function KdpFactoryApp() {
         });
 
         socket.on("catalog:completed", (data: { catalogId: string }) => {
-            setIaCatalogs((prev) =>
-                prev.map((c) => (c._id === data.catalogId ? { ...c, status: "completed", lastError: "" } : c))
-            );
-            toast.success("Catálogo completado");
+            setIaCatalogs((prev) => {
+                const updated: IACatalogFE[] = prev.map((c) => (c._id === data.catalogId ? { ...c, status: "completed" as const, lastError: "" } : c));
+                const catalog = updated.find(c => c._id === data.catalogId);
+                toast.success(`"${catalog?.name ?? "Catálogo"}" completado · ${catalog?.images?.length ?? 0} imágenes`);
+                return updated;
+            });
         });
 
         socket.on("catalog:queue-activated", (data: { catalogId: string; status: string; name: string }) => {
@@ -2821,6 +2825,45 @@ export function KdpFactoryApp() {
             if (!res.ok) { toast.error(data.error ?? "Error"); return; }
             setListingResult(data.result);
         } catch { toast.error("Error conectando con la API"); } finally { setIsGeneratingListing(false); }
+    };
+
+    const saveListingToProduct = async () => {
+        if (!listingResult) return;
+        setIsSavingListing(true);
+        try {
+            const r = listingResult;
+            const keywords = Array.isArray(r.keywords) ? r.keywords : (typeof r.keywords === "string" ? r.keywords.split(/[,\n]/).map((k: string) => k.trim()).filter(Boolean) : []);
+            const descText = typeof r.description === "string" ? r.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
+            const fullDesc = [descText, keywords.length > 0 ? `Keywords: ${keywords.join(", ")}` : ""].filter(Boolean).join("\n\n");
+
+            if (listingSaveProductId === "new") {
+                const body = {
+                    type: "KDP Color Book",
+                    title: r.title ?? listingTopic,
+                    description: fullDesc,
+                    status: "borrador" as const,
+                    platforms: [],
+                    nicheId: selectedListingNicheId ?? undefined,
+                };
+                const res = await fetch(`${API_BASE_URL}/digital-products`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error ?? "Error al crear producto");
+                setProducts(prev => [data.product ?? data, ...prev]);
+                toast.success(`Producto "${r.title ?? listingTopic}" creado en borrador`);
+            } else {
+                const body = { title: r.title ?? undefined, description: fullDesc };
+                const res = await fetch(`${API_BASE_URL}/digital-products/${listingSaveProductId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error ?? "Error al actualizar producto");
+                setProducts(prev => prev.map(p => (p._id === listingSaveProductId || p.id === listingSaveProductId) ? { ...p, title: r.title ?? p.title, description: fullDesc } : p));
+                const name = products.find(p => p._id === listingSaveProductId || p.id === listingSaveProductId)?.title ?? "Producto";
+                toast.success(`Listing guardado en "${name}"`);
+            }
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al guardar");
+        } finally {
+            setIsSavingListing(false);
+        }
     };
 
     const monthlyEarningsData = useMemo(() => {
@@ -3375,6 +3418,30 @@ export function KdpFactoryApp() {
                                         </div>
                                     )}
                                     {descText && <Field label="Descripción" value={descText} />}
+                                    {/* ── Guardar en producto ── */}
+                                    <div className="pt-2 border-t border-white/[0.05] space-y-2">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Guardar en producto</p>
+                                        <div className="flex gap-2">
+                                            <select
+                                                value={listingSaveProductId}
+                                                onChange={e => setListingSaveProductId(e.target.value)}
+                                                className="flex-1 h-9 px-2.5 bg-white/5 border border-white/10 rounded-xl text-[11px] text-neutral-300 focus:outline-none focus:border-amber-500/40"
+                                            >
+                                                <option value="new">+ Nuevo producto (borrador)</option>
+                                                {products.map(p => (
+                                                    <option key={p._id ?? p.id} value={p._id ?? p.id}>{p.title}</option>
+                                                ))}
+                                            </select>
+                                            <button
+                                                onClick={() => void saveListingToProduct()}
+                                                disabled={isSavingListing}
+                                                className="h-9 px-3.5 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/30 transition-all disabled:opacity-40 flex items-center gap-1.5 shrink-0"
+                                            >
+                                                {isSavingListing ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />}
+                                                Guardar
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             );
                         })()}
@@ -6557,14 +6624,35 @@ export function KdpFactoryApp() {
                                                     <div className="text-[9px] text-neutral-700 tabular-nums">
                                                         {new Date(niche.createdAt).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
                                                     </div>
-                                                    <button
-                                                        onClick={() => void generateNicheContent(niche)}
-                                                        disabled={nicheGeneratingId === niche._id}
-                                                        className="flex items-center gap-1.5 px-4 h-8 rounded-xl bg-sky-500/15 border border-sky-500/30 text-[10px] font-black text-sky-300 hover:bg-sky-500/25 hover:border-sky-500/50 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                                                        {nicheGeneratingId === niche._id
-                                                            ? <><Loader2 size={11} className="animate-spin" /> Generando...</>
-                                                            : <><Sparkles size={11} /> Generar catálogo</>}
-                                                    </button>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <button
+                                                            title="Pre-llenar formulario de catálogo"
+                                                            onClick={() => {
+                                                                setPromptTheme(niche.name);
+                                                                setPromptSpecs("");
+                                                                setPromptDetails("");
+                                                                setPromptParticulars("");
+                                                                const style = niche.styleCategory ?? "generic";
+                                                                const modelId = NICHE_STYLE_MODEL[style as NicheStyle] ?? NICHE_STYLE_MODEL["generic"];
+                                                                setSelectedModel(modelId);
+                                                                setCatalogFormName(niche.name);
+                                                                setCatalogProductType(niche.productType ?? "coloring-book");
+                                                                setShowCatalogAccordion(true);
+                                                                changeTab("creation");
+                                                                toast.success(`Formulario pre-cargado con "${niche.name}"`);
+                                                            }}
+                                                            className="flex items-center gap-1 px-2.5 h-8 rounded-xl bg-white/[0.04] border border-white/10 text-[9px] font-black text-neutral-500 hover:text-white hover:bg-white/8 transition-all">
+                                                            <Layers size={10} /> Form
+                                                        </button>
+                                                        <button
+                                                            onClick={() => void generateNicheContent(niche)}
+                                                            disabled={nicheGeneratingId === niche._id}
+                                                            className="flex items-center gap-1.5 px-4 h-8 rounded-xl bg-sky-500/15 border border-sky-500/30 text-[10px] font-black text-sky-300 hover:bg-sky-500/25 hover:border-sky-500/50 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                                                            {nicheGeneratingId === niche._id
+                                                                ? <><Loader2 size={11} className="animate-spin" /> Generando...</>
+                                                                : <><Sparkles size={11} /> Generar catálogo</>}
+                                                        </button>
+                                                    </div>
                                                 </div>
 
                                             </div>
