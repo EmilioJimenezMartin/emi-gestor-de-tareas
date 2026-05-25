@@ -1963,6 +1963,11 @@ export function KdpFactoryApp() {
     const [isBuildingCover, setIsBuildingCover] = useState(false);
     const [generatedCoverUrl, setGeneratedCoverUrl] = useState<string | null>(null);
     const [showCoverModal, setShowCoverModal] = useState(false);
+    const [coverModalTab, setCoverModalTab] = useState<"front" | "back">("front");
+    const [coverDescription, setCoverDescription] = useState("");
+    const [coverAuthor, setCoverAuthor] = useState("");
+    const [generatedBackCoverUrl, setGeneratedBackCoverUrl] = useState<string | null>(null);
+    const [isBuildingBackCover, setIsBuildingBackCover] = useState(false);
 
     const [bookEditorOpen, setBookEditorOpen] = useState(false);
     const [bookFileName, setBookFileName] = useState("libro-kdp");
@@ -5656,7 +5661,7 @@ export function KdpFactoryApp() {
         setGeneratedCoverUrl(null);
         try {
             const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
-            const prompt = `Professional KDP book cover for a coloring book titled "${coverTitle}"${coverSubtitle ? `, subtitle "${coverSubtitle}"` : ""}. Style: ${coverStyle}. Color theme: ${coverColorTheme}. Beautiful, eye-catching, high-quality illustration, book cover composition, no text, clean professional design`;
+            const prompt = `KDP paperback book cover illustration background. Style: ${coverStyle}. Color theme: ${coverColorTheme}. Beautiful decorative composition, centered focal artwork, professional book cover layout, high detail, no text, no letters, no words, no typography, no title, no captions, purely illustrative background`;
             const res = await fetch(`${API_BASE_URL}/ai/generate-image`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -5664,9 +5669,25 @@ export function KdpFactoryApp() {
             });
             if (!res.ok) { const err = await res.json(); toast.error(err.error ?? "Error generando portada"); return; }
             const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            setGeneratedCoverUrl(url);
+            setGeneratedCoverUrl(URL.createObjectURL(blob));
         } catch { toast.error("Error conectando con la API"); } finally { setIsBuildingCover(false); }
+    };
+
+    const generateBackCover = async () => {
+        setIsBuildingBackCover(true);
+        setGeneratedBackCoverUrl(null);
+        try {
+            const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
+            const prompt = `KDP paperback back cover background. Style: ${coverStyle}. Color theme: ${coverColorTheme}. Subtle and simple background pattern, muted tones, minimal composition, space for text overlay, no text, no letters, no words, no typography, soft decorative elements, professional book back cover`;
+            const res = await fetch(`${API_BASE_URL}/ai/generate-image`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prompt, provider: model.provider, modelId: model.modelId, width: 1600, height: 2560 }),
+            });
+            if (!res.ok) { const err = await res.json(); toast.error(err.error ?? "Error generando contraportada"); return; }
+            const blob = await res.blob();
+            setGeneratedBackCoverUrl(URL.createObjectURL(blob));
+        } catch { toast.error("Error conectando con la API"); } finally { setIsBuildingBackCover(false); }
     };
 
     const fetchTrends = async (forceRefresh = false) => {
@@ -6926,96 +6947,174 @@ export function KdpFactoryApp() {
                                 <X size={15} />
                             </button>
                         </div>
+                        {/* Tabs */}
+                        <div className="shrink-0 border-b border-white/6 px-5 flex gap-1 pt-3 pb-0">
+                            {([["front", "Portada"], ["back", "Contraportada"]] as const).map(([id, label]) => (
+                                <button key={id} onClick={() => setCoverModalTab(id)}
+                                    className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-t-xl transition-all border-b-2 ${coverModalTab === id ? "text-fuchsia-300 border-fuchsia-500/60 bg-fuchsia-500/[0.06]" : "text-neutral-600 border-transparent hover:text-neutral-400"}`}>
+                                    {label}
+                                    {id === "front" && generatedCoverUrl && <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-fuchsia-400 inline-block" />}
+                                    {id === "back" && generatedBackCoverUrl && <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-violet-400 inline-block" />}
+                                </button>
+                            ))}
+                        </div>
                         {/* Body */}
-                        <div className="overflow-y-auto p-5 space-y-5 relative" style={{ maxHeight: "80dvh" }}>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                {/* Left: form */}
-                                <div className="space-y-3">
-                                    <div className="space-y-1">
-                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Título <span className="text-fuchsia-500">*</span></label>
-                                        <input type="text" value={coverTitle} onChange={e => setCoverTitle(e.target.value)} placeholder="Ej: Mandala Zen Coloring Book"
-                                            className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Subtítulo <span className="text-neutral-700">(opcional)</span></label>
-                                        <input type="text" value={coverSubtitle} onChange={e => setCoverSubtitle(e.target.value)} placeholder="Ej: 50 Relaxing Designs for Adults"
-                                            className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Estilo visual</label>
-                                        <input type="text" value={coverStyle} onChange={e => setCoverStyle(e.target.value)} placeholder="Ej: vibrant illustration, fantasy"
-                                            className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Paleta de colores</label>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {["deep blue and gold", "pastel pink and mint", "dark forest green", "warm sunset orange", "purple and silver"].map(p => (
-                                                <button key={p} onClick={() => setCoverColorTheme(p)}
-                                                    className={`px-2 py-1 rounded-lg border text-[8px] font-black transition-all ${coverColorTheme === p ? "border-fuchsia-500/40 bg-fuchsia-500/15 text-fuchsia-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-400"}`}>
-                                                    {p}
-                                                </button>
-                                            ))}
-                                            <input type="text" value={coverColorTheme} onChange={e => setCoverColorTheme(e.target.value)}
-                                                className="flex-1 min-w-[90px] h-7 px-2 bg-white/[0.04] border border-white/10 rounded-lg text-[9px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" placeholder="tema libre..." />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Modelo</label>
-                                        <select value={coverModelId} onChange={e => setCoverModelId(e.target.value)}
-                                            className="w-full h-8 px-2.5 bg-white/[0.04] border border-white/10 rounded-xl text-[10px] text-white focus:outline-none focus:border-fuchsia-500/40 [color-scheme:dark]">
-                                            {AI_MODELS.filter(m => ["Pollinations", "fal.ai", "Ideogram", "Google"].includes(m.provider)).map(m => (
-                                                <option key={m.id} value={m.id}>{m.name} · {m.provider}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <button onClick={() => void generateCover()} disabled={isBuildingCover || !coverTitle.trim()}
-                                        className="w-full h-10 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-95">
-                                        {isBuildingCover ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><ImageIcon size={13} /> Generar Portada</>}
-                                    </button>
+                        <div className="overflow-y-auto p-5 space-y-5 relative" style={{ maxHeight: "75dvh" }}>
+                            {/* ── Shared fields (always visible) ── */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Título <span className="text-fuchsia-500">*</span></label>
+                                    <input type="text" value={coverTitle} onChange={e => setCoverTitle(e.target.value)} placeholder="Ej: Mandala Zen Coloring Book"
+                                        className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
                                 </div>
-                                {/* Right: preview */}
-                                <div className="flex items-start justify-center">
-                                    {generatedCoverUrl ? (
-                                        <div className="space-y-3 w-full flex flex-col items-center">
-                                            <div className="relative overflow-hidden rounded-2xl border border-white/10 shadow-2xl shadow-black/60 shadow-[0_0_40px_rgba(192,38,211,0.15)]" style={{ maxWidth: 180 }}>
-                                                <img src={generatedCoverUrl} alt="Portada KDP" className="w-full object-cover" style={{ aspectRatio: "1600/2560" }} />
-                                                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
-                                            </div>
-                                            <p className="text-[8px] text-neutral-700 text-center font-mono">1600×2560px · KDP tall-format</p>
-                                            <div className="flex gap-2 flex-wrap justify-center">
-                                                <a href={generatedCoverUrl} download={`portada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
-                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-[9px] font-black uppercase tracking-widest text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all">
-                                                    <Download size={10} /> Descargar
-                                                </a>
-                                                <button onClick={() => void generateCover()} disabled={isBuildingCover}
-                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/5 border border-white/10 text-[9px] font-black uppercase tracking-widest text-neutral-500 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40">
-                                                    <RefreshCw size={10} /> Regen.
-                                                </button>
-                                                <button onClick={() => setGeneratedCoverUrl(null)}
-                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[9px] font-black uppercase tracking-widest text-rose-400 hover:bg-rose-500/20 transition-all">
-                                                    <Trash2 size={10} /> Eliminar
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="w-full flex flex-col items-center justify-center gap-3 py-10 border border-dashed border-fuchsia-500/15 rounded-2xl bg-fuchsia-500/[0.02]">
-                                            {isBuildingCover ? (
-                                                <>
-                                                    <Loader2 size={28} className="text-fuchsia-500/50 animate-spin" />
-                                                    <p className="text-[10px] text-neutral-600">Generando portada…</p>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <div className="w-16 h-24 rounded-2xl border-2 border-dashed border-fuchsia-500/20 flex items-center justify-center">
-                                                        <ImageIcon size={20} className="text-fuchsia-500/20" />
-                                                    </div>
-                                                    <p className="text-[9px] text-neutral-700 text-center">La portada aparecerá aquí<br /><span className="text-neutral-800">1600×2560 · tall-format</span></p>
-                                                </>
-                                            )}
-                                        </div>
-                                    )}
+                                <div className="space-y-1">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Subtítulo</label>
+                                    <input type="text" value={coverSubtitle} onChange={e => setCoverSubtitle(e.target.value)} placeholder="Ej: 50 Relaxing Designs for Adults"
+                                        className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
                                 </div>
                             </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Estilo visual</label>
+                                    <input type="text" value={coverStyle} onChange={e => setCoverStyle(e.target.value)} placeholder="Ej: vibrant illustration, fantasy"
+                                        className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Modelo</label>
+                                    <select value={coverModelId} onChange={e => setCoverModelId(e.target.value)}
+                                        className="w-full h-9 px-2.5 bg-white/[0.04] border border-white/10 rounded-xl text-[10px] text-white focus:outline-none focus:border-fuchsia-500/40 [color-scheme:dark]">
+                                        {AI_MODELS.filter(m => ["Pollinations", "fal.ai", "Ideogram", "Google"].includes(m.provider)).map(m => (
+                                            <option key={m.id} value={m.id}>{m.name} · {m.provider}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Paleta de colores</label>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {["deep blue and gold", "pastel pink and mint", "dark forest green", "warm sunset orange", "purple and silver"].map(p => (
+                                        <button key={p} onClick={() => setCoverColorTheme(p)}
+                                            className={`px-2 py-1 rounded-lg border text-[8px] font-black transition-all ${coverColorTheme === p ? "border-fuchsia-500/40 bg-fuchsia-500/15 text-fuchsia-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-400"}`}>
+                                            {p}
+                                        </button>
+                                    ))}
+                                    <input type="text" value={coverColorTheme} onChange={e => setCoverColorTheme(e.target.value)}
+                                        className="flex-1 min-w-[90px] h-7 px-2 bg-white/[0.04] border border-white/10 rounded-lg text-[9px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" placeholder="tema libre..." />
+                                </div>
+                            </div>
+
+                            <div className="h-px bg-white/6" />
+
+                            {/* ── Tab content ── */}
+                            {coverModalTab === "front" ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                                    <button onClick={() => void generateCover()} disabled={isBuildingCover || !coverTitle.trim()}
+                                        className="h-10 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-95">
+                                        {isBuildingCover ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><ImageIcon size={13} /> Generar Portada</>}
+                                    </button>
+                                    <div className="flex items-start justify-center">
+                                        {generatedCoverUrl ? (
+                                            <div className="space-y-2 w-full flex flex-col items-center">
+                                                <div className="relative overflow-hidden rounded-2xl border border-white/10 shadow-[0_0_40px_rgba(192,38,211,0.15)]" style={{ maxWidth: 160 }}>
+                                                    <img src={generatedCoverUrl} alt="Portada KDP" className="w-full object-cover" style={{ aspectRatio: "1600/2560" }} />
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
+                                                </div>
+                                                <p className="text-[8px] text-neutral-700 text-center font-mono">1600×2560px · front</p>
+                                                <div className="flex gap-1.5 flex-wrap justify-center">
+                                                    <a href={generatedCoverUrl} download={`portada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
+                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-[9px] font-black uppercase text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all">
+                                                        <Download size={9} /> DL
+                                                    </a>
+                                                    <button onClick={() => void generateCover()} disabled={isBuildingCover}
+                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-white/5 border border-white/10 text-[9px] font-black text-neutral-500 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40">
+                                                        <RefreshCw size={9} /> Regen.
+                                                    </button>
+                                                    <button onClick={() => setGeneratedCoverUrl(null)}
+                                                        className="h-7 w-7 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 transition-all flex items-center justify-center">
+                                                        <Trash2 size={9} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="w-full flex flex-col items-center justify-center gap-2 py-8 border border-dashed border-fuchsia-500/15 rounded-2xl bg-fuchsia-500/[0.02]">
+                                                {isBuildingCover ? (
+                                                    <><Loader2 size={24} className="text-fuchsia-500/50 animate-spin" /><p className="text-[9px] text-neutral-600">Generando…</p></>
+                                                ) : (
+                                                    <><div className="w-12 h-18 rounded-xl border-2 border-dashed border-fuchsia-500/20 flex items-center justify-center" style={{ height: 72 }}><ImageIcon size={16} className="text-fuchsia-500/20" /></div><p className="text-[9px] text-neutral-700">Portada · 1600×2560</p></>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div className="space-y-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Autor <span className="text-neutral-700">(opcional)</span></label>
+                                                <input type="text" value={coverAuthor} onChange={e => setCoverAuthor(e.target.value)} placeholder="Ej: Editorial Zen Studio"
+                                                    className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Descripción / Blurb</label>
+                                                <textarea value={coverDescription} onChange={e => setCoverDescription(e.target.value)}
+                                                    placeholder="Texto descriptivo que aparecerá en la contraportada..."
+                                                    rows={4}
+                                                    className="w-full px-3 py-2 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none leading-relaxed" />
+                                            </div>
+                                            <button onClick={() => void generateBackCover()} disabled={isBuildingBackCover || !coverTitle.trim()}
+                                                className="w-full h-10 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(139,92,246,0.3)] active:scale-95">
+                                                {isBuildingBackCover ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><ImageIcon size={13} /> Generar Contraportada</>}
+                                            </button>
+                                        </div>
+                                        <div className="flex items-start justify-center">
+                                            {generatedBackCoverUrl ? (
+                                                <div className="space-y-2 w-full flex flex-col items-center">
+                                                    <div className="relative overflow-hidden rounded-2xl border border-white/10 shadow-[0_0_40px_rgba(139,92,246,0.15)]" style={{ maxWidth: 160 }}>
+                                                        <img src={generatedBackCoverUrl} alt="Contraportada KDP" className="w-full object-cover" style={{ aspectRatio: "1600/2560" }} />
+                                                        {/* Text overlay preview */}
+                                                        {(coverTitle || coverDescription || coverAuthor) && (
+                                                            <div className="absolute inset-0 flex flex-col justify-between p-2 bg-black/30">
+                                                                <div />
+                                                                <div className="space-y-1">
+                                                                    {coverDescription && <p className="text-[5px] text-white/90 leading-tight line-clamp-6">{coverDescription}</p>}
+                                                                    {coverAuthor && <p className="text-[5px] font-bold text-white/70">{coverAuthor}</p>}
+                                                                    <div className="w-8 h-6 bg-white/10 rounded flex items-center justify-center">
+                                                                        <span className="text-[4px] text-white/40 font-mono">ISBN</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-[8px] text-neutral-700 text-center font-mono">1600×2560px · back</p>
+                                                    <div className="flex gap-1.5 flex-wrap justify-center">
+                                                        <a href={generatedBackCoverUrl} download={`contraportada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
+                                                            className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-violet-500/15 border border-violet-500/30 text-[9px] font-black uppercase text-violet-300 hover:bg-violet-500/25 transition-all">
+                                                            <Download size={9} /> DL
+                                                        </a>
+                                                        <button onClick={() => void generateBackCover()} disabled={isBuildingBackCover}
+                                                            className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-white/5 border border-white/10 text-[9px] font-black text-neutral-500 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40">
+                                                            <RefreshCw size={9} /> Regen.
+                                                        </button>
+                                                        <button onClick={() => setGeneratedBackCoverUrl(null)}
+                                                            className="h-7 w-7 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 transition-all flex items-center justify-center">
+                                                            <Trash2 size={9} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="w-full flex flex-col items-center justify-center gap-2 py-8 border border-dashed border-violet-500/15 rounded-2xl bg-violet-500/[0.02]">
+                                                    {isBuildingBackCover ? (
+                                                        <><Loader2 size={24} className="text-violet-500/50 animate-spin" /><p className="text-[9px] text-neutral-600">Generando…</p></>
+                                                    ) : (
+                                                        <><div className="w-12 rounded-xl border-2 border-dashed border-violet-500/20 flex items-center justify-center" style={{ height: 72 }}><AlignLeft size={16} className="text-violet-500/20" /></div><p className="text-[9px] text-neutral-700">Contraportada · 1600×2560</p></>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
