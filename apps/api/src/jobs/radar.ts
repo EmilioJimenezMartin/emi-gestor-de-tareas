@@ -100,31 +100,92 @@ export function defineRadarJob(agenda: Agenda, io: any) {
         let browser: any = null;
 
         try {
-            pushLog(jobDoc, io, "info", `[BROWSER] Lanzando navegador headless...`);
+            pushLog(jobDoc, io, "info", `[BROWSER] Lanzando navegador headless (modo stealth)...`);
             await jobDoc.save();
 
             const { chromium } = await import("playwright");
-            browser = await chromium.launch({ headless: true });
-            const page = await browser.newPage();
-
-            await page.setExtraHTTPHeaders({
-                "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            browser = await chromium.launch({
+                headless: true,
+                args: [
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--no-first-run",
+                    "--no-zygote",
+                    "--disable-gpu",
+                ],
             });
+
+            // Create a context with realistic browser fingerprint
+            const browserCtx = await browser.newContext({
+                viewport: { width: 1440, height: 900 },
+                locale: "es-ES",
+                timezoneId: "Europe/Madrid",
+                userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                extraHTTPHeaders: {
+                    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+                    "sec-ch-ua-mobile": "?0",
+                    "sec-ch-ua-platform": '"macOS"',
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Site": "none",
+                    "Upgrade-Insecure-Requests": "1",
+                },
+            });
+
+            // Mask all bot-detection signals before any page script runs
+            await browserCtx.addInitScript(() => {
+                Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+                // @ts-ignore
+                window.chrome = { runtime: {}, loadTimes: () => {}, csi: () => {}, app: {} };
+                Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
+                Object.defineProperty(navigator, "languages", { get: () => ["es-ES", "es", "en-US", "en"] });
+                Object.defineProperty(navigator, "platform", { get: () => "MacIntel" });
+            });
+
+            const page = await browserCtx.newPage();
 
             pushLog(jobDoc, io, "info", `[FETCH] Cargando página: ${url}`);
             await jobDoc.save();
             await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+
+            // Wait for JS hydration (SPAs like Etsy render after domcontentloaded)
+            await page.waitForTimeout(2500);
+
+            // Detect anti-bot / CAPTCHA screens before wasting time
+            const pageTitle: string = await page.title().catch(() => "");
+            if (/captcha|attention required|just a moment|checking|ddos-guard/i.test(pageTitle)) {
+                throw new Error(`Página bloqueada por anti-bot: "${pageTitle}". Intenta de nuevo en unos minutos.`);
+            }
 
             if (mode === "etsy-niches") {
                 pushLog(jobDoc, io, "info", `[FETCH] Scroll para cargar resultados lazy...`);
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)");
                 await page.waitForTimeout(1500);
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight)");
-                await page.waitForTimeout(1000);
+                await page.waitForTimeout(1500);
             }
 
-            // Poda del DOM: elimina scripts, estilos y elementos inútiles (~80% menos tokens)
+            // Capture full HTML BEFORE pruning — this is what the HF fallback uses
+            const rawHtml: string = await page.content().catch(() => "");
+            const pageText = rawHtml
+                .replace(/<script[\s\S]*?<\/script>/gi, "")
+                .replace(/<style[\s\S]*?<\/style>/gi, "")
+                .replace(/<[^>]+>/g, " ")
+                .replace(/&[a-z#0-9]+;/gi, " ")
+                .replace(/\s{2,}/g, " ")
+                .trim();
+
+            if (pageText.length < 500) {
+                pushLog(jobDoc, io, "warning", `[FETCH] ⚠ Contenido corto (${pageText.length} chars) — posible bloqueo anti-bot`);
+            } else {
+                pushLog(jobDoc, io, "info", `[FETCH] ✓ ${pageText.length.toLocaleString()} chars extraídos`);
+            }
+
+            // Prune DOM for LLMScraper (Gemini) — after text capture, reduces token count
             await page.evaluate(`
                 ["script","style","header","footer","noscript","iframe",
                  ".wt-b-badge","nav","svg","picture source"].forEach(sel => {
@@ -132,11 +193,8 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 });
             `);
 
-            pushLog(jobDoc, io, "success", `[FETCH] ✓ Página cargada y DOM podado`);
+            pushLog(jobDoc, io, "success", `[FETCH] ✓ DOM podado — listo para análisis`);
             await jobDoc.save();
-
-            // Extract plain text for HF fallback (before Gemini call, browser still open)
-            const pageText: string = (await page.evaluate('document.body.innerText') as string) ?? "";
 
             const googleKey = await getGoogleKey();
             let data: any;
