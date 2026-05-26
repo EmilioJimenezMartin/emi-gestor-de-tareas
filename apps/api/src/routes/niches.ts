@@ -24,7 +24,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
     app.post("/niches", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const { name, description, tags, status, competition, demand, productType, styleCategory, styleCategories, notes } = request.body as any;
+            const { name, description, tags, status, competition, demand, productType, styleCategory, styleCategories, notes, etsyUrl } = request.body as any;
             if (!name?.trim()) return reply.status(400).send({ error: "name required" });
             const resolvedStyles: string[] = Array.isArray(styleCategories) && styleCategories.length > 0
                 ? styleCategories
@@ -40,6 +40,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 styleCategory: resolvedStyles[0],
                 styleCategories: resolvedStyles,
                 notes: notes?.trim() ?? "",
+                etsyUrl: etsyUrl?.trim() ?? "",
             });
             return reply.status(201).send({ niche });
         } catch (e: any) {

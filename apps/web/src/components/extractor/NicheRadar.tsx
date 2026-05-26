@@ -6,7 +6,7 @@ import {
     Loader2, RefreshCw, Target, BarChart3, ShoppingBag,
     Users, DollarSign, Tag, Zap, Search,
     Star, ShoppingCart, Download, ArrowUpDown, CheckCircle2,
-    HelpCircle, ArrowRight, BookOpen, Sparkles, Plus,
+    HelpCircle, ArrowRight, BookOpen, Plus, Flame, Lightbulb, Trash2, ExternalLink, Calendar,
 } from "lucide-react";
 import { createApiSocket } from "@/lib/socket";
 import { Modal } from "@/components/ui/modal";
@@ -33,18 +33,12 @@ interface EtsyListing {
     personas_carrito: number;
     total_reseñas: number;
     sub_nicho_estimado: string;
+    url_producto?: string;
+    fecha_detectado?: string;
 }
 
 interface EtsyNicheResult {
     nichos_detectados: EtsyListing[];
-}
-
-interface PreNicho {
-    nombre: string;
-    descripcion: string;
-    potencial: "low" | "medium" | "high";
-    sub_nichos: string[];
-    keywords_clave: string[];
 }
 
 interface LogEntry {
@@ -114,6 +108,17 @@ function exportCSV(rows: EtsyListing[]) {
     a.click();
 }
 
+// ── Demand signal derived from listing data, no extra AI call ─────────────────
+function demandSignal(row: EtsyListing): { label: string; cls: string; icon: "hot" | "mid" | "new" } {
+    const score =
+        (row.bestseller ? 3 : 0) +
+        (row.personas_carrito >= 20 ? 3 : row.personas_carrito >= 10 ? 2 : row.personas_carrito > 0 ? 1 : 0) +
+        (row.total_reseñas >= 1000 ? 3 : row.total_reseñas >= 100 ? 2 : row.total_reseñas > 0 ? 1 : 0);
+    if (score >= 5) return { label: "Alta", cls: "text-rose-400 bg-rose-500/10 border-rose-500/20", icon: "hot" };
+    if (score >= 2) return { label: "Media", cls: "text-amber-400 bg-amber-500/10 border-amber-500/20", icon: "mid" };
+    return { label: "Nueva", cls: "text-sky-400 bg-sky-500/10 border-sky-500/15", icon: "new" };
+}
+
 export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
     const [mode, setMode] = useState<Mode>("etsy-niches");
     const [url, setUrl] = useState("");
@@ -128,42 +133,55 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
     const [sortKey, setSortKey] = useState<SortKey>("personas_carrito");
     const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
     const [showHelp, setShowHelp] = useState(false);
-    const [preNichos, setPreNichos] = useState<PreNicho[] | null>(null);
-    const [isGeneratingPreNichos, setIsGeneratingPreNichos] = useState(false);
-    const [creatingNicheIdx, setCreatingNicheIdx] = useState<number | null>(null);
-    const [createdNicheIdxs, setCreatedNicheIdxs] = useState<Set<number>>(new Set());
+    const [createdNicheRows, setCreatedNicheRows] = useState<Set<string>>(new Set());
+    const [creatingRowTitle, setCreatingRowTitle] = useState<string | null>(null);
     const [geminiModel, setGeminiModel] = useState("gemini-2.0-flash");
+    const [confirmModal, setConfirmModal] = useState<{
+        title: string;
+        message: string;
+        onConfirm: () => void;
+    } | null>(null);
     const logsEndRef = useRef<HTMLDivElement>(null);
     const isFirstLog = useRef(true);
     const activeJobId = useRef<string | null>(null);
 
-    // Restore state from backend on mount (persists through page refresh)
+    // Restore state from backend on mount — persists through page navigation
     useEffect(() => {
+        // Restore last job (logs + scan result)
         fetch(`${apiUrl}/radar/jobs/latest`)
             .then(r => r.json())
             .then(({ job }: any) => {
                 if (!job) return;
+                const restoredLogs: LogEntry[] = (job.logs ?? []).map((l: any) => ({
+                    id: Math.random().toString(),
+                    timestamp: new Date(l.timestamp).toLocaleTimeString(),
+                    level: l.level,
+                    message: l.message,
+                }));
                 if (job.status === "running") {
                     setIsAnalyzing(true);
                     activeJobId.current = job.jobId;
-                    setLogs((job.logs ?? []).map((l: any) => ({
-                        id: Math.random().toString(),
-                        timestamp: new Date(l.timestamp).toLocaleTimeString(),
-                        level: l.level,
-                        message: l.message,
-                    })));
-                } else if (job.status === "completed" && job.result) {
-                    if (job.mode === "etsy-niches") setEtsyResult(job.result);
-                    else setGeneralResult(job.result);
-                    setLogs((job.logs ?? []).map((l: any) => ({
-                        id: Math.random().toString(),
-                        timestamp: new Date(l.timestamp).toLocaleTimeString(),
-                        level: l.level,
-                        message: l.message,
-                    })));
+                    setLogs(restoredLogs);
+                } else {
+                    setLogs(restoredLogs);
+                    if (job.status === "completed" && job.result) {
+                        if (job.mode === "etsy-niches") setEtsyResult(job.result);
+                        else setGeneralResult(job.result);
+                    }
                 }
             })
-            .catch(() => { /* silencioso si mongo no está */ });
+            .catch(() => { });
+
+        // Restore saved etsy result from Settings
+        fetch(`${apiUrl}/radar/saved-etsy-result`)
+            .then(r => r.json())
+            .then(({ result }: any) => {
+                if (result?.nichos_detectados?.length) {
+                    setEtsyResult(result);
+                    setMode("etsy-niches");
+                }
+            })
+            .catch(() => { });
     }, [apiUrl]);
 
     useEffect(() => {
@@ -179,6 +197,11 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
         socket.on("radar:result", (data: any) => {
             if (data.mode === "etsy-niches" || data.data?.nichos_detectados) {
                 setEtsyResult(data.data);
+                void fetch(`${apiUrl}/radar/saved-etsy-result`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ result: data.data }),
+                }).catch(() => { });
             } else {
                 setGeneralResult(data.data);
                 if (data.data) setHistory(prev => [{ url, insight: data.data, ts: Date.now() }, ...prev.slice(0, 4)]);
@@ -210,9 +233,10 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
         setIsAnalyzing(true);
         setEtsyResult(null);
         setGeneralResult(null);
-        setPreNichos(null);
-        setCreatedNicheIdxs(new Set());
+        setCreatedNicheRows(new Set());
+        setCreatingRowTitle(null);
         setLogs([]);
+        void saveEtsyResultToBackend(null);
         isFirstLog.current = true;
         toast.info(`Iniciando análisis · modo: ${mode === "etsy-niches" ? "Etsy Nichos" : "General"}...`);
         try {
@@ -238,47 +262,56 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
         }
     };
 
-    const generatePreNichos = async () => {
-        if (!etsyResult?.nichos_detectados?.length) return;
-        setIsGeneratingPreNichos(true);
-        setPreNichos(null);
+    const saveEtsyResultToBackend = async (result: EtsyNicheResult | null) => {
         try {
-            const res = await fetch(`${apiUrl}/radar/pre-nichos`, {
-                method: "POST",
+            await fetch(`${apiUrl}/radar/saved-etsy-result`, {
+                method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ nichos: etsyResult.nichos_detectados }),
+                body: JSON.stringify({ result }),
             });
-            if (!res.ok) throw new Error(`Error ${res.status}`);
-            const data = await res.json();
-            setPreNichos(data.pre_nichos ?? []);
-        } catch (e: any) {
-            toast.error(e.message ?? "Error generando pre-nichos");
-        } finally {
-            setIsGeneratingPreNichos(false);
-        }
+        } catch { /* silencioso */ }
     };
 
-    const createNicheFromPreNicho = async (pn: PreNicho, idx: number) => {
-        if (createdNicheIdxs.has(idx)) return;
-        setCreatingNicheIdx(idx);
+    const deleteRow = (row: EtsyListing) => {
+        setConfirmModal({
+            title: "Eliminar producto",
+            message: `¿Eliminar "${row.titulo_producto.slice(0, 60)}${row.titulo_producto.length > 60 ? "…" : ""}" de la tabla?`,
+            onConfirm: () => {
+                setEtsyResult(prev => {
+                    const updated = prev
+                        ? { ...prev, nichos_detectados: prev.nichos_detectados.filter(r => r !== row) }
+                        : null;
+                    void saveEtsyResultToBackend(updated);
+                    return updated;
+                });
+                setCreatedNicheRows(prev => { const n = new Set(prev); n.delete(row.titulo_producto); return n; });
+                setConfirmModal(null);
+            },
+        });
+    };
+
+    const createNicheFromRow = async (row: EtsyListing) => {
+        if (createdNicheRows.has(row.titulo_producto)) return;
+        setCreatingRowTitle(row.titulo_producto);
         try {
             const res = await fetch(`${apiUrl}/niches`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    name: pn.nombre,
-                    description: pn.descripcion,
-                    tags: pn.keywords_clave,
+                    name: row.sub_nicho_estimado,
+                    description: row.titulo_producto,
+                    tags: row.sub_nicho_estimado.split(/[\s,]+/).filter(Boolean).slice(0, 5),
                     status: "found",
+                    etsyUrl: row.url_producto ?? "",
                 }),
             });
             if (!res.ok) throw new Error(`Error ${res.status}`);
-            setCreatedNicheIdxs(prev => new Set([...prev, idx]));
-            toast.success(`Nicho "${pn.nombre}" creado`);
+            setCreatedNicheRows(prev => new Set([...prev, row.titulo_producto]));
+            toast.success(`Nicho "${row.sub_nicho_estimado}" creado`);
         } catch (e: any) {
             toast.error(e.message ?? "Error creando nicho");
         } finally {
-            setCreatingNicheIdx(null);
+            setCreatingRowTitle(null);
         }
     };
 
@@ -334,7 +367,6 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
             {/* Help modal */}
             <Modal open={showHelp} onClose={() => setShowHelp(false)} maxWidth="max-w-2xl" showClose zIndex={200}>
                 <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
-                    {/* Header */}
                     <div className="flex items-center gap-3 pb-4 border-b border-white/[0.06]">
                         <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
                             <TrendingUp size={18} className="text-amber-400" />
@@ -346,7 +378,6 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {/* Modo Etsy */}
                         <div className="rounded-2xl border border-sky-500/15 bg-sky-500/[0.04] p-4 space-y-3">
                             <div className="flex items-center gap-2">
                                 <ShoppingCart size={14} className="text-sky-400" />
@@ -360,7 +391,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                                     "Selecciona un preset o pega una URL de búsqueda de Etsy",
                                     "Pulsa «Escanear Etsy» — tarda 30–60 s",
                                     "Ordena la tabla por «Carrito» para ver demanda inmediata",
-                                    "Ordena por «Reseñas» para ver nichos establecidos",
+                                    "Pulsa + Nicho en una fila para crear el nicho directamente sin IA",
                                     "Exporta a CSV para analizar en Excel o Google Sheets",
                                 ].map((step, i) => (
                                     <div key={i} className="flex items-start gap-2">
@@ -369,20 +400,8 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                                     </div>
                                 ))}
                             </div>
-                            <div className="rounded-xl bg-sky-500/[0.08] border border-sky-500/15 p-2.5 space-y-1">
-                                <p className="text-[9px] font-black uppercase tracking-widest text-sky-400/80">URLs para archivos digitales</p>
-                                {[
-                                    "etsy.com/es/search?q=digital+download+svg+bundle",
-                                    "etsy.com/es/search?q=printable+wall+art+pdf",
-                                    "etsy.com/es/search?q=digital+planner+pdf+2025",
-                                    "etsy.com/es/search?q=clip+art+bundle+commercial+use",
-                                ].map(url => (
-                                    <p key={url} className="text-[8px] font-mono text-neutral-600 truncate">{url}</p>
-                                ))}
-                            </div>
                         </div>
 
-                        {/* Modo General */}
                         <div className="rounded-2xl border border-amber-500/15 bg-amber-500/[0.04] p-4 space-y-3">
                             <div className="flex items-center gap-2">
                                 <BarChart3 size={14} className="text-amber-400" />
@@ -405,19 +424,12 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                                     </div>
                                 ))}
                             </div>
-                            <div className="rounded-xl bg-amber-500/[0.08] border border-amber-500/15 p-2.5 space-y-1">
-                                <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Ejemplo de contexto</p>
-                                <p className="text-[9px] font-mono text-neutral-500 leading-relaxed italic">
-                                    "Busco hueco para un libro digital de colorear a 4–7€, enfocado en adultos, estilo mandala minimalista"
-                                </p>
-                            </div>
                         </div>
                     </div>
 
-                    {/* Interpretación de resultados */}
                     <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-3">
                         <div className="flex items-center gap-2">
-                            <Sparkles size={13} className="text-neutral-400" />
+                            <Plus size={13} className="text-neutral-400" />
                             <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Cómo interpretar los resultados</span>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[10px] text-neutral-500">
@@ -426,7 +438,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                                 <div className="flex items-start gap-2"><ArrowRight size={10} className="text-sky-400 mt-0.5 shrink-0" /><span><span className="text-sky-400 font-black">Carrito alto (&gt;10)</span> — demanda activa ahora mismo</span></div>
                                 <div className="flex items-start gap-2"><ArrowRight size={10} className="text-amber-400 mt-0.5 shrink-0" /><span><span className="text-amber-400 font-black">Bestseller = true</span> — el mercado ya valida ese producto</span></div>
                                 <div className="flex items-start gap-2"><ArrowRight size={10} className="text-emerald-400 mt-0.5 shrink-0" /><span><span className="text-emerald-400 font-black">Reseñas &gt;500</span> — nicho establecido, entrada más difícil</span></div>
-                                <div className="flex items-start gap-2"><ArrowRight size={10} className="text-neutral-400 mt-0.5 shrink-0" /><span><span className="text-neutral-300 font-black">Sub-nicho</span> — el micro-tema específico del producto</span></div>
+                                <div className="flex items-start gap-2"><ArrowRight size={10} className="text-rose-400 mt-0.5 shrink-0" /><span><span className="text-rose-400 font-black">Señal Alta</span> — bestseller + carrito activo + reseñas altas</span></div>
                             </div>
                             <div className="space-y-2">
                                 <p className="font-black text-neutral-300">Modo General</p>
@@ -438,7 +450,6 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                         </div>
                     </div>
 
-                    {/* Tips avanzados */}
                     <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-2">
                         <div className="flex items-center gap-2 mb-1">
                             <BookOpen size={13} className="text-neutral-400" />
@@ -471,7 +482,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                     const active = mode === tab.id;
                     return (
                         <button key={tab.id}
-                            onClick={() => { setMode(tab.id); setUrl(""); setEtsyResult(null); setGeneralResult(null); setPreNichos(null); setLogs([]); }}
+                            onClick={() => { setMode(tab.id); setUrl(""); setEtsyResult(null); setGeneralResult(null); setLogs([]); }}
                             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${active
                                 ? tab.id === "etsy-niches"
                                     ? "bg-sky-500/15 border border-sky-500/25 text-sky-300"
@@ -485,10 +496,10 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                 })}
             </div>
 
+            {/* ── Config + Terminal ── */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 {/* Left: Config */}
                 <div className="lg:col-span-4 space-y-4">
-                    {/* URL Input */}
                     <div className="space-y-2.5">
                         <div className="flex items-center gap-2">
                             <Globe size={13} className="text-amber-400/70" />
@@ -507,7 +518,6 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                             {url && <button onClick={() => setUrl("")} className="text-neutral-700 hover:text-white transition-colors"><X size={11} /></button>}
                         </div>
 
-                        {/* Presets */}
                         {mode === "etsy-niches" ? (
                             <div className="space-y-1.5">
                                 <span className="text-[8px] font-black uppercase tracking-widest text-neutral-700">Búsquedas predefinidas</span>
@@ -539,7 +549,6 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                         )}
                     </div>
 
-                    {/* General mode extras */}
                     {mode === "general" && (
                         <>
                             <div className="space-y-2">
@@ -574,7 +583,6 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                         </>
                     )}
 
-                    {/* Etsy mode info */}
                     {mode === "etsy-niches" && (
                         <div className="rounded-xl bg-sky-500/[0.05] border border-sky-500/15 p-3 space-y-2">
                             <p className="text-[9px] font-black uppercase tracking-widest text-sky-400/80">Señales detectadas</p>
@@ -584,6 +592,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                                     { icon: ShoppingCart, label: "Personas en carrito" },
                                     { icon: Users, label: "Total de reseñas" },
                                     { icon: Tag, label: "Sub-nicho estimado" },
+                                    { icon: Flame, label: "Señal de demanda (alta/media/nueva)" },
                                 ].map(({ icon: Icon, label }) => (
                                     <div key={label} className="flex items-center gap-2 text-[9px] text-neutral-500">
                                         <Icon size={9} className="text-sky-400/60 shrink-0" />
@@ -621,7 +630,6 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                         </div>
                     </div>
 
-                    {/* Analyze button */}
                     <button
                         onClick={() => void analyze()}
                         disabled={isAnalyzing || !url.trim()}
@@ -641,7 +649,6 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                         }
                     </button>
 
-                    {/* General mode history */}
                     {mode === "general" && history.length > 0 && (
                         <div className="space-y-2">
                             <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Historial</span>
@@ -661,7 +668,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                     )}
                 </div>
 
-                {/* Right: Terminal + Result */}
+                {/* Right: Terminal */}
                 <div className="lg:col-span-8 space-y-4">
                     {/* Terminal */}
                     <div className="space-y-2">
@@ -671,8 +678,8 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                                     <Activity size={12} className="text-neutral-600" />
                                 </div>
                                 <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 font-mono">Log</span>
-                                <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${isAnalyzing ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20" : "bg-white/5 text-neutral-700 border border-white/8"}`}>
-                                    {isAnalyzing ? "RUNNING" : "IDLE"}
+                                <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full ${isAnalyzing ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20" : logs.length > 0 ? "bg-white/5 text-neutral-600 border border-white/8" : "bg-white/5 text-neutral-700 border border-white/8"}`}>
+                                    {isAnalyzing ? "RUNNING" : logs.length > 0 ? `${logs.length} líneas` : "IDLE"}
                                 </span>
                             </div>
                             <button onClick={() => setShowLogs(v => !v)} className="text-[9px] text-neutral-600 hover:text-white transition-colors font-black uppercase">
@@ -680,7 +687,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                             </button>
                         </div>
                         {showLogs && (
-                            <div className="h-[260px] rounded-2xl border border-white/8 bg-[#040404] overflow-hidden flex flex-col">
+                            <div className="h-[420px] rounded-2xl border border-white/8 bg-[#040404] overflow-hidden flex flex-col">
                                 <div className="h-8 bg-white/[0.015] border-b border-white/5 flex items-center px-3 gap-1.5 shrink-0">
                                     <div className="w-2 h-2 rounded-full bg-rose-500/40" />
                                     <div className="w-2 h-2 rounded-full bg-amber-500/40" />
@@ -709,7 +716,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                     </div>
 
                     {/* Empty state */}
-                    {!etsyResult && !generalResult && !isAnalyzing && (
+                    {!etsyResult && !generalResult && !isAnalyzing && logs.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-14 rounded-2xl border border-dashed border-white/[0.06] bg-white/[0.01] gap-4">
                             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${mode === "etsy-niches" ? "bg-sky-500/8 border border-sky-500/15" : "bg-amber-500/8 border border-amber-500/15"}`}>
                                 {mode === "etsy-niches" ? <ShoppingCart size={24} className="text-sky-400/40" /> : <BarChart3 size={24} className="text-amber-400/40" />}
@@ -732,189 +739,6 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                                     {mode === "etsy-niches" ? "Escaneando Etsy con Gemini..." : "Gemini analizando mercado..."}
                                 </p>
                                 <p className="text-[10px] text-neutral-600">Playwright cargando la página · llm-scraper extrayendo datos</p>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Etsy result table */}
-                    {etsyResult && mode === "etsy-niches" && (
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.025] overflow-hidden">
-                            <div className="h-px w-full bg-gradient-to-r from-sky-500/60 via-cyan-400/30 to-transparent" />
-                            <div className="p-4 space-y-3">
-                                {/* Table header */}
-                                <div className="flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-2">
-                                        <CheckCircle2 size={14} className="text-sky-400" />
-                                        <span className="text-[11px] font-black text-white">{etsyResult.nichos_detectados.length} productos detectados</span>
-                                        {etsyResult.nichos_detectados.filter(r => r.bestseller).length > 0 && (
-                                            <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/20 text-amber-400">
-                                                {etsyResult.nichos_detectados.filter(r => r.bestseller).length} bestsellers
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={() => exportCSV(sortedRows)}
-                                            className="flex items-center gap-1.5 h-7 px-3 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[9px] font-black uppercase hover:bg-sky-500/20 transition-all">
-                                            <Download size={10} /> CSV
-                                        </button>
-                                        <button onClick={() => { setEtsyResult(null); setPreNichos(null); void analyze(); }}
-                                            className="flex items-center gap-1.5 h-7 px-3 rounded-xl bg-white/5 border border-white/8 text-[9px] font-black uppercase text-neutral-400 hover:text-white hover:border-white/15 transition-all">
-                                            <RefreshCw size={10} /> Repetir
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Sort controls */}
-                                <div className="flex items-center gap-3 pb-1 border-b border-white/5">
-                                    <span className="text-[8px] uppercase tracking-widest text-neutral-700 font-black">Ordenar:</span>
-                                    <SortBtn k="personas_carrito" label="Carrito" />
-                                    <SortBtn k="total_reseñas" label="Reseñas" />
-                                    <SortBtn k="bestseller" label="Bestseller" />
-                                    <SortBtn k="precio" label="Precio" />
-                                    <SortBtn k="sub_nicho_estimado" label="Sub-nicho" />
-                                </div>
-
-                                {/* Table */}
-                                <div className="overflow-x-auto rounded-xl border border-white/8">
-                                    <table className="w-full text-left">
-                                        <thead>
-                                            <tr className="bg-white/[0.03] border-b border-white/8">
-                                                <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600">#</th>
-                                                <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600">Título</th>
-                                                <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-right">Precio</th>
-                                                <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-center">BS</th>
-                                                <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-right">Carrito</th>
-                                                <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-right">Reseñas</th>
-                                                <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600">Sub-nicho</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {sortedRows.map((row, i) => (
-                                                <tr key={i} className={`border-b border-white/5 last:border-0 transition-colors hover:bg-white/[0.02] ${row.bestseller ? "bg-amber-500/[0.03]" : ""}`}>
-                                                    <td className="px-3 py-2.5 text-[9px] text-neutral-700 tabular-nums font-black">{i + 1}</td>
-                                                    <td className="px-3 py-2.5 max-w-[200px]">
-                                                        <p className="text-[10px] text-white font-semibold line-clamp-2 leading-snug">{row.titulo_producto}</p>
-                                                    </td>
-                                                    <td className="px-3 py-2.5 text-right">
-                                                        <span className="text-[10px] font-black text-emerald-400 tabular-nums">{row.precio}</span>
-                                                    </td>
-                                                    <td className="px-3 py-2.5 text-center">
-                                                        {row.bestseller
-                                                            ? <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-500/20 border border-amber-500/30"><Star size={9} className="text-amber-400 fill-amber-400" /></span>
-                                                            : <span className="text-neutral-800 text-[9px]">—</span>
-                                                        }
-                                                    </td>
-                                                    <td className="px-3 py-2.5 text-right">
-                                                        {row.personas_carrito > 0
-                                                            ? <span className={`text-[10px] font-black tabular-nums ${row.personas_carrito >= 20 ? "text-sky-400" : row.personas_carrito >= 10 ? "text-sky-400/70" : "text-neutral-400"}`}>{row.personas_carrito >= 20 ? "20+" : row.personas_carrito}</span>
-                                                            : <span className="text-neutral-800 text-[9px]">—</span>
-                                                        }
-                                                    </td>
-                                                    <td className="px-3 py-2.5 text-right">
-                                                        {row.total_reseñas > 0
-                                                            ? <span className={`text-[10px] font-black tabular-nums ${row.total_reseñas >= 1000 ? "text-emerald-400" : row.total_reseñas >= 100 ? "text-emerald-400/70" : "text-neutral-400"}`}>{row.total_reseñas >= 1000 ? `${(row.total_reseñas / 1000).toFixed(1)}k` : row.total_reseñas}</span>
-                                                            : <span className="text-neutral-800 text-[9px]">—</span>
-                                                        }
-                                                    </td>
-                                                    <td className="px-3 py-2.5">
-                                                        <span className="text-[8px] font-black px-1.5 py-0.5 rounded-md bg-sky-500/10 border border-sky-500/15 text-sky-400 whitespace-nowrap">{row.sub_nicho_estimado}</span>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Pre-nichos section */}
-                    {etsyResult && mode === "etsy-niches" && (
-                        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.03] overflow-hidden">
-                            <div className="h-px w-full bg-gradient-to-r from-violet-500/60 via-purple-400/30 to-transparent" />
-                            <div className="p-4 space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                        <Sparkles size={14} className="text-violet-400" />
-                                        <span className="text-[11px] font-black text-white">Pre-Nichos</span>
-                                        <span className="text-[9px] text-neutral-600">· categorías agrupadas por IA</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        {preNichos && !isGeneratingPreNichos && (
-                                            <button onClick={() => void generatePreNichos()} disabled={isGeneratingPreNichos}
-                                                className="flex items-center gap-1 h-6 px-2 rounded-lg bg-white/5 border border-white/8 text-neutral-600 text-[9px] font-black uppercase hover:text-white transition-all">
-                                                <RefreshCw size={9} />
-                                            </button>
-                                        )}
-                                        {!preNichos && (
-                                            <button onClick={() => void generatePreNichos()} disabled={isGeneratingPreNichos}
-                                                className="flex items-center gap-1.5 h-7 px-3 rounded-xl bg-violet-500/15 border border-violet-500/25 text-violet-300 text-[9px] font-black uppercase hover:bg-violet-500/25 transition-all disabled:opacity-50">
-                                                {isGeneratingPreNichos ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
-                                                {isGeneratingPreNichos ? "Generando..." : "Generar Pre-Nichos"}
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {isGeneratingPreNichos && (
-                                    <div className="flex items-center justify-center py-8 gap-3">
-                                        <Loader2 size={18} className="animate-spin text-violet-400" />
-                                        <span className="text-[10px] text-neutral-600 font-black uppercase tracking-widest">Gemini agrupando nichos...</span>
-                                    </div>
-                                )}
-
-                                {preNichos && !isGeneratingPreNichos && (
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        {preNichos.map((pn, i) => {
-                                            const isCreated = createdNicheIdxs.has(i);
-                                            const isCreating = creatingNicheIdx === i;
-                                            return (
-                                                <div key={i} className="rounded-xl border border-white/8 bg-white/[0.02] p-3 space-y-2">
-                                                    <div className="flex items-start justify-between gap-2">
-                                                        <p className="text-[11px] font-black text-white leading-tight">{pn.nombre}</p>
-                                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-md border shrink-0 ${pn.potencial === "high" ? "bg-emerald-500/15 border-emerald-500/25 text-emerald-400" : pn.potencial === "medium" ? "bg-amber-500/15 border-amber-500/25 text-amber-400" : "bg-neutral-500/15 border-neutral-500/25 text-neutral-400"}`}>
-                                                            {pn.potencial === "high" ? "Alto" : pn.potencial === "medium" ? "Medio" : "Bajo"}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-[9px] text-neutral-500 leading-relaxed">{pn.descripcion}</p>
-                                                    {pn.keywords_clave?.length > 0 && (
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {pn.keywords_clave.map(k => (
-                                                                <span key={k} className="text-[7px] font-black px-1.5 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/15 text-violet-400">{k}</span>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                    {pn.sub_nichos?.length > 0 && (
-                                                        <div>
-                                                            <p className="text-[7px] font-black uppercase tracking-widest text-neutral-700 mb-1">Sub-nichos ({pn.sub_nichos.length})</p>
-                                                            <div className="flex flex-wrap gap-1">
-                                                                {pn.sub_nichos.slice(0, 5).map(s => (
-                                                                    <span key={s} className="text-[7px] px-1.5 py-0.5 rounded-md bg-white/5 border border-white/8 text-neutral-500">{s}</span>
-                                                                ))}
-                                                                {pn.sub_nichos.length > 5 && <span className="text-[7px] text-neutral-700">+{pn.sub_nichos.length - 5}</span>}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    <button
-                                                        onClick={() => void createNicheFromPreNicho(pn, i)}
-                                                        disabled={isCreating || isCreated}
-                                                        className={`w-full h-7 rounded-lg border text-[8px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${isCreated ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-400 cursor-default" : "border-violet-500/20 bg-violet-500/[0.06] text-violet-400 hover:bg-violet-500/15 hover:border-violet-500/30 disabled:opacity-50 disabled:cursor-not-allowed"}`}
-                                                    >
-                                                        {isCreating ? <Loader2 size={9} className="animate-spin" /> : isCreated ? <CheckCircle2 size={9} /> : <Plus size={9} />}
-                                                        {isCreated ? "Nicho creado" : isCreating ? "Creando..." : "Crear Nicho"}
-                                                    </button>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-
-                                {!preNichos && !isGeneratingPreNichos && (
-                                    <div className="flex items-center justify-center py-5 opacity-30">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Genera pre-nichos a partir de los resultados del escaneo</p>
-                                    </div>
-                                )}
                             </div>
                         </div>
                     )}
@@ -1004,9 +828,198 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                 </div>
             </div>
 
+            {/* ── Full-width: Etsy result table ── */}
+            {etsyResult && mode === "etsy-niches" && (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.025] overflow-hidden">
+                    <div className="h-px w-full bg-gradient-to-r from-sky-500/60 via-cyan-400/30 to-transparent" />
+                    <div className="p-4 space-y-3">
+                        {/* Header */}
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <div className="flex items-center gap-2">
+                                <CheckCircle2 size={14} className="text-sky-400" />
+                                <span className="text-[11px] font-black text-white">{etsyResult.nichos_detectados.length} productos detectados</span>
+                                {etsyResult.nichos_detectados.filter(r => r.bestseller).length > 0 && (
+                                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/20 text-amber-400">
+                                        {etsyResult.nichos_detectados.filter(r => r.bestseller).length} bestsellers
+                                    </span>
+                                )}
+                                {etsyResult.nichos_detectados.filter(r => demandSignal(r).icon === "hot").length > 0 && (
+                                    <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/20 text-rose-400 flex items-center gap-1">
+                                        <Flame size={8} />
+                                        {etsyResult.nichos_detectados.filter(r => demandSignal(r).icon === "hot").length} señal alta
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => exportCSV(sortedRows)}
+                                    className="flex items-center gap-1.5 h-7 px-3 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[9px] font-black uppercase hover:bg-sky-500/20 transition-all">
+                                    <Download size={10} /> CSV
+                                </button>
+                                <button onClick={() => { setEtsyResult(null); void analyze(); }}
+                                    className="flex items-center gap-1.5 h-7 px-3 rounded-xl bg-white/5 border border-white/8 text-[9px] font-black uppercase text-neutral-400 hover:text-white hover:border-white/15 transition-all">
+                                    <RefreshCw size={10} /> Repetir
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Sort controls */}
+                        <div className="flex items-center gap-3 pb-1 border-b border-white/5 flex-wrap">
+                            <span className="text-[8px] uppercase tracking-widest text-neutral-700 font-black">Ordenar:</span>
+                            <SortBtn k="personas_carrito" label="Carrito" />
+                            <SortBtn k="total_reseñas" label="Reseñas" />
+                            <SortBtn k="bestseller" label="Bestseller" />
+                            <SortBtn k="precio" label="Precio" />
+                            <SortBtn k="sub_nicho_estimado" label="Sub-nicho" />
+                        </div>
+
+                        {/* Table */}
+                        <div className="overflow-x-auto rounded-xl border border-white/8">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="bg-white/[0.03] border-b border-white/8">
+                                        <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600">#</th>
+                                        <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600">Título</th>
+                                        <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-right">Precio</th>
+                                        <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-center">BS</th>
+                                        <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-right">Carrito</th>
+                                        <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-right">Reseñas</th>
+                                        <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600">Sub-nicho</th>
+                                        <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-center">Señal</th>
+                                        <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-center">Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {sortedRows.map((row, i) => {
+                                        const sig = demandSignal(row);
+                                        return (
+                                            <tr key={i} className={`border-b border-white/5 last:border-0 transition-colors hover:bg-white/[0.02] ${row.bestseller ? "bg-amber-500/[0.03]" : ""}`}>
+                                                <td className="px-3 py-2.5 text-[9px] text-neutral-700 tabular-nums font-black">{i + 1}</td>
+                                                <td className="px-3 py-2.5 max-w-[220px]">
+                                                    <p className="text-[10px] text-white font-semibold line-clamp-2 leading-snug">{row.titulo_producto}</p>
+                                                    {row.fecha_detectado && (
+                                                        <span className="inline-flex items-center gap-1 text-[7px] text-neutral-700 mt-0.5">
+                                                            <Calendar size={7} />
+                                                            {new Date(row.fecha_detectado).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "2-digit" })}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="px-3 py-2.5 text-right">
+                                                    <span className="text-[10px] font-black text-emerald-400 tabular-nums">{row.precio}</span>
+                                                </td>
+                                                <td className="px-3 py-2.5 text-center">
+                                                    {row.bestseller
+                                                        ? <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-500/20 border border-amber-500/30"><Star size={9} className="text-amber-400 fill-amber-400" /></span>
+                                                        : <span className="text-neutral-800 text-[9px]">—</span>
+                                                    }
+                                                </td>
+                                                <td className="px-3 py-2.5 text-right">
+                                                    {row.personas_carrito > 0
+                                                        ? <span className={`text-[10px] font-black tabular-nums ${row.personas_carrito >= 20 ? "text-sky-400" : row.personas_carrito >= 10 ? "text-sky-400/70" : "text-neutral-400"}`}>{row.personas_carrito >= 20 ? "20+" : row.personas_carrito}</span>
+                                                        : <span className="text-neutral-800 text-[9px]">—</span>
+                                                    }
+                                                </td>
+                                                <td className="px-3 py-2.5 text-right">
+                                                    {row.total_reseñas > 0
+                                                        ? <span className={`text-[10px] font-black tabular-nums ${row.total_reseñas >= 1000 ? "text-emerald-400" : row.total_reseñas >= 100 ? "text-emerald-400/70" : "text-neutral-400"}`}>{row.total_reseñas >= 1000 ? `${(row.total_reseñas / 1000).toFixed(1)}k` : row.total_reseñas}</span>
+                                                        : <span className="text-neutral-800 text-[9px]">—</span>
+                                                    }
+                                                </td>
+                                                <td className="px-3 py-2.5">
+                                                    <span className="text-[8px] font-black px-1.5 py-0.5 rounded-md bg-sky-500/10 border border-sky-500/15 text-sky-400 whitespace-nowrap">{row.sub_nicho_estimado}</span>
+                                                </td>
+                                                <td className="px-3 py-2.5 text-center">
+                                                    <span className={`inline-flex items-center gap-1 text-[8px] font-black px-1.5 py-0.5 rounded-md border ${sig.cls}`}>
+                                                        {sig.icon === "hot" ? <Flame size={8} /> : sig.icon === "mid" ? <TrendingUp size={8} /> : <Lightbulb size={8} />}
+                                                        {sig.label}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2.5">
+                                                    <div className="flex items-center gap-1 justify-center">
+                                                        {/* Etsy link */}
+                                                        {row.url_producto && (
+                                                            <a
+                                                                href={row.url_producto}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                title="Ver en Etsy"
+                                                                className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 hover:bg-sky-500/20 transition-all"
+                                                            >
+                                                                <ExternalLink size={8} />
+                                                            </a>
+                                                        )}
+                                                        {/* Create nicho directly */}
+                                                        {(() => {
+                                                            const created = createdNicheRows.has(row.titulo_producto);
+                                                            const creating = creatingRowTitle === row.titulo_producto;
+                                                            return (
+                                                                <button
+                                                                    onClick={() => void createNicheFromRow(row)}
+                                                                    disabled={created || creating}
+                                                                    title={created ? "Nicho ya creado" : `Crear nicho: ${row.sub_nicho_estimado}`}
+                                                                    className={`inline-flex items-center gap-1 h-6 px-2 rounded-lg text-[8px] font-black uppercase transition-all border ${created
+                                                                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 cursor-default"
+                                                                        : "bg-violet-500/10 border-violet-500/20 text-violet-400 hover:bg-violet-500/20 disabled:opacity-50"
+                                                                    }`}
+                                                                >
+                                                                    {creating ? <Loader2 size={8} className="animate-spin" /> : created ? <CheckCircle2 size={9} /> : <Plus size={8} />}
+                                                                    {created ? "✓" : "Nicho"}
+                                                                </button>
+                                                            );
+                                                        })()}
+                                                        {/* Delete row */}
+                                                        <button
+                                                            onClick={() => deleteRow(row)}
+                                                            title="Eliminar de la tabla"
+                                                            className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-white/[0.03] border border-white/8 text-neutral-700 hover:text-rose-400 hover:border-rose-500/25 hover:bg-rose-500/10 transition-all"
+                                                        >
+                                                            <Trash2 size={8} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+
             <p className="text-[8px] text-neutral-800 text-center">
                 Powered by <span className="text-neutral-600">Google Gemini</span> · <span className="text-neutral-600">llm-scraper</span> · <span className="text-neutral-600">Playwright</span>
             </p>
+
+            {/* ── Confirmation modal ── */}
+            <Modal open={!!confirmModal} onClose={() => setConfirmModal(null)} maxWidth="max-w-sm" showClose={false} zIndex={300}>
+                <div className="p-6 space-y-5">
+                    <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-2xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center shrink-0 mt-0.5">
+                            <Trash2 size={16} className="text-rose-400" />
+                        </div>
+                        <div className="space-y-1">
+                            <p className="text-sm font-black text-white">{confirmModal?.title}</p>
+                            <p className="text-[11px] text-neutral-500 leading-relaxed">{confirmModal?.message}</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                        <button
+                            onClick={() => setConfirmModal(null)}
+                            className="h-9 px-4 rounded-xl bg-white/5 border border-white/8 text-[10px] font-black uppercase tracking-widest text-neutral-400 hover:text-white hover:border-white/15 transition-all"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={() => confirmModal?.onConfirm()}
+                            className="h-9 px-5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-[10px] font-black uppercase tracking-widest text-rose-400 hover:bg-rose-500/25 hover:border-rose-500/40 transition-all"
+                        >
+                            Eliminar
+                        </button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 }

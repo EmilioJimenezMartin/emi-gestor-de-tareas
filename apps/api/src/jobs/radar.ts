@@ -56,7 +56,7 @@ async function analyzeWithHF(pageText: string, mode: string, hfKey: string): Pro
     const hf = new HfInference(hfKey);
 
     const schemaHint = mode === "etsy-niches"
-        ? `{"nichos_detectados":[{"titulo_producto":"string — título completo del listado","precio":"string — precio visible ej: '4,99 €'","bestseller":true/false,"personas_carrito":number,"total_reseñas":number,"sub_nicho_estimado":"string — micronicho deducido del título"}]}`
+        ? `{"nichos_detectados":[{"titulo_producto":"string — título completo del listado","precio":"string — precio visible ej: '4,99 €'","bestseller":true/false,"personas_carrito":number,"total_reseñas":number,"sub_nicho_estimado":"string — micronicho deducido del título","url_producto":"string|undefined — href del listado en Etsy (https://www.etsy.com/listing/...)"}]}`
         : `{"niche":"string","competition":"low|medium|high","demand":"low|medium|high","trend":"rising|stable|declining","topKeywords":["string"],"priceRange":"string","topCompetitors":["string"],"entryOpportunity":"string","buyerProfile":"string","summary":"string"}`;
 
     const systemContent = mode === "etsy-niches"
@@ -266,6 +266,12 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                     ? `[AI] ✓ HuggingFace · ${count} productos detectados`
                     : `[AI] ✓ HuggingFace · análisis completado`;
                 pushLog(jobDoc, io, "success", msg);
+            }
+
+            // Stamp detection date on every listing
+            if (data?.nichos_detectados) {
+                const ts = new Date().toISOString();
+                data.nichos_detectados = (data.nichos_detectados as any[]).map(n => ({ ...n, fecha_detectado: ts }));
             }
 
             jobDoc.status = "completed";

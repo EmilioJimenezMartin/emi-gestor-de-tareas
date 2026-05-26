@@ -28,6 +28,7 @@ export const EtsyListingSchema = z.object({
     personas_carrito: z.number().describe("Número de personas que tienen el producto en el carrito. Si dice 'Más de 20', pon 20. Si no aparece, pon 0."),
     total_reseñas: z.number().describe("Número total de reseñas/opiniones del artículo. Si no aparece, pon 0."),
     sub_nicho_estimado: z.string().describe("Micronicho específico deducido por las palabras clave del título (ej: 'Mushroom Fairy', 'Spooky Cute Goth', 'Axolotl Kids')"),
+    url_producto: z.string().optional().describe("URL directa del listado en Etsy (href del enlace <a> que lleva al producto, empieza por 'https://www.etsy.com/listing/'). Omite si no está disponible."),
 });
 export const EtsyNicheResultSchema = z.object({
     nichos_detectados: z.array(EtsyListingSchema).describe("Lista completa de productos/nichos detectados en la página de resultados"),
@@ -42,6 +43,7 @@ Para CADA producto encontrado en la página, aplica estas reglas de extracción:
 3. Busca textos de urgencia como "En el carrito de más de X personas", "X people have this in their carts" o "Solo queda 1". Extrae el número X; si dice "more than 20" o "más de 20", usa 20.
 4. Extrae el número total de reseñas si está visible junto al producto (no el rating, sino el conteo: "1,234 reseñas").
 5. Deduce el micronicho específico a partir de las palabras clave del título: busca términos como animales, estilos visuales, temáticas, audiencias (niños, adultos, mandala, kawaii, gótico, etc.).
+6. Extrae la URL directa del listado: busca el href del enlace <a> que rodea el título o la imagen del producto. Las URLs tienen el formato 'https://www.etsy.com/listing/NNNNNN/slug'. Si no encuentras el href exacto, omite url_producto.
 
 Extrae TODOS los productos que veas, no solo los que parecen más relevantes. El objetivo es detectar patrones de demanda.`;
 
@@ -114,6 +116,68 @@ export async function registerRadarRoutes(
         return reply.send({ job });
     });
 
+    // PUT /radar/jobs/latest/pre-nichos — persists the pre-nichos list in the latest job (legacy)
+    app.put("/radar/jobs/latest/pre-nichos", async (request: any, reply) => {
+        const { preNichos } = request.body || {};
+        if (!Array.isArray(preNichos)) return reply.status(400).send({ error: "preNichos array requerido" });
+        const job = await RadarJob.findOneAndUpdate(
+            {},
+            { $set: { preNichos } },
+            { sort: { createdAt: -1 }, new: true }
+        ).lean();
+        if (!job) return reply.status(404).send({ error: "No hay jobs" });
+        return reply.send({ success: true });
+    });
+
+    // GET /radar/saved-pre-nichos — lee pre-nichos persistidos en Settings
+    app.get("/radar/saved-pre-nichos", async (_req, reply) => {
+        const { Settings } = await import("../models/settings.js");
+        const row = await Settings.findOne({ key: "RADAR_PRE_NICHOS" }).lean();
+        if (!row?.value) return reply.send({ preNichos: [] });
+        try {
+            return reply.send({ preNichos: JSON.parse(row.value as string) });
+        } catch {
+            return reply.send({ preNichos: [] });
+        }
+    });
+
+    // PUT /radar/saved-pre-nichos — guarda pre-nichos en Settings (persiste entre jobs)
+    app.put("/radar/saved-pre-nichos", async (request: any, reply) => {
+        const { preNichos } = request.body || {};
+        if (!Array.isArray(preNichos)) return reply.status(400).send({ error: "preNichos array requerido" });
+        const { Settings } = await import("../models/settings.js");
+        await Settings.findOneAndUpdate(
+            { key: "RADAR_PRE_NICHOS" },
+            { key: "RADAR_PRE_NICHOS", value: JSON.stringify(preNichos) },
+            { upsert: true }
+        );
+        return reply.send({ success: true });
+    });
+
+    // GET /radar/saved-etsy-result — lee último resultado Etsy persistido en Settings
+    app.get("/radar/saved-etsy-result", async (_req, reply) => {
+        const { Settings } = await import("../models/settings.js");
+        const row = await Settings.findOne({ key: "RADAR_ETSY_RESULT" }).lean();
+        if (!row?.value) return reply.send({ result: null });
+        try {
+            return reply.send({ result: JSON.parse(row.value as string) });
+        } catch {
+            return reply.send({ result: null });
+        }
+    });
+
+    // PUT /radar/saved-etsy-result — persiste el resultado Etsy en Settings
+    app.put("/radar/saved-etsy-result", async (request: any, reply) => {
+        const { result } = request.body || {};
+        const { Settings } = await import("../models/settings.js");
+        await Settings.findOneAndUpdate(
+            { key: "RADAR_ETSY_RESULT" },
+            { key: "RADAR_ETSY_RESULT", value: result ? JSON.stringify(result) : "null" },
+            { upsert: true }
+        );
+        return reply.send({ success: true });
+    });
+
     // ── POST /radar/pre-nichos — agrupa listados en pre-nichos (síncrono, rápido) ──
     const PreNichoSchema = z.object({
         nombre: z.string().describe("Nombre de la categoría de pre-nicho (corto y memorable)"),
@@ -132,21 +196,16 @@ export async function registerRadarRoutes(
             return reply.status(400).send({ error: "nichos array es requerido" });
         }
         const googleKey = await getGoogleKey();
-        if (!googleKey) return reply.status(400).send({ error: "Google API key no configurada" });
+        const hfKey = await getHFKey();
+        if (!googleKey && !hfKey) {
+            return reply.status(400).send({ error: "Configura Google API key o HuggingFace API key en Ajustes." });
+        }
 
-        try {
-            const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
-            const { generateObject } = await import("ai");
-            const google = createGoogleGenerativeAI({ apiKey: googleKey });
+        const listSummary = nichos
+            .map((n: any) => `- "${n.titulo_producto}" | sub_nicho: ${n.sub_nicho_estimado} | bestseller: ${n.bestseller} | reseñas: ${n.total_reseñas}`)
+            .join("\n");
 
-            const listSummary = nichos
-                .map((n: any) => `- "${n.titulo_producto}" | sub_nicho: ${n.sub_nicho_estimado} | bestseller: ${n.bestseller} | reseñas: ${n.total_reseñas}`)
-                .join("\n");
-
-            const { object } = await generateObject({
-                model: google("gemini-2.0-flash"),
-                schema: PreNichosResultSchema as any,
-                prompt: `Eres un experto en investigación de mercado para productos digitales en Etsy (libros de colorear, printables, PDF descargables).
+        const PROMPT = `Eres un experto en investigación de mercado para productos digitales en Etsy (libros de colorear, printables, PDF descargables).
 
 Analiza la siguiente lista de productos detectados en Etsy y agrúpalos en categorías de "pre-nichos".
 
@@ -157,16 +216,56 @@ REGLAS:
 - keywords_clave deben ser los términos de búsqueda reales que usaría un comprador en Etsy
 
 PRODUCTOS DETECTADOS:
-${listSummary}`,
-            });
+${listSummary}`;
 
-            return reply.send(object);
-        } catch (err: any) {
-            const isHardQuota = /limit:\s*0/i.test(err?.message ?? "");
-            const msg = isHardQuota
-                ? "Cuota diaria de Gemini agotada. Vuelve mañana o activa facturación en Google AI Studio."
-                : (err?.message ?? "Error generando pre-nichos");
-            return reply.status(500).send({ error: msg });
+        // ── Try Gemini first ──────────────────────────────────────────────────
+        if (googleKey) {
+            try {
+                const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
+                const { generateObject } = await import("ai");
+                const google = createGoogleGenerativeAI({ apiKey: googleKey });
+                const { object } = await generateObject({
+                    model: google("gemini-2.0-flash"),
+                    schema: PreNichosResultSchema as any,
+                    prompt: PROMPT,
+                });
+                return reply.send(object);
+            } catch (geminiErr: any) {
+                const isQuota = /limit:\s*0|quota|rate.?limit|429/i.test(geminiErr?.message ?? "");
+                app.log.warn(`[pre-nichos] Gemini falló (${isQuota ? "cuota" : geminiErr?.message?.slice(0, 80)}), probando HuggingFace...`);
+                if (!hfKey) {
+                    const msg = isQuota
+                        ? "Cuota diaria de Gemini agotada. Configura HuggingFace API key como respaldo en Ajustes."
+                        : (geminiErr?.message ?? "Error con Gemini");
+                    return reply.status(500).send({ error: msg });
+                }
+            }
+        }
+
+        // ── HuggingFace fallback ──────────────────────────────────────────────
+        try {
+            const { HfInference } = await import("@huggingface/inference");
+            const hf = new HfInference(hfKey);
+            const schemaHint = `{"pre_nichos":[{"nombre":"string","descripcion":"string","potencial":"low|medium|high","sub_nichos":["string"],"keywords_clave":["string"]}]}`;
+            const response = await hf.chatCompletion({
+                model: "meta-llama/Llama-3.3-70B-Instruct",
+                messages: [
+                    {
+                        role: "system",
+                        content: `Eres un experto en mercados digitales Etsy. Agrupa productos en pre-nichos. Responde ÚNICAMENTE con un JSON válido sin markdown con esta estructura exacta:\n${schemaHint}`,
+                    },
+                    { role: "user", content: `${PROMPT}` },
+                ],
+                max_tokens: 2048,
+                temperature: 0.1,
+            });
+            const text = (response.choices[0]?.message?.content ?? "").trim();
+            const jsonMatch = text.match(/```json\s*([\s\S]*?)```/i) ?? text.match(/(\{[\s\S]*\})/s);
+            if (!jsonMatch) throw new Error(`HuggingFace no devolvió JSON válido: ${text.slice(0, 150)}`);
+            const parsed = JSON.parse(jsonMatch[1] ?? jsonMatch[0]);
+            return reply.send(parsed);
+        } catch (hfErr: any) {
+            return reply.status(500).send({ error: hfErr?.message ?? "Error generando pre-nichos con HuggingFace" });
         }
     });
 }

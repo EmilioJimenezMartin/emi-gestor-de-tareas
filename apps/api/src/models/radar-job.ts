@@ -16,6 +16,7 @@ export interface IRadarJob extends Document {
     status: "running" | "completed" | "failed";
     logs: RadarLog[];
     result?: any;
+    preNichos?: any[];
     error?: string;
     createdAt: Date;
     updatedAt: Date;
@@ -32,6 +33,7 @@ const RadarJobSchema = new Schema<IRadarJob>(
         status: { type: String, enum: ["running", "completed", "failed"], default: "running" },
         logs: [{ timestamp: Date, level: String, message: String }],
         result: { type: Schema.Types.Mixed },
+        preNichos: { type: [Schema.Types.Mixed], default: undefined },
         error: { type: String },
     },
     { timestamps: true }
