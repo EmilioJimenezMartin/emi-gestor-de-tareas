@@ -25,6 +25,8 @@ import { registerEtsyRoutes } from "./routes/etsy.js";
 import { registerUploadsRoutes } from "./routes/uploads.js";
 import { registerDigitalProductRoutes } from "./routes/digitalProducts.js";
 import { registerIntegrationRoutes } from "./routes/integrations.js";
+import { registerPatternRoutes } from "./routes/patterns.js";
+import { registerDatasetRoutes } from "./routes/datasets.js";
 import { Settings } from "./models/settings.js";
 
 const env = loadEnv(process.env);
@@ -59,6 +61,8 @@ await registerEtsyRoutes(app);
 await registerUploadsRoutes(app);
 await registerDigitalProductRoutes(app);
 await registerIntegrationRoutes(app);
+await registerPatternRoutes(app);
+await registerDatasetRoutes(app);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {
@@ -186,6 +190,26 @@ const seedSettings = async () => {
     await Settings.findOneAndUpdate(
       { key: "PUBLIC_API_URL" },
       { $setOnInsert: { key: "PUBLIC_API_URL", value: "", is_secret: false } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "HUGGINGFACE_WRITE_TOKEN" },
+      { $setOnInsert: { key: "HUGGINGFACE_WRITE_TOKEN", value: process.env.HUGGINGFACE_WRITE_TOKEN || "", is_secret: true } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "HUGGINGFACE_USERNAME" },
+      { $setOnInsert: { key: "HUGGINGFACE_USERNAME", value: process.env.HUGGINGFACE_USERNAME || "", is_secret: false } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "KAGGLE_USERNAME" },
+      { $setOnInsert: { key: "KAGGLE_USERNAME", value: process.env.KAGGLE_USERNAME || "", is_secret: false } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "KAGGLE_KEY" },
+      { $setOnInsert: { key: "KAGGLE_KEY", value: process.env.KAGGLE_KEY || "", is_secret: true } },
       { upsert: true, new: true }
     );
     app.log.info("System config keys seeded into DB (setOnInsert).");

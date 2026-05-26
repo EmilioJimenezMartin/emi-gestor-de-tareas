@@ -84,6 +84,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { toast } from "sonner";
 import { createApiSocket } from "@/lib/socket";
 import { NicheRadar } from "@/components/extractor/NicheRadar";
+import { AppTabNav, type AppTab } from "@/components/tasks/apps/shared/app-tab-nav";
 
 interface ProductPlatform {
     name: string;
@@ -115,7 +116,6 @@ const PRODUCT_TYPES = [
 ];
 
 const AI_MODELS = [
-    // Mantener los modelos originales (algunos pueden estar más rate-limited / con licencias no-OSS).
     { id: "flux-schnell", name: "FLUX.1 [schnell]", provider: "Hugging Face", type: "Ultra High Quality", modelId: "black-forest-labs/FLUX.1-schnell" },
     { id: "flux-dev", name: "FLUX.1 [dev]", provider: "Hugging Face", type: "Higher fidelity (may be gated)", modelId: "black-forest-labs/FLUX.1-dev" },
     { id: "sd-3.5", name: "Stable Diffusion 3.5", provider: "Hugging Face", type: "Versatile", modelId: "stabilityai/stable-diffusion-3.5-large-turbo" },
@@ -6677,29 +6677,17 @@ export function KdpFactoryApp() {
 
     return (
         <div className="space-y-12 pb-24">
-            {/* Sub-Navigation Tabs - Floating Style */}
-            <div className="sticky top-[90px] z-[50] w-full flex justify-center pointer-events-none px-4">
-                <div className="pointer-events-auto flex p-1.5 bg-[#111111]/90 backdrop-blur-xl border border-white/10 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.6)] max-w-full overflow-x-auto no-scrollbar">
-                    {[
-                        { id: "insights", name: "Insights", icon: <Activity size={15} /> },
-                        { id: "creation", name: "Imágenes", icon: <ImageIcon size={15} /> },
-                        { id: "studio", name: "Studio IA", icon: <Sparkles size={15} /> },
-                        { id: "gelato", name: "Factory", icon: <Store size={15} /> },
-                    ].map((tab) => (
-                        <button
-                            key={tab.id}
-                            onClick={() => changeTab(tab.id as TabID)}
-                            className={`flex items-center gap-2 md:gap-3 px-4 md:px-8 py-3.5 rounded-[24px] text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-500 whitespace-nowrap justify-center ${activeTab === tab.id
-                                ? "bg-white text-black shadow-lg scale-[1.05] z-10"
-                                : "text-neutral-500 hover:text-white hover:bg-white/5"
-                                }`}
-                        >
-                            {tab.icon}
-                            <span className="hidden md:inline">{tab.name}</span>
-                        </button>
-                    ))}
-                </div>
-            </div>
+            <AppTabNav
+                tabs={[
+                    { id: "insights", name: "Insights", icon: <Activity size={15} /> },
+                    { id: "creation", name: "Imágenes", icon: <ImageIcon size={15} /> },
+                    { id: "studio", name: "Studio IA", icon: <Sparkles size={15} /> },
+                    { id: "gelato", name: "Factory", icon: <Store size={15} /> },
+                ] satisfies AppTab[]}
+                activeTab={activeTab}
+                onChange={(id) => changeTab(id as TabID)}
+                storageKey="kdp-active-tab"
+            />
 
             {/* Content Area Rendering Based on Active Tab */}
             <div className="relative pt-6">

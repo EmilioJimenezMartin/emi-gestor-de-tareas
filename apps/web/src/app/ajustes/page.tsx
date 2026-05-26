@@ -49,6 +49,11 @@ export default function AjustesPage() {
     const [showGelatoKey, setShowGelatoKey] = useState(false);
     const [publicApiUrl, setPublicApiUrl] = useState("");
 
+    // HuggingFace Hub
+    const [hfWriteToken, setHfWriteToken] = useState("");
+    const [hfUsername, setHfUsername] = useState("");
+    const [showHfToken, setShowHfToken] = useState(false);
+
     // Etsy
     const [etsyApiKey, setEtsyApiKey] = useState("");
     const [etsyApiSecret, setEtsyApiSecret] = useState("");
@@ -84,6 +89,8 @@ export default function AjustesPage() {
                 if (map.has("ETSY_API_SECRET")) setEtsyApiSecret(map.get("ETSY_API_SECRET"));
                 if (map.has("ETSY_SHOP_ID")) setEtsyShopId(map.get("ETSY_SHOP_ID"));
                 if (map.has("ETSY_REDIRECT_URI")) setEtsyRedirectUri(map.get("ETSY_REDIRECT_URI"));
+                if (map.has("HUGGINGFACE_WRITE_TOKEN")) setHfWriteToken(map.get("HUGGINGFACE_WRITE_TOKEN"));
+                if (map.has("HUGGINGFACE_USERNAME")) setHfUsername(map.get("HUGGINGFACE_USERNAME"));
             } catch (err) {
                 console.error(err);
                 toast.error("Error de red conectando con la API");
@@ -121,6 +128,8 @@ export default function AjustesPage() {
                 { key: "ETSY_API_SECRET", value: etsyApiSecret },
                 { key: "ETSY_SHOP_ID", value: etsyShopId },
                 { key: "ETSY_REDIRECT_URI", value: etsyRedirectUri },
+                { key: "HUGGINGFACE_WRITE_TOKEN", value: hfWriteToken },
+                { key: "HUGGINGFACE_USERNAME", value: hfUsername },
             ];
             const res = await fetch(`${apiUrl}/settings`, {
                 method: "PATCH",
@@ -437,6 +446,66 @@ export default function AjustesPage() {
                             <p className="text-[11px] text-neutral-600 leading-relaxed italic">
                                 Las credenciales se guardan cifradas en MongoDB. Se usan exclusivamente para subir y eliminar imágenes del IA Asset Studio.
                             </p>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* HuggingFace Hub */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">HuggingFace Hub</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-amber-500/10 text-amber-400 border-amber-500/20">DATASETS</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-lg shadow-amber-500/20 text-lg font-black italic">H</div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Hugging Face Hub Write Access</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">DataRefinery · Subida de datasets</p>
+                                </div>
+                            </div>
+                            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-2">
+                                <p className="text-xs text-amber-300 font-medium">Cómo obtener el Write Token:</p>
+                                <ol className="text-[11px] text-neutral-400 space-y-1 list-decimal list-inside">
+                                    <li>Ve a <span className="text-amber-400 font-mono">huggingface.co/settings/tokens</span></li>
+                                    <li>Crea un token de tipo <span className="font-bold text-white">Write</span> (no el de inferencia)</li>
+                                    <li>Copia el token <span className="font-mono text-amber-400">hf_...</span> y pégalo aquí</li>
+                                    <li>El username es tu nombre de usuario en HuggingFace (no el email)</li>
+                                </ol>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">HUGGINGFACE_WRITE_TOKEN</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showHfToken ? "text" : "password"}
+                                            value={hfWriteToken}
+                                            onChange={(e) => setHfWriteToken(e.target.value)}
+                                            className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-amber-500/40 transition-all"
+                                            placeholder="hf_..."
+                                        />
+                                        <button type="button" onClick={() => setShowHfToken(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                            {showHfToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">HUGGINGFACE_USERNAME</label>
+                                    <input
+                                        type="text"
+                                        value={hfUsername}
+                                        onChange={(e) => setHfUsername(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-mono text-white outline-none focus:border-amber-500/40 transition-all"
+                                        placeholder="tu-usuario-hf"
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
                         </div>
                     </Card>
                 </section>
