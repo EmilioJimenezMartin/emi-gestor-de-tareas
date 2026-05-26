@@ -7,6 +7,11 @@ export interface IProductPlatform {
     date?: string;
 }
 
+export interface IEarningsSnapshot {
+    date: Date;
+    total: number;
+}
+
 export interface IDigitalProduct extends Document {
     type: string;
     title: string;
@@ -14,6 +19,7 @@ export interface IDigitalProduct extends Document {
     status: "activo" | "pausado" | "borrador";
     platforms: IProductPlatform[];
     totalEarnings: number;
+    earningsHistory: IEarningsSnapshot[];
     nicheId?: string;
     createdAt: Date;
     updatedAt: Date;
@@ -29,6 +35,14 @@ const PlatformSchema = new Schema<IProductPlatform>(
     { _id: false }
 );
 
+const EarningsSnapshotSchema = new Schema<IEarningsSnapshot>(
+    {
+        date:  { type: Date,   default: () => new Date() },
+        total: { type: Number, default: 0 },
+    },
+    { _id: false }
+);
+
 const DigitalProductSchema = new Schema<IDigitalProduct>(
     {
         type: { type: String, required: true },
@@ -37,6 +51,7 @@ const DigitalProductSchema = new Schema<IDigitalProduct>(
         status: { type: String, enum: ["activo", "pausado", "borrador"], default: "activo" },
         platforms: [PlatformSchema],
         totalEarnings: { type: Number, default: 0 },
+        earningsHistory: { type: [EarningsSnapshotSchema], default: [] },
         nicheId: { type: String, default: "" },
     },
     { timestamps: true }

@@ -79,7 +79,7 @@ const INSTRUCTIONS_STEPS = [
     { n: 5, text: "Panel izquierdo: configura nombre, descripción, licencia y qué campo usar como caption (recomendado: \"Particulars\")." },
     { n: 6, text: "Descargar metadata.jsonl → archivo con una línea JSON por imagen: { file_name, url, text, style, quality }." },
     { n: 7, text: "Copiar script Python → descarga todas las imágenes de Cloudinary a una carpeta local." },
-    { n: 8, text: "Ve a la pestaña HuggingFace o Kaggle para subir el dataset directamente desde aquí." },
+    { n: 8, text: "Ve a la pestaña HuggingFace para subir el dataset directamente desde aquí con un clic." },
 ];
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -421,6 +421,7 @@ print(f"\\nDone — {len(records)} images saved to {OUTPUT_DIR}/")
                 apiBase={API_BASE_URL}
                 productTypes={DATASET_PRODUCT_TYPES}
                 defaultPlatform="HuggingFace Hub"
+                filterTypes={DATASET_PRODUCT_TYPES.map(t => t.id)}
                 onProductsChange={setInsightsProducts}
             />
         </div>

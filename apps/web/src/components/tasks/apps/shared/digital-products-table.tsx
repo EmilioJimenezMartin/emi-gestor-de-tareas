@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
     Plus, Trash2, Copy, Check, X, Search, Download,
-    ExternalLink, Pencil, Loader2, AlertTriangle,
+    ExternalLink, Pencil, Loader2, AlertTriangle, RefreshCw, ShoppingBag,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -16,6 +16,11 @@ export interface ProductPlatform {
     date?: string;
 }
 
+export interface EarningsSnapshot {
+    date: string | Date;
+    total: number;
+}
+
 export interface DigitalProduct {
     id: string;
     _id?: string;
@@ -25,6 +30,7 @@ export interface DigitalProduct {
     status: "activo" | "pausado" | "borrador";
     platforms: ProductPlatform[];
     totalEarnings: number;
+    earningsHistory?: EarningsSnapshot[];
     createdAt: string;
 }
 
@@ -45,10 +51,19 @@ export const DEFAULT_PRODUCT_TYPES: ProductType[] = [
     { id: "other",            name: "Otro" },
 ];
 
+interface EtsySyncItem {
+    listingId: string;
+    title: string;
+    sales: number;
+    revenue: number;
+}
+
 interface DigitalProductsTableProps {
     apiBase: string;
     productTypes?: ProductType[];
     defaultPlatform?: string;
+    /** When set, only products whose type matches one of these type IDs are shown */
+    filterTypes?: string[];
     onProductsChange?: (products: DigitalProduct[]) => void;
 }
 
@@ -58,11 +73,19 @@ export function DigitalProductsTable({
     apiBase,
     productTypes = DEFAULT_PRODUCT_TYPES,
     defaultPlatform = "Plataforma",
+    filterTypes,
     onProductsChange,
 }: DigitalProductsTableProps) {
 
     const [products, setProducts]           = useState<DigitalProduct[]>([]);
     const [isLoading, setIsLoading]         = useState(true);
+
+    // Etsy sync state
+    const [showEtsySync, setShowEtsySync]   = useState(false);
+    const [etsySyncData, setEtsySyncData]   = useState<EtsySyncItem[] | null>(null);
+    const [etsySyncTotal, setEtsySyncTotal] = useState(0);
+    const [isSyncing, setIsSyncing]         = useState(false);
+    const [applyingId, setApplyingId]       = useState<string | null>(null);
     const [editingId, setEditingId]         = useState<string | null>(null);
     const [editDraft, setEditDraft]         = useState<DigitalProduct | null>(null);
     const [search, setSearch]               = useState("");
@@ -93,8 +116,14 @@ export function DigitalProductsTable({
     // ── Derived ───────────────────────────────────────────────────────────────
 
     const filtered = useMemo(() => {
-        let list = typeFilter === "all" ? products
-            : products.filter(p => p.type === (productTypes.find(t => t.id === typeFilter)?.name ?? ""));
+        // Start with optional app-level type filter
+        let list = filterTypes
+            ? products.filter(p => filterTypes.some(fid => productTypes.find(t => t.id === fid)?.name === p.type))
+            : products;
+        // Then apply user's dropdown type filter
+        if (typeFilter !== "all") {
+            list = list.filter(p => p.type === (productTypes.find(t => t.id === typeFilter)?.name ?? ""));
+        }
         if (search.trim()) {
             const q = search.toLowerCase();
             list = list.filter(p => p.title.toLowerCase().includes(q) || p.type.toLowerCase().includes(q));
@@ -104,7 +133,7 @@ export function DigitalProductsTable({
             if (sort === "date")     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
             return a.status.localeCompare(b.status);
         });
-    }, [products, typeFilter, search, sort, productTypes]);
+    }, [products, filterTypes, typeFilter, search, sort, productTypes]);
 
     // ── Mutations ─────────────────────────────────────────────────────────────
 
@@ -178,6 +207,55 @@ export function DigitalProductsTable({
         finally { setIsBulkDeleting(false); }
     };
 
+    const fetchEtsySync = async () => {
+        setIsSyncing(true);
+        setShowEtsySync(true);
+        setEtsySyncData(null);
+        try {
+            const res  = await fetch(`${apiBase}/etsy/receipts-summary`);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error en sync Etsy");
+            setEtsySyncData(data.summary ?? []);
+            setEtsySyncTotal(data.totalRevenue ?? 0);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error conectando con Etsy");
+            setShowEtsySync(false);
+        } finally { setIsSyncing(false); }
+    };
+
+    const applyEtsyRevenue = async (item: EtsySyncItem) => {
+        // Try to find matching product (by title fuzzy match), then add/update Etsy platform earnings
+        const match = products.find(p =>
+            p.title.toLowerCase().includes(item.title.toLowerCase().slice(0, 20)) ||
+            item.title.toLowerCase().includes(p.title.toLowerCase().slice(0, 20))
+        );
+        if (!match) {
+            toast.error(`No se encontró producto para "${item.title.slice(0, 40)}"…`);
+            return;
+        }
+        setApplyingId(item.listingId);
+        const platforms = [...match.platforms];
+        const etsyIdx   = platforms.findIndex(p => p.name === "Etsy");
+        if (etsyIdx >= 0) {
+            platforms[etsyIdx] = { ...platforms[etsyIdx], earnings: item.revenue };
+        } else {
+            platforms.push({ name: "Etsy", earnings: item.revenue, url: "" });
+        }
+        const body = { platforms, totalEarnings: platforms.reduce((s, p) => s + p.earnings, 0) };
+        try {
+            const res = await fetch(`${apiBase}/digital-products/${match._id}`, {
+                method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+            });
+            if (res.ok) {
+                const d = await res.json();
+                const updated = { ...d.product, id: d.product._id };
+                setProducts(ps => { const next = ps.map(p => p.id === match.id ? updated : p); onProductsChange?.(next); return next; });
+                toast.success(`Aplicado ${item.revenue.toFixed(2)}€ a "${match.title}"`);
+            }
+        } catch { toast.error("Error aplicando ganancias"); }
+        finally { setApplyingId(null); }
+    };
+
     const createNew = async () => {
         const tempId = `temp_${Date.now()}`;
         const typeName = productTypes[0]?.name ?? "Otro";
@@ -247,6 +325,12 @@ export function DigitalProductsTable({
                         <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><rect x="0" y="0" width="11" height="1.5" rx="0.75" fill="currentColor"/><rect x="0" y="3.5" width="11" height="1.5" rx="0.75" fill="currentColor"/><rect x="0" y="7" width="11" height="1.5" rx="0.75" fill="currentColor"/><rect x="0" y="10" width="11" height="1.5" rx="0.75" fill="currentColor"/></svg>
                     </button>
                 </div>
+                <button onClick={() => void fetchEtsySync()} disabled={isSyncing}
+                    className="h-8 px-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 text-[10px] font-black uppercase flex items-center gap-1.5 transition-all disabled:opacity-50"
+                    title="Sincronizar ventas desde Etsy">
+                    {isSyncing ? <Loader2 size={11} className="animate-spin" /> : <ShoppingBag size={11} />}
+                    Etsy
+                </button>
                 <button onClick={() => void createNew()}
                     className="h-8 px-4 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-all">
                     <Plus size={11} /> Añadir
@@ -509,6 +593,69 @@ export function DigitalProductsTable({
                             </div>
                         );
                     })}
+                </div>
+            )}
+
+            {/* Etsy sync modal */}
+            {showEtsySync && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+                    <div className="fixed inset-0 bg-black/80 backdrop-blur-xl" onClick={() => setShowEtsySync(false)} />
+                    <div className="relative w-full max-w-lg bg-[#0d0d0d] border border-white/10 rounded-[28px] p-6 shadow-2xl animate-in zoom-in-95 duration-300 space-y-4 max-h-[80vh] flex flex-col">
+                        <div className="flex items-center justify-between shrink-0">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center">
+                                    <ShoppingBag size={14} className="text-amber-400" />
+                                </div>
+                                <div>
+                                    <p className="text-[13px] font-black text-white">Sync desde Etsy</p>
+                                    <p className="text-[9px] text-neutral-600 font-black uppercase tracking-widest">
+                                        {isSyncing ? "Cargando…" : `${etsySyncData?.length ?? 0} listings · ${etsySyncTotal.toFixed(2)}€ total`}
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowEtsySync(false)} className="w-7 h-7 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-neutral-500 hover:text-white transition-all">
+                                <X size={12} />
+                            </button>
+                        </div>
+
+                        {isSyncing ? (
+                            <div className="flex-1 flex items-center justify-center py-12">
+                                <Loader2 size={28} className="animate-spin text-amber-400" />
+                            </div>
+                        ) : etsySyncData && etsySyncData.length === 0 ? (
+                            <p className="text-[11px] text-neutral-600 italic text-center py-8">No se encontraron receipts pagados</p>
+                        ) : (
+                            <div className="overflow-y-auto flex-1 space-y-1.5 pr-1">
+                                <p className="text-[9px] text-neutral-600 font-black uppercase tracking-widest mb-2">
+                                    Haz clic en "Aplicar" para actualizar las ganancias del producto coincidente
+                                </p>
+                                {(etsySyncData ?? []).map(item => {
+                                    const match = products.find(p =>
+                                        p.title.toLowerCase().includes(item.title.toLowerCase().slice(0, 20)) ||
+                                        item.title.toLowerCase().includes(p.title.toLowerCase().slice(0, 20))
+                                    );
+                                    return (
+                                        <div key={item.listingId} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-[11px] font-black text-white truncate">{item.title}</p>
+                                                <p className="text-[9px] text-neutral-600">
+                                                    {item.sales} ventas · {item.revenue.toFixed(2)}€
+                                                    {match && <span className="ml-2 text-emerald-500">→ {match.title.slice(0, 25)}</span>}
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={() => void applyEtsyRevenue(item)}
+                                                disabled={!match || applyingId === item.listingId}
+                                                className="shrink-0 h-7 px-3 rounded-xl bg-amber-500/15 border border-amber-500/20 text-[9px] font-black text-amber-300 hover:bg-amber-500/25 transition-all disabled:opacity-30 flex items-center gap-1">
+                                                {applyingId === item.listingId ? <Loader2 size={9} className="animate-spin" /> : <Check size={9} />}
+                                                Aplicar
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 

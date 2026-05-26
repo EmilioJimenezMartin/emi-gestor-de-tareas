@@ -601,6 +601,7 @@ export function SeamlessPatternApp() {
                     apiBase={API_BASE_URL}
                     productTypes={SEAMLESS_PRODUCT_TYPES}
                     defaultPlatform="Redbubble"
+                    filterTypes={SEAMLESS_PRODUCT_TYPES.map(t => t.id)}
                     onProductsChange={setInsightsProducts}
                 />
             </div>

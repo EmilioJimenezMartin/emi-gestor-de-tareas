@@ -49,6 +49,8 @@ export async function registerDigitalProductRoutes(app: FastifyInstance) {
             const { id } = request.params as { id: string };
             const body = request.body as any;
             const update: Record<string, any> = {};
+            const push:  Record<string, any> = {};
+
             if (body.type?.trim()) update.type = body.type.trim();
             if (body.title?.trim()) update.title = body.title.trim();
             if (body.description !== undefined) update.description = body.description.trim();
@@ -56,9 +58,20 @@ export async function registerDigitalProductRoutes(app: FastifyInstance) {
             if (body.nicheId !== undefined) update.nicheId = body.nicheId;
             if (Array.isArray(body.platforms)) {
                 update.platforms = body.platforms;
-                update.totalEarnings = body.platforms.reduce((s: number, p: any) => s + (Number(p.earnings) || 0), 0);
+                const newTotal = body.platforms.reduce((s: number, p: any) => s + (Number(p.earnings) || 0), 0);
+                update.totalEarnings = newTotal;
+
+                // Snapshot earnings history when total changes
+                const existing = await DigitalProduct.findById(id).select("totalEarnings").lean();
+                if (existing && (existing as any).totalEarnings !== newTotal) {
+                    push.earningsHistory = { date: new Date(), total: newTotal };
+                }
             }
-            const product = await DigitalProduct.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
+
+            const op: Record<string, any> = { $set: update };
+            if (push.earningsHistory) op.$push = { earningsHistory: push.earningsHistory };
+
+            const product = await DigitalProduct.findByIdAndUpdate(id, op, { new: true }).lean();
             if (!product) return reply.status(404).send({ error: "Producto no encontrado" });
             return reply.send({ product });
         } catch (e: any) {

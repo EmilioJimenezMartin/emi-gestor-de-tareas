@@ -549,4 +549,48 @@ export async function registerEtsyRoutes(app: FastifyInstance) {
             return reply.status(500).send({ error: err.message });
         }
     });
+
+    // ── Receipts summary (for earnings sync) ─────────────────────────────────
+    // Returns revenue grouped by listing so user can map to digital products
+    app.get("/etsy/receipts-summary", async (req: any, reply) => {
+        const shopId = await getSetting("ETSY_SHOP_ID");
+        if (!shopId) return reply.status(400).send({ error: "ETSY_SHOP_ID no configurado" });
+        const { limit = 100 } = req.query || {};
+        try {
+            // Fetch paid receipts
+            const data = await etsyFetch<any>(
+                `/application/shops/${shopId}/receipts?status=paid&limit=${Math.min(Number(limit), 100)}`
+            ) as any;
+
+            const receipts: any[] = data?.results ?? [];
+
+            // Aggregate by listing_id across all transactions in receipts
+            const map = new Map<string, { listingId: string; title: string; sales: number; revenue: number }>();
+
+            for (const receipt of receipts) {
+                const transactions: any[] = receipt.transactions ?? [];
+                for (const tx of transactions) {
+                    const listingId = String(tx.listing_id ?? "unknown");
+                    const title     = tx.title ?? "Sin título";
+                    const price     = (tx.price?.amount ?? 0) / (tx.price?.divisor ?? 100);
+                    const qty       = tx.quantity ?? 1;
+
+                    const existing = map.get(listingId);
+                    if (existing) {
+                        existing.sales   += qty;
+                        existing.revenue += price * qty;
+                    } else {
+                        map.set(listingId, { listingId, title, sales: qty, revenue: price * qty });
+                    }
+                }
+            }
+
+            const summary = [...map.values()].sort((a, b) => b.revenue - a.revenue);
+            const totalRevenue = summary.reduce((s, e) => s + e.revenue, 0);
+
+            return reply.send({ summary, totalRevenue, receiptsCount: receipts.length });
+        } catch (err: any) {
+            return reply.status(500).send({ error: err.message });
+        }
+    });
 }
