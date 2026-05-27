@@ -1,6 +1,7 @@
 import type { Agenda, Job } from "agenda";
 import { defineCatalogJob } from "./catalog.js";
 import { defineRadarJob } from "./radar.js";
+import { definePatternGenJob } from "./pattern-generation.js";
 
 export function defineJobs(agenda: Agenda, io?: any) {
     agenda.define("dummy-task", async (job: Job) => {
@@ -20,5 +21,6 @@ export function defineJobs(agenda: Agenda, io?: any) {
     if (io) {
         defineCatalogJob(agenda, io);
         defineRadarJob(agenda, io);
+        definePatternGenJob(agenda, io);
     }
 }

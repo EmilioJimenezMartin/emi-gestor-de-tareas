@@ -1,6 +1,10 @@
 import type { FastifyInstance } from "fastify";
+import { randomUUID } from "crypto";
 import { Pattern } from "../models/pattern.js";
+import { PatternGenJob } from "../models/pattern-gen-job.js";
 import { getCloudinaryConfig, initCloudinary } from "./cloudinary.js";
+import { PATTERN_GEN_JOB_NAME } from "../jobs/pattern-generation.js";
+import { getAgenda } from "../lib/agenda.js";
 
 export async function registerPatternRoutes(app: FastifyInstance) {
 
@@ -95,6 +99,49 @@ export async function registerPatternRoutes(app: FastifyInstance) {
             const pattern = await Pattern.findByIdAndUpdate(request.params.id, update, { new: true }).lean();
             if (!pattern) return reply.status(404).send({ error: "Patrón no encontrado" });
             return reply.send({ pattern });
+        } catch (err: any) {
+            return reply.status(500).send({ error: err.message });
+        }
+    });
+
+    // POST /patterns/generate-job — start background pattern generation
+    app.post("/patterns/generate-job", async (request: any, reply) => {
+        try {
+            const { prompt, negativePrompt, modelId, provider, seed, width, height, styleId, styleLabel, paletteId, paletteLabel } = request.body ?? {};
+            if (!prompt) return reply.status(400).send({ error: "prompt es requerido" });
+
+            let agenda: ReturnType<typeof getAgenda>;
+            try { agenda = getAgenda(); } catch {
+                return reply.status(503).send({ error: "Scheduler no disponible todavía" });
+            }
+
+            const jobId = randomUUID();
+            await PatternGenJob.create({
+                jobId,
+                prompt,
+                negativePrompt: negativePrompt ?? "",
+                modelId: modelId ?? "flux",
+                provider: provider ?? "Pollinations",
+                seed: seed ?? Math.floor(Math.random() * 999999),
+                width: width ?? 1024,
+                height: height ?? 1024,
+                styleId, styleLabel, paletteId, paletteLabel,
+                status: "running",
+                logs: [],
+            });
+
+            await agenda.now(PATTERN_GEN_JOB_NAME, { jobId });
+            return reply.status(202).send({ jobId });
+        } catch (err: any) {
+            return reply.status(500).send({ error: err.message ?? "Error creando job" });
+        }
+    });
+
+    // GET /patterns/gen-jobs/latest — get the most recent pattern generation job
+    app.get("/patterns/gen-jobs/latest", async (_request: any, reply) => {
+        try {
+            const job = await PatternGenJob.findOne().sort({ createdAt: -1 }).lean();
+            return reply.send({ job: job ?? null });
         } catch (err: any) {
             return reply.status(500).send({ error: err.message });
         }

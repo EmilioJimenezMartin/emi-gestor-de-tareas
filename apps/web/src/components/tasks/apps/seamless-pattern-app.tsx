@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
     Sparkles, Download, RefreshCw, Grid, Copy, Trash2,
     ChevronDown, Loader2, Check, Save,
@@ -8,7 +8,8 @@ import {
     BarChart2, TrendingUp, AlertTriangle, Plus, X
 } from "lucide-react";
 import { toast } from "sonner";
-import { AI_MODELS, groupModelsByProvider, generateImageBlobUrl, type AIModel } from "./shared/ai-constants";
+import { AI_MODELS, groupModelsByProvider, type AIModel } from "./shared/ai-constants";
+import { createApiSocket } from "@/lib/socket";
 import { AppTabNav, type AppTab } from "./shared/app-tab-nav";
 import { EarningsStats, type EarningsProduct } from "./shared/earnings-stats";
 import { DigitalProductsTable, DEFAULT_PRODUCT_TYPES } from "./shared/digital-products-table";
@@ -119,6 +120,10 @@ export function SeamlessPatternApp() {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+    const [generationJobId, setGenerationJobId] = useState<string | null>(null);
+    const [generationLogs, setGenerationLogs] = useState<Array<{ level: string; message: string; timestamp: string }>>([]);
+    const patternSocketRef = useRef<ReturnType<typeof createApiSocket> | null>(null);
+    const logsEndRef = useRef<HTMLDivElement>(null);
     const [tileMode, setTileMode] = useState<TileMode>("2x2");
     const [showTiled, setShowTiled] = useState(false);
     const [seed, setSeed] = useState(() => Math.floor(Math.random() * 999999));
@@ -325,25 +330,86 @@ export function SeamlessPatternApp() {
 
     useEffect(() => { void loadCustomStyles(); void loadCustomPalettes(); }, [loadCustomStyles, loadCustomPalettes]);
 
-    // Restore last generated pattern draft on mount
+    // Socket — connect once for the lifetime of this component
     useEffect(() => {
-        fetch(`${API_BASE_URL}/settings`)
-            .then(r => r.json())
-            .then(({ settings }: any) => {
-                const row = (settings as any[]).find((s: any) => s.key === "SEAMLESS_PATTERN_DRAFT");
-                if (row?.value && row.value !== "null") {
-                    try {
+        const socket = createApiSocket(API_BASE_URL);
+        patternSocketRef.current = socket;
+
+        socket.on("pattern:log", (data: { jobId: string; level: string; message: string; timestamp: string }) => {
+            setGenerationLogs(prev => [...prev, { level: data.level, message: data.message, timestamp: data.timestamp ?? new Date().toISOString() }]);
+        });
+
+        socket.on("pattern:complete", () => {
+            fetch(`${API_BASE_URL}/settings`)
+                .then(r => r.json())
+                .then(({ settings }: any) => {
+                    const row = (settings as any[]).find((s: any) => s.key === "SEAMLESS_PATTERN_DRAFT");
+                    if (row?.value && row.value !== "null") {
                         const d = JSON.parse(row.value);
                         if (d?.dataUrl) {
                             setGeneratedUrl(d.dataUrl);
                             setPromptUsed(d.promptUsed ?? "");
-                            setSeed(d.seed ?? seed);
-                            setIsDraftLoaded(true);
+                            setSeed(d.seed ?? 0);
                         }
-                    } catch {}
+                    }
+                })
+                .catch(() => {})
+                .finally(() => {
+                    setIsGenerating(false);
+                    setIsDraftLoaded(false);
+                    toast.success("Patrón generado");
+                });
+        });
+
+        socket.on("pattern:error", (data: { message: string }) => {
+            setIsGenerating(false);
+            toast.error(data.message ?? "Error generando patrón");
+        });
+
+        return () => {
+            socket.disconnect();
+            patternSocketRef.current = null;
+        };
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Auto-scroll logs terminal
+    useEffect(() => {
+        if (logsEndRef.current && generationLogs.length > 0) {
+            const container = logsEndRef.current.parentElement;
+            if (container) container.scrollTop = container.scrollHeight;
+        }
+    }, [generationLogs]);
+
+    // Restore on mount: check for running job OR existing draft
+    useEffect(() => {
+        const restore = async () => {
+            try {
+                const jobRes = await fetch(`${API_BASE_URL}/patterns/gen-jobs/latest`);
+                const { job } = await jobRes.json();
+                if (job?.status === "running") {
+                    setIsGenerating(true);
+                    setGenerationJobId(job.jobId);
+                    setGenerationLogs((job.logs ?? []).map((l: any) => ({
+                        level: l.level, message: l.message, timestamp: new Date(l.timestamp).toISOString(),
+                    })));
+                    return; // socket will deliver completion
                 }
-            })
-            .catch(() => {});
+                // Load existing draft (completed or older generation)
+                const settingsRes = await fetch(`${API_BASE_URL}/settings`);
+                const { settings } = await settingsRes.json();
+                const row = (settings as any[]).find((s: any) => s.key === "SEAMLESS_PATTERN_DRAFT");
+                if (row?.value && row.value !== "null") {
+                    const d = JSON.parse(row.value);
+                    if (d?.dataUrl) {
+                        setGeneratedUrl(d.dataUrl);
+                        setPromptUsed(d.promptUsed ?? "");
+                        setSeed(d.seed ?? seed);
+                        setIsDraftLoaded(true);
+                    }
+                }
+            } catch {}
+        };
+        void restore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -368,26 +434,28 @@ export function SeamlessPatternApp() {
         setIsGenerating(true);
         setGeneratedUrl(null);
         setPromptUsed(prompt);
+        setGenerationLogs([]);
         try {
-            const url = await generateImageBlobUrl(API_BASE_URL, {
-                prompt, modelId: currentModel.modelId, provider: currentModel.provider,
-                width: 1024, height: 1024, negativePrompt: neg, seed: usedSeed,
-                onRetry: (wait, attempt) => toast.info(`Reintentando en ${wait}s (${attempt}/2)…`),
+            const res = await fetch(`${API_BASE_URL}/patterns/generate-job`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    prompt, negativePrompt: neg,
+                    modelId: currentModel.modelId, provider: currentModel.provider,
+                    seed: usedSeed, width: 1024, height: 1024,
+                    styleId: selectedStyle.id, styleLabel: selectedStyle.label,
+                    paletteId: selectedPalette.id, paletteLabel: selectedPalette.label,
+                }),
             });
-            setGeneratedUrl(url);
+            if (!res.ok) { const e = await res.json(); throw new Error(e.error ?? "Error iniciando generación"); }
+            const { jobId } = await res.json();
+            setGenerationJobId(jobId);
             setShowTiled(false);
-            toast.success("Patrón generado");
-            // Auto-save draft so pattern survives navigation
-            blobUrlToDataUrl(url).then(dataUrl => {
-                fetch(`${API_BASE_URL}/settings`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify([{ key: "SEAMLESS_PATTERN_DRAFT", value: JSON.stringify({ dataUrl, promptUsed: prompt, seed: usedSeed }) }]),
-                }).catch(() => {});
-            }).catch(() => {});
+            // result comes via pattern:complete socket event
         } catch (e: any) {
             toast.error(e.message ?? "Error generando patrón");
-        } finally { setIsGenerating(false); }
+            setIsGenerating(false);
+        }
     };
 
     const vary = () => {
@@ -400,7 +468,7 @@ export function SeamlessPatternApp() {
         if (!generatedUrl) return;
         setIsSaving(true);
         try {
-            const dataUrl = await blobUrlToDataUrl(generatedUrl);
+            const dataUrl = generatedUrl.startsWith("data:") ? generatedUrl : await blobUrlToDataUrl(generatedUrl);
             const res = await fetch(`${API_BASE_URL}/patterns`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -697,12 +765,30 @@ export function SeamlessPatternApp() {
                     <div className="relative min-h-[360px] flex items-center justify-center"
                         style={{ background: "repeating-conic-gradient(#0a0a0a 0% 25%, #111 0% 50%) 0 0 / 20px 20px" }}>
                         {isGenerating ? (
-                            <div className="flex flex-col items-center gap-3 py-16">
-                                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500/20 to-pink-500/20 border border-violet-500/30 flex items-center justify-center">
-                                    <Loader2 size={28} className="text-violet-400 animate-spin" />
+                            <div className="w-full flex flex-col gap-3 p-5">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500/20 to-pink-500/20 border border-violet-500/30 flex items-center justify-center shrink-0">
+                                        <Loader2 size={14} className="text-violet-400 animate-spin" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-black text-white">Generando en segundo plano…</p>
+                                        <p className="text-[8px] text-neutral-600">{selectedStyle.label} · {selectedPalette.label} · {currentModel.name}</p>
+                                    </div>
                                 </div>
-                                <p className="text-[11px] font-black text-neutral-500">Generando patrón seamless…</p>
-                                <p className="text-[9px] text-neutral-700">{selectedStyle.label} · {selectedPalette.label} · {currentModel.name}</p>
+                                <div className="w-full bg-black/80 rounded-xl border border-white/[0.06] overflow-y-auto max-h-[260px] p-3 font-mono text-[9px] space-y-0.5">
+                                    {generationLogs.length === 0 ? (
+                                        <p className="text-neutral-700 italic">Iniciando job…</p>
+                                    ) : (
+                                        generationLogs.map((log, i) => (
+                                            <div key={i} className={`flex gap-2 leading-relaxed ${log.level === "error" ? "text-red-400" : log.level === "success" ? "text-emerald-400" : log.level === "warning" ? "text-amber-400" : "text-neutral-500"}`}>
+                                                <span className="shrink-0 text-neutral-700">{new Date(log.timestamp).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                                                <span className="break-all">{log.message}</span>
+                                            </div>
+                                        ))
+                                    )}
+                                    <div ref={logsEndRef} />
+                                </div>
+                                <p className="text-[8px] text-neutral-700 text-center">Puedes navegar — el motor sigue ejecutándose en segundo plano</p>
                             </div>
                         ) : generatedUrl ? (
                             !showTiled
