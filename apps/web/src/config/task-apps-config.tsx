@@ -10,11 +10,6 @@ export const TASK_APPS_REGISTRY: Record<string, TaskAppMeta> = {
         description: "Panel de control avanzado para la generación industrializada de activos digitales. Gestiona el ciclo de vida completo desde el brainstorming de nichos hasta la exportación final.",
         engineStatus: "READY_TO_BOOT",
     },
-    "etsy-gelato-platform": {
-        title: "Etsy + Gelato",
-        description: "Plataforma de ventas integrada: gestiona listings de Etsy (productos digitales descargables) y productos físicos Wire-O a través de Gelato print-on-demand.",
-        engineStatus: "READY_TO_BOOT",
-    },
     "ai-training-data-factory": {
         title: "DataRefinery",
         description: "Convierte tus catálogos generados en datasets de entrenamiento listos para vender en HuggingFace Hub y Civitai. Selecciona imágenes, añade ratings de calidad y exporta en formato JSONL con dataset card incluida.",

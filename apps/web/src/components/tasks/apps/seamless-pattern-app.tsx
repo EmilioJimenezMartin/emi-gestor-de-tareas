@@ -5,7 +5,7 @@ import {
     Sparkles, Download, RefreshCw, Grid, Copy, Trash2,
     ChevronDown, Loader2, Check, Save,
     ExternalLink, Info, Palette, Wand2, ImageIcon,
-    BarChart2, TrendingUp, AlertTriangle
+    BarChart2, TrendingUp, AlertTriangle, Plus, X
 } from "lucide-react";
 import { toast } from "sonner";
 import { AI_MODELS, groupModelsByProvider, generateImageBlobUrl, type AIModel } from "./shared/ai-constants";
@@ -39,6 +39,14 @@ interface SavedPattern {
 
 type TileMode = "1x1" | "2x2" | "3x3";
 
+interface CustomPatternStyle {
+    id: string;
+    label: string;
+    emoji: string;
+    prompt: string;
+    neg: string;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const PATTERN_STYLES = [
@@ -53,6 +61,7 @@ const PATTERN_STYLES = [
     { id: "food",         label: "Comida",        emoji: "🍓", prompt: "seamless food repeat pattern, fruits vegetables and kitchen elements, cute flat illustration, surface design", neg: "text, watermark, people, seams" },
     { id: "festive",      label: "Festivo",       emoji: "🎄", prompt: "seamless festive holiday repeat pattern, Christmas elements, decorative ornaments, flat illustration", neg: "text, watermark, seams, letters" },
     { id: "mandala",      label: "Mandala",       emoji: "🔮", prompt: "seamless mandala tile pattern, intricate symmetric ornamental design, zentangle inspired, detailed line art", neg: "text, watermark, asymmetric, seams" },
+    { id: "matrix",       label: "Matrix",        emoji: "💻", prompt: "seamless matrix digital code rain repeat pattern, cascading green glowing katakana and ASCII characters on deep black background, cyberpunk digital rain aesthetic, neon green typography symbols falling vertically, dark tech surface design", neg: "readable words, faces, objects, seams, border, frame, white background, colorful" },
     { id: "custom",       label: "Custom",        emoji: "✏️", prompt: "", neg: "" },
 ];
 
@@ -65,6 +74,7 @@ const COLOR_PALETTES = [
     { id: "monochrome", label: "Mono",      colors: ["#F8F8F8","#C0C0C0","#808080","#404040","#101010"], prompt: "black and white monochrome" },
     { id: "gold",       label: "Gold",      colors: ["#1A1A2E","#16213E","#0F3460","#E94560","#F5A623"], prompt: "luxury gold and deep navy" },
     { id: "spring",     label: "Primavera", colors: ["#FF9AA2","#FFB7B2","#FFDAC1","#E2F0CB","#B5EAD7"], prompt: "spring fresh light colors, pink and mint" },
+    { id: "matrix",     label: "Matrix",    colors: ["#0a0a0a","#003300","#006600","#00ff41","#39ff14"], prompt: "matrix neon green on pure black, digital rain green palette" },
 ];
 
 const PLATFORM_SPECS = [
@@ -113,6 +123,15 @@ export function SeamlessPatternApp() {
     const [seed, setSeed] = useState(() => Math.floor(Math.random() * 999999));
     const [promptUsed, setPromptUsed] = useState("");
 
+    // Custom styles
+    const [customStyles, setCustomStyles] = useState<CustomPatternStyle[]>([]);
+    const [showNewStyleForm, setShowNewStyleForm] = useState(false);
+    const [newStyleLabel, setNewStyleLabel] = useState("");
+    const [newStyleEmoji, setNewStyleEmoji] = useState("🎨");
+    const [newStylePrompt, setNewStylePrompt] = useState("");
+    const [newStyleNeg, setNewStyleNeg] = useState("");
+    const [isSavingStyle, setIsSavingStyle] = useState(false);
+
     // Products state (for EarningsStats — populated by DigitalProductsTable callback)
     const [insightsProducts, setInsightsProducts] = useState<EarningsProduct[]>([]);
 
@@ -139,6 +158,56 @@ export function SeamlessPatternApp() {
         setActiveTab(tab as TabID);
     };
 
+    // Custom styles — load from backend
+    const loadCustomStyles = useCallback(async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/settings`);
+            const { settings } = await res.json();
+            const row = (settings as any[]).find((s: any) => s.key === "SEAMLESS_CUSTOM_STYLES");
+            if (row?.value) setCustomStyles(JSON.parse(row.value));
+        } catch {}
+    }, []);
+
+    const saveCustomStyle = async () => {
+        if (!newStyleLabel.trim() || !newStylePrompt.trim()) { toast.error("Nombre y prompt requeridos"); return; }
+        setIsSavingStyle(true);
+        const newStyle: CustomPatternStyle = {
+            id: `custom-${Date.now()}`,
+            label: newStyleLabel.trim(),
+            emoji: newStyleEmoji.trim() || "🎨",
+            prompt: newStylePrompt.trim(),
+            neg: newStyleNeg.trim(),
+        };
+        const updated = [...customStyles, newStyle];
+        try {
+            await fetch(`${API_BASE_URL}/settings`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ updates: [{ key: "SEAMLESS_CUSTOM_STYLES", value: JSON.stringify(updated) }] }),
+            });
+            setCustomStyles(updated);
+            setSelectedStyle(newStyle as any);
+            setShowNewStyleForm(false);
+            setNewStyleLabel(""); setNewStyleEmoji("🎨"); setNewStylePrompt(""); setNewStyleNeg("");
+            toast.success(`Estilo "${newStyle.label}" guardado`);
+        } catch { toast.error("Error guardando estilo"); }
+        finally { setIsSavingStyle(false); }
+    };
+
+    const deleteCustomStyle = async (id: string) => {
+        const updated = customStyles.filter(s => s.id !== id);
+        try {
+            await fetch(`${API_BASE_URL}/settings`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ updates: [{ key: "SEAMLESS_CUSTOM_STYLES", value: JSON.stringify(updated) }] }),
+            });
+            setCustomStyles(updated);
+            if (selectedStyle.id === id) setSelectedStyle(PATTERN_STYLES[0]);
+            toast.success("Estilo eliminado");
+        } catch { toast.error("Error eliminando estilo"); }
+    };
+
     // Load patterns when entering gallery/insights
     const loadPatterns = useCallback(async () => {
         setIsLoadingPatterns(true);
@@ -150,15 +219,19 @@ export function SeamlessPatternApp() {
         finally { setIsLoadingPatterns(false); }
     }, []);
 
+    useEffect(() => { void loadCustomStyles(); }, [loadCustomStyles]);
+
     useEffect(() => {
         if (activeTab === "insights" || activeTab === "galeria") void loadPatterns();
     }, [activeTab, loadPatterns]);
 
     // Build prompt
     const buildPrompt = () => {
-        const base = selectedStyle.id === "custom" ? customPrompt : selectedStyle.prompt;
+        const isGenericCustom = selectedStyle.id === "custom";
+        const base = isGenericCustom ? customPrompt : selectedStyle.prompt;
+        const negBase = isGenericCustom ? customNeg : selectedStyle.neg;
         const prompt = [base, selectedPalette.prompt, "seamless tileable repeat pattern tile, no borders, no frame, professional surface design"].filter(Boolean).join(", ");
-        const neg = [selectedStyle.id === "custom" ? customNeg : selectedStyle.neg, "text, watermark, seams visible, border, frame, low quality"].filter(Boolean).join(", ");
+        const neg = [negBase, "text, watermark, seams visible, border, frame, low quality"].filter(Boolean).join(", ");
         return { prompt, neg };
     };
 
@@ -245,8 +318,40 @@ export function SeamlessPatternApp() {
                 <div className="rounded-2xl border border-white/8 bg-white/[0.025] overflow-hidden">
                     <div className="px-4 py-3 border-b border-white/[0.06] flex items-center gap-2">
                         <Palette size={13} className="text-violet-400" />
-                        <span className="text-[11px] font-black text-white uppercase tracking-widest">Estilo</span>
+                        <span className="text-[11px] font-black text-white uppercase tracking-widest flex-1">Estilo</span>
+                        <button onClick={() => setShowNewStyleForm(v => !v)}
+                            title="Crear estilo propio"
+                            className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all border ${showNewStyleForm ? "bg-violet-500/20 border-violet-500/40 text-violet-300" : "border-white/10 bg-white/[0.04] text-neutral-500 hover:text-white"}`}>
+                            {showNewStyleForm ? <X size={10} /> : <Plus size={10} />}
+                        </button>
                     </div>
+
+                    {/* New style form */}
+                    {showNewStyleForm && (
+                        <div className="px-4 py-3 border-b border-white/[0.06] space-y-2 bg-violet-500/[0.04]">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-violet-400">Nuevo estilo</p>
+                            <div className="flex gap-2">
+                                <input value={newStyleEmoji} onChange={e => setNewStyleEmoji(e.target.value)}
+                                    placeholder="🎨" maxLength={2}
+                                    className="w-12 h-8 px-2 bg-white/5 border border-white/10 rounded-xl text-[14px] text-center text-white focus:outline-none focus:border-violet-500/40" />
+                                <input value={newStyleLabel} onChange={e => setNewStyleLabel(e.target.value)}
+                                    placeholder="Nombre del estilo"
+                                    className="flex-1 h-8 px-3 bg-white/5 border border-white/10 rounded-xl text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40" />
+                            </div>
+                            <textarea value={newStylePrompt} onChange={e => setNewStylePrompt(e.target.value)}
+                                placeholder="Prompt en inglés: seamless ... repeat pattern..." rows={2}
+                                className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none leading-relaxed" />
+                            <input value={newStyleNeg} onChange={e => setNewStyleNeg(e.target.value)}
+                                placeholder="Negative prompt (opcional)"
+                                className="w-full h-8 px-3 bg-white/5 border border-white/10 rounded-xl text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40" />
+                            <button onClick={() => void saveCustomStyle()} disabled={isSavingStyle}
+                                className="w-full h-8 rounded-xl bg-violet-500/20 border border-violet-500/30 text-[9px] font-black text-violet-300 hover:bg-violet-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+                                {isSavingStyle ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />}
+                                Guardar estilo
+                            </button>
+                        </div>
+                    )}
+
                     <div className="p-3 grid grid-cols-3 gap-1.5">
                         {PATTERN_STYLES.map(s => (
                             <button key={s.id} onClick={() => setSelectedStyle(s)}
@@ -254,6 +359,20 @@ export function SeamlessPatternApp() {
                                 <span className="text-base leading-none">{s.emoji}</span>
                                 <span className="text-[8px] font-black truncate w-full text-center">{s.label}</span>
                             </button>
+                        ))}
+                        {/* User-defined custom styles */}
+                        {customStyles.map(s => (
+                            <div key={s.id} className="relative group/cs">
+                                <button onClick={() => setSelectedStyle(s as any)}
+                                    className={`w-full flex flex-col items-center gap-1 py-2.5 px-1 rounded-xl border transition-all ${selectedStyle.id === s.id ? "border-indigo-500/50 bg-indigo-500/15 text-indigo-300" : "border-indigo-500/20 bg-indigo-500/[0.05] text-neutral-500 hover:text-white hover:bg-indigo-500/10"}`}>
+                                    <span className="text-base leading-none">{s.emoji}</span>
+                                    <span className="text-[8px] font-black truncate w-full text-center">{s.label}</span>
+                                </button>
+                                <button onClick={() => void deleteCustomStyle(s.id)}
+                                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-black border border-white/20 text-neutral-600 hover:text-rose-400 items-center justify-center hidden group-hover/cs:flex transition-colors">
+                                    <X size={8} />
+                                </button>
+                            </div>
                         ))}
                     </div>
                     {selectedStyle.id === "custom" && (

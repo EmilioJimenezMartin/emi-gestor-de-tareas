@@ -1,16 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTaskBySlug } from "@/lib/tasks";
-import { getTaskAppMeta } from "@/config/task-apps-config";
+import { getTaskAppMeta, TASK_APPS_REGISTRY } from "@/config/task-apps-config";
 import { TaskAppRenderer } from "@/components/tasks/task-app-renderer";
-import {
-    ArrowLeft,
-    Cpu,
-    Settings
-} from "lucide-react";
+import { ArrowLeft, Cpu, Settings } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 
 export default async function TaskApplicationPage({
     params,
@@ -22,68 +17,64 @@ export default async function TaskApplicationPage({
 
     if (!task) notFound();
 
-    // Get specialized config for this task
     const appConfig = getTaskAppMeta(slug);
 
     return (
-        <div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10 animate-in fade-in duration-700">
-            {/* 
-          Common Header Logic 
-          This remains consistent across all task-specific apps
-      */}
+        <div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 animate-in fade-in duration-700">
+
             <header className="flex flex-col gap-6">
-                <div className="flex items-center gap-4">
-                    <Link href={`/tareas/${slug}`} className="group flex items-center gap-2 text-xs font-black uppercase tracking-widest text-neutral-500 hover:text-white transition-colors w-fit">
+                {/* Breadcrumb + app switcher */}
+                <div className="flex items-center justify-between gap-4">
+                    <Link href={`/tareas/${slug}`} className="group flex items-center gap-2 text-xs font-black uppercase tracking-widest text-neutral-500 hover:text-white transition-colors">
                         <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform" />
-                        Volver al Detalle
+                        Volver
                     </Link>
-                    <div className="h-4 w-px bg-white/10" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-primary italic">Módulo de Aplicación</span>
+
+                    <div className="flex items-center gap-1">
+                        {Object.entries(TASK_APPS_REGISTRY).map(([appSlug, meta]) => {
+                            const isActive = appSlug === slug;
+                            return (
+                                <Link
+                                    key={appSlug}
+                                    href={`/tareas/${appSlug}/aplicacion`}
+                                    className={`relative px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-all ${
+                                        isActive
+                                            ? "text-white"
+                                            : "text-neutral-600 hover:text-neutral-400"
+                                    }`}
+                                >
+                                    {meta.title}
+                                    {isActive && (
+                                        <span className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-indigo-500 via-blue-500 to-cyan-500" />
+                                    )}
+                                </Link>
+                            );
+                        })}
+                    </div>
                 </div>
 
-                <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 relative">
+                {/* Title row */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative">
                     <div className="absolute -left-20 -top-20 w-64 h-64 bg-primary/10 blur-[100px] pointer-events-none" />
 
-                    <div className="relative space-y-4 max-w-3xl">
-                        <div className="flex items-center gap-3">
-                            <Badge variant={appConfig ? "success" : "neutral"} className={`${appConfig ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-white/5 border-white/10 text-neutral-500"} text-[8px] font-black uppercase tracking-widest px-3`}>
-                                {appConfig ? "Sistema Activo" : "Próximamente"}
-                            </Badge>
-                            <div className={`h-1 w-8 bg-gradient-to-r ${appConfig ? "from-emerald-500" : "from-white/10"} to-transparent rounded-full`} />
-                        </div>
-                        <h1 className="text-4xl sm:text-5xl font-black text-white tracking-tighter italic flex items-center gap-4">
-                            <span className="bg-gradient-to-br from-indigo-500 via-blue-500 to-cyan-500 bg-clip-text text-transparent underline decoration-primary/20">
-                                {appConfig?.title || task.title}
-                            </span>
-                            <span className="text-neutral-700 font-thin not-italic">|</span>
-                            <span className="text-2xl sm:text-3xl text-neutral-400 font-bold tracking-normal opacity-80">
-                                {appConfig ? "Automation Console" : "App Module"}
-                            </span>
-                        </h1>
-                        <p className="text-sm text-neutral-500 font-medium max-w-2xl leading-relaxed">
-                            {appConfig?.description || task.description || "Este módulo de aplicación está siendo desarrollado específicamente para este motor estratégico."}
-                        </p>
-                    </div>
+                    <h1 className="relative text-3xl sm:text-4xl font-black text-white tracking-tighter">
+                        <span className="bg-gradient-to-br from-indigo-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                            {appConfig?.title || task.title}
+                        </span>
+                    </h1>
 
-                    <div className="flex items-center gap-4 bg-white/[0.02] border border-white/5 p-4 rounded-3xl backdrop-blur-xl">
-                        <div className="text-right">
-                            <p className="text-[8px] font-black text-neutral-500 uppercase tracking-widest">Engine Status</p>
-                            <p className={`text-xs font-mono font-bold tracking-tighter ${appConfig ? "text-emerald-400" : "text-neutral-500"}`}>
-                                {appConfig?.engineStatus || "OFFLINE_PENDING"}
-                            </p>
-                        </div>
-                        <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${appConfig ? "from-indigo-600 via-blue-600 to-cyan-500" : "from-neutral-800 to-neutral-900"} flex items-center justify-center text-white shadow-lg shadow-blue-500/20 relative group overflow-hidden`}>
-                            <div className="absolute inset-0 bg-white/20 translate-y-12 group-hover:translate-y-0 transition-transform duration-500" />
-                            <Cpu size={24} className="relative z-10" />
+                    <div className="flex items-center gap-3 bg-white/[0.02] border border-white/5 px-4 py-2.5 rounded-2xl">
+                        <div className={`w-1.5 h-1.5 rounded-full ${appConfig ? "bg-emerald-400" : "bg-neutral-600"}`} />
+                        <p className={`text-[10px] font-mono font-bold tracking-tight ${appConfig ? "text-emerald-400" : "text-neutral-500"}`}>
+                            {appConfig?.engineStatus || "OFFLINE_PENDING"}
+                        </p>
+                        <div className={`w-7 h-7 rounded-xl bg-gradient-to-br ${appConfig ? "from-indigo-600 to-cyan-600" : "from-neutral-800 to-neutral-900"} flex items-center justify-center`}>
+                            <Cpu size={14} className="text-white" />
                         </div>
                     </div>
                 </div>
             </header>
 
-            {/* 
-          Dynamic Content Area 
-          Renders the specialized app if it exists, or a fallback UI
-      */}
             {appConfig ? (
                 <TaskAppRenderer slug={slug} />
             ) : (
@@ -91,7 +82,6 @@ export default async function TaskApplicationPage({
                     <div className="lg:col-span-8">
                         <Card variant="outline" className="min-h-[400px] border-white/5 bg-white/[0.01] flex flex-col items-center justify-center text-center p-12 space-y-8 group relative overflow-hidden">
                             <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none" />
-
                             <div className="relative">
                                 <div className="absolute inset-0 bg-primary/20 blur-[60px]" />
                                 <div className="relative w-24 h-24 rounded-[32px] bg-white/5 border border-white/10 flex items-center justify-center text-neutral-500">
@@ -101,7 +91,7 @@ export default async function TaskApplicationPage({
                             <div className="space-y-3 relative">
                                 <h3 className="text-2xl font-black text-white italic tracking-tighter uppercase">Módulo en Desarrollo</h3>
                                 <p className="text-sm text-neutral-500 max-w-sm mx-auto leading-relaxed font-medium">
-                                    La aplicación personalizada para <strong>{task.title}</strong> está siendo configurada. Vuelve pronto para ver las herramientas específicas.
+                                    La aplicación personalizada para <strong>{task.title}</strong> está siendo configurada.
                                 </p>
                             </div>
                             <div className="flex items-center gap-4 relative">
@@ -115,7 +105,7 @@ export default async function TaskApplicationPage({
                     <div className="lg:col-span-4 space-y-8">
                         <Card variant="glass" className="p-6 border-white/5 bg-white/[0.02] space-y-8 relative overflow-hidden group">
                             <p className="text-[11px] text-neutral-500 leading-relaxed italic text-center">
-                                Este motor requiere una lógica personalizada que todavía no ha sido desplegada en el entorno de producción.
+                                Este motor requiere una lógica personalizada que todavía no ha sido desplegada.
                             </p>
                         </Card>
                     </div>
