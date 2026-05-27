@@ -84,6 +84,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { toast } from "sonner";
 import { createApiSocket } from "@/lib/socket";
 import { NicheRadar } from "@/components/extractor/NicheRadar";
+import { RadarResultsTable } from "@/components/extractor/RadarResultsTable";
 import { AppTabNav, type AppTab } from "@/components/tasks/apps/shared/app-tab-nav";
 
 interface ProductPlatform {
@@ -6709,7 +6710,8 @@ export function KdpFactoryApp() {
             <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
                 <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent" />
                 <div className="p-6">
-                    <NicheRadar apiUrl={API_BASE_URL} niches={niches} onNicheCreated={() => void fetchNiches()} />
+                    <NicheRadar apiUrl={API_BASE_URL} storageKey="RADAR_ETSY_RESULT" />
+                    <RadarResultsTable apiUrl={API_BASE_URL} storageKey="RADAR_ETSY_RESULT" niches={niches} onNicheCreated={() => void fetchNiches()} />
                 </div>
             </div>
         </div>

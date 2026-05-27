@@ -13,6 +13,7 @@ export interface IRadarJob extends Document {
     geminiModel?: string;
     nicheName?: string;
     context?: string;
+    storageKey?: string;
     status: "running" | "completed" | "failed";
     logs: RadarLog[];
     result?: any;
@@ -30,6 +31,7 @@ const RadarJobSchema = new Schema<IRadarJob>(
         geminiModel: { type: String, default: "gemini-2.0-flash" },
         nicheName: { type: String },
         context: { type: String },
+        storageKey: { type: String, default: "RADAR_ETSY_RESULT" },
         status: { type: String, enum: ["running", "completed", "failed"], default: "running" },
         logs: [{ timestamp: Date, level: String, message: String }],
         result: { type: Schema.Types.Mixed },

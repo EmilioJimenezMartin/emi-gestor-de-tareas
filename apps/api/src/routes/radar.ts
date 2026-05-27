@@ -74,7 +74,7 @@ export async function registerRadarRoutes(
 ) {
     // POST /radar/analyze — crea job en DB y lo encola en Agenda
     app.post("/radar/analyze", async (request: any, reply) => {
-        const { url, mode = "general", nicheName, context, geminiModel = "gemini-2.0-flash" } = request.body || {};
+        const { url, mode = "general", nicheName, context, geminiModel = "gemini-2.0-flash", storageKey = "RADAR_ETSY_RESULT" } = request.body || {};
         if (!url?.trim()) return reply.status(400).send({ error: "url es requerida" });
 
         const googleKey = await getGoogleKey();
@@ -92,6 +92,7 @@ export async function registerRadarRoutes(
             nicheName,
             context,
             geminiModel,
+            storageKey,
             status: "running",
             logs: [{ timestamp: new Date(), level: "info", message: `[INIT] Análisis encolado · modo: ${mode} · modelo: ${geminiModel}` }],
         });
@@ -156,9 +157,11 @@ export async function registerRadarRoutes(
     });
 
     // GET /radar/saved-etsy-result — lee último resultado Etsy persistido en Settings
-    app.get("/radar/saved-etsy-result", async (_req, reply) => {
+    // ?key=<storageKey> permite aislar resultados por app (default: RADAR_ETSY_RESULT)
+    app.get("/radar/saved-etsy-result", async (request: any, reply) => {
+        const storageKey = (request.query?.key as string) || "RADAR_ETSY_RESULT";
         const { Settings } = await import("../models/settings.js");
-        const row = await Settings.findOne({ key: "RADAR_ETSY_RESULT" }).lean();
+        const row = await Settings.findOne({ key: storageKey }).lean();
         if (!row?.value) return reply.send({ result: null });
         try {
             return reply.send({ result: JSON.parse(row.value as string) });
@@ -169,11 +172,12 @@ export async function registerRadarRoutes(
 
     // PUT /radar/saved-etsy-result — persiste el resultado Etsy en Settings
     app.put("/radar/saved-etsy-result", async (request: any, reply) => {
+        const storageKey = (request.query?.key as string) || "RADAR_ETSY_RESULT";
         const { result } = request.body || {};
         const { Settings } = await import("../models/settings.js");
         await Settings.findOneAndUpdate(
-            { key: "RADAR_ETSY_RESULT" },
-            { key: "RADAR_ETSY_RESULT", value: result ? JSON.stringify(result) : "null" },
+            { key: storageKey },
+            { key: storageKey, value: result ? JSON.stringify(result) : "null" },
             { upsert: true }
         );
         return reply.send({ success: true });
@@ -182,30 +186,32 @@ export async function registerRadarRoutes(
     // DELETE /radar/etsy-row — elimina una fila del resultado Etsy en Settings Y en el RadarJob
     app.delete("/radar/etsy-row", async (request: any, reply) => {
         if (getMongoStatus() !== "connected") return reply.status(503).send({ error: "Base de datos no disponible" });
-        const { titulo_producto } = (request.body as any) || {};
+        const { titulo_producto, key: storageKey = "RADAR_ETSY_RESULT" } = (request.body as any) || {};
         if (!titulo_producto) return reply.status(400).send({ error: "titulo_producto requerido" });
         const { Settings } = await import("../models/settings.js");
         const filterRow = (nichos: any[]) => nichos.filter((r: any) => r.titulo_producto !== titulo_producto);
         // Actualizar Settings
-        const settingsRow = await Settings.findOne({ key: "RADAR_ETSY_RESULT" }).lean();
+        const settingsRow = await Settings.findOne({ key: storageKey }).lean();
         if (settingsRow?.value) {
             try {
                 const saved = JSON.parse(settingsRow.value as string);
                 if (saved?.nichos_detectados) {
                     saved.nichos_detectados = filterRow(saved.nichos_detectados);
                     await Settings.findOneAndUpdate(
-                        { key: "RADAR_ETSY_RESULT" },
+                        { key: storageKey },
                         { $set: { value: JSON.stringify(saved) } }
                     );
                 }
             } catch {}
         }
-        // Actualizar también el RadarJob más reciente
-        const latestJob = await RadarJob.findOne().sort({ createdAt: -1 });
-        if (latestJob?.result?.nichos_detectados) {
-            latestJob.result = { ...latestJob.result, nichos_detectados: filterRow(latestJob.result.nichos_detectados) };
-            latestJob.markModified("result");
-            await latestJob.save();
+        // Actualizar también el RadarJob más reciente (solo cuando es el key por defecto)
+        if (storageKey === "RADAR_ETSY_RESULT") {
+            const latestJob = await RadarJob.findOne().sort({ createdAt: -1 });
+            if (latestJob?.result?.nichos_detectados) {
+                latestJob.result = { ...latestJob.result, nichos_detectados: filterRow(latestJob.result.nichos_detectados) };
+                latestJob.markModified("result");
+                await latestJob.save();
+            }
         }
         return reply.send({ ok: true });
     });

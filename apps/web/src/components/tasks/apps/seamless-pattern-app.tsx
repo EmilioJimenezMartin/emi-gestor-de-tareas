@@ -12,7 +12,8 @@ import { AI_MODELS, groupModelsByProvider, generateImageBlobUrl, type AIModel } 
 import { AppTabNav, type AppTab } from "./shared/app-tab-nav";
 import { EarningsStats, type EarningsProduct } from "./shared/earnings-stats";
 import { DigitalProductsTable, DEFAULT_PRODUCT_TYPES } from "./shared/digital-products-table";
-import { NicheRadar } from "@/components/extractor/NicheRadar";
+import { NicheRadar, type EtsyListing } from "@/components/extractor/NicheRadar";
+import { RadarResultsTable } from "@/components/extractor/RadarResultsTable";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -206,6 +207,26 @@ export function SeamlessPatternApp() {
             if (selectedStyle.id === id) setSelectedStyle(PATTERN_STYLES[0]);
             toast.success("Estilo eliminado");
         } catch { toast.error("Error eliminando estilo"); }
+    };
+
+    const addStyleFromRow = async (row: EtsyListing) => {
+        const slug = row.sub_nicho_estimado.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        const id = `custom-${slug}-${Date.now()}`;
+        const newStyle: CustomPatternStyle = {
+            id,
+            label: row.sub_nicho_estimado,
+            emoji: "🎨",
+            prompt: `seamless tileable repeat pattern, ${row.sub_nicho_estimado} style, inspired by "${row.titulo_producto}", surface design, flat illustration`,
+            neg: "text, watermark, seams, border, frame",
+        };
+        const updated = [...customStyles, newStyle];
+        await fetch(`${API_BASE_URL}/settings`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ updates: [{ key: "SEAMLESS_CUSTOM_STYLES", value: JSON.stringify(updated) }] }),
+        });
+        setCustomStyles(updated);
+        toast.success(`Estilo "${newStyle.label}" creado`);
     };
 
     // Load patterns when entering gallery/insights
@@ -773,15 +794,28 @@ export function SeamlessPatternApp() {
     ];
 
     const renderTendencias = () => (
-        <NicheRadar
-            apiUrl={API_BASE_URL}
-            defaultMode="general"
-            etsyPresets={SEAMLESS_ETSY_PRESETS}
-            generalPresets={SEAMLESS_GENERAL_PRESETS}
-            headerTitle={<><span className="text-white">Tendencias de </span><span className="bg-gradient-to-r from-violet-300 to-pink-400 bg-clip-text text-transparent">Estilos</span></>}
-            headerSubtitle="Detecta estilos de patrón en tendencia · Powered by Gemini + Playwright · Aplica en el Motor"
-            modeLabels={{ etsy: "Búsquedas sugeridas" }}
-        />
+        <div className="space-y-6">
+            <NicheRadar
+                apiUrl={API_BASE_URL}
+                storageKey="RADAR_SEAMLESS_RESULT"
+                defaultMode="general"
+                etsyPresets={SEAMLESS_ETSY_PRESETS}
+                generalPresets={SEAMLESS_GENERAL_PRESETS}
+                headerTitle={<><span className="text-white">Tendencias de </span><span className="bg-gradient-to-r from-violet-300 to-pink-400 bg-clip-text text-transparent">Estilos</span></>}
+                headerSubtitle="Detecta estilos de patrón en tendencia · Powered by Gemini + Playwright · Aplica en el Motor"
+                modeLabels={{ etsy: "Búsquedas sugeridas" }}
+            />
+            <RadarResultsTable
+                apiUrl={API_BASE_URL}
+                storageKey="RADAR_SEAMLESS_RESULT"
+                rowAction={{
+                    label: "Estilo",
+                    colorScheme: "indigo",
+                    isCreated: (row) => customStyles.some(s => s.label === row.sub_nicho_estimado),
+                    onCreate: addStyleFromRow,
+                }}
+            />
+        </div>
     );
 
     return (

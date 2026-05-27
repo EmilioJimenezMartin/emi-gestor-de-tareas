@@ -96,7 +96,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
         const jobDoc = await RadarJob.findOne({ jobId });
         if (!jobDoc) { console.error(`[radar-job] No encontrado jobId=${jobId}`); return; }
 
-        const { url, mode, nicheName, context, geminiModel = "gemini-2.0-flash" } = jobDoc as any;
+        const { url, mode, nicheName, context, geminiModel = "gemini-2.0-flash", storageKey = "RADAR_ETSY_RESULT" } = jobDoc as any;
         let browser: any = null;
 
         try {
@@ -278,7 +278,19 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             jobDoc.result = data;
             await jobDoc.save();
 
-            io?.emit("radar:result", { jobId, mode, data });
+            // Persist to Settings immediately — frontend may not be mounted to do it
+            try {
+                const { Settings } = await import("../models/settings.js");
+                await Settings.findOneAndUpdate(
+                    { key: storageKey },
+                    { key: storageKey, value: JSON.stringify(data) },
+                    { upsert: true }
+                );
+            } catch (settingsErr) {
+                console.warn("[radar-job] No se pudo guardar en Settings:", settingsErr);
+            }
+
+            io?.emit("radar:result", { jobId, mode, storageKey, data });
             await page.close();
         } catch (err: any) {
             const msg = `[ERROR] ${err?.message ?? "Error desconocido"}`;
