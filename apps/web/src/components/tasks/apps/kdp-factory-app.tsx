@@ -817,6 +817,7 @@ export function KdpFactoryApp() {
     const [nicheFormProductType, setNicheFormProductType] = useState<NicheProductType>("coloring-book");
     const [nicheFormStyles, setNicheFormStyles] = useState<NicheStyle[]>(["generic"]);
     const [catalogNicheFilter, setCatalogNicheFilter] = useState<string | null>(null);
+    const [catalogNicheStatusFilter, setCatalogNicheStatusFilter] = useState<"all" | NicheStatus | "none">("all");
     const [catalogNichePickerId, setCatalogNichePickerId] = useState<string | null>(null);
     const [kdpTemplateNicheFilter, setKdpTemplateNicheFilter] = useState<string | null>(null);
     const [kdpTemplateOpen, setKdpTemplateOpen] = useState(false);
@@ -5213,9 +5214,19 @@ export function KdpFactoryApp() {
                         </div>
                     )}
                     {iaCatalogs.length > 0 && (() => {
-                        const filteredByCatalogNiche = catalogNicheFilter
-                            ? iaCatalogs.filter(c => (c.nicheIds ?? []).includes(catalogNicheFilter))
-                            : iaCatalogs;
+                        const filteredByCatalogNiche = (() => {
+                            let base = iaCatalogs;
+                            if (catalogNicheStatusFilter === "none") {
+                                base = base.filter(c => (c.nicheIds ?? []).length === 0);
+                            } else if (catalogNicheStatusFilter !== "all") {
+                                const matchIds = new Set(niches.filter(n => n.status === catalogNicheStatusFilter).map(n => n._id));
+                                base = base.filter(c => (c.nicheIds ?? []).some(nid => matchIds.has(nid)));
+                            }
+                            if (catalogNicheFilter) {
+                                base = base.filter(c => (c.nicheIds ?? []).includes(catalogNicheFilter));
+                            }
+                            return base;
+                        })();
                         const activeCatalogs = filteredByCatalogNiche.filter(c => c.status === "running" || c.status === "pending" || c.status === "queued");
                         const doneCatalogs = filteredByCatalogNiche.filter(c => c.status === "completed" || c.status === "failed" || c.status === "cancelled");
                         const totalImages = filteredByCatalogNiche.reduce((sum, c) => sum + c.images.length, 0);
@@ -5627,60 +5638,76 @@ export function KdpFactoryApp() {
                                     </button>
                                 </div>
 
-                                {/* ── Niche filter bar ── */}
-                                {niches.length > 0 && (
-                                    <div className="space-y-2">
-                                        <div className="flex items-center gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
-                                            {/* All */}
-                                            <button
-                                                onClick={() => setCatalogNicheFilter(null)}
-                                                className={`flex items-center gap-2 h-9 px-4 rounded-2xl border text-[10px] font-black whitespace-nowrap shrink-0 transition-all ${!catalogNicheFilter
-                                                    ? "bg-sky-500/20 border-sky-500/40 text-sky-300 shadow-[0_0_16px_rgba(14,165,233,0.25)]"
-                                                    : "border-white/10 bg-white/[0.02] text-neutral-500 hover:text-neutral-300 hover:border-white/20 hover:bg-white/[0.04]"}`}>
-                                                <Layers size={12} className={!catalogNicheFilter ? "text-sky-400" : "text-neutral-600"} />
-                                                Todos los catálogos
-                                                <span className={`text-[9px] tabular-nums font-black ${!catalogNicheFilter ? "text-sky-400/70" : "text-neutral-700"}`}>{iaCatalogs.length}</span>
-                                            </button>
-                                            {/* Per-niche pills */}
-                                            {niches.map(n => {
-                                                const count = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).length;
-                                                const isAct = catalogNicheFilter === n._id;
-                                                const statusDot: Record<NicheStatus, string> = { found: "bg-sky-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
-                                                return (
-                                                    <button key={n._id}
-                                                        onClick={() => setCatalogNicheFilter(isAct ? null : n._id)}
-                                                        className={`flex items-center gap-2 h-9 px-4 rounded-2xl border text-[10px] font-black whitespace-nowrap shrink-0 transition-all ${isAct
-                                                            ? "bg-sky-500/20 border-sky-500/40 text-sky-300 shadow-[0_0_16px_rgba(14,165,233,0.25)]"
-                                                            : "border-white/10 bg-white/[0.02] text-neutral-500 hover:text-neutral-300 hover:border-white/20 hover:bg-white/[0.04]"}`}>
-                                                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[n.status]}`} />
-                                                        {n.name}
-                                                        <span className={`text-[9px] tabular-nums font-black px-1.5 py-0.5 rounded-lg ${isAct
-                                                            ? "bg-sky-500/30 text-sky-300"
-                                                            : count > 0 ? "bg-white/5 text-neutral-600" : "text-neutral-800"}`}>
-                                                            {count}
-                                                        </span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                        {/* Active filter indicator */}
-                                        {catalogNicheFilter && (() => {
-                                            const n = niches.find(x => x._id === catalogNicheFilter);
-                                            return n ? (
-                                                <div className="flex items-center gap-2 px-1">
-                                                    <div className="h-px flex-1 bg-sky-500/20" />
-                                                    <span className="text-[9px] font-black uppercase tracking-widest text-sky-400/60">
-                                                        Filtrando por: {n.name}
-                                                    </span>
-                                                    <button onClick={() => setCatalogNicheFilter(null)} className="text-[9px] text-neutral-600 hover:text-sky-400 transition-colors">
-                                                        <X size={10} />
-                                                    </button>
-                                                    <div className="h-px flex-1 bg-sky-500/20" />
+                                {/* ── Catalog filter bar ── */}
+                                {niches.length > 0 && (() => {
+                                    const statusMeta: { id: "all" | NicheStatus | "none"; label: string; dot: string; active: string; count: number }[] = [
+                                        { id: "all",      label: "Todos",         dot: "",                  active: "bg-sky-500/20 border-sky-500/40 text-sky-300",     count: iaCatalogs.length },
+                                        { id: "active",   label: "Activos",       dot: "bg-emerald-400",   active: "bg-emerald-500/20 border-emerald-500/40 text-emerald-300", count: iaCatalogs.filter(c => (c.nicheIds ?? []).some(nid => niches.find(n => n._id === nid)?.status === "active")).length },
+                                        { id: "research", label: "En estudio",    dot: "bg-blue-400",      active: "bg-blue-500/20 border-blue-500/40 text-blue-300",   count: iaCatalogs.filter(c => (c.nicheIds ?? []).some(nid => niches.find(n => n._id === nid)?.status === "research")).length },
+                                        { id: "found",    label: "Encontrados",   dot: "bg-sky-400",       active: "bg-sky-500/20 border-sky-500/40 text-sky-300",      count: iaCatalogs.filter(c => (c.nicheIds ?? []).some(nid => niches.find(n => n._id === nid)?.status === "found")).length },
+                                        { id: "none",     label: "Sin nicho",     dot: "bg-neutral-600",   active: "bg-neutral-500/20 border-neutral-500/40 text-neutral-300", count: iaCatalogs.filter(c => (c.nicheIds ?? []).length === 0).length },
+                                        { id: "archived", label: "Archivados",    dot: "bg-neutral-700",   active: "bg-neutral-500/15 border-neutral-500/30 text-neutral-400", count: iaCatalogs.filter(c => (c.nicheIds ?? []).some(nid => niches.find(n => n._id === nid)?.status === "archived")).length },
+                                    ];
+                                    const visibleNiches = catalogNicheStatusFilter === "all" ? niches
+                                        : catalogNicheStatusFilter === "none" ? []
+                                        : niches.filter(n => n.status === catalogNicheStatusFilter);
+                                    const statusDot: Record<NicheStatus, string> = { found: "bg-sky-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
+                                    return (
+                                        <div className="space-y-2">
+                                            {/* Row 1: status group filter */}
+                                            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: "none" }}>
+                                                {statusMeta.map(s => {
+                                                    const isAct = catalogNicheStatusFilter === s.id;
+                                                    return (
+                                                        <button key={s.id}
+                                                            onClick={() => { setCatalogNicheStatusFilter(s.id); setCatalogNicheFilter(null); }}
+                                                            className={`flex items-center gap-1.5 h-7 px-3 rounded-xl border text-[9px] font-black whitespace-nowrap shrink-0 transition-all ${isAct ? s.active + " shadow-[0_0_12px_rgba(0,0,0,0.3)]" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-300 hover:border-white/15"}`}>
+                                                            {s.dot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />}
+                                                            {!s.dot && <Layers size={9} className={isAct ? "" : "text-neutral-700"} />}
+                                                            {s.label}
+                                                            {s.count > 0 && <span className={`tabular-nums text-[8px] ${isAct ? "opacity-70" : "text-neutral-700"}`}>{s.count}</span>}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                            {/* Row 2: per-niche pills (filtered by status group) */}
+                                            {visibleNiches.length > 0 && (
+                                                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: "none" }}>
+                                                    {visibleNiches.map(n => {
+                                                        const count = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).length;
+                                                        const isAct = catalogNicheFilter === n._id;
+                                                        return (
+                                                            <button key={n._id}
+                                                                onClick={() => setCatalogNicheFilter(isAct ? null : n._id)}
+                                                                className={`flex items-center gap-1.5 h-7 px-3 rounded-xl border text-[9px] font-black whitespace-nowrap shrink-0 transition-all ${isAct
+                                                                    ? "bg-sky-500/20 border-sky-500/40 text-sky-300"
+                                                                    : "border-white/8 bg-white/[0.02] text-neutral-500 hover:text-neutral-300 hover:border-white/15"}`}>
+                                                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[n.status]}`} />
+                                                                {n.name}
+                                                                <span className={`text-[8px] tabular-nums px-1 py-0.5 rounded ${isAct ? "bg-sky-500/30 text-sky-300" : count > 0 ? "bg-white/5 text-neutral-600" : "text-neutral-800"}`}>{count}</span>
+                                                            </button>
+                                                        );
+                                                    })}
                                                 </div>
-                                            ) : null;
-                                        })()}
-                                    </div>
-                                )}
+                                            )}
+                                            {/* Active filter indicator */}
+                                            {(catalogNicheStatusFilter !== "all" || catalogNicheFilter) && (
+                                                <div className="flex items-center gap-2 px-1">
+                                                    <div className="h-px flex-1 bg-sky-500/15" />
+                                                    <span className="text-[8px] font-black uppercase tracking-widest text-sky-400/50">
+                                                        {[
+                                                            catalogNicheStatusFilter !== "all" && statusMeta.find(s => s.id === catalogNicheStatusFilter)?.label,
+                                                            catalogNicheFilter && niches.find(n => n._id === catalogNicheFilter)?.name,
+                                                        ].filter(Boolean).join(" · ")}
+                                                    </span>
+                                                    <button onClick={() => { setCatalogNicheStatusFilter("all"); setCatalogNicheFilter(null); }}
+                                                        className="text-neutral-600 hover:text-sky-400 transition-colors"><X size={10} /></button>
+                                                    <div className="h-px flex-1 bg-sky-500/15" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
 
                                 {/* ── Queue time estimate banner ── */}
                                 {activeCatalogs.length > 0 && queueEstimateMs !== null && (() => {
