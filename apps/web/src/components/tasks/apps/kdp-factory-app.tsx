@@ -766,6 +766,8 @@ export function KdpFactoryApp() {
     const [bulkDeleteSelection, setBulkDeleteSelection] = useState<Set<string>>(new Set());
     const [isBulkDeleting, setIsBulkDeleting] = useState(false);
     const [bookPages, setBookPages] = useState<BookPage[]>([]);
+    const [directPdfCatalogId, setDirectPdfCatalogId] = useState<string | null>(null);
+    const [directNichePdfId, setDirectNichePdfId] = useState<string | null>(null);
     const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
     const [bookEditorTab, setBookEditorTab] = useState<"editor" | "preview" | "images">("editor");
     const [showAddPageMenu, setShowAddPageMenu] = useState(false);
@@ -803,6 +805,7 @@ export function KdpFactoryApp() {
     const [nicheFormComp, setNicheFormComp] = useState<NicheFE["competition"]>("unknown");
     const [nicheFormDemand, setNicheFormDemand] = useState<NicheFE["demand"]>("unknown");
     const [nicheFormNotes, setNicheFormNotes] = useState("");
+    const [nicheFormEtsyUrl, setNicheFormEtsyUrl] = useState("");
     const [nicheFormPrompt, setNicheFormPrompt] = useState("");
     const [isSavingNiche, setIsSavingNiche] = useState(false);
     const [nicheDeleteId, setNicheDeleteId] = useState<string | null>(null);
@@ -1051,6 +1054,7 @@ export function KdpFactoryApp() {
             setNicheFormProductType(niche.productType ?? "coloring-book");
             setNicheFormStyles(niche.styleCategories?.length ? niche.styleCategories : [niche.styleCategory ?? "generic"]);
             setNicheFormNotes(niche.notes);
+            setNicheFormEtsyUrl(niche.etsyUrl ?? "");
             setNicheFormPrompt(niche.generatedPrompt ?? "");
         } else {
             setNicheEditTarget(null);
@@ -1063,6 +1067,7 @@ export function KdpFactoryApp() {
             setNicheFormProductType("coloring-book");
             setNicheFormStyles(["generic"]);
             setNicheFormNotes("");
+            setNicheFormEtsyUrl("");
             setNicheFormPrompt("");
         }
         setNicheFormOpen(true);
@@ -1193,6 +1198,7 @@ export function KdpFactoryApp() {
                 styleCategory: nicheFormStyles[0] ?? "generic",
                 styleCategories: nicheFormStyles,
                 notes: nicheFormNotes.trim(),
+                etsyUrl: nicheFormEtsyUrl.trim(),
                 generatedPrompt: nicheFormPrompt.trim(),
             };
             const url = nicheEditTarget ? `${API_BASE_URL}/niches/${nicheEditTarget._id}` : `${API_BASE_URL}/niches`;
@@ -1557,7 +1563,7 @@ export function KdpFactoryApp() {
             pages.push({ id: genPageId(), type: "owner", text: defaultTextStyle() });
         }
 
-        // Title page + blank back
+        // Title page + optional blank back
         const titleStyle = defaultTextStyle();
         titleStyle.content = titleText;
         titleStyle.fontSize = 24;
@@ -1565,19 +1571,20 @@ export function KdpFactoryApp() {
         titleStyle.verticalAlign = "middle";
         titleStyle.align = "center";
         pages.push({ id: genPageId(), type: "text", text: titleStyle });
-        pages.push({ id: genPageId(), type: "text", text: defaultTextStyle() }); // blank back
+        if (!noBlankPages) pages.push({ id: genPageId(), type: "text", text: defaultTextStyle() }); // blank back
 
-        // Image + blank pairs
+        // Image pages — blank back only when noBlankPages is off
         for (const { url, label } of entries) {
             pages.push({ id: genPageId(), type: "image", image: { url, scale: 1, label }, text: defaultTextStyle() });
-            pages.push({ id: genPageId(), type: "text", text: defaultTextStyle() }); // blank back
+            if (!noBlankPages) pages.push({ id: genPageId(), type: "text", text: defaultTextStyle() }); // blank back
         }
 
         setBookPages(pages);
         setSelectedPageId(pages[0].id);
         setBookEditorOpen(true);
         const ownerNote = includeOwnerPage ? " + pág. propietario" : "";
-        toast.success(`Plantilla KDP · ${pages.length} páginas (${entries.length} imágenes${randomOrder ? " · orden aleatorio" : ""}${ownerNote})`);
+        const blankNote = noBlankPages ? " · sin páginas en blanco" : "";
+        toast.success(`Plantilla KDP · ${pages.length} páginas (${entries.length} imágenes${randomOrder ? " · orden aleatorio" : ""}${ownerNote}${blankNote})`);
     };
 
     const deletePage = (id: string) => {
@@ -1988,6 +1995,7 @@ export function KdpFactoryApp() {
     const [bookPdfSize, setBookPdfSize] = useState("8.5x11");
     const [isBuildingPdf, setIsBuildingPdf] = useState(false);
     const [includeOwnerPage, setIncludeOwnerPage] = useState(true);
+    const [noBlankPages, setNoBlankPages] = useState(false);
     const [showGelatoUpload, setShowGelatoUpload] = useState(false);
     const [showSplitModal, setShowSplitModal] = useState(false);
     const [showKdpTips, setShowKdpTips] = useState(false);
@@ -2153,7 +2161,60 @@ export function KdpFactoryApp() {
         setBookEditorOpen(true);
     };
 
-    const buildBookPdf = async (onBytes?: (bytes: Uint8Array) => void, compressImages = false, pagesToUse?: BookPage[]) => {
+    const downloadCatalogPdfDirect = async (catalog: { _id: string; name: string; images: { url: string }[] }) => {
+        if (!catalog.images.length) return;
+        setDirectPdfCatalogId(catalog._id);
+        try {
+            const pages: BookPage[] = catalog.images.map((img, i) => ({
+                id: `dp-${i}-${Date.now()}`,
+                type: "image" as const,
+                image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` },
+                text: defaultTextStyle(),
+            }));
+            const bytes = await buildBookPdf(undefined, false, pages, true);
+            if (!bytes) throw new Error("No se pudo generar el PDF");
+            const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = blobUrl;
+            a.download = `${catalog.name || "libro-kdp"}.pdf`;
+            a.click();
+            toast.success(`PDF generado · ${catalog.images.length} páginas`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error generando PDF");
+        } finally {
+            setDirectPdfCatalogId(null);
+        }
+    };
+
+    const downloadNichePdfDirect = async (niche: NicheFE, linkedCats: typeof iaCatalogs) => {
+        const allImages = linkedCats.flatMap(c => c.images);
+        if (!allImages.length) { toast.error("Este nicho no tiene imágenes aún"); return; }
+        setDirectNichePdfId(niche._id);
+        try {
+            const pages: BookPage[] = allImages.map((img, i) => ({
+                id: `np-${i}-${Date.now()}`,
+                type: "image" as const,
+                image: { url: img.url, scale: 1, label: `${niche.name} #${i + 1}` },
+                text: defaultTextStyle(),
+            }));
+            const bytes = await buildBookPdf(undefined, false, pages, true);
+            if (!bytes) throw new Error("No se pudo generar el PDF");
+            const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = blobUrl;
+            a.download = `${niche.name || "nicho-kdp"}.pdf`;
+            a.click();
+            toast.success(`PDF generado · ${allImages.length} imágenes`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error generando PDF");
+        } finally {
+            setDirectNichePdfId(null);
+        }
+    };
+
+    const buildBookPdf = async (onBytes?: (bytes: Uint8Array) => void, compressImages = false, pagesToUse?: BookPage[], forceNoOwnerPage = false) => {
         const pages = pagesToUse ?? bookPages;
         if (pages.length === 0) return null;
         setIsBuildingPdf(true);
@@ -2312,7 +2373,7 @@ export function KdpFactoryApp() {
             };
 
             // ── Página de propietario / copyright (primera página, si no viene en pages) ──
-            if (includeOwnerPage && !pages.some(p => p.type === "owner")) {
+            if (includeOwnerPage && !forceNoOwnerPage && !pages.some(p => p.type === "owner")) {
                 const ownerPage = pdf.addPage([pageWidth, pageHeight]);
                 drawOwnerPageContent(ownerPage, embeddedFont);
             }
@@ -5277,13 +5338,24 @@ export function KdpFactoryApp() {
                                                     <Copy size={11} /> Reusar
                                                 </button>
                                                 {catalog.images.length > 0 && (
-                                                    <button
-                                                        onClick={() => { const pages: BookPage[] = catalog.images.map((img, i) => ({ id: genPageId(), type: "image" as const, image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` }, text: defaultTextStyle() })); setBookPages(pages); setSelectedPageId(pages[0]?.id ?? null); setBookEditorOpen(true); }}
-                                                        title="Editar PDF"
-                                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-[9px] font-black uppercase tracking-widest"
-                                                    >
-                                                        <FileText size={11} /> PDF
-                                                    </button>
+                                                    <>
+                                                        <button
+                                                            onClick={() => { const pages: BookPage[] = catalog.images.map((img, i) => ({ id: genPageId(), type: "image" as const, image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` }, text: defaultTextStyle() })); setBookPages(pages); setSelectedPageId(pages[0]?.id ?? null); setBookEditorOpen(true); }}
+                                                            title="Editar PDF en editor"
+                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-[9px] font-black uppercase tracking-widest"
+                                                        >
+                                                            <FileText size={11} /> Editor
+                                                        </button>
+                                                        <button
+                                                            onClick={() => void downloadCatalogPdfDirect(catalog)}
+                                                            disabled={directPdfCatalogId === catalog._id}
+                                                            title={`Descargar PDF directo · ${catalog.images.length} páginas`}
+                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-all border border-sky-500/20 text-[9px] font-black uppercase tracking-widest disabled:opacity-50"
+                                                        >
+                                                            {directPdfCatalogId === catalog._id ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
+                                                            PDF
+                                                        </button>
+                                                    </>
                                                 )}
                                                 {catalog.status === "completed" && catalog.images.length > 0 && (catalog.nicheIds?.length ?? 0) > 0 && (() => {
                                                     const linkedNiche = niches.find(n => (catalog.nicheIds ?? []).includes(n._id));
@@ -6438,6 +6510,12 @@ export function KdpFactoryApp() {
                                                             </span>
                                                         </div>
                                                         {niche.description && <p className="text-xs text-neutral-500 mt-2 line-clamp-2 leading-relaxed">{niche.description}</p>}
+                                                        {niche.etsyUrl && (
+                                                            <a href={niche.etsyUrl} target="_blank" rel="noopener noreferrer"
+                                                                className="inline-flex items-center gap-1 mt-1.5 text-[9px] font-black text-sky-400 hover:text-sky-300 transition-colors">
+                                                                <ExternalLink size={9} /> Ver en Etsy
+                                                            </a>
+                                                        )}
                                                     </div>
                                                     {/* Actions — visible on hover */}
                                                     <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -6644,6 +6722,16 @@ export function KdpFactoryApp() {
                                                             className="flex items-center gap-1 px-2.5 h-8 rounded-xl bg-white/[0.04] border border-white/10 text-[9px] font-black text-neutral-500 hover:text-white hover:bg-white/8 transition-all">
                                                             <Layers size={10} /> Form
                                                         </button>
+                                                        {linkedImgs > 0 && (
+                                                            <button
+                                                                onClick={() => void downloadNichePdfDirect(niche, linkedCats)}
+                                                                disabled={directNichePdfId === niche._id}
+                                                                title={`PDF directo · ${linkedImgs} imágenes sin páginas en blanco`}
+                                                                className="flex items-center gap-1 px-2.5 h-8 rounded-xl bg-sky-500/10 border border-sky-500/20 text-[9px] font-black text-sky-400 hover:bg-sky-500/20 transition-all disabled:opacity-40">
+                                                                {directNichePdfId === niche._id ? <Loader2 size={10} className="animate-spin" /> : <Download size={10} />}
+                                                                PDF
+                                                            </button>
+                                                        )}
                                                         <button
                                                             onClick={() => void generateNicheContent(niche)}
                                                             disabled={nicheGeneratingId === niche._id}
@@ -6669,7 +6757,7 @@ export function KdpFactoryApp() {
             <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
                 <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent" />
                 <div className="p-6">
-                    <NicheRadar apiUrl={API_BASE_URL} niches={niches} />
+                    <NicheRadar apiUrl={API_BASE_URL} niches={niches} onNicheCreated={() => void fetchNiches()} />
                 </div>
             </div>
         </div>
@@ -8490,6 +8578,18 @@ export function KdpFactoryApp() {
                                     </div>
                                 )}
                             </div>
+                            {/* Etsy URL */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Enlace Etsy <span className="normal-case text-neutral-600">(opcional)</span></label>
+                                <input value={nicheFormEtsyUrl} onChange={e => setNicheFormEtsyUrl(e.target.value)} placeholder="https://www.etsy.com/listing/..."
+                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all" />
+                                {nicheFormEtsyUrl.trim() && (
+                                    <a href={nicheFormEtsyUrl.trim()} target="_blank" rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-[9px] text-sky-400 hover:text-sky-300 transition-colors">
+                                        <ExternalLink size={9} /> Ver en Etsy
+                                    </a>
+                                )}
+                            </div>
                             {/* Notes */}
                             <div className="space-y-1.5">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Notas</label>
@@ -8802,6 +8902,22 @@ export function KdpFactoryApp() {
                                     <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${includeOwnerPage ? "left-4" : "left-0.5"}`} />
                                 </div>
                             </button>
+                            {/* No blank pages toggle */}
+                            <button
+                                onClick={() => setNoBlankPages(v => !v)}
+                                className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border transition-all ${noBlankPages ? "border-sky-500/40 bg-sky-500/[0.07]" : "border-white/8 bg-white/[0.02] hover:border-white/12"}`}
+                            >
+                                <div className="flex items-center gap-2.5">
+                                    <Layers size={13} className={noBlankPages ? "text-sky-400" : "text-neutral-600"} />
+                                    <div className="text-left">
+                                        <p className={`text-[10px] font-black ${noBlankPages ? "text-sky-300" : "text-neutral-400"}`}>No añadir páginas en blanco</p>
+                                        <p className="text-[9px] text-neutral-600">Solo imágenes, sin página en blanco al reverso de cada una</p>
+                                    </div>
+                                </div>
+                                <div className={`w-8 h-4 rounded-full transition-all relative ${noBlankPages ? "bg-sky-500" : "bg-white/10"}`}>
+                                    <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${noBlankPages ? "left-4" : "left-0.5"}`} />
+                                </div>
+                            </button>
                             {/* Summary */}
                             {(() => {
                                 const vaultCount = kdpTemplateVaultSel.size;
@@ -8810,11 +8926,14 @@ export function KdpFactoryApp() {
                                     .filter(c => kdpTemplateCatalogSel.has(c._id))
                                     .reduce((acc, c) => acc + c.images.length, 0);
                                 const total = vaultCount + cloudCount + catalogCount;
-                                const pageTotal = total * 2 + 2 + (includeOwnerPage ? 1 : 0);
+                                const pageTotal = noBlankPages
+                                    ? total + 1 + (includeOwnerPage ? 1 : 0)
+                                    : total * 2 + 2 + (includeOwnerPage ? 1 : 0);
                                 return total > 0 ? (
                                     <p className="text-[10px] text-neutral-500 text-center">
                                         <span className="text-sky-400 font-black">{total}</span> imágenes · <span className="text-neutral-400 font-black">{pageTotal}</span> páginas
                                         {includeOwnerPage ? <span className="text-amber-400"> (+ pág. propietario)</span> : ""}
+                                        {noBlankPages ? <span className="text-sky-400"> · sin blancos</span> : ""}
                                     </p>
                                 ) : (
                                     <p className="text-[10px] text-amber-400/70 text-center font-black">Selecciona al menos una imagen</p>

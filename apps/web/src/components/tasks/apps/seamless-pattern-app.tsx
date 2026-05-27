@@ -3,21 +3,22 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
     Sparkles, Download, RefreshCw, Grid, Copy, Trash2,
-    ChevronDown, Loader2, Check, Layers, Save,
+    ChevronDown, Loader2, Check, Save,
     ExternalLink, Info, Palette, Wand2, ImageIcon,
-    BarChart2, Plug, Activity, Store, AlertTriangle
+    BarChart2, TrendingUp, AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
 import { AI_MODELS, groupModelsByProvider, generateImageBlobUrl, type AIModel } from "./shared/ai-constants";
 import { AppTabNav, type AppTab } from "./shared/app-tab-nav";
 import { EarningsStats, type EarningsProduct } from "./shared/earnings-stats";
 import { DigitalProductsTable, DEFAULT_PRODUCT_TYPES } from "./shared/digital-products-table";
+import { NicheRadar } from "@/components/extractor/NicheRadar";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type TabID = "insights" | "galeria" | "motor" | "integraciones";
+type TabID = "insights" | "galeria" | "motor" | "tendencias";
 
 interface SavedPattern {
     _id: string;
@@ -91,7 +92,10 @@ async function blobUrlToDataUrl(blobUrl: string): Promise<string> {
 
 export function SeamlessPatternApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
-        try { return (localStorage.getItem("seamless-tab") ?? "insights") as TabID; } catch { return "insights"; }
+        try {
+            const saved = localStorage.getItem("seamless-tab") ?? "insights";
+            return (["insights", "galeria", "motor", "tendencias"].includes(saved) ? saved : "insights") as TabID;
+        } catch { return "insights"; }
     });
 
     // Motor state
@@ -124,10 +128,10 @@ export function SeamlessPatternApp() {
     const modelsByProvider = groupModelsByProvider(AI_MODELS);
 
     const tabs: AppTab[] = [
-        { id: "insights",      name: "Insights",      icon: <BarChart2 size={15} /> },
-        { id: "galeria",       name: "Galería",       icon: <Grid size={15} />, badge: patterns.length || undefined },
-        { id: "motor",         name: "Motor",         icon: <Sparkles size={15} /> },
-        { id: "integraciones", name: "Integraciones", icon: <Plug size={15} /> },
+        { id: "insights",   name: "Insights",   icon: <BarChart2 size={15} /> },
+        { id: "galeria",    name: "Galería",    icon: <Grid size={15} />, badge: patterns.length || undefined },
+        { id: "motor",      name: "Motor",      icon: <Sparkles size={15} /> },
+        { id: "tendencias", name: "Tendencias", icon: <TrendingUp size={15} /> },
     ];
 
     const changeTab = (tab: string) => {
@@ -604,47 +608,71 @@ export function SeamlessPatternApp() {
                     filterTypes={SEAMLESS_PRODUCT_TYPES.map(t => t.id)}
                     onProductsChange={setInsightsProducts}
                 />
+
+                {/* ── Plataformas & Distribución (integrations moved here) ── */}
+                <div className="space-y-3">
+                    <div className="flex items-center gap-2 pb-1 border-b border-white/[0.05]">
+                        <ExternalLink size={13} className="text-neutral-500" />
+                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Plataformas & Distribución</p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {PLATFORM_SPECS.map(p => (
+                            <div key={p.name} className="rounded-2xl border border-white/8 bg-white/[0.025] p-4 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <p className={`text-[13px] font-black ${p.color}`}>{p.name}</p>
+                                    <a href={p.url} target="_blank" rel="noreferrer"
+                                        className="flex items-center gap-1 text-[9px] text-neutral-600 hover:text-neutral-300 transition-colors">
+                                        <ExternalLink size={9} />Abrir
+                                    </a>
+                                </div>
+                                <p className="text-[8px] font-mono text-neutral-500 bg-white/[0.04] border border-white/8 px-2 py-1.5 rounded-xl">{p.specs}</p>
+                                <p className="text-[9px] text-neutral-600 leading-relaxed">{p.tip}</p>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="rounded-2xl border border-amber-500/15 bg-amber-500/[0.04] p-4 flex items-start gap-2">
+                        <Info size={12} className="text-amber-400 shrink-0 mt-0.5" />
+                        <p className="text-[9px] text-amber-200/60 leading-relaxed">Exporta siempre como PNG sin fondo. Los patrones generados son 1024×1024 px — usa FLUX Schnell o SDXL y escala con Upscaler para resoluciones mayores.</p>
+                    </div>
+                </div>
             </div>
         );
     };
 
-    // ── Render Integraciones ──────────────────────────────────────────────────
+    // ── Render Tendencias (NicheRadar adapted for pattern styles) ─────────────
 
-    const renderIntegraciones = () => (
-        <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {PLATFORM_SPECS.map(p => (
-                    <div key={p.name} className="rounded-2xl border border-white/8 bg-white/[0.025] p-5 space-y-3">
-                        <div className="flex items-center justify-between">
-                            <p className={`text-[14px] font-black ${p.color}`}>{p.name}</p>
-                            <a href={p.url} target="_blank" rel="noreferrer"
-                                className="flex items-center gap-1 text-[9px] text-neutral-600 hover:text-neutral-300 transition-colors">
-                                <ExternalLink size={10} />Abrir
-                            </a>
-                        </div>
-                        <p className="text-[9px] font-mono text-neutral-400 bg-white/[0.04] border border-white/8 px-3 py-2 rounded-xl">{p.specs}</p>
-                        <p className="text-[10px] text-neutral-500 leading-relaxed">{p.tip}</p>
-                    </div>
-                ))}
-            </div>
-            <div className="rounded-2xl border border-amber-500/15 bg-amber-500/[0.04] p-5 space-y-2">
-                <div className="flex items-center gap-2">
-                    <Info size={13} className="text-amber-400 shrink-0" />
-                    <p className="text-[11px] font-black text-amber-300">Tip: exporta siempre como PNG sin fondo para mejor compatibilidad</p>
-                </div>
-                <p className="text-[10px] text-amber-200/60 leading-relaxed">Los patrones generados son 1024×1024 px. Para resoluciones mayores, usa modelos de alta calidad (FLUX Schnell, SDXL) o escala con Upscaler antes de subir a las plataformas.</p>
-            </div>
-        </div>
+    const SEAMLESS_ETSY_PRESETS = [
+        { label: "Redbubble Patterns", url: "https://www.redbubble.com/shop/?query=seamless+pattern&sort=top+selling" },
+        { label: "Society6 Surface", url: "https://society6.com/art/seamless-pattern" },
+        { label: "Spoonflower", url: "https://www.spoonflower.com/designs?query=seamless+pattern" },
+    ];
+
+    const SEAMLESS_GENERAL_PRESETS = [
+        { label: "Pinterest Patterns", url: "https://www.pinterest.com/search/pins/?q=seamless+pattern+trending" },
+        { label: "Etsy Fabric", url: "https://www.etsy.com/search?q=seamless+pattern+fabric+design" },
+        { label: "Creative Market", url: "https://creativemarket.com/search?q=seamless+pattern" },
+    ];
+
+    const renderTendencias = () => (
+        <NicheRadar
+            apiUrl={API_BASE_URL}
+            defaultMode="general"
+            etsyPresets={SEAMLESS_ETSY_PRESETS}
+            generalPresets={SEAMLESS_GENERAL_PRESETS}
+            headerTitle={<><span className="text-white">Tendencias de </span><span className="bg-gradient-to-r from-violet-300 to-pink-400 bg-clip-text text-transparent">Estilos</span></>}
+            headerSubtitle="Detecta estilos de patrón en tendencia · Powered by Gemini + Playwright · Aplica en el Motor"
+            modeLabels={{ etsy: "Búsquedas sugeridas" }}
+        />
     );
 
     return (
         <div className="space-y-12 pb-24">
             <AppTabNav tabs={tabs} activeTab={activeTab} onChange={changeTab} storageKey="seamless-tab" />
             <div className="relative pt-6">
-                {activeTab === "motor"         && renderMotor()}
-                {activeTab === "galeria"       && renderGaleria()}
-                {activeTab === "insights"      && renderInsights()}
-                {activeTab === "integraciones" && renderIntegraciones()}
+                {activeTab === "motor"      && renderMotor()}
+                {activeTab === "galeria"    && renderGaleria()}
+                {activeTab === "insights"   && renderInsights()}
+                {activeTab === "tendencias" && renderTendencias()}
             </div>
         </div>
     );

@@ -35,6 +35,7 @@ interface EtsyListing {
     sub_nicho_estimado: string;
     url_producto?: string;
     fecha_detectado?: string;
+    _nichoCreado?: boolean;
 }
 
 interface EtsyNicheResult {
@@ -54,6 +55,13 @@ type SortKey = keyof EtsyListing;
 interface NicheRadarProps {
     apiUrl: string;
     niches?: { _id: string; name: string }[];
+    etsyPresets?: { label: string; url: string }[];
+    generalPresets?: { label: string; url: string }[];
+    defaultMode?: Mode;
+    headerTitle?: React.ReactNode;
+    headerSubtitle?: string;
+    modeLabels?: { etsy?: string; general?: string };
+    onNicheCreated?: () => void;
 }
 
 const GENERAL_PRESET_URLS = [
@@ -119,8 +127,8 @@ function demandSignal(row: EtsyListing): { label: string; cls: string; icon: "ho
     return { label: "Nueva", cls: "text-sky-400 bg-sky-500/10 border-sky-500/15", icon: "new" };
 }
 
-export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
-    const [mode, setMode] = useState<Mode>("etsy-niches");
+export function NicheRadar({ apiUrl, niches = [], etsyPresets, generalPresets, defaultMode = "etsy-niches", headerTitle, headerSubtitle, modeLabels, onNicheCreated }: NicheRadarProps) {
+    const [mode, setMode] = useState<Mode>(defaultMode);
     const [url, setUrl] = useState("");
     const [nicheName, setNicheName] = useState("");
     const [context, setContext] = useState("");
@@ -133,8 +141,8 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
     const [sortKey, setSortKey] = useState<SortKey>("personas_carrito");
     const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
     const [showHelp, setShowHelp] = useState(false);
-    const [createdNicheRows, setCreatedNicheRows] = useState<Set<string>>(new Set());
     const [creatingRowTitle, setCreatingRowTitle] = useState<string | null>(null);
+    const [createdNicheRows, setCreatedNicheRows] = useState<Set<string>>(new Set());
     const [geminiModel, setGeminiModel] = useState("gemini-2.0-flash");
     const [confirmModal, setConfirmModal] = useState<{
         title: string;
@@ -144,10 +152,14 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
     const logsEndRef = useRef<HTMLDivElement>(null);
     const isFirstLog = useRef(true);
     const activeJobId = useRef<string | null>(null);
+    const etsyResultRef = useRef<EtsyNicheResult | null>(null);
 
     // Restore state from backend on mount — persists through page navigation
     useEffect(() => {
-        // Restore last job (logs + scan result)
+        // Flag: once saved-etsy-result provides data, jobs/latest must not overwrite it
+        let etsyRestoredFromSettings = false;
+
+        // Restore last job (logs, running state, general results)
         fetch(`${apiUrl}/radar/jobs/latest`)
             .then(r => r.json())
             .then(({ job }: any) => {
@@ -165,20 +177,31 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                 } else {
                     setLogs(restoredLogs);
                     if (job.status === "completed" && job.result) {
-                        if (job.mode === "etsy-niches") setEtsyResult(job.result);
-                        else setGeneralResult(job.result);
+                        if (job.mode === "general") {
+                            setGeneralResult(job.result);
+                        } else if (job.mode === "etsy-niches" && !etsyRestoredFromSettings) {
+                            // Fallback: saved-etsy-result has no data for this result
+                            setEtsyResult(job.result);
+                        }
                     }
                 }
             })
             .catch(() => { });
 
-        // Restore saved etsy result from Settings
+        // Authoritative etsy result (includes _nichoCreado flags) — always wins over jobs/latest
         fetch(`${apiUrl}/radar/saved-etsy-result`)
             .then(r => r.json())
             .then(({ result }: any) => {
                 if (result?.nichos_detectados?.length) {
+                    etsyRestoredFromSettings = true;
                     setEtsyResult(result);
                     setMode("etsy-niches");
+                    const created = new Set<string>(
+                        (result.nichos_detectados as EtsyListing[])
+                            .filter((r: EtsyListing) => r._nichoCreado)
+                            .map((r: EtsyListing) => r.titulo_producto)
+                    );
+                    if (created.size > 0) setCreatedNicheRows(created);
                 }
             })
             .catch(() => { });
@@ -221,6 +244,20 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
     }, [apiUrl, url]);
 
     useEffect(() => {
+        etsyResultRef.current = etsyResult;
+    }, [etsyResult]);
+
+    // Auto-save etsyResult to backend whenever _nichoCreado flags are present
+    useEffect(() => {
+        if (!etsyResult?.nichos_detectados.some(r => r._nichoCreado)) return;
+        fetch(`${apiUrl}/radar/saved-etsy-result`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ result: etsyResult }),
+        }).catch(() => {});
+    }, [etsyResult, apiUrl]);
+
+    useEffect(() => {
         if (logs.length > 0) {
             if (isFirstLog.current) { isFirstLog.current = false; logsEndRef.current?.scrollIntoView({ behavior: "auto" }); }
             else logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -233,8 +270,8 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
         setIsAnalyzing(true);
         setEtsyResult(null);
         setGeneralResult(null);
-        setCreatedNicheRows(new Set());
         setCreatingRowTitle(null);
+        setCreatedNicheRows(new Set());
         setLogs([]);
         void saveEtsyResultToBackend(null);
         isFirstLog.current = true;
@@ -284,15 +321,15 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                     void saveEtsyResultToBackend(updated);
                     return updated;
                 });
-                setCreatedNicheRows(prev => { const n = new Set(prev); n.delete(row.titulo_producto); return n; });
                 setConfirmModal(null);
             },
         });
     };
 
     const createNicheFromRow = async (row: EtsyListing) => {
-        if (createdNicheRows.has(row.titulo_producto)) return;
-        setCreatingRowTitle(row.titulo_producto);
+        if (row._nichoCreado || createdNicheRows.has(row.titulo_producto)) return;
+        // Optimistic: checkmark appears immediately on click
+        setCreatedNicheRows(prev => new Set([...prev, row.titulo_producto]));
         try {
             const res = await fetch(`${apiUrl}/niches`, {
                 method: "POST",
@@ -306,12 +343,22 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                 }),
             });
             if (!res.ok) throw new Error(`Error ${res.status}`);
-            setCreatedNicheRows(prev => new Set([...prev, row.titulo_producto]));
+            // Functional updater: always gets latest etsyResult, triggers auto-save useEffect
+            setEtsyResult(prev => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    nichos_detectados: prev.nichos_detectados.map(r =>
+                        r.titulo_producto === row.titulo_producto ? { ...r, _nichoCreado: true } : r
+                    ),
+                };
+            });
+            onNicheCreated?.();
             toast.success(`Nicho "${row.sub_nicho_estimado}" creado`);
         } catch (e: any) {
+            // Revert optimistic update on error
+            setCreatedNicheRows(prev => { const next = new Set(prev); next.delete(row.titulo_producto); return next; });
             toast.error(e.message ?? "Error creando nicho");
-        } finally {
-            setCreatingRowTitle(null);
         }
     };
 
@@ -349,8 +396,8 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
             <div className="flex items-start justify-between gap-4">
                 <SectionHeader
                     icon={<TrendingUp size={20} />}
-                    title={<><span className="text-white">Radar de </span><span className="bg-gradient-to-r from-amber-300 to-orange-400 bg-clip-text text-transparent">Nichos</span></>}
-                    subtitle="Análisis de mercado con IA · Powered by Gemini + llm-scraper · Playwright headless"
+                    title={headerTitle ?? <><span className="text-white">Radar de </span><span className="bg-gradient-to-r from-amber-300 to-orange-400 bg-clip-text text-transparent">Nichos</span></>}
+                    subtitle={headerSubtitle ?? "Análisis de mercado con IA · Powered by Gemini + llm-scraper · Playwright headless"}
                     color="amber"
                     size="lg"
                 />
@@ -391,7 +438,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                                     "Selecciona un preset o pega una URL de búsqueda de Etsy",
                                     "Pulsa «Escanear Etsy» — tarda 30–60 s",
                                     "Ordena la tabla por «Carrito» para ver demanda inmediata",
-                                    "Pulsa + Nicho en una fila para crear el nicho directamente sin IA",
+                                                    "Pulsa + Nicho en una fila para crear el nicho directamente sin IA",
                                     "Exporta a CSV para analizar en Excel o Google Sheets",
                                 ].map((step, i) => (
                                     <div key={i} className="flex items-start gap-2">
@@ -475,14 +522,14 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
             {/* Mode tabs */}
             <div className="flex gap-1 p-1 bg-white/[0.03] border border-white/8 rounded-2xl w-fit">
                 {([
-                    { id: "etsy-niches" as Mode, label: "Nichos Etsy", icon: ShoppingCart },
-                    { id: "general" as Mode, label: "Análisis General", icon: BarChart3 },
+                    { id: "etsy-niches" as Mode, label: modeLabels?.etsy ?? "Nichos Etsy", icon: ShoppingCart },
+                    { id: "general" as Mode, label: modeLabels?.general ?? "Análisis General", icon: BarChart3 },
                 ] as const).map(tab => {
                     const Icon = tab.icon;
                     const active = mode === tab.id;
                     return (
                         <button key={tab.id}
-                            onClick={() => { setMode(tab.id); setUrl(""); setEtsyResult(null); setGeneralResult(null); setLogs([]); }}
+                            onClick={() => { setMode(tab.id); setUrl(""); }}
                             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${active
                                 ? tab.id === "etsy-niches"
                                     ? "bg-sky-500/15 border border-sky-500/25 text-sky-300"
@@ -522,7 +569,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                             <div className="space-y-1.5">
                                 <span className="text-[8px] font-black uppercase tracking-widest text-neutral-700">Búsquedas predefinidas</span>
                                 <div className="flex flex-col gap-1">
-                                    {ETSY_PRESET_URLS.map(p => (
+                                    {(etsyPresets ?? ETSY_PRESET_URLS).map(p => (
                                         <button key={p.label}
                                             onClick={() => setUrl(p.url)}
                                             className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all text-[9px] font-black uppercase ${url === p.url
@@ -538,7 +585,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                             </div>
                         ) : (
                             <div className="flex gap-1.5 flex-wrap">
-                                {GENERAL_PRESET_URLS.map(p => (
+                                {(generalPresets ?? GENERAL_PRESET_URLS).map(p => (
                                     <button key={p.label}
                                         onClick={() => setUrl(p.url)}
                                         className="text-[8px] font-black uppercase px-2 py-1 rounded-lg bg-white/[0.03] border border-white/8 text-neutral-600 hover:text-amber-400 hover:border-amber-500/20 transition-all">
@@ -950,7 +997,7 @@ export function NicheRadar({ apiUrl, niches = [] }: NicheRadarProps) {
                                                         )}
                                                         {/* Create nicho directly */}
                                                         {(() => {
-                                                            const created = createdNicheRows.has(row.titulo_producto);
+                                                            const created = createdNicheRows.has(row.titulo_producto) || !!row._nichoCreado;
                                                             const creating = creatingRowTitle === row.titulo_producto;
                                                             return (
                                                                 <button
