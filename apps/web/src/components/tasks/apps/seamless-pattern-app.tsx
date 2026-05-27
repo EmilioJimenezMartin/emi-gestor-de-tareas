@@ -249,6 +249,10 @@ export function SeamlessPatternApp() {
     const [tilePreviewId, setTilePreviewId] = useState<string | null>(null);
     const [tilePreviewMode, setTilePreviewMode] = useState<TileMode>("2x2");
 
+    // Lightbox
+    const [lightboxPattern, setLightboxPattern] = useState<SavedPattern | null>(null);
+    const [lightboxTile, setLightboxTile] = useState<TileMode>("2x2");
+
     const currentModel: AIModel = AI_MODELS.find(m => m.id === selectedModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
     const modelsByProvider = groupModelsByProvider(AI_MODELS);
 
@@ -507,6 +511,12 @@ export function SeamlessPatternApp() {
     useEffect(() => {
         if (activeTab === "insights" || activeTab === "galeria") void loadPatterns();
     }, [activeTab, loadPatterns]);
+
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setLightboxPattern(null); };
+        document.addEventListener("keydown", handler);
+        return () => document.removeEventListener("keydown", handler);
+    }, []);
 
     // Build prompt
     const buildPrompt = () => {
@@ -1106,61 +1116,133 @@ export function SeamlessPatternApp() {
                 </div>
             ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {filteredPatterns.map(p => {
-                        const tileCols = tilePreviewId === p._id ? (tilePreviewMode === "2x2" ? 2 : tilePreviewMode === "3x3" ? 3 : 1) : 1;
-                        return (
-                            <div key={p._id} className="group relative rounded-2xl border border-white/8 bg-white/[0.02] overflow-hidden">
-                                {/* Image */}
-                                <div className="relative aspect-square overflow-hidden cursor-pointer"
-                                    onClick={() => setTilePreviewId(prev => prev === p._id ? null : p._id)}>
-                                    {tilePreviewId === p._id ? (
-                                        <div style={{ display: "grid", gridTemplateColumns: `repeat(${tileCols}, 1fr)` }} className="w-full h-full">
-                                            {[...Array(tileCols * tileCols)].map((_, i) => (
-                                                <img key={i} src={p.url} alt="" className="w-full aspect-square object-cover" />
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <img src={p.url} alt={p.styleLabel} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-500" />
-                                    )}
+                    {filteredPatterns.map(p => (
+                        <div key={p._id} className="group relative rounded-2xl border border-white/8 bg-white/[0.02] overflow-hidden">
+                            {/* Image — click opens lightbox */}
+                            <div className="relative aspect-square overflow-hidden cursor-zoom-in"
+                                onClick={() => { setLightboxPattern(p); setLightboxTile("2x2"); }}>
+                                <img src={p.url} alt={p.styleLabel} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-500" />
 
-                                    {/* Hover actions overlay */}
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                {/* Hover overlay */}
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="flex items-center gap-0.5 bg-white/10 border border-white/20 rounded-lg px-2 py-1">
+                                            <Grid size={10} className="text-white" />
+                                            <span className="text-[8px] font-black text-white ml-1">Ver</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-1.5">
                                         <button onClick={e => { e.stopPropagation(); downloadPattern(p.url, `pattern-${p.style}-${p._id}.png`); }}
-                                            className="w-8 h-8 rounded-xl bg-white/10 border border-white/20 text-white flex items-center justify-center hover:bg-white/20 transition-all">
-                                            <Download size={13} />
+                                            className="w-7 h-7 rounded-lg bg-white/10 border border-white/20 text-white flex items-center justify-center hover:bg-white/25 transition-all">
+                                            <Download size={11} />
                                         </button>
                                         <button onClick={e => { e.stopPropagation(); setDeleteConfirmId(p._id); }}
-                                            className="w-8 h-8 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-400 flex items-center justify-center hover:bg-rose-500/30 transition-all">
-                                            <Trash2 size={13} />
+                                            className="w-7 h-7 rounded-lg bg-rose-500/20 border border-rose-500/30 text-rose-400 flex items-center justify-center hover:bg-rose-500/30 transition-all">
+                                            <Trash2 size={11} />
                                         </button>
                                     </div>
                                 </div>
-
-                                {/* Tile toggle */}
-                                {tilePreviewId === p._id && (
-                                    <div className="absolute top-2 left-2 flex gap-1">
-                                        {(["1x1","2x2","3x3"] as TileMode[]).map(t => (
-                                            <button key={t} onClick={e => { e.stopPropagation(); setTilePreviewMode(t); }}
-                                                className={`h-5 px-1.5 rounded-md text-[7px] font-black transition-all ${tilePreviewMode === t ? "bg-violet-500 text-white" : "bg-black/70 text-neutral-400"}`}>{t}</button>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Meta */}
-                                <div className="px-2.5 py-2 space-y-0.5">
-                                    <div className="flex items-center justify-between gap-1">
-                                        <span className="text-[9px] font-black text-white truncate">
-                                            {PATTERN_STYLES.find(s => s.id === p.style)?.emoji} {p.styleLabel || p.style}
-                                        </span>
-                                        <span className="text-[7px] text-neutral-700 shrink-0">
-                                            {new Date(p.createdAt).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
-                                        </span>
-                                    </div>
-                                    <p className="text-[8px] text-neutral-600 truncate">{p.paletteLabel} · {p.modelName}</p>
-                                </div>
                             </div>
-                        );
-                    })}
+
+                            {/* Meta */}
+                            <div className="px-2.5 py-2 space-y-0.5">
+                                <div className="flex items-center justify-between gap-1">
+                                    <span className="text-[9px] font-black text-white truncate">
+                                        {PATTERN_STYLES.find(s => s.id === p.style)?.emoji} {p.styleLabel || p.style}
+                                    </span>
+                                    <span className="text-[7px] text-neutral-700 shrink-0">
+                                        {new Date(p.createdAt).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                                    </span>
+                                </div>
+                                <p className="text-[8px] text-neutral-600 truncate">{p.paletteLabel} · {p.modelName}</p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* ── Lightbox ── */}
+            {lightboxPattern && (
+                <div
+                    className="fixed inset-0 z-[9999] flex flex-col"
+                    style={{ background: "rgba(0,0,0,0.96)" }}
+                    onClick={() => setLightboxPattern(null)}
+                >
+                    {/* Top bar */}
+                    <div className="flex items-center gap-3 px-5 py-3 border-b border-white/[0.06] shrink-0"
+                        onClick={e => e.stopPropagation()}>
+                        {/* Tile mode chips */}
+                        <div className="flex items-center gap-1.5">
+                            {(["1x1","2x2","3x3"] as TileMode[]).map(t => (
+                                <button key={t} onClick={() => setLightboxTile(t)}
+                                    className={`h-7 px-3 rounded-xl border text-[9px] font-black transition-all ${lightboxTile === t ? "border-violet-500/50 bg-violet-500/20 text-violet-300" : "border-white/10 bg-white/[0.04] text-neutral-500 hover:text-white"}`}>
+                                    {t}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Meta */}
+                        <div className="flex-1 min-w-0 px-2 hidden sm:block">
+                            <p className="text-[11px] font-black text-white truncate">
+                                {PATTERN_STYLES.find(s => s.id === lightboxPattern.style)?.emoji}{" "}
+                                {lightboxPattern.styleLabel} · {lightboxPattern.paletteLabel}
+                            </p>
+                            <p className="text-[9px] text-neutral-600 truncate">{lightboxPattern.modelName} · seed {lightboxPattern.seed}</p>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-2 ml-auto">
+                            <button
+                                onClick={() => downloadPattern(lightboxPattern.url, `pattern-${lightboxPattern.style}-${lightboxPattern._id}.png`)}
+                                className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-[9px] font-black text-emerald-300 hover:bg-emerald-500/25 transition-all">
+                                <Download size={11} /> Descargar
+                            </button>
+                            <button
+                                onClick={() => { setDeleteConfirmId(lightboxPattern._id); setLightboxPattern(null); }}
+                                className="w-8 h-8 rounded-xl bg-white/[0.04] border border-white/10 text-neutral-600 hover:text-rose-400 hover:border-rose-500/25 flex items-center justify-center transition-all">
+                                <Trash2 size={13} />
+                            </button>
+                            <button onClick={() => setLightboxPattern(null)}
+                                className="w-8 h-8 rounded-xl bg-white/[0.04] border border-white/10 text-neutral-500 hover:text-white flex items-center justify-center transition-all">
+                                <X size={14} />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Image area */}
+                    <div
+                        className="flex-1 overflow-auto flex items-start justify-center p-4"
+                        style={{ background: "repeating-conic-gradient(#0d0d0d 0% 25%, #141414 0% 50%) 0 0 / 24px 24px" }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {(() => {
+                            const cols = lightboxTile === "1x1" ? 1 : lightboxTile === "2x2" ? 2 : 3;
+                            const count = cols * cols;
+                            return (
+                                <div
+                                    className="w-full max-w-4xl mx-auto"
+                                    style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+                                >
+                                    {[...Array(count)].map((_, i) => (
+                                        <img key={i} src={lightboxPattern.url} alt="" className="w-full aspect-square object-cover" />
+                                    ))}
+                                </div>
+                            );
+                        })()}
+                    </div>
+
+                    {/* Prompt strip */}
+                    {lightboxPattern.prompt && (
+                        <div className="px-5 py-2.5 border-t border-white/[0.05] flex items-center gap-3 shrink-0"
+                            onClick={e => e.stopPropagation()}>
+                            <p className="text-[8px] font-black uppercase tracking-widest text-neutral-700 shrink-0">Prompt</p>
+                            <p className="text-[9px] text-neutral-600 leading-relaxed flex-1 truncate">{lightboxPattern.prompt}</p>
+                            <button onClick={() => { navigator.clipboard.writeText(lightboxPattern.prompt); toast.success("Copiado"); }}
+                                className="shrink-0 text-neutral-700 hover:text-neutral-400 transition-colors">
+                                <Copy size={10} />
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
 

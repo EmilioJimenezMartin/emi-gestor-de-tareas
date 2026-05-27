@@ -141,3 +141,36 @@ export async function varyTextWithLLM(text: string, creativity = 50): Promise<st
 
     return text;
 }
+
+/**
+ * Generic text generation using the configured LLM.
+ * Returns the raw text response. Throws if no provider is available.
+ */
+export async function generateTextWithLLM(systemPrompt: string, userPrompt: string): Promise<string> {
+    const config = await getConfig();
+
+    if (config.provider === "google" && config.googleKey) {
+        const { GoogleGenerativeAI } = await import("@google/generative-ai");
+        const genAI = new GoogleGenerativeAI(config.googleKey);
+        const model = genAI.getGenerativeModel({
+            model: config.model || "gemini-2.5-flash",
+            systemInstruction: systemPrompt,
+        });
+        const result = await model.generateContent(userPrompt);
+        return result.response.text().trim();
+    }
+
+    if (config.provider === "huggingface" && config.hfKey) {
+        const { HfInference } = await import("@huggingface/inference");
+        const hf = new HfInference(config.hfKey);
+        const full = `${systemPrompt}\n\n${userPrompt}`;
+        const response = await hf.textGeneration({
+            model: config.model,
+            inputs: full,
+            parameters: { max_new_tokens: 512, temperature: 0.4 },
+        });
+        return (response.generated_text ?? "").replace(full, "").trim();
+    }
+
+    throw new Error("No hay proveedor de IA configurado. Configura Google API key o HuggingFace en Ajustes → Núcleo de Inteligencia.");
+}

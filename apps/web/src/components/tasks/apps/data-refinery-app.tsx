@@ -40,6 +40,23 @@ interface Catalog {
     createdAt: string;
 }
 
+interface SavedPattern {
+    _id: string;
+    publicId: string;
+    url: string;
+    prompt: string;
+    style: string;
+    styleLabel: string;
+    palette: string;
+    paletteLabel: string;
+    modelName: string;
+    seed: number;
+    width: number;
+    height: number;
+    bytes: number;
+    createdAt: string;
+}
+
 interface DatasetSettings {
     hf:     { configured: boolean; username: string };
     kaggle: { configured: boolean; username: string };
@@ -96,6 +113,10 @@ export function DataRefineryApp() {
     const [qualityMap, setQualityMap]   = useState<Map<string, QualityRating>>(new Map());
     const [captionOverrides]            = useState<Map<string, string>>(new Map());
     const [expandedCatalogs, setExpandedCatalogs] = useState<Set<string>>(new Set());
+    const [patterns, setPatterns]                 = useState<SavedPattern[]>([]);
+    const [selectedPatterns, setSelectedPatterns] = useState<Set<string>>(new Set());
+    const [patternsExpanded, setPatternsExpanded] = useState(false);
+    const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
     const [config, setConfig]           = useState<DatasetConfig>({
         name: "coloring-book-dataset",
         description: "Curated coloring book illustrations with text captions, generated with AI for fine-tuning image models.",
@@ -138,12 +159,17 @@ export function DataRefineryApp() {
         void (async () => {
             setIsLoading(true);
             try {
-                const res  = await fetch(`${API_BASE_URL}/catalogs?limit=200`);
-                const data = await res.json();
-                const completed = (data.catalogs ?? []).filter((c: Catalog) => c.images?.length > 0);
+                const [catRes, patRes] = await Promise.all([
+                    fetch(`${API_BASE_URL}/catalogs?limit=200`),
+                    fetch(`${API_BASE_URL}/patterns`),
+                ]);
+                const catData = await catRes.json();
+                const completed = (catData.catalogs ?? []).filter((c: Catalog) => c.images?.length > 0);
                 setCatalogs(completed);
                 setExpandedCatalogs(new Set(completed.slice(0, 3).map((c: Catalog) => c._id)));
-            } catch { toast.error("Error cargando catálogos"); }
+                const patData = await patRes.json();
+                setPatterns(patData.patterns ?? []);
+            } catch { toast.error("Error cargando datos"); }
             finally { setIsLoading(false); }
         })();
         void loadDsSettings();
@@ -181,7 +207,10 @@ export function DataRefineryApp() {
     [catalogs, filterType]);
 
     const totalImages   = allImages.length;
-    const totalSelected = exportImages.length;
+    const exportPatterns = useMemo(() =>
+        patterns.filter(p => selectedPatterns.has(p._id)),
+    [patterns, selectedPatterns]);
+    const totalSelected = exportImages.length + exportPatterns.length;
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -194,8 +223,8 @@ export function DataRefineryApp() {
         return img.catalog.prompt ?? "";
     };
 
-    const buildJsonl = (): string =>
-        exportImages.map(img => JSON.stringify({
+    const buildJsonl = (): string => {
+        const catalogLines = exportImages.map(img => JSON.stringify({
             file_name: `${img.publicId.replace(/\//g, "_")}.jpg`,
             url:       img.url,
             text:      getCaption(img),
@@ -204,7 +233,19 @@ export function DataRefineryApp() {
             quality:   qualityMap.get(img.publicId) ?? 2,
             width:     img.width,
             height:    img.height,
-        })).join("\n");
+        }));
+        const patternLines = exportPatterns.map(p => JSON.stringify({
+            file_name: `${p.publicId.replace(/\//g, "_")}.jpg`,
+            url:       p.url,
+            text:      p.prompt,
+            style:     "seamless-pattern",
+            catalog:   p.styleLabel,
+            quality:   2,
+            width:     p.width,
+            height:    p.height,
+        }));
+        return [...catalogLines, ...patternLines].join("\n");
+    };
 
     const buildReadme = (): string => {
         const tags   = config.tags.split(",").map(t => t.trim()).filter(Boolean);
@@ -291,7 +332,7 @@ Images were generated with AI using Pollinations FLUX and similar open models vi
     };
 
     const exportMetadata = async () => {
-        if (exportImages.length === 0) { toast.error("Selecciona al menos una imagen"); return; }
+        if (totalSelected === 0) { toast.error("Selecciona al menos una imagen"); return; }
         setIsExporting(true);
         try {
             downloadFile(buildJsonl(), `${config.name.replace(/\s+/g, "-")}_metadata.jsonl`, "application/jsonl");
@@ -300,13 +341,14 @@ Images were generated with AI using Pollinations FLUX and similar open models vi
     };
 
     const exportUrls = () => {
-        if (exportImages.length === 0) { toast.error("Selecciona al menos una imagen"); return; }
-        downloadFile(exportImages.map(i => i.url).join("\n"), `${config.name.replace(/\s+/g, "-")}_urls.txt`, "text/plain");
-        toast.success(`${exportImages.length} URLs exportadas`);
+        if (totalSelected === 0) { toast.error("Selecciona al menos una imagen"); return; }
+        const urls = [...exportImages.map(i => i.url), ...exportPatterns.map(p => p.url)];
+        downloadFile(urls.join("\n"), `${config.name.replace(/\s+/g, "-")}_urls.txt`, "text/plain");
+        toast.success(`${totalSelected} URLs exportadas`);
     };
 
     const exportDatasetCard = () => {
-        if (exportImages.length === 0) { toast.error("Selecciona al menos una imagen"); return; }
+        if (totalSelected === 0) { toast.error("Selecciona al menos una imagen"); return; }
         downloadFile(buildReadme(), "README.md", "text/markdown");
         toast.success("Dataset card descargada");
     };
@@ -386,11 +428,11 @@ print(f"\\nDone — {len(records)} images saved to {OUTPUT_DIR}/")
             {/* Dataset stats */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
-                    { label: "Catálogos",        value: catalogs.length, color: "text-indigo-400" },
-                    { label: "Imágenes totales",  value: totalImages,     color: "text-sky-400" },
-                    { label: "Seleccionadas",     value: totalSelected,   color: "text-emerald-400" },
+                    { label: "Catálogos",        value: catalogs.length,               color: "text-indigo-400" },
+                    { label: "Patrones",          value: patterns.length,               color: "text-violet-400" },
+                    { label: "Seleccionadas",     value: totalSelected,                 color: "text-emerald-400" },
                     { label: "Dataset size est.", value: totalSelected > 0
-                        ? `~${(exportImages.reduce((a, i) => a + (i.bytes ?? 0), 0) / 1024 / 1024).toFixed(1)} MB`
+                        ? `~${([...exportImages.map(i => i.bytes ?? 0), ...exportPatterns.map(p => p.bytes ?? 0)].reduce((a, b) => a + b, 0) / 1024 / 1024).toFixed(1)} MB`
                         : "—", color: "text-amber-400" },
                 ].map(s => (
                     <div key={s.label} className="rounded-2xl border border-white/8 bg-white/[0.025] p-4 space-y-1">
@@ -675,6 +717,78 @@ print(f"\\nDone — {len(records)} images saved to {OUTPUT_DIR}/")
                             })}
                         </div>
                     )}
+
+                    {/* ── Patterns section ── */}
+                    <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.02] overflow-hidden">
+                        <div className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none"
+                            onClick={() => setPatternsExpanded(v => !v)}>
+                            <ChevronRight size={13} className={`text-violet-500 transition-transform shrink-0 ${patternsExpanded ? "rotate-90" : ""}`} />
+                            <span className="text-[11px] font-black text-white flex-1">Patrones seamless</span>
+                            <span className="text-[9px] text-neutral-600 tabular-nums">
+                                {selectedPatterns.size > 0 && <span className="text-violet-400 mr-1">{selectedPatterns.size}/</span>}
+                                {patterns.length} patrones
+                            </span>
+                            {patterns.length > 0 && (
+                                <button onClick={e => {
+                                    e.stopPropagation();
+                                    const allIds = patterns.map(p => p._id);
+                                    const allSel = allIds.every(id => selectedPatterns.has(id));
+                                    setSelectedPatterns(() => {
+                                        if (allSel) return new Set();
+                                        return new Set(allIds);
+                                    });
+                                }}
+                                    className="text-[8px] font-black text-neutral-600 hover:text-violet-400 transition-colors px-1">
+                                    {patterns.every(p => selectedPatterns.has(p._id)) ? "Desel. todo" : "Sel. todo"}
+                                </button>
+                            )}
+                        </div>
+
+                        {patternsExpanded && (
+                            <div className="border-t border-violet-500/10 p-3">
+                                {isLoadingPatterns ? (
+                                    <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2">
+                                        {[...Array(6)].map((_, i) => <div key={i} className="aspect-square rounded-xl bg-white/[0.03] animate-pulse" />)}
+                                    </div>
+                                ) : patterns.length === 0 ? (
+                                    <div className="py-8 flex flex-col items-center gap-2 text-center opacity-50">
+                                        <Layers size={24} className="text-neutral-700" />
+                                        <p className="text-[10px] font-black text-neutral-600">Sin patrones guardados</p>
+                                        <p className="text-[9px] text-neutral-700">Genera y guarda patrones en Seamless Pattern Engine</p>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
+                                        {patterns.map(p => {
+                                            const isSel = selectedPatterns.has(p._id);
+                                            return (
+                                                <div key={p._id} className="relative group">
+                                                    <button
+                                                        onClick={() => setSelectedPatterns(prev => {
+                                                            const next = new Set(prev);
+                                                            if (next.has(p._id)) next.delete(p._id);
+                                                            else next.add(p._id);
+                                                            return next;
+                                                        })}
+                                                        className={`relative w-full aspect-square rounded-xl overflow-hidden border-2 transition-all ${isSel ? "border-violet-500 shadow-[0_0_0_2px_rgba(139,92,246,0.3)]" : "border-transparent hover:border-white/20"}`}
+                                                    >
+                                                        <img src={p.url} alt={p.styleLabel} className="w-full h-full object-cover" />
+                                                        {isSel && (
+                                                            <div className="absolute inset-0 bg-violet-500/20 flex items-center justify-center">
+                                                                <div className="w-5 h-5 rounded-full bg-violet-500 flex items-center justify-center">
+                                                                    <Check size={10} className="text-white" />
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </button>
+                                                    <p className="text-[7px] text-neutral-700 text-center truncate mt-0.5 px-0.5">{p.styleLabel}</p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
@@ -719,7 +833,12 @@ print(f"\\nDone — {len(records)} images saved to {OUTPUT_DIR}/")
                             {totalSelected > 0 ? `${totalSelected} imágenes seleccionadas` : "Ninguna imagen seleccionada"}
                         </p>
                         <p className="text-[9px] text-neutral-700">
-                            {totalSelected > 0 ? `De ${new Set(exportImages.map(i => i.catalog._id)).size} catálogos · Se subirá metadata.jsonl + README.md` : "Ve al Motor para seleccionar imágenes"}
+                            {totalSelected > 0
+                                ? [
+                                    exportImages.length > 0 && `${new Set(exportImages.map(i => i.catalog._id)).size} catálogos`,
+                                    exportPatterns.length > 0 && `${exportPatterns.length} patrones`,
+                                  ].filter(Boolean).join(" · ") + " · Se subirá metadata.jsonl + README.md"
+                                : "Ve al Motor para seleccionar imágenes"}
                         </p>
                     </div>
                     {totalSelected === 0 && (

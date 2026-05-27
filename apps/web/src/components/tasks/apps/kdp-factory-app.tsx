@@ -822,6 +822,7 @@ export function KdpFactoryApp() {
     const [catalogNicheFilter, setCatalogNicheFilter] = useState<string | null>(null);
     const [catalogNicheStatusFilter, setCatalogNicheStatusFilter] = useState<NicheFilterStatus>("all");
     const [isSuggestingPrompt, setIsSuggestingPrompt] = useState(false);
+    const [isSuggestingNicheDesc, setIsSuggestingNicheDesc] = useState(false);
     const [loadedNicheForPrompt, setLoadedNicheForPrompt] = useState<NicheFE | null>(null);
     const [catalogNichePickerId, setCatalogNichePickerId] = useState<string | null>(null);
     const [kdpTemplateNicheFilter, setKdpTemplateNicheFilter] = useState<string | null>(null);
@@ -3010,6 +3011,35 @@ export function KdpFactoryApp() {
             toast.error(e.message ?? "Error al guardar");
         } finally {
             setIsSavingListing(false);
+        }
+    };
+
+    const suggestNicheDescription = async () => {
+        if (!nicheFormName.trim()) { toast.error("Escribe el nombre del nicho primero"); return; }
+        setIsSuggestingNicheDesc(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches/suggest-description`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    nicheName: nicheFormName.trim(),
+                    productType: nicheFormProductType,
+                    style: nicheFormStyles[0] ?? "generic",
+                    etsyUrl: nicheFormEtsyUrl.trim() || undefined,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            if (data.description) setNicheFormDesc(data.description);
+            if (Array.isArray(data.tags) && data.tags.length > 0) {
+                setNicheFormTags(data.tags.join(", "));
+            }
+            if (data.notes) setNicheFormNotes(data.notes);
+            toast.success("Descripción generada con IA");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error generando descripción");
+        } finally {
+            setIsSuggestingNicheDesc(false);
         }
     };
 
@@ -8559,7 +8589,18 @@ export function KdpFactoryApp() {
                             </div>
                             {/* Description */}
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Descripción</label>
+                                <div className="flex items-center justify-between gap-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Descripción</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => void suggestNicheDescription()}
+                                        disabled={isSuggestingNicheDesc || !nicheFormName.trim()}
+                                        className="flex items-center gap-1 h-6 px-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 text-[8px] font-black uppercase tracking-wider hover:bg-amber-500/20 transition-all disabled:opacity-40"
+                                    >
+                                        {isSuggestingNicheDesc ? <Loader2 size={8} className="animate-spin" /> : <Sparkles size={8} />}
+                                        IA
+                                    </button>
+                                </div>
                                 <textarea value={nicheFormDesc} onChange={e => setNicheFormDesc(e.target.value)} rows={2} placeholder="Describe brevemente el nicho…"
                                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all resize-none" />
                             </div>

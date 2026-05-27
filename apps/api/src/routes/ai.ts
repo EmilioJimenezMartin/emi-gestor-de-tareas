@@ -642,20 +642,21 @@ export async function registerAIRoutes(app: FastifyInstance) {
 
         if (!niche?.trim()) return reply.status(400).send({ error: "niche required" });
 
-        const { varyTextWithLLM: _, ...rest } = await import("../lib/ai.js").then(m => m);
         const config = await (async () => {
             const { Settings: S } = await import("../models/settings.js");
             let provider = "google";
             let model = "gemini-2.5-flash";
             let googleKey = process.env.GOOGLE_API_KEY ?? "";
+            let hfKey = process.env.HUGGINGFACE_API_KEY ?? "";
             try {
-                const rows = await S.find({ key: { $in: ["DEFAULT_LLM_PROVIDER", "DEFAULT_LLM_MODEL", "GOOGLE_API_KEY"] } });
+                const rows = await S.find({ key: { $in: ["DEFAULT_LLM_PROVIDER", "DEFAULT_LLM_MODEL", "GOOGLE_API_KEY", "HUGGINGFACE_API_KEY"] } });
                 const map = new Map(rows.map((r: any) => [r.key, r.value]));
                 if (map.has("DEFAULT_LLM_PROVIDER")) provider = map.get("DEFAULT_LLM_PROVIDER") as string;
                 if (map.has("DEFAULT_LLM_MODEL")) model = map.get("DEFAULT_LLM_MODEL") as string;
                 if (map.has("GOOGLE_API_KEY") && map.get("GOOGLE_API_KEY")) googleKey = map.get("GOOGLE_API_KEY") as string;
+                if (map.has("HUGGINGFACE_API_KEY") && map.get("HUGGINGFACE_API_KEY")) hfKey = map.get("HUGGINGFACE_API_KEY") as string;
             } catch {}
-            return { provider, model, googleKey };
+            return { provider, model, googleKey, hfKey };
         })();
 
         const langInstruction = language === "en" ? "Respond in English." : "Responde en español.";
@@ -745,7 +746,7 @@ Return ONLY a JSON object:
             : undefined;
 
         try {
-            if (config.googleKey) {
+            if (config.provider !== "huggingface" && config.googleKey) {
                 const { GoogleGenAI, Type } = await import("@google/genai");
                 const ai = new GoogleGenAI({ apiKey: config.googleKey });
                 const textModel = modelOverride || config.model || "gemini-2.5-flash";
@@ -799,7 +800,30 @@ Return ONLY a JSON object:
                     return reply.send({ result: raw });
                 }
             }
-            return reply.status(503).send({ error: "No LLM API key configured. Add GOOGLE_API_KEY in Settings." });
+
+            if (config.provider === "huggingface" && config.hfKey) {
+                const { HfInference } = await import("@huggingface/inference");
+                const hf = new HfInference(config.hfKey);
+                const full = systemInstruction ? `${systemInstruction}\n\n${prompt}` : prompt;
+                const response = await hf.textGeneration({
+                    model: config.model || "mistralai/Mistral-7B-Instruct-v0.3",
+                    inputs: full,
+                    parameters: { max_new_tokens: 1024, temperature: 0.4 },
+                });
+                const text = (response.generated_text ?? "").replace(full, "").trim();
+                // Try object first, then array
+                const objStart = text.indexOf("{"); const objEnd = text.lastIndexOf("}");
+                const arrStart = text.indexOf("["); const arrEnd = text.lastIndexOf("]");
+                const jsonStr = (objStart !== -1 && objEnd > objStart) ? text.substring(objStart, objEnd + 1)
+                    : (arrStart !== -1 && arrEnd > arrStart) ? text.substring(arrStart, arrEnd + 1)
+                    : null;
+                if (jsonStr) {
+                    try { return reply.send({ result: JSON.parse(jsonStr) }); } catch {}
+                }
+                return reply.send({ result: text });
+            }
+
+            return reply.status(503).send({ error: "No hay proveedor de IA configurado. Configura Google API key o HuggingFace en Ajustes → Núcleo de Inteligencia." });
         } catch (e: any) {
             app.log.error({ err: e }, "AI text generation failed");
             return reply.status(500).send({ error: e?.message ?? "LLM error" });
