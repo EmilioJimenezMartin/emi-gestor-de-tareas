@@ -971,4 +971,39 @@ Generate exactly 15 diverse, actionable trends. Focus on currently profitable an
             return reply.status(502).send({ error: "Error en HuggingFace SR", details: hfErr?.message });
         }
     });
+
+    // POST /ai/generate-palette — generates a color palette via Gemini
+    app.post("/ai/generate-palette", async (request: any, reply) => {
+        const { theme } = request.body || {};
+        if (!theme?.trim()) return reply.status(400).send({ error: "theme required" });
+
+        let googleKey = process.env.GOOGLE_API_KEY ?? "";
+        try {
+            const { Settings } = await import("../models/settings.js");
+            const row = await Settings.findOne({ key: "GOOGLE_API_KEY" }).lean();
+            if ((row as any)?.value) googleKey = (row as any).value as string;
+        } catch {}
+
+        if (!googleKey) return reply.status(400).send({ error: "Google API key not configured" });
+
+        try {
+            const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
+            const { generateObject } = await import("ai");
+            const { z } = await import("zod");
+            const google = createGoogleGenerativeAI({ apiKey: googleKey });
+            const PaletteSchema = z.object({
+                name: z.string().describe("Short descriptive palette name in Spanish (2-4 words)"),
+                colors: z.array(z.string()).length(5).describe("Exactly 5 hex color codes matching the theme, from lightest to darkest"),
+                prompt: z.string().describe("Short English phrase for use as a color prompt in image generation (e.g. 'warm earthy terracotta tones')"),
+            });
+            const { object } = await generateObject({
+                model: google("gemini-2.0-flash"),
+                schema: PaletteSchema as any,
+                prompt: `Generate a beautiful, harmonious color palette of exactly 5 hex colors for the theme: "${theme}". The palette should work well for seamless pattern design. Return valid hex codes like #FF5A3C. Name it in Spanish.`,
+            });
+            return reply.send(object);
+        } catch (err: any) {
+            return reply.status(500).send({ error: err?.message ?? "Error generating palette" });
+        }
+    });
 }

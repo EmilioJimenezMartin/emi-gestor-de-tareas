@@ -3028,13 +3028,13 @@ export function KdpFactoryApp() {
         );
         const totalPlatforms = new Set(products.flatMap(p => p.platforms.map(pl => pl.name)));
 
-        const topNiche = [...niches]
-            .filter(n => n.royalties && n.royalties.length > 0)
-            .sort((a, b) => {
-                const ea = (a.royalties ?? []).reduce((s, r) => s + r.revenue, 0);
-                const eb = (b.royalties ?? []).reduce((s, r) => s + r.revenue, 0);
-                return eb - ea;
-            })[0] ?? niches.find(n => n.phase === "published") ?? niches[0] ?? null;
+        const nicheImageCount = (n: NicheFE) =>
+            (n.catalogIds ?? []).reduce((sum, cid) => {
+                const cat = iaCatalogs.find(c => c._id === cid);
+                return sum + (cat?.images?.length ?? 0);
+            }, 0);
+        const topNiche = [...niches].sort((a, b) => nicheImageCount(b) - nicheImageCount(a))[0] ?? null;
+        const topNicheImages = topNiche ? nicheImageCount(topNiche) : 0;
         const topNicheDemand = topNiche?.demand;
 
         return (
@@ -3085,8 +3085,8 @@ export function KdpFactoryApp() {
                         {topNiche ? (
                             <div className="space-y-1 text-xl font-black italic tracking-tighter text-white flex flex-col">
                                 <span className="truncate">{topNiche.name}</span>
-                                <span className={`text-[11px] uppercase font-black tracking-widest ${topNicheDemand === "high" ? "text-emerald-400" : topNicheDemand === "medium" ? "text-amber-400" : "text-blue-400"}`}>
-                                    {topNicheDemand === "high" ? "Alta demanda" : topNicheDemand === "medium" ? "Demanda media" : topNicheDemand === "low" ? "Demanda baja" : topNiche.phase === "published" ? "Publicado" : "En desarrollo"}
+                                <span className="text-[11px] uppercase font-black tracking-widest text-blue-400">
+                                    {topNicheImages > 0 ? `${topNicheImages} imágenes` : "Sin imágenes aún"}
                                 </span>
                             </div>
                         ) : (
@@ -6598,6 +6598,45 @@ export function KdpFactoryApp() {
                                                         );
                                                     })}
                                                 </div>
+
+                                                {/* ─ Phase pipeline ─ */}
+                                                {(() => {
+                                                    const PHASE_META: Record<NonNullable<NicheFE["phase"]>, { label: string; dot: string; active: string }> = {
+                                                        niche:     { label: "Nicho",     dot: "bg-sky-400",     active: "border-sky-500/40 bg-sky-500/10 text-sky-300" },
+                                                        catalog:   { label: "Catálogo",  dot: "bg-blue-400",    active: "border-blue-500/40 bg-blue-500/10 text-blue-300" },
+                                                        pdf:       { label: "PDF",       dot: "bg-violet-400",  active: "border-violet-500/40 bg-violet-500/10 text-violet-300" },
+                                                        published: { label: "Publicado", dot: "bg-emerald-400", active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" },
+                                                    };
+                                                    const phases = ["niche", "catalog", "pdf", "published"] as NonNullable<NicheFE["phase"]>[];
+                                                    return (
+                                                        <div className="flex items-center gap-1 pt-2 border-t border-white/[0.04]">
+                                                            {phases.map((p, i) => {
+                                                                const isActive = (niche.phase ?? "niche") === p;
+                                                                const meta = PHASE_META[p];
+                                                                return (
+                                                                    <React.Fragment key={p}>
+                                                                        {i > 0 && <span className="text-neutral-800 text-[8px] select-none">›</span>}
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                if (isActive) return;
+                                                                                fetch(`${API_BASE_URL}/niches/${niche._id}`, {
+                                                                                    method: "PATCH",
+                                                                                    headers: { "Content-Type": "application/json" },
+                                                                                    body: JSON.stringify({ phase: p }),
+                                                                                }).catch(() => {});
+                                                                                setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase: p } : n));
+                                                                            }}
+                                                                            className={`flex items-center gap-1 px-2 h-5 rounded-md border text-[8px] font-black uppercase tracking-wider transition-all ${isActive ? meta.active : "border-white/8 bg-transparent text-neutral-700 hover:text-neutral-400 hover:border-white/20"}`}
+                                                                        >
+                                                                            {isActive && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dot}`} />}
+                                                                            {meta.label}
+                                                                        </button>
+                                                                    </React.Fragment>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    );
+                                                })()}
 
                                                 {/* ─ Tags ─ */}
                                                 {niche.tags.length > 0 && (

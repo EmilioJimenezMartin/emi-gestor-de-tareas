@@ -109,9 +109,9 @@ export function NicheRadar({
     const isFirstLog = useRef(true);
     const activeJobId = useRef<string | null>(null);
 
-    // Restore logs and running state from last job on mount
+    // Restore logs and running state from last job on mount (filtered by this app's storageKey)
     useEffect(() => {
-        fetch(`${apiUrl}/radar/jobs/latest`)
+        fetch(`${apiUrl}/radar/jobs/latest?key=${encodeURIComponent(storageKey)}`)
             .then(r => r.json())
             .then(({ job }: any) => {
                 if (!job) return;
@@ -172,9 +172,10 @@ export function NicheRadar({
     }, [apiUrl, url]);
 
     useEffect(() => {
-        if (logs.length > 0) {
-            if (isFirstLog.current) { isFirstLog.current = false; logsEndRef.current?.scrollIntoView({ behavior: "auto" }); }
-            else logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        if (logs.length > 0 && logsEndRef.current) {
+            isFirstLog.current = false;
+            const container = logsEndRef.current.parentElement;
+            if (container) container.scrollTop = container.scrollHeight;
         }
     }, [logs]);
 

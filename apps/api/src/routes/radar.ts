@@ -104,9 +104,11 @@ export async function registerRadarRoutes(
         return reply.send({ success: true, jobId });
     });
 
-    // GET /radar/jobs/latest — devuelve el job más reciente (para restaurar estado en el frontend)
-    app.get("/radar/jobs/latest", async (_request, reply) => {
-        const job = await RadarJob.findOne().sort({ createdAt: -1 }).lean();
+    // GET /radar/jobs/latest — devuelve el job más reciente para el storageKey dado
+    app.get("/radar/jobs/latest", async (request: any, reply) => {
+        const key = (request.query?.key as string) || null;
+        const filter = key ? { storageKey: key } : {};
+        const job = await RadarJob.findOne(filter).sort({ createdAt: -1 }).lean();
         if (!job) return reply.send({ job: null });
         return reply.send({ job });
     });

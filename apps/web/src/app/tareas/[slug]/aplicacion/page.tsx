@@ -57,11 +57,18 @@ export default async function TaskApplicationPage({
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative">
                     <div className="absolute -left-20 -top-20 w-64 h-64 bg-primary/10 blur-[100px] pointer-events-none" />
 
-                    <h1 className="relative text-3xl sm:text-4xl font-black text-white tracking-tighter">
-                        <span className="bg-gradient-to-br from-indigo-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent">
-                            {appConfig?.title || task.title}
-                        </span>
-                    </h1>
+                    <div className="relative space-y-1">
+                        <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tighter">
+                            <span className="bg-gradient-to-br from-indigo-400 via-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                                {appConfig?.title || task.title}
+                            </span>
+                        </h1>
+                        {appConfig?.description && (
+                            <p className="text-sm text-white/80 leading-relaxed max-w-2xl">
+                                {appConfig.description}
+                            </p>
+                        )}
+                    </div>
 
                     <div className="flex items-center gap-3 bg-white/[0.02] border border-white/5 px-4 py-2.5 rounded-2xl">
                         <div className={`w-1.5 h-1.5 rounded-full ${appConfig ? "bg-emerald-400" : "bg-neutral-600"}`} />

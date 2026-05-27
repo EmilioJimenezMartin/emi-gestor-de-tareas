@@ -123,6 +123,15 @@ export function SeamlessPatternApp() {
     const [showTiled, setShowTiled] = useState(false);
     const [seed, setSeed] = useState(() => Math.floor(Math.random() * 999999));
     const [promptUsed, setPromptUsed] = useState("");
+    const [isDraftLoaded, setIsDraftLoaded] = useState(false);
+
+    // Custom palettes
+    const [customPalettes, setCustomPalettes] = useState<typeof COLOR_PALETTES>([]);
+    const [isGeneratingPalette, setIsGeneratingPalette] = useState(false);
+    const [showNewPaletteForm, setShowNewPaletteForm] = useState(false);
+    const [newPaletteLabel, setNewPaletteLabel] = useState("");
+    const [newPaletteColors, setNewPaletteColors] = useState(["#FF6B6B", "#FFE66D", "#4ECDC4", "#45B7D1", "#96E6A1"]);
+    const [isSavingPalette, setIsSavingPalette] = useState(false);
 
     // Custom styles
     const [customStyles, setCustomStyles] = useState<CustomPatternStyle[]>([]);
@@ -159,6 +168,77 @@ export function SeamlessPatternApp() {
         setActiveTab(tab as TabID);
     };
 
+    const saveCustomPalette = async () => {
+        if (!newPaletteLabel.trim()) { toast.error("Nombre requerido"); return; }
+        setIsSavingPalette(true);
+        const newPalette = { id: `custom-${Date.now()}`, label: newPaletteLabel.trim(), colors: [...newPaletteColors], prompt: newPaletteColors.join(", ") };
+        const updated = [...customPalettes, newPalette];
+        try {
+            const res = await fetch(`${API_BASE_URL}/settings`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify([{ key: "SEAMLESS_CUSTOM_PALETTES", value: JSON.stringify(updated) }]),
+            });
+            if (!res.ok) throw new Error(`Error ${res.status}`);
+            setCustomPalettes(updated);
+            setSelectedPalette(newPalette as any);
+            setShowNewPaletteForm(false);
+            setNewPaletteLabel("");
+            setNewPaletteColors(["#FF6B6B", "#FFE66D", "#4ECDC4", "#45B7D1", "#96E6A1"]);
+            toast.success(`Paleta "${newPalette.label}" guardada`);
+        } catch { toast.error("Error guardando paleta"); }
+        finally { setIsSavingPalette(false); }
+    };
+
+    const loadCustomPalettes = useCallback(async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/settings`);
+            const { settings } = await res.json();
+            const row = (settings as any[]).find((s: any) => s.key === "SEAMLESS_CUSTOM_PALETTES");
+            if (row?.value) setCustomPalettes(JSON.parse(row.value));
+        } catch {}
+    }, []);
+
+    const generatePalette = async () => {
+        const theme = selectedStyle.id === "custom" ? customPrompt : selectedStyle.label;
+        if (!theme.trim()) { toast.error("Selecciona un estilo primero"); return; }
+        setIsGeneratingPalette(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/ai/generate-palette`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ theme }),
+            });
+            if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+            const palette = await res.json();
+            const newPalette = { id: `custom-${Date.now()}`, label: palette.name, colors: palette.colors, prompt: palette.prompt };
+            const updated = [...customPalettes, newPalette];
+            await fetch(`${API_BASE_URL}/settings`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify([{ key: "SEAMLESS_CUSTOM_PALETTES", value: JSON.stringify(updated) }]),
+            });
+            setCustomPalettes(updated);
+            setSelectedPalette(newPalette as any);
+            toast.success(`Paleta "${palette.name}" generada`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error generando paleta");
+        } finally { setIsGeneratingPalette(false); }
+    };
+
+    const deleteCustomPalette = async (id: string) => {
+        const updated = customPalettes.filter(p => p.id !== id);
+        try {
+            await fetch(`${API_BASE_URL}/settings`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify([{ key: "SEAMLESS_CUSTOM_PALETTES", value: JSON.stringify(updated) }]),
+            });
+            setCustomPalettes(updated);
+            if (selectedPalette.id === id) setSelectedPalette(COLOR_PALETTES[0]);
+        } catch { toast.error("Error eliminando paleta"); }
+    };
+
     // Custom styles — load from backend
     const loadCustomStyles = useCallback(async () => {
         try {
@@ -181,11 +261,12 @@ export function SeamlessPatternApp() {
         };
         const updated = [...customStyles, newStyle];
         try {
-            await fetch(`${API_BASE_URL}/settings`, {
+            const res = await fetch(`${API_BASE_URL}/settings`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ updates: [{ key: "SEAMLESS_CUSTOM_STYLES", value: JSON.stringify(updated) }] }),
+                body: JSON.stringify([{ key: "SEAMLESS_CUSTOM_STYLES", value: JSON.stringify(updated) }]),
             });
+            if (!res.ok) throw new Error(`Error ${res.status}`);
             setCustomStyles(updated);
             setSelectedStyle(newStyle as any);
             setShowNewStyleForm(false);
@@ -198,11 +279,12 @@ export function SeamlessPatternApp() {
     const deleteCustomStyle = async (id: string) => {
         const updated = customStyles.filter(s => s.id !== id);
         try {
-            await fetch(`${API_BASE_URL}/settings`, {
+            const res = await fetch(`${API_BASE_URL}/settings`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ updates: [{ key: "SEAMLESS_CUSTOM_STYLES", value: JSON.stringify(updated) }] }),
+                body: JSON.stringify([{ key: "SEAMLESS_CUSTOM_STYLES", value: JSON.stringify(updated) }]),
             });
+            if (!res.ok) throw new Error(`Error ${res.status}`);
             setCustomStyles(updated);
             if (selectedStyle.id === id) setSelectedStyle(PATTERN_STYLES[0]);
             toast.success("Estilo eliminado");
@@ -220,13 +302,14 @@ export function SeamlessPatternApp() {
             neg: "text, watermark, seams, border, frame",
         };
         const updated = [...customStyles, newStyle];
-        await fetch(`${API_BASE_URL}/settings`, {
+        const res = await fetch(`${API_BASE_URL}/settings`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ updates: [{ key: "SEAMLESS_CUSTOM_STYLES", value: JSON.stringify(updated) }] }),
+            body: JSON.stringify([{ key: "SEAMLESS_CUSTOM_STYLES", value: JSON.stringify(updated) }]),
         });
+        if (!res.ok) throw new Error(`Error guardando estilo: ${res.status}`);
         setCustomStyles(updated);
-        toast.success(`Estilo "${newStyle.label}" creado`);
+        toast.success(`Estilo "${newStyle.label}" creado · disponible en Motor`);
     };
 
     // Load patterns when entering gallery/insights
@@ -240,7 +323,29 @@ export function SeamlessPatternApp() {
         finally { setIsLoadingPatterns(false); }
     }, []);
 
-    useEffect(() => { void loadCustomStyles(); }, [loadCustomStyles]);
+    useEffect(() => { void loadCustomStyles(); void loadCustomPalettes(); }, [loadCustomStyles, loadCustomPalettes]);
+
+    // Restore last generated pattern draft on mount
+    useEffect(() => {
+        fetch(`${API_BASE_URL}/settings`)
+            .then(r => r.json())
+            .then(({ settings }: any) => {
+                const row = (settings as any[]).find((s: any) => s.key === "SEAMLESS_PATTERN_DRAFT");
+                if (row?.value && row.value !== "null") {
+                    try {
+                        const d = JSON.parse(row.value);
+                        if (d?.dataUrl) {
+                            setGeneratedUrl(d.dataUrl);
+                            setPromptUsed(d.promptUsed ?? "");
+                            setSeed(d.seed ?? seed);
+                            setIsDraftLoaded(true);
+                        }
+                    } catch {}
+                }
+            })
+            .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         if (activeTab === "insights" || activeTab === "galeria") void loadPatterns();
@@ -272,6 +377,14 @@ export function SeamlessPatternApp() {
             setGeneratedUrl(url);
             setShowTiled(false);
             toast.success("Patrón generado");
+            // Auto-save draft so pattern survives navigation
+            blobUrlToDataUrl(url).then(dataUrl => {
+                fetch(`${API_BASE_URL}/settings`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify([{ key: "SEAMLESS_PATTERN_DRAFT", value: JSON.stringify({ dataUrl, promptUsed: prompt, seed: usedSeed }) }]),
+                }).catch(() => {});
+            }).catch(() => {});
         } catch (e: any) {
             toast.error(e.message ?? "Error generando patrón");
         } finally { setIsGenerating(false); }
@@ -306,6 +419,9 @@ export function SeamlessPatternApp() {
             if (!res.ok) throw new Error(data.error ?? "Error guardando");
             setPatterns(prev => [data.pattern, ...prev]);
             toast.success(`Patrón guardado en Galería · ${selectedStyle.label}`);
+            // Clear the draft since it's now saved to gallery
+            fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "SEAMLESS_PATTERN_DRAFT", value: "null" }]) }).catch(() => {});
+            setIsDraftLoaded(false);
         } catch (e: any) {
             toast.error(e.message ?? "Error guardando patrón");
         } finally { setIsSaving(false); }
@@ -412,8 +528,56 @@ export function SeamlessPatternApp() {
                 <div className="rounded-2xl border border-white/8 bg-white/[0.025] overflow-hidden">
                     <div className="px-4 py-3 border-b border-white/[0.06] flex items-center gap-2">
                         <Wand2 size={13} className="text-pink-400" />
-                        <span className="text-[11px] font-black text-white uppercase tracking-widest">Paleta</span>
+                        <span className="text-[11px] font-black text-white uppercase tracking-widest flex-1">Paleta</span>
+                        <button
+                            onClick={() => void generatePalette()}
+                            disabled={isGeneratingPalette}
+                            title="Generar paleta con IA basada en el estilo seleccionado"
+                            className="flex items-center gap-1 h-6 px-2 rounded-lg border border-pink-500/25 bg-pink-500/10 text-[8px] font-black text-pink-300 hover:bg-pink-500/20 transition-all disabled:opacity-50">
+                            {isGeneratingPalette ? <Loader2 size={9} className="animate-spin" /> : <Wand2 size={9} />}
+                            IA
+                        </button>
+                        <button onClick={() => setShowNewPaletteForm(v => !v)}
+                            title="Crear paleta personalizada"
+                            className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all border ${showNewPaletteForm ? "bg-fuchsia-500/20 border-fuchsia-500/40 text-fuchsia-300" : "border-white/10 bg-white/[0.04] text-neutral-500 hover:text-white"}`}>
+                            {showNewPaletteForm ? <X size={10} /> : <Plus size={10} />}
+                        </button>
                     </div>
+
+                    {/* New palette form */}
+                    {showNewPaletteForm && (
+                        <div className="px-4 py-3 border-b border-white/[0.06] space-y-3 bg-fuchsia-500/[0.04]">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-fuchsia-400">Nueva paleta</p>
+                            <input value={newPaletteLabel} onChange={e => setNewPaletteLabel(e.target.value)}
+                                placeholder="Nombre de la paleta"
+                                className="w-full h-8 px-3 bg-white/5 border border-white/10 rounded-xl text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                            <div className="flex gap-2 items-center">
+                                {newPaletteColors.map((c, i) => (
+                                    <div key={i} className="flex flex-col items-center gap-1 flex-1">
+                                        <label
+                                            className="w-full h-8 rounded-lg cursor-pointer overflow-hidden border-2 border-white/20 hover:border-white/50 transition-all relative"
+                                            style={{ backgroundColor: c }}
+                                            title={c}
+                                        >
+                                            <input
+                                                type="color"
+                                                value={c}
+                                                onChange={e => setNewPaletteColors(prev => prev.map((col, j) => j === i ? e.target.value : col))}
+                                                className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                                            />
+                                        </label>
+                                        <span className="text-[7px] font-mono text-neutral-600">{c}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={() => void saveCustomPalette()} disabled={isSavingPalette}
+                                className="w-full h-8 rounded-xl bg-fuchsia-500/20 border border-fuchsia-500/30 text-[9px] font-black text-fuchsia-300 hover:bg-fuchsia-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+                                {isSavingPalette ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />}
+                                Guardar paleta
+                            </button>
+                        </div>
+                    )}
+
                     <div className="p-3 space-y-1.5">
                         {COLOR_PALETTES.map(p => (
                             <button key={p.id} onClick={() => setSelectedPalette(p)}
@@ -424,6 +588,23 @@ export function SeamlessPatternApp() {
                                 <span className={`text-[10px] font-black ${selectedPalette.id === p.id ? "text-pink-300" : "text-neutral-500"}`}>{p.label}</span>
                                 {selectedPalette.id === p.id && <Check size={10} className="text-pink-400 ml-auto" />}
                             </button>
+                        ))}
+                        {/* Custom palettes generated by AI */}
+                        {customPalettes.map(p => (
+                            <div key={p.id} className="relative group/cp">
+                                <button onClick={() => setSelectedPalette(p as any)}
+                                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl border transition-all ${selectedPalette.id === p.id ? "border-fuchsia-500/40 bg-fuchsia-500/10" : "border-fuchsia-500/15 bg-fuchsia-500/[0.04] hover:bg-fuchsia-500/10"}`}>
+                                    <div className="flex gap-0.5 shrink-0">
+                                        {p.colors.map((c, i) => <div key={i} className="w-4 h-4 rounded-sm first:rounded-l-lg last:rounded-r-lg" style={{ backgroundColor: c }} />)}
+                                    </div>
+                                    <span className={`text-[10px] font-black ${selectedPalette.id === p.id ? "text-fuchsia-300" : "text-neutral-500"}`}>{p.label}</span>
+                                    {selectedPalette.id === p.id && <Check size={10} className="text-fuchsia-400 ml-auto" />}
+                                </button>
+                                <button onClick={() => void deleteCustomPalette(p.id)}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-black border border-white/20 text-neutral-600 hover:text-rose-400 items-center justify-center hidden group-hover/cp:flex transition-colors">
+                                    <X size={8} />
+                                </button>
+                            </div>
                         ))}
                     </div>
                 </div>
@@ -483,6 +664,11 @@ export function SeamlessPatternApp() {
                     <div className="px-4 py-3 border-b border-white/[0.06] flex items-center gap-2 flex-wrap">
                         <Grid size={13} className="text-sky-400" />
                         <span className="text-[11px] font-black text-white uppercase tracking-widest">{showTiled ? `Tileado (${tileMode})` : "Individual"}</span>
+                        {isDraftLoaded && !isGenerating && (
+                            <span className="text-[8px] font-black px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/20 text-amber-400">
+                                Borrador restaurado
+                            </span>
+                        )}
                         {generatedUrl && (
                             <div className="ml-auto flex items-center gap-1.5 flex-wrap">
                                 {(["1x1","2x2","3x3"] as TileMode[]).map(t => (
