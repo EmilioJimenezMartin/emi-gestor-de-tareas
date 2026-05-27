@@ -219,11 +219,21 @@ export function NicheRadar({ apiUrl, niches = [], etsyPresets, generalPresets, d
         });
         socket.on("radar:result", (data: any) => {
             if (data.mode === "etsy-niches" || data.data?.nichos_detectados) {
-                setEtsyResult(data.data);
+                const incoming: EtsyListing[] = data.data?.nichos_detectados ?? [];
+                const existing: EtsyListing[] = etsyResultRef.current?.nichos_detectados ?? [];
+                const existingMap = new Map(existing.map(r => [r.titulo_producto, r]));
+                // New rows first; preserve _nichoCreado from existing matches
+                const newRows = incoming.map(r => ({
+                    ...r,
+                    _nichoCreado: existingMap.get(r.titulo_producto)?._nichoCreado ?? r._nichoCreado,
+                }));
+                const appendedRows = existing.filter(r => !incoming.some(nr => nr.titulo_producto === r.titulo_producto));
+                const merged: EtsyNicheResult = { ...data.data, nichos_detectados: [...newRows, ...appendedRows] };
+                setEtsyResult(merged);
                 void fetch(`${apiUrl}/radar/saved-etsy-result`, {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ result: data.data }),
+                    body: JSON.stringify({ result: merged }),
                 }).catch(() => { });
             } else {
                 setGeneralResult(data.data);
@@ -268,12 +278,9 @@ export function NicheRadar({ apiUrl, niches = [], etsyPresets, generalPresets, d
         if (!url.trim()) { toast.error("Introduce una URL para analizar"); return; }
         if (isAnalyzing) return;
         setIsAnalyzing(true);
-        setEtsyResult(null);
         setGeneralResult(null);
         setCreatingRowTitle(null);
-        setCreatedNicheRows(new Set());
         setLogs([]);
-        void saveEtsyResultToBackend(null);
         isFirstLog.current = true;
         toast.info(`Iniciando análisis · modo: ${mode === "etsy-niches" ? "Etsy Nichos" : "General"}...`);
         try {
@@ -925,6 +932,7 @@ export function NicheRadar({ apiUrl, niches = [], etsyPresets, generalPresets, d
                                         <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-right">Reseñas</th>
                                         <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600">Sub-nicho</th>
                                         <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-center">Señal</th>
+                                        <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-center">URL</th>
                                         <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-center">Acción</th>
                                     </tr>
                                 </thead>
@@ -973,20 +981,18 @@ export function NicheRadar({ apiUrl, niches = [], etsyPresets, generalPresets, d
                                                         {sig.label}
                                                     </span>
                                                 </td>
+                                                <td className="px-3 py-2.5 text-center">
+                                                    {row.url_producto
+                                                        ? <a href={row.url_producto} target="_blank" rel="noopener noreferrer" title={row.url_producto}
+                                                            className="inline-flex items-center gap-1 h-6 px-2 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 hover:bg-sky-500/20 transition-all text-[8px] font-black uppercase whitespace-nowrap">
+                                                            <ExternalLink size={10} />
+                                                            Ver
+                                                          </a>
+                                                        : <span className="text-[9px] text-neutral-600 font-mono">sin url</span>
+                                                    }
+                                                </td>
                                                 <td className="px-3 py-2.5">
                                                     <div className="flex items-center gap-1 justify-center">
-                                                        {/* Etsy link */}
-                                                        {row.url_producto && (
-                                                            <a
-                                                                href={row.url_producto}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                title="Ver en Etsy"
-                                                                className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 hover:bg-sky-500/20 transition-all"
-                                                            >
-                                                                <ExternalLink size={8} />
-                                                            </a>
-                                                        )}
                                                         {/* Create nicho directly */}
                                                         {(() => {
                                                             const created = createdNicheRows.has(row.titulo_producto) || niches.some(n => n.sourceTitulo === row.titulo_producto);
