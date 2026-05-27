@@ -80,11 +80,10 @@ const COLOR_PALETTES = [
 ];
 
 const PLATFORM_SPECS = [
-    { name: "Redbubble",       color: "text-red-400",    specs: "PNG · 7632×6480 px · 300 dpi · sRGB",                  tip: "Sube el tile 1024×1024 y Redbubble repite. Para calidad máxima exporta 7632×6480.",          url: "https://help.redbubble.com/hc/en-us/articles/202270799" },
-    { name: "Spoonflower",     color: "text-emerald-400", specs: "PNG/JPG · 150 dpi mín · sRGB · tile cuadrado",        tip: "El tile debe ser cuadrado. Spoonflower repite automáticamente.",                            url: "https://support.spoonflower.com" },
-    { name: "Society6",        color: "text-purple-400",  specs: "PNG · 6500×6500 px mín · 300 dpi",                   tip: "Para tela usa el tile cuadrado. Para art print necesitas 5000×7000.",                       url: "https://society6.com" },
-    { name: "Merch by Amazon", color: "text-amber-400",   specs: "PNG · 4500×5400 px · 300 dpi (all-over-print)",      tip: "El patrón repetido funciona perfecto para all-over-print shirts.",                          url: "https://merch.amazon.com" },
-    { name: "Printify",        color: "text-sky-400",     specs: "PNG · 4500×5400 px para camisetas · sRGB",           tip: "Usa el tile directamente — Printify lo adapta al producto seleccionado.",                  url: "https://printify.com" },
+    { name: "Redbubble",       color: "text-red-400",     specs: "PNG · 7632×6480 px · 300 dpi",  exportW: 7632, exportH: 6480, tip: "Sube el tile 1024×1024 y Redbubble repite. Para calidad máxima exporta 7632×6480." },
+    { name: "Spoonflower",     color: "text-emerald-400", specs: "PNG · 3000×3000 px · 150 dpi",  exportW: 3000, exportH: 3000, tip: "Tile cuadrado — Spoonflower repite automáticamente. Mínimo 3000×3000." },
+    { name: "Society6",        color: "text-purple-400",  specs: "PNG · 6500×6500 px · 300 dpi",  exportW: 6500, exportH: 6500, tip: "Para tela usa el tile cuadrado. Para art print necesitas 5000×7000." },
+    { name: "Merch by Amazon", color: "text-amber-400",   specs: "PNG · 4500×5400 px · 300 dpi",  exportW: 4500, exportH: 5400, tip: "All-over-print shirts — el patrón se repite en el canvas completo." },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -98,6 +97,91 @@ async function blobUrlToDataUrl(blobUrl: string): Promise<string> {
         reader.onerror = reject;
         reader.readAsDataURL(blob);
     });
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = src;
+    });
+}
+
+async function applyOffsetWrap(dataUrl: string): Promise<string> {
+    const img = await loadImage(dataUrl);
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d")!;
+    const ox = Math.floor(w / 2);
+    const oy = Math.floor(h / 2);
+    // Draw 4 quadrants shifted by 50% with wrapping
+    ctx.drawImage(img, w - ox, h - oy);        // TL chunk → BL quadrant
+    ctx.drawImage(img, -ox, h - oy);            // TR chunk → BR quadrant
+    ctx.drawImage(img, w - ox, -oy);            // BL chunk → TR quadrant
+    ctx.drawImage(img, -ox, -oy);               // BR chunk → TL quadrant
+    return canvas.toDataURL("image/png");
+}
+
+async function fixSeamCanvas(dataUrl: string): Promise<string> {
+    const img = await loadImage(dataUrl);
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+
+    // Create source canvas
+    const src = document.createElement("canvas");
+    src.width = w; src.height = h;
+    const srcCtx = src.getContext("2d")!;
+    srcCtx.drawImage(img, 0, 0);
+
+    const out = document.createElement("canvas");
+    out.width = w; out.height = h;
+    const ctx = out.getContext("2d")!;
+    ctx.drawImage(img, 0, 0);
+
+    // Seam band width: ~8% of dimension, min 24px
+    const bw = Math.max(24, Math.round(w * 0.08));
+    const bh = Math.max(24, Math.round(h * 0.08));
+    const cx = Math.floor(w / 2);
+    const cy = Math.floor(h / 2);
+
+    // Render blurred version on a temp canvas, then composite into seam area
+    const blurLevel = Math.max(8, Math.round(Math.min(w, h) * 0.025));
+
+    const blurCanvas = document.createElement("canvas");
+    blurCanvas.width = w; blurCanvas.height = h;
+    const blurCtx = blurCanvas.getContext("2d")!;
+    blurCtx.filter = `blur(${blurLevel}px)`;
+    blurCtx.drawImage(img, 0, 0);
+    blurCtx.filter = "none";
+
+    // Horizontal seam band
+    ctx.drawImage(blurCanvas, 0, cy - bh / 2, w, bh, 0, cy - bh / 2, w, bh);
+    // Vertical seam band
+    ctx.drawImage(blurCanvas, cx - bw / 2, 0, bw, h, cx - bw / 2, 0, bw, h);
+
+    return out.toDataURL("image/png");
+}
+
+async function resizeForPOD(dataUrl: string, targetW: number, targetH: number): Promise<string> {
+    const img = await loadImage(dataUrl);
+    const sw = img.naturalWidth || img.width;
+    const sh = img.naturalHeight || img.height;
+    const canvas = document.createElement("canvas");
+    canvas.width = targetW; canvas.height = targetH;
+    const ctx = canvas.getContext("2d")!;
+    // Tile the source pattern to fill the target canvas
+    const cols = Math.ceil(targetW / sw);
+    const rows = Math.ceil(targetH / sh);
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            ctx.drawImage(img, c * sw, r * sh);
+        }
+    }
+    return canvas.toDataURL("image/png");
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -129,6 +213,13 @@ export function SeamlessPatternApp() {
     const [seed, setSeed] = useState(() => Math.floor(Math.random() * 999999));
     const [promptUsed, setPromptUsed] = useState("");
     const [isDraftLoaded, setIsDraftLoaded] = useState(false);
+
+    // Tileable processing pipeline
+    const [offsetUrl, setOffsetUrl] = useState<string | null>(null);
+    const [tileableUrl, setTileableUrl] = useState<string | null>(null);
+    const [isApplyingOffset, setIsApplyingOffset] = useState(false);
+    const [isFixingSeam, setIsFixingSeam] = useState(false);
+    const [isExportingPOD, setIsExportingPOD] = useState<string | null>(null);
 
     // Custom palettes
     const [customPalettes, setCustomPalettes] = useState<typeof COLOR_PALETTES>([]);
@@ -433,6 +524,8 @@ export function SeamlessPatternApp() {
         const usedSeed = overrideSeed ?? seed;
         setIsGenerating(true);
         setGeneratedUrl(null);
+        setOffsetUrl(null);
+        setTileableUrl(null);
         setPromptUsed(prompt);
         setGenerationLogs([]);
         try {
@@ -511,6 +604,48 @@ export function SeamlessPatternApp() {
         const a = document.createElement("a");
         a.href = url; a.download = filename; a.click();
         toast.success("Descargando…");
+    };
+
+    const handleApplyOffset = async () => {
+        const src = generatedUrl;
+        if (!src) return;
+        setIsApplyingOffset(true);
+        try {
+            const dataUrl = src.startsWith("data:") ? src : await blobUrlToDataUrl(src);
+            const result = await applyOffsetWrap(dataUrl);
+            setOffsetUrl(result);
+            setTileableUrl(null);
+            toast.success("Offset aplicado · la costura está ahora en el centro");
+        } catch { toast.error("Error aplicando offset"); }
+        finally { setIsApplyingOffset(false); }
+    };
+
+    const handleFixSeam = async () => {
+        const src = offsetUrl ?? (generatedUrl?.startsWith("data:") ? generatedUrl : null);
+        if (!src) return;
+        setIsFixingSeam(true);
+        try {
+            const result = await fixSeamCanvas(src);
+            setTileableUrl(result);
+            toast.success("Costura suavizada · patrón listo para exportar");
+        } catch { toast.error("Error corrigiendo costura"); }
+        finally { setIsFixingSeam(false); }
+    };
+
+    const handleExportPOD = async (platform: typeof PLATFORM_SPECS[number]) => {
+        const src = tileableUrl ?? offsetUrl ?? (generatedUrl?.startsWith("data:") ? generatedUrl : null);
+        if (!src) return;
+        setIsExportingPOD(platform.name);
+        try {
+            const dataUrl = src.startsWith("data:") ? src : await blobUrlToDataUrl(src);
+            const resized = await resizeForPOD(dataUrl, platform.exportW, platform.exportH);
+            const a = document.createElement("a");
+            a.href = resized;
+            a.download = `pattern-${platform.name.toLowerCase().replace(/\s+/g, "-")}-${platform.exportW}x${platform.exportH}.png`;
+            a.click();
+            toast.success(`Exportado para ${platform.name} · ${platform.exportW}×${platform.exportH}px`);
+        } catch { toast.error("Error exportando"); }
+        finally { setIsExportingPOD(null); }
     };
 
     // ── Render Motor ──────────────────────────────────────────────────────────
@@ -820,6 +955,116 @@ export function SeamlessPatternApp() {
                         </div>
                     )}
                 </div>
+
+                {/* ── Tileable Pipeline ── */}
+                {generatedUrl && !isGenerating && (
+                    <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.03] overflow-hidden">
+                        <div className="px-4 py-3 border-b border-violet-500/10 flex items-center gap-2">
+                            <Wand2 size={13} className="text-violet-400" />
+                            <span className="text-[11px] font-black text-white uppercase tracking-widest flex-1">Tileable Profesional</span>
+                            <span className="text-[8px] text-neutral-600 italic">Algoritmo Offset</span>
+                        </div>
+
+                        <div className="p-4 space-y-4">
+                            {/* Steps */}
+                            <div className="grid grid-cols-1 gap-3">
+
+                                {/* Step 1: Offset */}
+                                <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3 space-y-2.5">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-5 h-5 rounded-full bg-violet-500/20 border border-violet-500/30 text-[9px] font-black text-violet-300 flex items-center justify-center shrink-0">1</span>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[10px] font-black text-white">Aplicar Offset 50%</p>
+                                            <p className="text-[8px] text-neutral-600">Desplaza la imagen ½ horizontal + ½ vertical — la costura pasa al centro</p>
+                                        </div>
+                                        {offsetUrl && <Check size={12} className="text-emerald-400 shrink-0" />}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => void handleApplyOffset()}
+                                            disabled={isApplyingOffset}
+                                            className="flex items-center gap-1.5 h-7 px-3 rounded-xl bg-violet-500/15 border border-violet-500/25 text-[9px] font-black text-violet-300 hover:bg-violet-500/25 transition-all disabled:opacity-50">
+                                            {isApplyingOffset ? <Loader2 size={9} className="animate-spin" /> : <RefreshCw size={9} />}
+                                            {offsetUrl ? "Re-aplicar" : "Aplicar offset"}
+                                        </button>
+                                        {offsetUrl && (
+                                            <span className="text-[8px] text-emerald-400 font-black">✓ Listo</span>
+                                        )}
+                                    </div>
+                                    {offsetUrl && (
+                                        <div className="rounded-lg overflow-hidden border border-white/[0.06]" style={{ background: "repeating-conic-gradient(#0a0a0a 0% 25%, #111 0% 50%) 0 0 / 12px 12px" }}>
+                                            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)" }}>
+                                                {[0,1,2,3].map(i => <img key={i} src={offsetUrl} alt="" className="w-full aspect-square object-cover" />)}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Step 2: Seam Fix */}
+                                <div className={`rounded-xl border p-3 space-y-2.5 transition-all ${offsetUrl ? "border-white/8 bg-white/[0.02]" : "border-white/4 bg-white/[0.01] opacity-50 pointer-events-none"}`}>
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-5 h-5 rounded-full bg-sky-500/20 border border-sky-500/30 text-[9px] font-black text-sky-300 flex items-center justify-center shrink-0">2</span>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[10px] font-black text-white">Corregir Costura</p>
+                                            <p className="text-[8px] text-neutral-600">Suaviza la zona central donde la unión es visible</p>
+                                        </div>
+                                        {tileableUrl && <Check size={12} className="text-emerald-400 shrink-0" />}
+                                    </div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <button
+                                            onClick={() => void handleFixSeam()}
+                                            disabled={!offsetUrl || isFixingSeam}
+                                            className="flex items-center gap-1.5 h-7 px-3 rounded-xl bg-sky-500/15 border border-sky-500/25 text-[9px] font-black text-sky-300 hover:bg-sky-500/25 transition-all disabled:opacity-50">
+                                            {isFixingSeam ? <Loader2 size={9} className="animate-spin" /> : <Wand2 size={9} />}
+                                            Suavizar costura
+                                        </button>
+                                        {tileableUrl && (
+                                            <button
+                                                onClick={() => downloadPattern(tileableUrl, `pattern-tileable-${seed}.png`)}
+                                                className="flex items-center gap-1.5 h-7 px-3 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-[9px] font-black text-emerald-300 hover:bg-emerald-500/25 transition-all">
+                                                <Download size={9} /> Descargar tile
+                                            </button>
+                                        )}
+                                    </div>
+                                    {tileableUrl && (
+                                        <div className="rounded-lg overflow-hidden border border-emerald-500/20" style={{ background: "repeating-conic-gradient(#0a0a0a 0% 25%, #111 0% 50%) 0 0 / 12px 12px" }}>
+                                            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)" }}>
+                                                {[0,1,2,3,4,5,6,7,8].map(i => <img key={i} src={tileableUrl} alt="" className="w-full aspect-square object-cover" />)}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Step 3: POD Export */}
+                                <div className={`rounded-xl border p-3 space-y-2.5 transition-all ${(tileableUrl ?? offsetUrl) ? "border-white/8 bg-white/[0.02]" : "border-white/4 bg-white/[0.01] opacity-50 pointer-events-none"}`}>
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-5 h-5 rounded-full bg-amber-500/20 border border-amber-500/30 text-[9px] font-black text-amber-300 flex items-center justify-center shrink-0">3</span>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[10px] font-black text-white">Exportar para POD</p>
+                                            <p className="text-[8px] text-neutral-600">Escala al tamaño requerido por cada plataforma (tileado)</p>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                        {PLATFORM_SPECS.map(p => (
+                                            <button key={p.name}
+                                                onClick={() => void handleExportPOD(p)}
+                                                disabled={!!isExportingPOD}
+                                                title={p.tip}
+                                                className="flex flex-col items-start gap-0.5 px-3 py-2 rounded-xl border border-white/8 bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/15 transition-all disabled:opacity-50 text-left">
+                                                {isExportingPOD === p.name
+                                                    ? <Loader2 size={9} className="animate-spin text-neutral-500 mb-0.5" />
+                                                    : <Download size={9} className={`mb-0.5 ${p.color}`} />}
+                                                <span className={`text-[9px] font-black ${p.color}`}>{p.name}</span>
+                                                <span className="text-[7px] text-neutral-700 font-mono leading-tight">{p.specs}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -1032,10 +1277,7 @@ export function SeamlessPatternApp() {
                             <div key={p.name} className="rounded-2xl border border-white/8 bg-white/[0.025] p-4 space-y-2">
                                 <div className="flex items-center justify-between">
                                     <p className={`text-[13px] font-black ${p.color}`}>{p.name}</p>
-                                    <a href={p.url} target="_blank" rel="noreferrer"
-                                        className="flex items-center gap-1 text-[9px] text-neutral-600 hover:text-neutral-300 transition-colors">
-                                        <ExternalLink size={9} />Abrir
-                                    </a>
+                                    <span className="text-[8px] font-mono text-neutral-700">{p.exportW}×{p.exportH}</span>
                                 </div>
                                 <p className="text-[8px] font-mono text-neutral-500 bg-white/[0.04] border border-white/8 px-2 py-1.5 rounded-xl">{p.specs}</p>
                                 <p className="text-[9px] text-neutral-600 leading-relaxed">{p.tip}</p>
