@@ -29,7 +29,7 @@ export interface EtsyNicheResult {
 
 export interface RowAction {
     label: string;
-    colorScheme?: "violet" | "indigo";
+    colorScheme?: "violet" | "indigo" | "amber" | "sky";
     isCreated: (row: EtsyListing) => boolean;
     onCreate: (row: EtsyListing) => Promise<void>;
 }
@@ -43,6 +43,8 @@ interface Props {
     onNicheCreated?: () => void;
     /** Acción personalizada del botón de fila. Si no se pasa, usa la lógica de creación de nicho por defecto. */
     rowAction?: RowAction;
+    /** Acción de pipeline adicional (segundo botón por fila). */
+    pipelineAction?: RowAction;
 }
 
 type SortKey = keyof EtsyListing;
@@ -81,7 +83,7 @@ function exportCSV(rows: EtsyListing[]) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCreated, rowAction }: Props) {
+export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCreated, rowAction, pipelineAction }: Props) {
     const [etsyResult, setEtsyResult] = useState<EtsyNicheResult | null>(null);
     const [createdNicheRows, setCreatedNicheRows] = useState<Set<string>>(new Set());
     const [creatingRowTitle, setCreatingRowTitle] = useState<string | null>(null);
@@ -367,6 +369,31 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                                             >
                                                                 {creating ? <Loader2 size={8} className="animate-spin" /> : created ? <CheckCircle2 size={9} /> : <Plus size={8} />}
                                                                 {created ? "✓" : "Nicho"}
+                                                            </button>
+                                                        );
+                                                    })()}
+                                                    {/* Pipeline action (optional second button) */}
+                                                    {pipelineAction && (() => {
+                                                        const ready = pipelineAction.isCreated(row);
+                                                        const launching = creatingRowTitle === `pipeline::${row.titulo_producto}`;
+                                                        const scheme = pipelineAction.colorScheme ?? "amber";
+                                                        const cls = scheme === "sky" ? "bg-sky-500/10 border-sky-500/20 text-sky-400 hover:bg-sky-500/20"
+                                                            : "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20";
+                                                        return (
+                                                            <button
+                                                                onClick={async () => {
+                                                                    if (launching) return;
+                                                                    setCreatingRowTitle(`pipeline::${row.titulo_producto}`);
+                                                                    try { await pipelineAction.onCreate(row); }
+                                                                    catch (e: any) { toast.error(e.message ?? "Error"); }
+                                                                    finally { setCreatingRowTitle(null); }
+                                                                }}
+                                                                disabled={launching}
+                                                                title={ready ? "Pipeline ya iniciado" : `Lanzar pipeline: ${row.sub_nicho_estimado}`}
+                                                                className={`inline-flex items-center gap-1 h-6 px-2 rounded-lg text-[8px] font-black uppercase transition-all border ${ready ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 cursor-default" : `${cls} disabled:opacity-50`}`}
+                                                            >
+                                                                {launching ? <Loader2 size={8} className="animate-spin" /> : ready ? <CheckCircle2 size={9} /> : <span>▶</span>}
+                                                                {ready ? "✓" : pipelineAction.label}
                                                             </button>
                                                         );
                                                     })()}

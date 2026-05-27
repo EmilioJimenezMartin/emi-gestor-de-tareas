@@ -72,6 +72,7 @@ import {
     AlertTriangle,
     Info,
     ShoppingBag,
+    Play,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -86,6 +87,8 @@ import { createApiSocket } from "@/lib/socket";
 import { NicheRadar } from "@/components/extractor/NicheRadar";
 import { RadarResultsTable } from "@/components/extractor/RadarResultsTable";
 import { AppTabNav, type AppTab } from "@/components/tasks/apps/shared/app-tab-nav";
+import { NicheFilterBar, type NicheFilterStatus } from "@/components/tasks/apps/shared/niche-filter-bar";
+import { StatusGroupFilter, type StatusGroupOption } from "@/components/tasks/apps/shared/status-group-filter";
 
 interface ProductPlatform {
     name: string;
@@ -817,7 +820,9 @@ export function KdpFactoryApp() {
     const [nicheFormProductType, setNicheFormProductType] = useState<NicheProductType>("coloring-book");
     const [nicheFormStyles, setNicheFormStyles] = useState<NicheStyle[]>(["generic"]);
     const [catalogNicheFilter, setCatalogNicheFilter] = useState<string | null>(null);
-    const [catalogNicheStatusFilter, setCatalogNicheStatusFilter] = useState<"all" | NicheStatus | "none">("all");
+    const [catalogNicheStatusFilter, setCatalogNicheStatusFilter] = useState<NicheFilterStatus>("all");
+    const [isSuggestingPrompt, setIsSuggestingPrompt] = useState(false);
+    const [loadedNicheForPrompt, setLoadedNicheForPrompt] = useState<NicheFE | null>(null);
     const [catalogNichePickerId, setCatalogNichePickerId] = useState<string | null>(null);
     const [kdpTemplateNicheFilter, setKdpTemplateNicheFilter] = useState<string | null>(null);
     const [kdpTemplateOpen, setKdpTemplateOpen] = useState(false);
@@ -970,6 +975,84 @@ export function KdpFactoryApp() {
         } catch {
             toast.error("Error al cancelar");
         }
+    };
+
+    const suggestPromptForNiche = async (niche: NicheFE) => {
+        setIsSuggestingPrompt(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches/suggest-prompt`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    nicheName: niche.name,
+                    tags: niche.tags,
+                    description: niche.description,
+                    productType: niche.productType,
+                    style: niche.styleCategory,
+                    sourceTitulo: niche.sourceTitulo,
+                }),
+            });
+            if (!res.ok) { const e = await res.json(); throw new Error(e.error); }
+            const { theme, particulars } = await res.json();
+            if (theme) setPromptTheme(theme);
+            if (particulars) setPromptParticulars(particulars);
+            toast.success("Prompt sugerido por IA · revisa y ajusta antes de generar");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error generando sugerencia de prompt");
+        } finally {
+            setIsSuggestingPrompt(false); }
+    };
+
+    const launchPipelineStep = async (niche: NicheFE) => {
+        const phase = niche.phase ?? "niche";
+        if (phase === "niche") {
+            if (niche.productType === "coloring-book") {
+                const parts = buildColoringBookPromptParts(niche.name, niche.styleCategory, "");
+                setPromptTheme(parts.theme);
+                setPromptSpecs(parts.specs);
+                setPromptDetails(parts.details);
+                setPromptParticulars("");
+            } else {
+                setPromptTheme(niche.name);
+                setPromptSpecs(niche.tags.join(", "));
+                setPromptDetails(niche.description || "");
+                setPromptParticulars("");
+            }
+            if (NICHE_STYLE_MODEL[niche.styleCategory]) setSelectedModel(NICHE_STYLE_MODEL[niche.styleCategory]);
+            setLoadedNicheForPrompt(niche);
+            setActiveTab("creation");
+            toast.success(`Prompt cargado · sugeriendo variación con IA…`);
+            setTimeout(() => void suggestPromptForNiche(niche), 300);
+        } else if (phase === "pdf") {
+            setNichePublishPanelId(niche._id);
+        }
+    };
+
+    const launchPipelineFromRow = async (row: { titulo_producto: string; sub_nicho_estimado: string; bestseller: boolean; total_reseñas: number; precio: string }) => {
+        // Find or create niche
+        let niche = niches.find(n => n.sourceTitulo === row.titulo_producto);
+        if (!niche) {
+            const res = await fetch(`${API_BASE_URL}/niches`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: row.sub_nicho_estimado,
+                    description: `Detectado en Etsy: "${row.titulo_producto}"`,
+                    tags: [row.sub_nicho_estimado],
+                    status: "found",
+                    competition: "unknown",
+                    demand: row.bestseller || row.total_reseñas > 100 ? "high" : "medium",
+                    productType: "coloring-book",
+                    styleCategory: "generic",
+                    _sourceTitulo: row.titulo_producto,
+                }),
+            });
+            if (!res.ok) { const e = await res.json(); throw new Error(e.error ?? "Error creando nicho"); }
+            const data = await res.json();
+            niche = data.niche;
+            await fetchNiches();
+        }
+        if (niche) await launchPipelineStep(niche);
     };
 
     const createCatalogFromStudio = async () => {
@@ -4206,6 +4289,7 @@ export function KdpFactoryApp() {
                                                     if (niche.styleCategory && NICHE_STYLE_MODEL[niche.styleCategory]) {
                                                         setSelectedModel(NICHE_STYLE_MODEL[niche.styleCategory]);
                                                     }
+                                                    setLoadedNicheForPrompt(niche);
                                                     toast.success(`Prompt cargado desde "${niche.name}"`);
                                                 }}
                                                 className={`flex items-center gap-1.5 h-6 px-2.5 rounded-lg border text-[9px] font-black transition-all ${
@@ -4227,9 +4311,19 @@ export function KdpFactoryApp() {
                                     <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Prompt del Activo</p>
                                 </div>
                                 <div className="flex items-center gap-1.5">
+                                    {loadedNicheForPrompt && (
+                                        <button type="button"
+                                            onClick={() => void suggestPromptForNiche(loadedNicheForPrompt!)}
+                                            disabled={isSuggestingPrompt}
+                                            className="flex items-center gap-1 px-2.5 h-7 rounded-lg bg-violet-500/15 border border-violet-500/25 text-[9px] font-black text-violet-300 hover:bg-violet-500/25 transition-all disabled:opacity-50"
+                                            title="Sugerir variación con IA">
+                                            {isSuggestingPrompt ? <Loader2 size={9} className="animate-spin" /> : <Sparkles size={9} />}
+                                            IA
+                                        </button>
+                                    )}
                                     {(promptTheme || promptSpecs || promptDetails || promptParticulars || negativePrompt) && (
                                         <button type="button"
-                                            onClick={() => { setPromptTheme(""); setPromptSpecs(""); setPromptDetails(""); setPromptParticulars(""); setNegativePrompt(""); }}
+                                            onClick={() => { setPromptTheme(""); setPromptSpecs(""); setPromptDetails(""); setPromptParticulars(""); setNegativePrompt(""); setLoadedNicheForPrompt(null); }}
                                             className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20" title="Limpiar prompt">
                                             <X size={10} />
                                         </button>
@@ -5639,75 +5733,22 @@ export function KdpFactoryApp() {
                                 </div>
 
                                 {/* ── Catalog filter bar ── */}
-                                {niches.length > 0 && (() => {
-                                    const statusMeta: { id: "all" | NicheStatus | "none"; label: string; dot: string; active: string; count: number }[] = [
-                                        { id: "all",      label: "Todos",         dot: "",                  active: "bg-sky-500/20 border-sky-500/40 text-sky-300",     count: iaCatalogs.length },
-                                        { id: "active",   label: "Activos",       dot: "bg-emerald-400",   active: "bg-emerald-500/20 border-emerald-500/40 text-emerald-300", count: iaCatalogs.filter(c => (c.nicheIds ?? []).some(nid => niches.find(n => n._id === nid)?.status === "active")).length },
-                                        { id: "research", label: "En estudio",    dot: "bg-blue-400",      active: "bg-blue-500/20 border-blue-500/40 text-blue-300",   count: iaCatalogs.filter(c => (c.nicheIds ?? []).some(nid => niches.find(n => n._id === nid)?.status === "research")).length },
-                                        { id: "found",    label: "Encontrados",   dot: "bg-sky-400",       active: "bg-sky-500/20 border-sky-500/40 text-sky-300",      count: iaCatalogs.filter(c => (c.nicheIds ?? []).some(nid => niches.find(n => n._id === nid)?.status === "found")).length },
-                                        { id: "none",     label: "Sin nicho",     dot: "bg-neutral-600",   active: "bg-neutral-500/20 border-neutral-500/40 text-neutral-300", count: iaCatalogs.filter(c => (c.nicheIds ?? []).length === 0).length },
-                                        { id: "archived", label: "Archivados",    dot: "bg-neutral-700",   active: "bg-neutral-500/15 border-neutral-500/30 text-neutral-400", count: iaCatalogs.filter(c => (c.nicheIds ?? []).some(nid => niches.find(n => n._id === nid)?.status === "archived")).length },
-                                    ];
-                                    const visibleNiches = catalogNicheStatusFilter === "all" ? niches
-                                        : catalogNicheStatusFilter === "none" ? []
-                                        : niches.filter(n => n.status === catalogNicheStatusFilter);
-                                    const statusDot: Record<NicheStatus, string> = { found: "bg-sky-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
-                                    return (
-                                        <div className="space-y-2">
-                                            {/* Row 1: status group filter */}
-                                            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: "none" }}>
-                                                {statusMeta.map(s => {
-                                                    const isAct = catalogNicheStatusFilter === s.id;
-                                                    return (
-                                                        <button key={s.id}
-                                                            onClick={() => { setCatalogNicheStatusFilter(s.id); setCatalogNicheFilter(null); }}
-                                                            className={`flex items-center gap-1.5 h-7 px-3 rounded-xl border text-[9px] font-black whitespace-nowrap shrink-0 transition-all ${isAct ? s.active + " shadow-[0_0_12px_rgba(0,0,0,0.3)]" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-300 hover:border-white/15"}`}>
-                                                            {s.dot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />}
-                                                            {!s.dot && <Layers size={9} className={isAct ? "" : "text-neutral-700"} />}
-                                                            {s.label}
-                                                            {s.count > 0 && <span className={`tabular-nums text-[8px] ${isAct ? "opacity-70" : "text-neutral-700"}`}>{s.count}</span>}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                            {/* Row 2: per-niche pills (filtered by status group) */}
-                                            {visibleNiches.length > 0 && (
-                                                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: "none" }}>
-                                                    {visibleNiches.map(n => {
-                                                        const count = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).length;
-                                                        const isAct = catalogNicheFilter === n._id;
-                                                        return (
-                                                            <button key={n._id}
-                                                                onClick={() => setCatalogNicheFilter(isAct ? null : n._id)}
-                                                                className={`flex items-center gap-1.5 h-7 px-3 rounded-xl border text-[9px] font-black whitespace-nowrap shrink-0 transition-all ${isAct
-                                                                    ? "bg-sky-500/20 border-sky-500/40 text-sky-300"
-                                                                    : "border-white/8 bg-white/[0.02] text-neutral-500 hover:text-neutral-300 hover:border-white/15"}`}>
-                                                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[n.status]}`} />
-                                                                {n.name}
-                                                                <span className={`text-[8px] tabular-nums px-1 py-0.5 rounded ${isAct ? "bg-sky-500/30 text-sky-300" : count > 0 ? "bg-white/5 text-neutral-600" : "text-neutral-800"}`}>{count}</span>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-                                            {/* Active filter indicator */}
-                                            {(catalogNicheStatusFilter !== "all" || catalogNicheFilter) && (
-                                                <div className="flex items-center gap-2 px-1">
-                                                    <div className="h-px flex-1 bg-sky-500/15" />
-                                                    <span className="text-[8px] font-black uppercase tracking-widest text-sky-400/50">
-                                                        {[
-                                                            catalogNicheStatusFilter !== "all" && statusMeta.find(s => s.id === catalogNicheStatusFilter)?.label,
-                                                            catalogNicheFilter && niches.find(n => n._id === catalogNicheFilter)?.name,
-                                                        ].filter(Boolean).join(" · ")}
-                                                    </span>
-                                                    <button onClick={() => { setCatalogNicheStatusFilter("all"); setCatalogNicheFilter(null); }}
-                                                        className="text-neutral-600 hover:text-sky-400 transition-colors"><X size={10} /></button>
-                                                    <div className="h-px flex-1 bg-sky-500/15" />
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })()}
+                                {niches.length > 0 && (
+                                    <NicheFilterBar
+                                        niches={niches}
+                                        totalCount={iaCatalogs.length}
+                                        getCount={nid => iaCatalogs.filter(c => (c.nicheIds ?? []).includes(nid)).length}
+                                        getStatusCount={s => {
+                                            if (s === "none") return iaCatalogs.filter(c => (c.nicheIds ?? []).length === 0).length;
+                                            if (s === "all") return iaCatalogs.length;
+                                            return iaCatalogs.filter(c => (c.nicheIds ?? []).some(nid => niches.find(n => n._id === nid)?.status === s)).length;
+                                        }}
+                                        statusFilter={catalogNicheStatusFilter}
+                                        onStatusFilterChange={s => { setCatalogNicheStatusFilter(s); setCatalogNicheFilter(null); }}
+                                        selectedNicheId={catalogNicheFilter}
+                                        onNicheChange={setCatalogNicheFilter}
+                                    />
+                                )}
 
                                 {/* ── Queue time estimate banner ── */}
                                 {activeCatalogs.length > 0 && queueEstimateMs !== null && (() => {
@@ -6665,6 +6706,15 @@ export function KdpFactoryApp() {
                                                     );
                                                 })()}
 
+                                                {/* ─ Pipeline action ─ */}
+                                                {(niche.phase ?? "niche") !== "published" && (
+                                                    <button
+                                                        onClick={() => void launchPipelineStep(niche)}
+                                                        className="w-full flex items-center justify-center gap-2 h-8 rounded-xl bg-gradient-to-r from-violet-600/15 to-blue-600/15 border border-violet-500/20 text-[9px] font-black text-violet-300 hover:from-violet-600/25 hover:to-blue-600/25 hover:border-violet-500/35 transition-all">
+                                                        <Play size={9} /> Lanzar siguiente paso
+                                                    </button>
+                                                )}
+
                                                 {/* ─ Tags ─ */}
                                                 {niche.tags.length > 0 && (
                                                     <div className="flex flex-wrap gap-1">
@@ -6777,7 +6827,18 @@ export function KdpFactoryApp() {
                 <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent" />
                 <div className="p-6">
                     <NicheRadar apiUrl={API_BASE_URL} storageKey="RADAR_ETSY_RESULT" />
-                    <RadarResultsTable apiUrl={API_BASE_URL} storageKey="RADAR_ETSY_RESULT" niches={niches} onNicheCreated={() => void fetchNiches()} />
+                    <RadarResultsTable
+                        apiUrl={API_BASE_URL}
+                        storageKey="RADAR_ETSY_RESULT"
+                        niches={niches}
+                        onNicheCreated={() => void fetchNiches()}
+                        pipelineAction={{
+                            label: "Pipeline",
+                            colorScheme: "amber",
+                            isCreated: (row) => niches.some(n => n.sourceTitulo === row.titulo_producto),
+                            onCreate: async (row) => { await launchPipelineFromRow(row); },
+                        }}
+                    />
                 </div>
             </div>
         </div>

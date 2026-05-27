@@ -149,4 +149,51 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             return reply.status(500).send({ error: e.message });
         }
     });
+
+    // POST /niches/suggest-prompt — AI-suggested catalog prompt from niche context
+    app.post("/niches/suggest-prompt", async (request: any, reply) => {
+        const { nicheName, tags, description, productType, style, sourceTitulo } = request.body ?? {};
+        if (!nicheName?.trim()) return reply.status(400).send({ error: "nicheName requerido" });
+
+        let googleKey = process.env.GOOGLE_API_KEY || "";
+        try {
+            const { Settings } = await import("../models/settings.js");
+            const row = await Settings.findOne({ key: "GOOGLE_API_KEY" }).lean() as any;
+            if (row?.value) googleKey = row.value;
+        } catch { /* use env */ }
+
+        if (!googleKey) return reply.status(503).send({ error: "Google API key no configurada en Ajustes" });
+
+        try {
+            const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
+            const { generateText } = await import("ai");
+            const google = createGoogleGenerativeAI({ apiKey: googleKey });
+
+            const context = [
+                `Niche: ${nicheName}`,
+                sourceTitulo ? `Original Etsy product: "${sourceTitulo}"` : "",
+                description ? `Description: ${description}` : "",
+                Array.isArray(tags) && tags.length ? `Tags: ${tags.join(", ")}` : "",
+                productType === "coloring-book" ? "Product type: coloring book (black and white line art)" : "",
+                style ? `Art style: ${style}` : "",
+            ].filter(Boolean).join("\n");
+
+            const { text } = await generateText({
+                model: google("gemini-2.0-flash"),
+                system: `You are an expert at writing image generation prompts for Amazon KDP coloring books and printable products.
+Generate an optimized prompt that will produce beautiful, unique images for this niche.
+Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": "string" }
+- theme: specific main subject in English, evocative and detailed (60-120 chars)
+- particulars: creative variation details to differentiate images in this niche, English (50-140 chars)`,
+                prompt: context,
+            });
+
+            const match = text.match(/\{[\s\S]*?\}/);
+            if (!match) throw new Error("AI no devolvió JSON válido");
+            const json = JSON.parse(match[0]);
+            return reply.send({ theme: json.theme ?? nicheName, particulars: json.particulars ?? "" });
+        } catch (err: any) {
+            return reply.status(500).send({ error: err.message ?? "Error generando sugerencia" });
+        }
+    });
 }
