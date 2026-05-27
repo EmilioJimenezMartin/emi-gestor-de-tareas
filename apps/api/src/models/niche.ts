@@ -24,6 +24,7 @@ export interface INiche extends Document {
     asin?: string;
     etsyUrl?: string;
     gumroadUrl?: string;
+    sourceTitulo?: string;
     royalties?: IRoyaltyEntry[];
     createdAt: Date;
     updatedAt: Date;
@@ -48,6 +49,7 @@ const NicheSchema = new Schema<INiche>(
         asin: { type: String, default: "" },
         etsyUrl: { type: String, default: "" },
         gumroadUrl: { type: String, default: "" },
+        sourceTitulo: { type: String, default: "" },
         royalties: [{
             month: { type: String, required: true },
             sales: { type: Number, default: 0 },

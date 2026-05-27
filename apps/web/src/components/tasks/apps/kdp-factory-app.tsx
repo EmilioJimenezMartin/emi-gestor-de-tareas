@@ -199,6 +199,7 @@ interface NicheFE {
     asin?: string;
     etsyUrl?: string;
     gumroadUrl?: string;
+    sourceTitulo?: string;
     royalties?: NicheRoyaltyEntry[];
     createdAt: string;
 }
@@ -6431,6 +6432,13 @@ export function KdpFactoryApp() {
                                                 <div key={niche._id} className="group rounded-xl border border-white/8 bg-white/[0.03] hover:bg-white/[0.06] p-3 space-y-2 transition-all cursor-pointer" onClick={() => openNicheForm(niche)}>
                                                     <p className="text-[11px] font-black text-white leading-tight line-clamp-2">{niche.name}</p>
                                                     {niche.tags.length > 0 && <p className="text-[9px] text-neutral-600 truncate">{niche.tags.slice(0, 3).join(" · ")}</p>}
+                                                    {niche.etsyUrl && (
+                                                        <a href={niche.etsyUrl} target="_blank" rel="noopener noreferrer"
+                                                            onClick={e => e.stopPropagation()}
+                                                            className="inline-flex items-center gap-1 text-[8px] font-black text-sky-400 hover:text-sky-300 transition-colors">
+                                                            <ExternalLink size={8} /> Ver fuente
+                                                        </a>
+                                                    )}
                                                     <div className="flex items-center justify-between">
                                                         <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md ${niche.status === "active" ? "bg-emerald-500/15 text-emerald-400" : niche.status === "archived" ? "bg-neutral-500/15 text-neutral-500" : "bg-sky-500/15 text-sky-400"}`}>{niche.status}</span>
                                                         <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -6605,7 +6613,7 @@ export function KdpFactoryApp() {
                                                     const hasPrompt = !!niche.generatedPrompt;
                                                     const hasImages = linkedImgs > 0;
                                                     const hasPublicacion = niche.phase === "pdf" || niche.phase === "published";
-                                                    const hasProducto = niche.phase === "published" || !!(niche.asin || niche.etsyUrl);
+                                                    const hasProducto = niche.phase === "published" || !!niche.asin;
                                                     const steps: { label: string; done: boolean; doneColor: string; nextColor: string; lineColor: string; onClick?: () => void }[] = [
                                                         { label: "Prompt", done: hasPrompt, doneColor: "text-sky-300 bg-sky-500/20 border-sky-400/50", nextColor: "text-sky-400 bg-sky-500/10 border-sky-500/30", lineColor: "bg-sky-500/40" },
                                                         { label: "Catálogos", done: hasImages, doneColor: "text-blue-300 bg-blue-500/20 border-blue-400/50", nextColor: "text-blue-400 bg-blue-500/10 border-blue-500/30", lineColor: "bg-blue-500/40" },

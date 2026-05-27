@@ -54,7 +54,7 @@ type SortKey = keyof EtsyListing;
 
 interface NicheRadarProps {
     apiUrl: string;
-    niches?: { _id: string; name: string }[];
+    niches?: { _id: string; name: string; sourceTitulo?: string }[];
     etsyPresets?: { label: string; url: string }[];
     generalPresets?: { label: string; url: string }[];
     defaultMode?: Mode;
@@ -327,8 +327,7 @@ export function NicheRadar({ apiUrl, niches = [], etsyPresets, generalPresets, d
     };
 
     const createNicheFromRow = async (row: EtsyListing) => {
-        if (row._nichoCreado || createdNicheRows.has(row.titulo_producto)) return;
-        // Optimistic: checkmark appears immediately on click
+        if (createdNicheRows.has(row.titulo_producto) || niches.some(n => n.sourceTitulo === row.titulo_producto)) return;
         setCreatedNicheRows(prev => new Set([...prev, row.titulo_producto]));
         try {
             const res = await fetch(`${apiUrl}/niches`, {
@@ -339,24 +338,14 @@ export function NicheRadar({ apiUrl, niches = [], etsyPresets, generalPresets, d
                     description: row.titulo_producto,
                     tags: row.sub_nicho_estimado.split(/[\s,]+/).filter(Boolean).slice(0, 5),
                     status: "found",
-                    etsyUrl: row.url_producto ?? "",
+                    etsyUrl: row.url_producto || `https://www.etsy.com/search?q=${encodeURIComponent(row.sub_nicho_estimado)}`,
+                    _sourceTitulo: row.titulo_producto,
                 }),
             });
             if (!res.ok) throw new Error(`Error ${res.status}`);
-            // Functional updater: always gets latest etsyResult, triggers auto-save useEffect
-            setEtsyResult(prev => {
-                if (!prev) return prev;
-                return {
-                    ...prev,
-                    nichos_detectados: prev.nichos_detectados.map(r =>
-                        r.titulo_producto === row.titulo_producto ? { ...r, _nichoCreado: true } : r
-                    ),
-                };
-            });
             onNicheCreated?.();
             toast.success(`Nicho "${row.sub_nicho_estimado}" creado`);
         } catch (e: any) {
-            // Revert optimistic update on error
             setCreatedNicheRows(prev => { const next = new Set(prev); next.delete(row.titulo_producto); return next; });
             toast.error(e.message ?? "Error creando nicho");
         }
@@ -997,7 +986,7 @@ export function NicheRadar({ apiUrl, niches = [], etsyPresets, generalPresets, d
                                                         )}
                                                         {/* Create nicho directly */}
                                                         {(() => {
-                                                            const created = createdNicheRows.has(row.titulo_producto) || !!row._nichoCreado;
+                                                            const created = createdNicheRows.has(row.titulo_producto) || niches.some(n => n.sourceTitulo === row.titulo_producto);
                                                             const creating = creatingRowTitle === row.titulo_producto;
                                                             return (
                                                                 <button

@@ -24,7 +24,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
     app.post("/niches", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const { name, description, tags, status, competition, demand, productType, styleCategory, styleCategories, notes, etsyUrl } = request.body as any;
+            const { name, description, tags, status, competition, demand, productType, styleCategory, styleCategories, notes, etsyUrl, _sourceTitulo } = request.body as any;
             if (!name?.trim()) return reply.status(400).send({ error: "name required" });
             const resolvedStyles: string[] = Array.isArray(styleCategories) && styleCategories.length > 0
                 ? styleCategories
@@ -41,7 +41,28 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 styleCategories: resolvedStyles,
                 notes: notes?.trim() ?? "",
                 etsyUrl: etsyUrl?.trim() ?? "",
+                sourceTitulo: _sourceTitulo?.trim() ?? "",
             });
+            // If created from radar table, stamp _nichoCreado on the saved etsy result
+            if (_sourceTitulo) {
+                try {
+                    const { Settings } = await import("../models/settings.js");
+                    const row = await Settings.findOne({ key: "RADAR_ETSY_RESULT" }).lean();
+                    if (row?.value) {
+                        const saved = JSON.parse(row.value as string);
+                        if (saved?.nichos_detectados) {
+                            saved.nichos_detectados = saved.nichos_detectados.map((r: any) =>
+                                r.titulo_producto === _sourceTitulo ? { ...r, _nichoCreado: true } : r
+                            );
+                            await Settings.findOneAndUpdate(
+                                { key: "RADAR_ETSY_RESULT" },
+                                { $set: { value: JSON.stringify(saved) } },
+                                { upsert: true }
+                            );
+                        }
+                    }
+                } catch { /* silently ignore radar update failure */ }
+            }
             return reply.status(201).send({ niche });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
