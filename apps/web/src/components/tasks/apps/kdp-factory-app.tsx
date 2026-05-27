@@ -6608,62 +6608,6 @@ export function KdpFactoryApp() {
                                                     </div>
                                                 )}
 
-                                                {/* ─ Pipeline stepper ─ */}
-                                                {(() => {
-                                                    const hasPrompt = !!niche.generatedPrompt;
-                                                    const hasImages = linkedImgs > 0;
-                                                    const hasPublicacion = niche.phase === "pdf" || niche.phase === "published";
-                                                    const hasProducto = niche.phase === "published" || !!niche.asin;
-                                                    const steps: { label: string; done: boolean; doneColor: string; nextColor: string; lineColor: string; onClick?: () => void }[] = [
-                                                        { label: "Prompt", done: hasPrompt, doneColor: "text-sky-300 bg-sky-500/20 border-sky-400/50", nextColor: "text-sky-400 bg-sky-500/10 border-sky-500/30", lineColor: "bg-sky-500/40" },
-                                                        { label: "Catálogos", done: hasImages, doneColor: "text-blue-300 bg-blue-500/20 border-blue-400/50", nextColor: "text-blue-400 bg-blue-500/10 border-blue-500/30", lineColor: "bg-blue-500/40" },
-                                                        {
-                                                            label: "Publicación", done: hasPublicacion, doneColor: "text-amber-300 bg-amber-500/20 border-amber-400/50", nextColor: "text-amber-400 bg-amber-500/10 border-amber-500/30", lineColor: "bg-amber-500/40",
-                                                            onClick: () => {
-                                                                const newPhase = hasPublicacion ? "catalog" : "pdf";
-                                                                fetch(`${API_BASE_URL}/niches/${niche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: newPhase }) }).catch(() => { });
-                                                                setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase: newPhase as typeof niche.phase } : n));
-                                                            },
-                                                        },
-                                                        {
-                                                            label: "Producto", done: hasProducto, doneColor: "text-emerald-300 bg-emerald-500/20 border-emerald-400/50", nextColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30", lineColor: "bg-emerald-500/40",
-                                                            onClick: () => nichePublishPanelId === niche._id ? setNichePublishPanelId(null) : openPublishPanel(niche),
-                                                        },
-                                                    ];
-                                                    const doneCount = steps.filter(s => s.done).length;
-                                                    const nextStep = steps.findIndex(s => !s.done);
-                                                    return (
-                                                        <div className="space-y-2">
-                                                            <div className="flex items-center justify-between">
-                                                                <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Pipeline</span>
-                                                                <span className={`text-[9px] font-black tabular-nums ${doneCount === 4 ? "text-emerald-400" : doneCount >= 2 ? "text-amber-400" : "text-sky-400"}`}>{doneCount}/4</span>
-                                                            </div>
-                                                            <div className="flex items-center">
-                                                                {steps.map((s, i) => (
-                                                                    <div key={i} className="flex items-center flex-1 min-w-0">
-                                                                        <button
-                                                                            title={s.label}
-                                                                            onClick={s.onClick}
-                                                                            disabled={!s.onClick}
-                                                                            className={`flex flex-col items-center gap-1 shrink-0 transition-all ${s.onClick ? "cursor-pointer hover:opacity-80 active:scale-95" : "cursor-default"}`}
-                                                                        >
-                                                                            <div className={`w-7 h-7 rounded-xl border-2 flex items-center justify-center transition-all duration-300 ${s.done ? s.doneColor : i === nextStep ? `${s.nextColor} ring-1 ring-white/10` : "text-neutral-800 bg-white/[0.02] border-white/[0.06]"}`}>
-                                                                                {s.done
-                                                                                    ? <Check size={12} strokeWidth={3} />
-                                                                                    : <span className={`text-[10px] font-black tabular-nums ${i === nextStep ? "" : "text-neutral-800"}`}>{i + 1}</span>
-                                                                                }
-                                                                            </div>
-                                                                            <span className={`text-[8px] font-black leading-none ${s.done ? "text-neutral-400" : i === nextStep ? "text-neutral-300" : "text-neutral-700"}`}>{s.label}</span>
-                                                                        </button>
-                                                                        {i < steps.length - 1 && (
-                                                                            <div className={`h-px flex-1 mx-1 mt-[-8px] transition-all duration-500 ${s.done ? s.lineColor : "bg-white/[0.05]"}`} />
-                                                                        )}
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })()}
 
                                                 {/* ─ Publication panel ─ */}
                                                 {nichePublishPanelId === niche._id && (

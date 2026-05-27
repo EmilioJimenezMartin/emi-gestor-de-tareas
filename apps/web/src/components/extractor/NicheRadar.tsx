@@ -314,13 +314,16 @@ export function NicheRadar({ apiUrl, niches = [], etsyPresets, generalPresets, d
             title: "Eliminar producto",
             message: `¿Eliminar "${row.titulo_producto.slice(0, 60)}${row.titulo_producto.length > 60 ? "…" : ""}" de la tabla?`,
             onConfirm: () => {
-                setEtsyResult(prev => {
-                    const updated = prev
-                        ? { ...prev, nichos_detectados: prev.nichos_detectados.filter(r => r !== row) }
-                        : null;
-                    void saveEtsyResultToBackend(updated);
-                    return updated;
-                });
+                const current = etsyResultRef.current;
+                const updated = current
+                    ? { ...current, nichos_detectados: current.nichos_detectados.filter(r => r.titulo_producto !== row.titulo_producto) }
+                    : null;
+                setEtsyResult(updated);
+                fetch(`${apiUrl}/radar/etsy-row`, {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ titulo_producto: row.titulo_producto }),
+                }).catch(() => {});
                 setConfirmModal(null);
             },
         });

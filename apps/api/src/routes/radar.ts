@@ -4,6 +4,7 @@ import type { Agenda } from "agenda";
 import { z } from "zod";
 import { RadarJob } from "../models/radar-job.js";
 import { RADAR_JOB_NAME } from "../jobs/radar.js";
+import { getMongoStatus } from "../lib/mongo.js";
 
 // ── Mode: General market analysis ────────────────────────────────────────────
 export const NicheInsightSchema = z.object({
@@ -176,6 +177,37 @@ export async function registerRadarRoutes(
             { upsert: true }
         );
         return reply.send({ success: true });
+    });
+
+    // DELETE /radar/etsy-row — elimina una fila del resultado Etsy en Settings Y en el RadarJob
+    app.delete("/radar/etsy-row", async (request: any, reply) => {
+        if (getMongoStatus() !== "connected") return reply.status(503).send({ error: "Base de datos no disponible" });
+        const { titulo_producto } = (request.body as any) || {};
+        if (!titulo_producto) return reply.status(400).send({ error: "titulo_producto requerido" });
+        const { Settings } = await import("../models/settings.js");
+        const filterRow = (nichos: any[]) => nichos.filter((r: any) => r.titulo_producto !== titulo_producto);
+        // Actualizar Settings
+        const settingsRow = await Settings.findOne({ key: "RADAR_ETSY_RESULT" }).lean();
+        if (settingsRow?.value) {
+            try {
+                const saved = JSON.parse(settingsRow.value as string);
+                if (saved?.nichos_detectados) {
+                    saved.nichos_detectados = filterRow(saved.nichos_detectados);
+                    await Settings.findOneAndUpdate(
+                        { key: "RADAR_ETSY_RESULT" },
+                        { $set: { value: JSON.stringify(saved) } }
+                    );
+                }
+            } catch {}
+        }
+        // Actualizar también el RadarJob más reciente
+        const latestJob = await RadarJob.findOne().sort({ createdAt: -1 });
+        if (latestJob?.result?.nichos_detectados) {
+            latestJob.result = { ...latestJob.result, nichos_detectados: filterRow(latestJob.result.nichos_detectados) };
+            latestJob.markModified("result");
+            await latestJob.save();
+        }
+        return reply.send({ ok: true });
     });
 
     // ── POST /radar/pre-nichos — agrupa listados en pre-nichos (síncrono, rápido) ──
