@@ -278,19 +278,45 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             jobDoc.result = data;
             await jobDoc.save();
 
-            // Persist to Settings immediately — frontend may not be mounted to do it
+            // Merge with existing saved results and persist — frontend may not be mounted
+            let dataToEmit = data;
             try {
                 const { Settings } = await import("../models/settings.js");
+
+                if (data?.nichos_detectados) {
+                    // Merge: preserve existing rows not in this scan, keep _nichoCreado flags
+                    const existing = await Settings.findOne({ key: storageKey }).lean() as any;
+                    if (existing?.value) {
+                        try {
+                            const saved = JSON.parse(existing.value);
+                            if (saved?.nichos_detectados?.length) {
+                                const incoming: any[] = data.nichos_detectados;
+                                const incomingTitles = new Set(incoming.map((r: any) => r.titulo_producto));
+                                const preserved = (saved.nichos_detectados as any[]).filter(
+                                    r => !incomingTitles.has(r.titulo_producto)
+                                );
+                                const merged = incoming.map((r: any) => ({
+                                    ...r,
+                                    _nichoCreado: (saved.nichos_detectados as any[]).find(
+                                        (s: any) => s.titulo_producto === r.titulo_producto
+                                    )?._nichoCreado ?? r._nichoCreado,
+                                }));
+                                dataToEmit = { ...data, nichos_detectados: [...merged, ...preserved] };
+                            }
+                        } catch { /* keep dataToEmit = data */ }
+                    }
+                }
+
                 await Settings.findOneAndUpdate(
                     { key: storageKey },
-                    { key: storageKey, value: JSON.stringify(data) },
+                    { key: storageKey, value: JSON.stringify(dataToEmit) },
                     { upsert: true }
                 );
             } catch (settingsErr) {
                 console.warn("[radar-job] No se pudo guardar en Settings:", settingsErr);
             }
 
-            io?.emit("radar:result", { jobId, mode, storageKey, data });
+            io?.emit("radar:result", { jobId, mode, storageKey, data: dataToEmit });
             await page.close();
         } catch (err: any) {
             const msg = `[ERROR] ${err?.message ?? "Error desconocido"}`;
