@@ -431,9 +431,20 @@ function ListingCardFields({
                     </div>
                 </div>
             )}
-            {listing.description && <KWField label="Descripción" value={listing.description} />}
+            {listing.description && (
+                <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Descripción</span>
+                        <button onClick={() => onCopy(listing.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())} className="text-[8px] text-neutral-700 hover:text-indigo-400 flex items-center gap-0.5 transition-colors"><Copy size={7} /> Copiar</button>
+                    </div>
+                    {/<[a-z][\s\S]*>/i.test(listing.description)
+                        ? <div className="text-[9px] text-neutral-300 leading-relaxed bg-white/[0.03] border border-white/[0.05] rounded-lg px-2.5 py-2 [&_p]:mb-1.5 [&_ul]:list-disc [&_ul]:pl-3 [&_li]:mb-0.5 [&_strong]:text-amber-300" dangerouslySetInnerHTML={{ __html: listing.description }} />
+                        : <p className="text-[9px] text-neutral-300 leading-relaxed bg-white/[0.03] border border-white/[0.05] rounded-lg px-2.5 py-2">{listing.description}</p>
+                    }
+                </div>
+            )}
             <button
-                onClick={() => onCopy([listing.title, listing.subtitle, listing.description, listing.keywords.length > 0 ? `Keywords: ${listing.keywords.join(", ")}` : ""].filter(Boolean).join("\n\n"))}
+                onClick={() => onCopy([listing.title, listing.subtitle, listing.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(), listing.keywords.length > 0 ? `Keywords: ${listing.keywords.join(", ")}` : ""].filter(Boolean).join("\n\n"))}
                 className="w-full flex items-center justify-center gap-1 h-6 rounded-lg bg-white/[0.04] border border-white/8 text-[8px] text-neutral-500 hover:text-white hover:bg-white/8 transition-all"
             >
                 <Copy size={8} /> Copiar listing completo
@@ -3153,7 +3164,7 @@ export function KdpFactoryApp() {
                 _id: `draft-${Date.now()}`,
                 title: r.title ?? niche.name,
                 subtitle: r.subtitle ?? "",
-                description: typeof r.description === "string" ? r.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "",
+                description: typeof r.description === "string" ? r.description.trim() : "",
                 keywords: Array.isArray(r.keywords) ? r.keywords.map((k: string) => k.trim()).filter(Boolean) : [],
                 generatedAt: new Date().toISOString(),
             };
@@ -3346,20 +3357,21 @@ export function KdpFactoryApp() {
                 if (listingRes.ok && listingData.result) {
                     const r = listingData.result;
                     const keywords = Array.isArray(r.keywords) ? r.keywords : [];
-                    const descText = typeof r.description === "string" ? r.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
-                    // Save listing to niche.listings
+                    const descHtml = typeof r.description === "string" ? r.description.trim() : "";
+                    const descPlain = descHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+                    // Save listing to niche.listings (HTML preserved)
                     try {
                         const saveRes = await fetch(`${API_BASE_URL}/niches/${niche._id}/listings`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ title: r.title ?? niche.name, subtitle: r.subtitle ?? "", description: descText, keywords }),
+                            body: JSON.stringify({ title: r.title ?? niche.name, subtitle: r.subtitle ?? "", description: descHtml, keywords }),
                         });
                         const saveData = await saveRes.json();
                         if (saveRes.ok && saveData.niche) {
                             setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, listings: saveData.niche.listings } : n));
                         }
                     } catch { /* non-blocking */ }
-                    const fullDesc = [descText, keywords.length > 0 ? `Keywords: ${keywords.join(", ")}` : ""].filter(Boolean).join("\n\n");
+                    const fullDesc = [descPlain, keywords.length > 0 ? `Keywords: ${keywords.join(", ")}` : ""].filter(Boolean).join("\n\n");
                     const productRes = await fetch(`${API_BASE_URL}/digital-products`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -9883,7 +9895,7 @@ export function KdpFactoryApp() {
                                         {contentType === "kdp-physical-book" && typeof contentResult === "object" && (
                                             <div className="space-y-2.5">
                                                 {(contentResult.title || contentResult.description || contentResult.keywords?.length) && (
-                                                    <button onClick={() => { const parts: string[] = []; if (contentResult.title) parts.push(`TÍTULO: ${contentResult.title}${contentResult.subtitle ? `\nSUBTÍTULO: ${contentResult.subtitle}` : ""}`); if (contentResult.description) parts.push(`\nDESCRIPCIÓN:\n${contentResult.description}`); if (Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0) parts.push(`\nKEYWORDS: ${contentResult.keywords.join(", ")}`); copyText(parts.join("\n")); }}
+                                                    <button onClick={() => { const parts: string[] = []; if (contentResult.title) parts.push(`TÍTULO: ${contentResult.title}${contentResult.subtitle ? `\nSUBTÍTULO: ${contentResult.subtitle}` : ""}`); if (contentResult.description) { const plain = typeof contentResult.description === "string" ? contentResult.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : contentResult.description; parts.push(`\nDESCRIPCIÓN:\n${plain}`); } if (Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0) parts.push(`\nKEYWORDS: ${contentResult.keywords.join(", ")}`); copyText(parts.join("\n")); }}
                                                         className="w-full flex items-center justify-center gap-2 h-9 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest">
                                                         <Copy size={12} /> Copiar listing completo
                                                     </button>
@@ -9902,9 +9914,12 @@ export function KdpFactoryApp() {
                                                     <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2">
                                                         <div className="flex items-center justify-between">
                                                             <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Descripción</p>
-                                                            <button onClick={() => copyText(contentResult.description)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
+                                                            <button onClick={() => copyText(typeof contentResult.description === "string" ? contentResult.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : contentResult.description)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
                                                         </div>
-                                                        <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
+                                                        {typeof contentResult.description === "string" && /<[a-z][\s\S]*>/i.test(contentResult.description)
+                                                            ? <div className="text-[10px] text-neutral-300 leading-relaxed [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:space-y-1 [&_li]:text-neutral-300 [&_strong]:text-amber-300 [&_strong]:font-bold" dangerouslySetInnerHTML={{ __html: contentResult.description }} />
+                                                            : <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
+                                                        }
                                                     </div>
                                                 )}
                                                 {Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0 && (

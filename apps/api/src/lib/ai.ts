@@ -70,12 +70,15 @@ ${rawText.substring(0, 4000)}`;
     if (config.provider === "huggingface" && config.hfKey) {
         const { HfInference } = await import("@huggingface/inference");
         const hf = new HfInference(config.hfKey);
-        const response = await hf.textGeneration({
-            model: config.model,
-            inputs: systemPrompt,
-            parameters: { max_new_tokens: 1024, temperature: 0.1 }
+        const jsonEnforcement = "\n\nCRITICAL: Respond with ONLY a valid JSON array. No markdown, no code fences, no backticks, no explanations. Start with [ and end with ].";
+        const response = await hf.chatCompletion({
+            model: config.model || "Qwen/Qwen2.5-7B-Instruct",
+            messages: [{ role: "user", content: systemPrompt + jsonEnforcement }],
+            max_tokens: 1024,
+            temperature: 0.1,
         });
-        const text = (response.generated_text ?? "").trim();
+        const raw = (response.choices[0].message.content ?? "").trim();
+        const text = raw.replace(/^```(?:json|)?\s*/i, "").replace(/```\s*$/i, "").trim();
         const jsonStart = text.indexOf("[");
         const jsonEnd = text.lastIndexOf("]");
         if (jsonStart !== -1 && jsonEnd !== -1) {
@@ -130,12 +133,13 @@ export async function varyTextWithLLM(text: string, creativity = 50): Promise<st
     if (config.provider === "huggingface" && config.hfKey) {
         const { HfInference } = await import("@huggingface/inference");
         const hf = new HfInference(config.hfKey);
-        const response = await hf.textGeneration({
-            model: config.model,
-            inputs: prompt,
-            parameters: { max_new_tokens: 200, temperature: Math.max(0.3, creativity / 100) }
+        const response = await hf.chatCompletion({
+            model: config.model || "Qwen/Qwen2.5-7B-Instruct",
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: 200,
+            temperature: Math.max(0.3, creativity / 100),
         });
-        const result = (response.generated_text ?? "").replace(prompt, "").trim();
+        const result = (response.choices[0].message.content ?? "").trim();
         return result || text;
     }
 
@@ -163,13 +167,22 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
     if (config.provider === "huggingface" && config.hfKey) {
         const { HfInference } = await import("@huggingface/inference");
         const hf = new HfInference(config.hfKey);
-        const full = `${systemPrompt}\n\n${userPrompt}`;
-        const response = await hf.textGeneration({
-            model: config.model,
-            inputs: full,
-            parameters: { max_new_tokens: 512, temperature: 0.4 },
+        const jsonEnforcement = "\n\nCRITICAL: Respond with ONLY a valid JSON object. No markdown, no code fences (```), no backticks, no explanations. Start with { and end with }.";
+        const response = await hf.chatCompletion({
+            model: config.model || "Qwen/Qwen2.5-7B-Instruct",
+            messages: [
+                { role: "system", content: systemPrompt + jsonEnforcement },
+                { role: "user", content: userPrompt },
+            ],
+            max_tokens: 1024,
+            temperature: 0.4,
         });
-        return (response.generated_text ?? "").replace(full, "").trim();
+        const raw = (response.choices[0].message.content ?? "").trim();
+        // Strip markdown code fences that some models insist on adding
+        return raw
+            .replace(/^```(?:json|html|xml|)?\s*/i, "")
+            .replace(/```\s*$/i, "")
+            .trim();
     }
 
     throw new Error("No hay proveedor de IA configurado. Configura Google API key o HuggingFace en Ajustes → Núcleo de Inteligencia.");

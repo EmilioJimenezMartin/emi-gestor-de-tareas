@@ -169,12 +169,12 @@ export async function registerNicheRoutes(app: FastifyInstance) {
 
                 const { generateTextWithLLM } = await import("../lib/ai.js");
 
-                const KDP_SYSTEM = `Eres un especialista en SEO para Amazon KDP. Genera metadatos optimizados para un libro de colorear/actividades.
+                const KDP_SYSTEM = `Eres un especialista en SEO y copywriting para Amazon KDP. Genera metadatos de alta conversión para un libro de colorear/actividades.
 Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": string, "description": string, "keywords": string[] }
-- title: 50-100 chars, empieza por keyword principal
-- subtitle: 60-90 chars, beneficios y audiencia
-- description: 300-450 chars texto plano, hook + contenido + audiencia
-- keywords: exactamente 7 frases de cola larga (2-5 palabras c/u), sin repetir palabras del título`;
+- title: 50-80 chars, empieza por la keyword de mayor volumen. Atractivo y orientado a la conversión, NO simple lista de keywords. Formato: "[Keyword]: [Beneficio emocional] for [Audiencia]"
+- subtitle: 60-90 chars, keywords secundarias no repetidas del título, menciona cantidad de páginas/diseños y audiencia
+- description: HTML para Amazon KDP. Estructura: (1) <p> hook emocional con <strong> en 2-3 keywords, (2) <ul><li> 4-5 beneficios concretos, (3) <p> llamada a la acción + para quién es ideal. 450-650 chars visibles
+- keywords: exactamente 7 frases de cola larga (2-5 palabras c/u), sin repetir palabras del título, mezcla temática + audiencia + regalo + uso`;
 
                 const context = [
                     `Nicho: ${niche.name}`,

@@ -662,13 +662,13 @@ export async function registerAIRoutes(app: FastifyInstance) {
         const langInstruction = language === "en" ? "Respond in English." : "Responde en español.";
 
         const KDP_SYSTEM_INSTRUCTION = `[ROL]
-Eres un especialista en SEO para Amazon KDP. Generas metadatos optimizados para libros de colorear, journals y libros de actividades. Respuesta limpia, sin introducciones ni saludos.
+Eres un especialista en SEO para Amazon KDP. Generas metadatos de alta conversión para libros de colorear, journals y libros de actividades. Respuesta limpia, sin introducciones ni saludos.
 
 [REGLAS]
-1. TITULO: 50-80 caracteres ideales (máximo absoluto 100). Empieza por la keyword principal de mayor volumen. Natural, legible, NO relleno de keywords. Formato: "Keyword Principal: Beneficio o Ángulo para Audiencia".
-2. SUBTITULO: 60-90 caracteres. Complementa el título con keywords secundarias que NO repitas del título. Menciona el número de páginas o diseños si aplica. Foco en audiencia y beneficio tangible.
-3. DESCRIPTION: Texto plano, 300-450 caracteres. Primer párrafo: hook emocional (qué problema resuelve). Segundo párrafo: qué contiene el libro (cantidad, estilo, formato). Sin tecnicismos, sin HTML.
-4. KEYWORDS: Exactamente 7 frases de cola larga, 2-5 palabras cada una. Sin duplicar palabras que ya estén en el título. Mezcla: temática específica, audiencia, ocasión de regalo, uso.
+1. TITULO: 50-80 chars. Empieza por la keyword de mayor volumen. Debe ser atractivo, evocador y orientado a la conversión — NO una lista de keywords. Formato recomendado: "[Keyword Principal]: [Beneficio Emocional o Ángulo Único] for [Audiencia]". Ejemplo: "Mystical Forest Coloring Book: 50 Enchanting Scenes for Adults Who Love Nature & Mindfulness".
+2. SUBTITULO: 60-90 chars. Keywords secundarias no repetidas del título. Menciona cantidad (páginas/diseños) y audiencia objetivo.
+3. DESCRIPTION: HTML optimizado para Amazon KDP. Estructura obligatoria: (1) <p> con hook emocional que conecte con el comprador (qué problema resuelve / qué experiencia ofrece), (2) <ul> con 4-5 <li> de beneficios concretos del libro, (3) <p> con llamada a la acción + para quién es ideal (regalo, uso personal, etc). Total 450-650 chars de texto visible. Usa <strong> en 2-3 keywords clave.
+4. KEYWORDS: Exactamente 7 frases de cola larga, 2-5 palabras c/u. Sin repetir palabras del título. Mezcla: temática específica + audiencia + ocasión de regalo + formato/uso.
 
 [INPUT DEL USUARIO]
 Producto:`;
@@ -804,23 +804,33 @@ Return ONLY a JSON object:
             if (config.provider === "huggingface" && config.hfKey) {
                 const { HfInference } = await import("@huggingface/inference");
                 const hf = new HfInference(config.hfKey);
-                const full = systemInstruction ? `${systemInstruction}\n\n${prompt}` : prompt;
-                const response = await hf.textGeneration({
-                    model: config.model || "mistralai/Mistral-7B-Instruct-v0.3",
-                    inputs: full,
-                    parameters: { max_new_tokens: 1024, temperature: 0.4 },
+                // Force JSON-only output — many open-source models tend to wrap with markdown
+                const jsonEnforcement = "\n\nCRITICAL INSTRUCTION: Your entire response must be ONLY a valid JSON object or array. Do NOT include markdown, code fences (```), backticks, explanations, or any text outside the JSON. Start your response with { or [ and end with } or ]. Nothing before, nothing after.";
+                const messages: { role: "system" | "user"; content: string }[] = systemInstruction
+                    ? [{ role: "system", content: systemInstruction + jsonEnforcement }, { role: "user", content: prompt }]
+                    : [{ role: "user", content: prompt + jsonEnforcement }];
+                const response = await hf.chatCompletion({
+                    model: config.model || "Qwen/Qwen2.5-7B-Instruct",
+                    messages,
+                    max_tokens: 1200,
+                    temperature: 0.4,
                 });
-                const text = (response.generated_text ?? "").replace(full, "").trim();
+                const raw = (response.choices[0].message.content ?? "").trim();
+                // Strip markdown code fences (```json ... ``` or ``` ... ```)
+                const stripped = raw
+                    .replace(/^```(?:json|html|xml|)?\s*/i, "")
+                    .replace(/```\s*$/i, "")
+                    .trim();
                 // Try object first, then array
-                const objStart = text.indexOf("{"); const objEnd = text.lastIndexOf("}");
-                const arrStart = text.indexOf("["); const arrEnd = text.lastIndexOf("]");
-                const jsonStr = (objStart !== -1 && objEnd > objStart) ? text.substring(objStart, objEnd + 1)
-                    : (arrStart !== -1 && arrEnd > arrStart) ? text.substring(arrStart, arrEnd + 1)
+                const objStart = stripped.indexOf("{"); const objEnd = stripped.lastIndexOf("}");
+                const arrStart = stripped.indexOf("["); const arrEnd = stripped.lastIndexOf("]");
+                const jsonStr = (objStart !== -1 && objEnd > objStart) ? stripped.substring(objStart, objEnd + 1)
+                    : (arrStart !== -1 && arrEnd > arrStart) ? stripped.substring(arrStart, arrEnd + 1)
                     : null;
                 if (jsonStr) {
                     try { return reply.send({ result: JSON.parse(jsonStr) }); } catch {}
                 }
-                return reply.send({ result: text });
+                return reply.send({ result: stripped });
             }
 
             return reply.status(503).send({ error: "No hay proveedor de IA configurado. Configura Google API key o HuggingFace en Ajustes → Núcleo de Inteligencia." });

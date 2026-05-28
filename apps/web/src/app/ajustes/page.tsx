@@ -256,16 +256,16 @@ export default function AjustesPage() {
                                     <div className="flex items-center gap-4">
                                         <div
                                             className={`w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-lg ${defaultProvider === 'huggingface' ? 'shadow-amber-500/20' : 'shadow-none cursor-pointer'} transition-all`}
-                                            onClick={() => handleProviderChange('huggingface', 'meta-llama/Meta-Llama-3-70B')}
+                                            onClick={() => handleProviderChange('huggingface', 'Qwen/Qwen2.5-7B-Instruct')}
                                         >
                                             <span className="font-black text-xl italic">H</span>
                                         </div>
-                                        <div className="cursor-pointer" onClick={() => handleProviderChange('huggingface', 'meta-llama/Meta-Llama-3-70B')}>
+                                        <div className="cursor-pointer" onClick={() => handleProviderChange('huggingface', 'Qwen/Qwen2.5-7B-Instruct')}>
                                             <h3 className="font-black text-lg text-white">Hugging Face</h3>
                                             <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Open Source Core</p>
                                         </div>
                                     </div>
-                                    <div className="flex flex-col items-end gap-1 cursor-pointer" onClick={() => handleProviderChange('huggingface', 'meta-llama/Meta-Llama-3-70B')}>
+                                    <div className="flex flex-col items-end gap-1 cursor-pointer" onClick={() => handleProviderChange('huggingface', 'Qwen/Qwen2.5-7B-Instruct')}>
                                         {defaultProvider === "huggingface" ? (
                                             <div className="flex items-center gap-2">
                                                 <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
@@ -299,21 +299,30 @@ export default function AjustesPage() {
                                         <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">HF Target Model</label>
                                         <select
                                             className="w-full h-10 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-bold text-white outline-none focus:border-primary transition-all appearance-none cursor-pointer"
-                                            value={defaultProvider === 'huggingface' ? defaultModel : 'google/gemma-2-9b-it'}
+                                            value={defaultProvider === 'huggingface' ? defaultModel : 'Qwen/Qwen2.5-7B-Instruct'}
                                             onChange={(e) => { handleProviderChange('huggingface', e.target.value) }}
                                         >
-                                            <option value="google/gemma-2-2b-it">Gemma 2 (2B)</option>
-                                            <option value="google/gemma-2-9b-it">Gemma 2 (9B)</option>
-                                            <option value="google/gemma-2-27b-it">Gemma 2 (27B)</option>
-                                            <option value="meta-llama/Llama-3.2-3B-Instruct">Llama 3.2 (3B)</option>
-                                            <option value="Qwen/Qwen2.5-7B-Instruct">Qwen 2.5 (7B)</option>
-                                            <option value="deepseek-ai/DeepSeek-R1-Distill-Qwen-14B">DeepSeek R1 (14B)</option>
-                                            <option value="mistralai/Mistral-7B-v0.1">Mistral (7B)</option>
+                                            <optgroup label="── Qwen (recomendado) ──">
+                                                <option value="Qwen/Qwen2.5-72B-Instruct">Qwen 2.5 72B — más potente</option>
+                                                <option value="Qwen/Qwen2.5-7B-Instruct">Qwen 2.5 7B — rápido ✓</option>
+                                                <option value="Qwen/Qwen2.5-Coder-32B-Instruct">Qwen 2.5 Coder 32B</option>
+                                            </optgroup>
+                                            <optgroup label="── Meta Llama ──">
+                                                <option value="meta-llama/Llama-3.3-70B-Instruct">Llama 3.3 70B</option>
+                                                <option value="meta-llama/Llama-3.1-8B-Instruct">Llama 3.1 8B</option>
+                                                <option value="meta-llama/Llama-3.2-3B-Instruct">Llama 3.2 3B — ligero</option>
+                                            </optgroup>
+                                            <optgroup label="── Mistral ──">
+                                                <option value="mistralai/Mistral-7B-Instruct-v0.3">Mistral 7B v0.3</option>
+                                                <option value="mistralai/Mixtral-8x7B-Instruct-v0.1">Mixtral 8x7B</option>
+                                            </optgroup>
+                                            <optgroup label="── Microsoft ──">
+                                                <option value="microsoft/Phi-3.5-mini-instruct">Phi-3.5 Mini — muy rápido</option>
+                                            </optgroup>
                                         </select>
                                     </div>
                                     <p className="text-[11px] text-neutral-500 leading-relaxed">
-                                        Estos nombres son "identificadores internos" de tu app (los mapearemos al
-                                        proveedor real cuando implementemos la inferencia).
+                                        Todos estos modelos usan la API chat/conversational de HF Inference. Necesitas un token HF guardado en Ajustes → API Keys.
                                     </p>
                                 </div>
                             </div>
