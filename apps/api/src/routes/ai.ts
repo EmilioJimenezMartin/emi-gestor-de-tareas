@@ -632,7 +632,7 @@ export async function registerAIRoutes(app: FastifyInstance) {
     // ── TEXT GENERATION ──────────────────────────────────────────────────────
     app.post("/ai/generate-text", async (request: any, reply) => {
         const { type, niche, productType, extras, language = "es", model: modelOverride } = request.body as {
-            type: "titles" | "description" | "keywords" | "full-listing" | "back-cover" | "series" | "kdp-physical-book" | "image-prompt" | "niche-particulars";
+            type: "titles" | "description" | "keywords" | "full-listing" | "back-cover" | "series" | "kdp-physical-book" | "image-prompt" | "niche-particulars" | "printable-particulars";
             niche: string;
             productType?: string;
             extras?: string;
@@ -688,6 +688,21 @@ Genera título, subtítulo, descripción y 7 keywords SEO optimizados para Amazo
 Description: "${niche}"${extras ? `\nAdditional context: ${extras}` : ""}
 
 Generate the 4 optimized prompt fields for creating coloring book pages for this product.`,
+
+            "printable-particulars": `You are an expert at writing image generation prompts for printable wall art and digital art prints.
+Niche: "${niche}"${extras ? `\nVisual style: ${extras}` : ""}
+
+Write ONLY the "particulars" — 15-30 words of specific visual content for ONE print in this niche and style.
+Focus on: key subject, composition, mood, distinctive visual elements. Do NOT include technical specs or coloring instructions.
+The result will be combined with a professional print art prompt, so describe only the SUBJECT and SCENE.
+Examples:
+- Wall art / botanical: "lush monstera leaves cascading over a vintage ceramic pot, morning light filtering through, soft shadow details"
+- Celestial: "crescent moon surrounded by delicate constellation lines, scattered stars, tiny planets orbiting in golden ink style"
+- Geometric: "overlapping hexagons at different scales, gradient from deep navy to soft gold, precise tessellation pattern"
+- Retro: "1950s diner scene at sunset, chrome details, neon sign glow, stylized palm trees and classic convertible car"
+- Affirmation: "ornate botanical wreath of roses and eucalyptus branches framing an empty center area for inspirational text"
+
+Return ONLY a JSON object: {"particulars": "...15-30 words of visual specifics..."}`,
 
             "niche-particulars": `You are an expert at writing image generation prompts for KDP coloring books.
 Niche: "${niche}"${extras ? `\nStyle context: ${extras}` : ""}
@@ -780,7 +795,7 @@ Return ONLY a JSON object:
 
                 const useSchema = type === "kdp-physical-book" ? kdpSchema
                     : type === "image-prompt" ? imagePromptSchema
-                    : type === "niche-particulars" ? nicheParticularsSchema
+                    : (type === "niche-particulars" || type === "printable-particulars") ? nicheParticularsSchema
                     : undefined;
 
                 const response = await ai.models.generateContent({

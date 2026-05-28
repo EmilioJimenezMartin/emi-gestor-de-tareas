@@ -22,8 +22,8 @@ export interface INiche extends Document {
     competition: "unknown" | "low" | "medium" | "high";
     demand: "unknown" | "low" | "medium" | "high";
     productType: "coloring-book" | "printable-poster" | "other";
-    styleCategory: "generic" | "anime" | "illustration" | "children" | "realistic" | "watercolor" | "abstract";
-    styleCategories: ("generic" | "anime" | "illustration" | "children" | "realistic" | "watercolor" | "abstract")[];
+    styleCategory: "generic" | "anime" | "illustration" | "children" | "realistic" | "watercolor" | "abstract" | "wall-art" | "botanical" | "affirmation" | "geometric" | "celestial" | "retro";
+    styleCategories: ("generic" | "anime" | "illustration" | "children" | "realistic" | "watercolor" | "abstract" | "wall-art" | "botanical" | "affirmation" | "geometric" | "celestial" | "retro")[];
     notes: string;
     generatedPrompt: string;
     catalogIds: string[];
@@ -48,8 +48,8 @@ const NicheSchema = new Schema<INiche>(
         competition: { type: String, enum: ["unknown", "low", "medium", "high"], default: "unknown" },
         demand: { type: String, enum: ["unknown", "low", "medium", "high"], default: "unknown" },
         productType: { type: String, enum: ["coloring-book", "printable-poster", "other"], default: "coloring-book" },
-        styleCategory: { type: String, enum: ["generic", "anime", "illustration", "children", "realistic", "watercolor", "abstract"], default: "generic" },
-        styleCategories: [{ type: String, enum: ["generic", "anime", "illustration", "children", "realistic", "watercolor", "abstract"] }],
+        styleCategory: { type: String, enum: ["generic", "anime", "illustration", "children", "realistic", "watercolor", "abstract", "wall-art", "botanical", "affirmation", "geometric", "celestial", "retro"], default: "generic" },
+        styleCategories: [{ type: String, enum: ["generic", "anime", "illustration", "children", "realistic", "watercolor", "abstract", "wall-art", "botanical", "affirmation", "geometric", "celestial", "retro"] }],
         notes: { type: String, default: "" },
         generatedPrompt: { type: String, default: "" },
         catalogIds: [{ type: String }],

@@ -179,7 +179,8 @@ type PeriodID = "month" | "6months" | "year" | "all";
 
 type NicheStatus = "found" | "active" | "research" | "archived";
 type NicheProductType = "coloring-book" | "printable-poster" | "other";
-type NicheStyle = "generic" | "anime" | "illustration" | "children" | "realistic" | "watercolor" | "abstract";
+type NicheStyle = "generic" | "anime" | "illustration" | "children" | "realistic" | "watercolor" | "abstract"
+    | "wall-art" | "botanical" | "affirmation" | "geometric" | "celestial" | "retro";
 
 interface NicheRoyaltyEntry {
     month: string;
@@ -232,6 +233,7 @@ const NICHE_STYLE_OPTIONS: { id: NicheStyle; label: string; desc: string }[] = [
 ];
 
 const NICHE_STYLE_MODEL: Record<NicheStyle, string> = {
+    // Coloring book styles
     generic: "pollinations-flux",
     anime: "pollinations-flux-anime",
     illustration: "openjourney-v4",
@@ -239,9 +241,17 @@ const NICHE_STYLE_MODEL: Record<NicheStyle, string> = {
     realistic: "pollinations-flux-realism",
     watercolor: "openjourney-v4",
     abstract: "pollinations-flux",
+    // Printable poster styles
+    "wall-art":    "pollinations-flux-realism",
+    "botanical":   "openjourney-v4",
+    "affirmation": "pollinations-flux-realism",
+    "geometric":   "pollinations-flux-realism",
+    "celestial":   "pollinations-flux-realism",
+    "retro":       "openjourney-v4",
 };
 
 const NICHE_STYLE_TO_COVER: Record<NicheStyle, { style: string; colorTheme: string }> = {
+    // Coloring book styles
     generic:      { style: "clean professional illustration, detailed decorative artwork, elegant composition",       colorTheme: "soft blue and white" },
     anime:        { style: "anime manga illustration, vibrant colors, Japanese art style, bold linework",             colorTheme: "vibrant pink and purple" },
     illustration: { style: "detailed artistic illustration, painterly fantasy art, rich textures",                    colorTheme: "deep forest green and gold" },
@@ -249,6 +259,13 @@ const NICHE_STYLE_TO_COVER: Record<NicheStyle, { style: string; colorTheme: stri
     realistic:    { style: "photorealistic detailed illustration, professional artwork, cinematic lighting",           colorTheme: "warm earth tones, natural colors" },
     watercolor:   { style: "soft watercolor painting, artistic brushstrokes, delicate washes, paper texture",         colorTheme: "soft pastels and cream" },
     abstract:     { style: "abstract geometric patterns, decorative mandala ornamental design, intricate linework",   colorTheme: "deep blue and gold" },
+    // Printable poster styles
+    "wall-art":    { style: "elegant full-color decorative wall art, sophisticated home decor illustration",          colorTheme: "warm terracotta and cream" },
+    "botanical":   { style: "detailed botanical fine art print, scientific illustration style, lush greenery",        colorTheme: "forest green and ivory" },
+    "affirmation": { style: "beautiful typographic poster with delicate floral frame, inspirational art print",       colorTheme: "gold and deep navy" },
+    "geometric":   { style: "minimalist geometric abstract art, precise clean shapes, Bauhaus influence",             colorTheme: "monochrome with mustard accent" },
+    "celestial":   { style: "mystical celestial art, moon phases, constellations, cosmic watercolor",                 colorTheme: "deep indigo, gold, and soft purple" },
+    "retro":       { style: "vintage retro travel poster, aged aesthetic, bold typography, mid-century illustration", colorTheme: "burnt orange, teal, and cream" },
 };
 
 // Coloring book prompt templates — theme/specs/details are FIXED; AI decides only "particulars"
@@ -281,9 +298,40 @@ function buildColoringBookPromptParts(nicheName: string, style: NicheStyle, part
 
 const NICHE_PRODUCT_OPTIONS: { id: NicheProductType; label: string }[] = [
     { id: "coloring-book", label: "Libro de colorear" },
-    { id: "printable-poster", label: "Poster imprimible" },
+    { id: "printable-poster", label: "Printable" },
     { id: "other", label: "Otro" },
 ];
+
+const PRINTABLE_STYLE_OPTIONS: { id: NicheStyle; label: string; desc: string; emoji: string }[] = [
+    { id: "wall-art",    label: "Wall Art",       desc: "Arte decorativo a color",          emoji: "🖼️" },
+    { id: "botanical",   label: "Botánico",        desc: "Plantas, flores, naturaleza",      emoji: "🌿" },
+    { id: "affirmation", label: "Affirmation",     desc: "Tipografía motivacional",          emoji: "✨" },
+    { id: "geometric",   label: "Geométrico",      desc: "Formas, Bauhaus, minimalismo",     emoji: "◼️" },
+    { id: "celestial",   label: "Celestial",       desc: "Luna, estrellas, cosmos",          emoji: "🌙" },
+    { id: "retro",       label: "Retro Vintage",   desc: "Cartel vintage de época",          emoji: "📯" },
+];
+
+// Printable prompt template — full color, print-ready, professional artwork
+const PRINTABLE_STYLE_SPECS: Record<string, { specs: string; details: string }> = {
+    "wall-art":    { specs: "full color professional wall art print, vivid colors, detailed illustration, elegant decorative composition, no text, no watermark, print-ready high resolution artwork, white margin border",     details: "sophisticated home decor aesthetic, rich tones, balanced layout, museum-quality artwork" },
+    "botanical":   { specs: "fine art botanical illustration, full color, detailed scientific plant drawing, clean white background, print-ready, no text, high resolution, soft natural palette",                              details: "Victorian botanical style, precise linework with watercolor wash, elegant arrangement" },
+    "affirmation": { specs: "beautiful decorative typographic art print, ornamental floral frame around text area, full color, elegant gold accents, print-ready, high resolution",                                            details: "leave blank centered space for affirmation text, lush botanical border, premium stationery aesthetic" },
+    "geometric":   { specs: "minimalist geometric abstract art print, precise clean shapes, bold or pastel palette, no text, print-ready, high resolution, Bauhaus and mid-century modern influence",                          details: "balanced asymmetric composition, strong graphic impact, interior design compatible" },
+    "celestial":   { specs: "mystical celestial art print, moon phases and constellations, deep cosmic background, gold line art, full color, no text, print-ready, high resolution",                                          details: "magical atmosphere, starry night aesthetic, gold foil effect suggestion, witchy boho style" },
+    "retro":       { specs: "vintage retro poster illustration, aged paper texture, bold flat color palette, mid-century graphic design style, no modern elements, print-ready, high resolution",                               details: "classic travel or advertising poster aesthetic, muted burnt orange teal cream palette, bold shapes" },
+};
+
+function buildPrintablePromptParts(nicheName: string, style: NicheStyle, particulars: string) {
+    const s = PRINTABLE_STYLE_SPECS[style] ?? PRINTABLE_STYLE_SPECS["wall-art"];
+    const theme = `${nicheName} printable wall art poster`;
+    return {
+        theme,
+        specs: s.specs,
+        details: s.details,
+        particulars,
+        fullPrompt: [theme, s.specs, s.details, particulars].filter(Boolean).join(", "),
+    };
+}
 
 interface CatalogImageFE {
     publicId: string;
@@ -1265,7 +1313,41 @@ export function KdpFactoryApp() {
                 let imagePrompt: string;
                 let promptParts: { theme: string; specs: string; details: string; particulars: string };
 
-                if (isColoringBook) {
+                const isPrintable = niche.productType === "printable-poster";
+
+                if (isPrintable) {
+                    // Printable: fixed template per visual style, AI decides only the subject particulars
+                    const partRes = await fetch(`${API_BASE_URL}/ai/generate-text`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            type: "printable-particulars",
+                            niche: niche.name,
+                            extras: style,
+                            language: "en",
+                        }),
+                    });
+                    const partData = await partRes.json();
+                    if (!partRes.ok) throw new Error(partData.error ?? "Error generando detalles");
+                    const particulars: string = partData.result?.particulars ?? niche.name;
+                    const built = buildPrintablePromptParts(niche.name, style, particulars);
+                    imagePrompt = built.fullPrompt;
+                    promptParts = { theme: built.theme, specs: built.specs, details: built.details, particulars };
+
+                    // Auto-save template to prompts library
+                    const styleLabel = PRINTABLE_STYLE_OPTIONS.find(s => s.id === style)?.label ?? style;
+                    void fetch(`${API_BASE_URL}/saved-prompts`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            name: `Printable · ${styleLabel} · ${niche.name}`,
+                            category: "Printable",
+                            promptParts: { theme: built.theme, specs: built.specs, details: built.details, particulars: "" },
+                            aiModel: { id: NICHE_STYLE_MODEL[style], name: AI_MODELS.find(m => m.id === NICHE_STYLE_MODEL[style])?.name ?? style, provider: "Pollinations", modelId: AI_MODELS.find(m => m.id === NICHE_STYLE_MODEL[style])?.modelId ?? "" },
+                        }),
+                    }).catch(() => { });
+
+                } else if (isColoringBook) {
                     // For coloring books: fixed template, AI decides only "particulars"
                     const isAnime = ANIME_STYLES.includes(style);
                     const partRes = await fetch(`${API_BASE_URL}/ai/generate-text`, {
@@ -1305,7 +1387,7 @@ export function KdpFactoryApp() {
                         body: JSON.stringify({
                             type: "image-prompt",
                             niche: niche.name,
-                            productType: niche.productType === "printable-poster" ? "printable poster" : niche.name,
+                            productType: niche.name,
                             language: "en",
                         }),
                     });
@@ -4718,7 +4800,7 @@ export function KdpFactoryApp() {
                         <div className="p-6 space-y-4 relative z-10">
                             <div className="flex items-center gap-3">
                                 <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-sm font-black text-neutral-500 flex items-center justify-center shrink-0">01</span>
-                                <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Modelo & Formato</p>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Modelo & Formato</p>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {/* Model picker */}
@@ -4857,6 +4939,13 @@ export function KdpFactoryApp() {
                                                         setPromptSpecs(parts.specs);
                                                         setPromptDetails(parts.details);
                                                         setPromptParticulars("");
+                                                    } else if (niche.productType === "printable-poster") {
+                                                        const style = (niche.styleCategory as NicheStyle) ?? "wall-art";
+                                                        const parts = buildPrintablePromptParts(niche.name, style, "");
+                                                        setPromptTheme(parts.theme);
+                                                        setPromptSpecs(parts.specs);
+                                                        setPromptDetails(parts.details);
+                                                        setPromptParticulars("");
                                                     } else {
                                                         setPromptTheme(niche.name);
                                                         setPromptSpecs(niche.tags.join(", "));
@@ -4866,6 +4955,9 @@ export function KdpFactoryApp() {
                                                     if (niche.styleCategory && NICHE_STYLE_MODEL[niche.styleCategory]) {
                                                         setSelectedModel(NICHE_STYLE_MODEL[niche.styleCategory]);
                                                     }
+                                                    // Associate niche and set correct product type
+                                                    setCatalogFormNicheId(niche._id);
+                                                    setCatalogProductType(niche.productType ?? "coloring-book");
                                                     setLoadedNicheForPrompt(niche);
                                                     toast.success(`Prompt cargado desde "${niche.name}"`);
                                                 }}
@@ -4885,7 +4977,7 @@ export function KdpFactoryApp() {
                             <div className="flex items-center justify-between gap-3">
                                 <div className="flex items-center gap-3">
                                     <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-sm font-black text-neutral-500 flex items-center justify-center shrink-0">02</span>
-                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Prompt del Activo</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Prompt del Activo</p>
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     {loadedNicheForPrompt && (
@@ -4958,7 +5050,7 @@ export function KdpFactoryApp() {
                                 className="w-full px-6 py-4 flex items-center gap-3 hover:bg-white/2 transition-colors group"
                             >
                                 <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-sm font-black text-neutral-500 flex items-center justify-center shrink-0">03</span>
-                                <p className="text-sm font-black uppercase tracking-widest text-neutral-400 group-hover:text-neutral-200 transition-colors flex-1 text-left">Opciones avanzadas</p>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 group-hover:text-neutral-200 transition-colors flex-1 text-left">Opciones avanzadas</p>
                                 <ChevronDown size={13} className={`text-neutral-600 transition-transform duration-300 ${showAdvancedOptions ? "rotate-180" : ""}`} />
                             </button>
 
@@ -5124,7 +5216,7 @@ export function KdpFactoryApp() {
                             >
                                 <span className="w-6 h-6 rounded-full bg-sky-500/10 border border-sky-500/20 text-sm font-black text-sky-400 flex items-center justify-center shrink-0">04</span>
                                 <div className="flex-1 text-left">
-                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-400 group-hover:text-neutral-200 transition-colors">Generar catálogo</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 group-hover:text-neutral-200 transition-colors">Generar catálogo</p>
                                     <p className="text-sm text-neutral-600 mt-0.5">Producción masiva con estos ajustes</p>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -6725,7 +6817,7 @@ export function KdpFactoryApp() {
                                         className="w-full flex items-center gap-2.5 px-4 py-3 bg-white/[0.02] hover:bg-white/[0.04] transition-all text-left"
                                     >
                                         <Lightbulb size={12} className="text-amber-400 shrink-0" />
-                                        <span className="text-sm font-black uppercase tracking-widest text-neutral-400 flex-1">Consejos Amazon KDP</span>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400 flex-1">Consejos Amazon KDP</span>
                                         <ChevronDown size={12} className={`text-neutral-600 transition-transform duration-300 ${showKdpTips ? "rotate-180" : ""}`} />
                                     </button>
                                     {showKdpTips && (
@@ -6984,7 +7076,7 @@ export function KdpFactoryApp() {
                                         <div key={col.id} className={`rounded-2xl border ${col.color} p-3 space-y-2 min-h-[120px]`}>
                                             <div className="flex items-center gap-2 pb-1 border-b border-white/5">
                                                 <span className={`w-2 h-2 rounded-full shrink-0 ${col.dot}`} />
-                                                <span className="text-sm font-black uppercase tracking-widest text-neutral-400">{col.label}</span>
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">{col.label}</span>
                                                 <span className="ml-auto text-sm font-mono text-neutral-600">{colNiches.length}</span>
                                             </div>
                                             {colNiches.length === 0 && (
@@ -7057,7 +7149,7 @@ export function KdpFactoryApp() {
                                                                 {NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType}
                                                             </span>
                                                             <span className="text-xs font-black uppercase tracking-wide text-neutral-400 bg-white/[0.04] border border-white/8 px-2 py-0.5 rounded-full">
-                                                                {NICHE_STYLE_OPTIONS.find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory}
+                                                                {(niche.productType === "printable-poster" ? PRINTABLE_STYLE_OPTIONS : NICHE_STYLE_OPTIONS).find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory}
                                                             </span>
                                                         </div>
                                                         {niche.description && <p className="text-sm text-neutral-500 mt-2 line-clamp-2 leading-relaxed">{niche.description}</p>}
@@ -8096,7 +8188,7 @@ export function KdpFactoryApp() {
                                 <ImageIcon size={15} className="text-fuchsia-400" />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Cover Factory</p>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Cover Factory</p>
                                 <p className="text-sm text-neutral-600">1600×2560px · Tall-format para Amazon KDP</p>
                             </div>
                             <button onClick={() => setShowCoverModal(false)}
@@ -8348,7 +8440,7 @@ export function KdpFactoryApp() {
                         <div className="shrink-0 border-b border-white/8">
                             <div className="px-3 sm:px-4 pt-3 sm:pt-4 pb-3 flex items-center gap-2">
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-sm sm:text-sm font-black uppercase tracking-widest text-neutral-400">Editor · PDF</p>
+                                    <p className="text-sm sm:text-[10px] font-black uppercase tracking-widest text-neutral-400">Editor · PDF</p>
                                     <p className="text-sm sm:text-sm text-neutral-600">{bookPages.length} pág{bookPages.length !== 1 ? "s" : "."}</p>
                                 </div>
                                 {/* Filename input — desktop */}
@@ -8612,7 +8704,7 @@ export function KdpFactoryApp() {
                                                 {needsImage && (
                                                     <div className="space-y-3">
                                                         <div className="flex items-center justify-between">
-                                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Imagen</p>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Imagen</p>
                                                             {selectedPage.image && (
                                                                 <div className="flex items-center gap-2">
                                                                     <button onClick={() => setShowInlineImagePicker(v => !v)}
@@ -8752,7 +8844,7 @@ export function KdpFactoryApp() {
                                                             : "Helvetica, Arial, sans-serif";
                                                     return (
                                                         <div className="space-y-3">
-                                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Texto</p>
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Texto</p>
 
                                                             {/* Textarea */}
                                                             <textarea
@@ -9407,14 +9499,14 @@ export function KdpFactoryApp() {
                         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
                             {/* Name */}
                             <div className="space-y-1.5">
-                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Nombre *</label>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Nombre *</label>
                                 <input value={nicheFormName} onChange={e => setNicheFormName(e.target.value)} placeholder="Ej: Mandalas zen para adultos"
                                     className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all" />
                             </div>
                             {/* Description */}
                             <div className="space-y-1.5">
                                 <div className="flex items-center justify-between gap-2">
-                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Descripción</label>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Descripción</label>
                                     <button
                                         type="button"
                                         onClick={() => void suggestNicheDescription()}
@@ -9430,11 +9522,11 @@ export function KdpFactoryApp() {
                             </div>
                             {/* Status */}
                             <div className="space-y-1.5">
-                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Estado</label>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Estado</label>
                                 <div className="flex gap-2 flex-wrap">
                                     {(["found", "research", "active", "archived"] as const).map(s => (
                                         <button key={s} onClick={() => setNicheFormStatus(s)}
-                                            className={`flex-1 h-9 rounded-xl border text-sm font-black uppercase tracking-widest transition-all ${nicheFormStatus === s ? `${STATUS_LABELS[s].color} ring-1 ring-current/20` : "border-white/10 bg-white/5 text-neutral-600 hover:text-white"}`}>
+                                            className={`flex-1 h-7 rounded-lg border text-[10px] font-black uppercase tracking-wide transition-all ${nicheFormStatus === s ? `${STATUS_LABELS[s].color} ring-1 ring-current/20` : "border-white/10 bg-white/5 text-neutral-600 hover:text-white"}`}>
                                             {STATUS_LABELS[s].label}
                                         </button>
                                     ))}
@@ -9442,27 +9534,36 @@ export function KdpFactoryApp() {
                             </div>
                             {/* Product Type */}
                             <div className="space-y-1.5">
-                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Tipo de producto</label>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Tipo de producto</label>
                                 <div className="flex gap-2">
                                     {NICHE_PRODUCT_OPTIONS.map(opt => (
-                                        <button key={opt.id} onClick={() => setNicheFormProductType(opt.id)}
+                                        <button key={opt.id} onClick={() => {
+                                                setNicheFormProductType(opt.id);
+                                                // Reset style to the first valid option for the new product type
+                                                if (opt.id === "printable-poster") setNicheFormStyles(["wall-art"]);
+                                                else if (opt.id === "coloring-book") setNicheFormStyles(["generic"]);
+                                                else setNicheFormStyles(["generic"]);
+                                            }}
                                             className={`flex-1 h-9 rounded-xl border text-sm font-black uppercase tracking-widest transition-all ${nicheFormProductType === opt.id ? "border-sky-500/40 bg-sky-500/10 text-sky-400 ring-1 ring-violet-500/20" : "border-white/10 bg-white/5 text-neutral-600 hover:text-white"}`}>
                                             {opt.label}
                                         </button>
                                     ))}
                                 </div>
                             </div>
-                            {/* Style Category — multi-select */}
+                            {/* Style Category — multi-select, options depend on product type */}
                             <div className="space-y-1.5">
                                 <div className="flex items-center justify-between">
-                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Estilo visual</label>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
+                                        {nicheFormProductType === "printable-poster" ? "Estilo de print" : "Estilo visual"}
+                                    </label>
                                     {nicheFormStyles.length > 1 && (
-                                        <span className="text-sm font-black text-sky-400">{nicheFormStyles.length} seleccionados</span>
+                                        <span className={`text-sm font-black ${nicheFormProductType === "printable-poster" ? "text-emerald-400" : "text-sky-400"}`}>{nicheFormStyles.length} seleccionados</span>
                                     )}
                                 </div>
                                 <div className="grid grid-cols-2 gap-1.5">
-                                    {NICHE_STYLE_OPTIONS.map(opt => {
+                                    {(nicheFormProductType === "printable-poster" ? PRINTABLE_STYLE_OPTIONS : NICHE_STYLE_OPTIONS).map(opt => {
                                         const active = nicheFormStyles.includes(opt.id);
+                                        const isPrint = nicheFormProductType === "printable-poster";
                                         return (
                                             <button key={opt.id} onClick={() => {
                                                 setNicheFormStyles(prev => {
@@ -9473,23 +9574,28 @@ export function KdpFactoryApp() {
                                                     return [...prev, opt.id];
                                                 });
                                             }}
-                                                className={`h-10 rounded-xl border px-3 text-left transition-all flex items-start gap-2 ${active ? "border-sky-500/40 bg-sky-500/10 ring-1 ring-violet-500/20" : "border-white/8 bg-white/[0.02] hover:bg-white/5"}`}>
-                                                <div className={`mt-1.5 w-3 h-3 rounded-sm border-2 flex items-center justify-center shrink-0 transition-all ${active ? "bg-sky-500 border-violet-500" : "border-neutral-600"}`}>
-                                                    {active && <Check size={8} className="text-white" strokeWidth={3} />}
+                                                className={`py-2 rounded-xl border px-2.5 text-left transition-all flex items-start gap-1.5 ${active ? (isPrint ? "border-emerald-500/40 bg-emerald-500/10 ring-1 ring-emerald-500/20" : "border-sky-500/40 bg-sky-500/10 ring-1 ring-violet-500/20") : "border-white/8 bg-white/[0.02] hover:bg-white/5"}`}>
+                                                <div className={`mt-0.5 w-3 h-3 rounded-sm border-2 flex items-center justify-center shrink-0 transition-all ${active ? (isPrint ? "bg-emerald-500 border-emerald-500" : "bg-sky-500 border-violet-500") : "border-neutral-600"}`}>
+                                                    {active && <Check size={7} className="text-white" strokeWidth={3} />}
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <span className={`block text-sm font-black uppercase tracking-widest ${active ? "text-sky-400" : "text-neutral-400"}`}>{opt.label}</span>
-                                                    <span className="block text-sm text-neutral-600 leading-tight">{opt.desc}</span>
+                                                    <span className={`block text-[10px] font-black uppercase tracking-wide leading-tight ${active ? (isPrint ? "text-emerald-400" : "text-sky-400") : "text-neutral-400"}`}>
+                                                        {"emoji" in opt ? `${opt.emoji} ` : ""}{opt.label}
+                                                    </span>
+                                                    <span className="block text-[9px] text-neutral-600 leading-tight truncate">{opt.desc}</span>
                                                 </div>
                                             </button>
                                         );
                                     })}
                                 </div>
+                                {nicheFormProductType === "printable-poster" && (
+                                    <p className="text-[10px] text-neutral-700 italic mt-1">Genera prints a color listos para Etsy · KDP · Redbubble · Gelato</p>
+                                )}
                             </div>
                             {/* Competition + Demand */}
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1.5">
-                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Competencia</label>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Competencia</label>
                                     <div className="flex flex-col gap-1">
                                         {(["unknown", "low", "medium", "high"] as const).map(v => (
                                             <button key={v} onClick={() => setNicheFormComp(v)}
@@ -9500,7 +9606,7 @@ export function KdpFactoryApp() {
                                     </div>
                                 </div>
                                 <div className="space-y-1.5">
-                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Demanda</label>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Demanda</label>
                                     <div className="flex flex-col gap-1">
                                         {(["unknown", "low", "medium", "high"] as const).map(v => (
                                             <button key={v} onClick={() => setNicheFormDemand(v)}
@@ -9513,7 +9619,7 @@ export function KdpFactoryApp() {
                             </div>
                             {/* Tags */}
                             <div className="space-y-1.5">
-                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Tags <span className="normal-case text-neutral-600">(separados por coma)</span></label>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Tags <span className="normal-case text-neutral-600">(separados por coma)</span></label>
                                 <input value={nicheFormTags} onChange={e => setNicheFormTags(e.target.value)} placeholder="mandala, zen, adultos, colorear…"
                                     className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all" />
                                 {nicheFormTags.trim() && (
@@ -9526,7 +9632,7 @@ export function KdpFactoryApp() {
                             </div>
                             {/* Etsy URL */}
                             <div className="space-y-1.5">
-                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Enlace Etsy <span className="normal-case text-neutral-600">(opcional)</span></label>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Enlace Etsy <span className="normal-case text-neutral-600">(opcional)</span></label>
                                 <input value={nicheFormEtsyUrl} onChange={e => setNicheFormEtsyUrl(e.target.value)} placeholder="https://www.etsy.com/listing/..."
                                     className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all" />
                                 {nicheFormEtsyUrl.trim() && (
@@ -9538,20 +9644,20 @@ export function KdpFactoryApp() {
                             </div>
                             {/* Notes */}
                             <div className="space-y-1.5">
-                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Notas</label>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Notas</label>
                                 <textarea value={nicheFormNotes} onChange={e => setNicheFormNotes(e.target.value)} rows={3} placeholder="Observaciones, ideas, URLs de referencia…"
                                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all resize-none" />
                             </div>
                             {/* Generated Prompt */}
                             <div className="space-y-1.5">
-                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">
-                                    Prompt generado <span className="normal-case text-neutral-600">(guardado automáticamente al generar contenido)</span>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
+                                    Prompt generado <span className="normal-case text-neutral-600 font-normal">(guardado al generar)</span>
                                 </label>
                                 <textarea value={nicheFormPrompt} onChange={e => setNicheFormPrompt(e.target.value)} rows={4} placeholder="El prompt de imagen se guardará aquí al usar Generar contenido…"
                                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-neutral-300 placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all resize-none font-mono leading-relaxed" />
                                 {nicheFormPrompt.trim() && (
                                     <button
-                                        onClick={() => { setPromptTheme(nicheFormPrompt.trim()); changeTab("creation"); setNicheFormOpen(false); toast.success("Prompt aplicado al generador"); }}
+                                        onClick={() => { setPromptTheme(nicheFormPrompt.trim()); setCatalogFormNicheId(nicheEditTarget?._id ?? null); setCatalogProductType(nicheFormProductType); changeTab("creation"); setNicheFormOpen(false); toast.success("Prompt aplicado al generador"); }}
                                         className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-sm font-black uppercase tracking-widest hover:bg-sky-500 hover:text-white hover:border-violet-500 transition-all">
                                         <ArrowRight size={10} /> Aplicar en generador
                                     </button>
@@ -9604,7 +9710,7 @@ export function KdpFactoryApp() {
                         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
                             {/* Title input */}
                             <div className="space-y-1.5">
-                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Título del libro</label>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Título del libro</label>
                                 <input
                                     value={kdpTemplateTitle}
                                     onChange={e => setKdpTemplateTitle(e.target.value)}
@@ -9617,7 +9723,7 @@ export function KdpFactoryApp() {
                             {vaultImages.length > 0 && (
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between">
-                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Vault ({vaultImages.length} imágenes)</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Vault ({vaultImages.length} imágenes)</p>
                                         <button
                                             onClick={() => {
                                                 const allSelected = vaultImages.every((_, i) => kdpTemplateVaultSel.has(i));
@@ -9658,7 +9764,7 @@ export function KdpFactoryApp() {
                             {cloudinaryImages.length > 0 && (
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between">
-                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Almacén Cloudinary ({cloudinaryImages.length} imágenes)</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Almacén Cloudinary ({cloudinaryImages.length} imágenes)</p>
                                         <button
                                             onClick={() => {
                                                 const allSel = cloudinaryImages.every((_, i) => kdpTemplateCloudSel.has(i));
@@ -9741,7 +9847,7 @@ export function KdpFactoryApp() {
                             {iaCatalogs.filter(c => c.images.length > 0).length > 0 && (
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Catálogos con imágenes</p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Catálogos con imágenes</p>
                                         <div className="flex items-center gap-1.5 flex-wrap">
                                             {niches.length > 0 && (
                                                 <>
@@ -9945,7 +10051,7 @@ export function KdpFactoryApp() {
                                         <Archive size={15} className="text-emerald-400" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-sm sm:text-sm font-black uppercase tracking-widest text-neutral-400">Zip Factory</p>
+                                        <p className="text-sm sm:text-[10px] font-black uppercase tracking-widest text-neutral-400">Zip Factory</p>
                                         <p className="text-sm sm:text-sm text-neutral-600">{zipSelection.size} seleccionada{zipSelection.size !== 1 ? "s" : ""} · {allImages.length} total</p>
                                     </div>
                                     {/* ZIP name — desktop */}
