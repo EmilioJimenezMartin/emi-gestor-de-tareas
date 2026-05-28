@@ -73,6 +73,9 @@ import {
     Info,
     ShoppingBag,
     Play,
+    Eye,
+    Grid3x3,
+    Library,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -962,6 +965,14 @@ export function KdpFactoryApp() {
     const [contentType, setContentType] = useState<"kdp-physical-book" | "full-listing" | "titles" | "description" | "keywords" | "back-cover" | "series">("kdp-physical-book");
     const [contentResult, setContentResult] = useState<any | null>(null);
     const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+    const [contentSaveNicheId, setContentSaveNicheId] = useState<string>("");
+    const [savingContentListing, setSavingContentListing] = useState(false);
+    // Pipeline config
+    const [pipelineConfig, setPipelineConfig] = useState({ catalogs: 5, imagesPerCatalog: 5 });
+    const [showPipelineConfigId, setShowPipelineConfigId] = useState<string | null>(null);
+    // Niche detail modal
+    const [nicheDetailId, setNicheDetailId] = useState<string | null>(null);
+    const [nicheDetailTab, setNicheDetailTab] = useState<"images" | "catalogs" | "seo" | "book">("images");
     const [imagePromptSuggestion, setImagePromptSuggestion] = useState<string | null>(null);
     const [isGeneratingImagePrompt, setIsGeneratingImagePrompt] = useState(false);
 
@@ -1084,10 +1095,10 @@ export function KdpFactoryApp() {
             setIsSuggestingPrompt(false); }
     };
 
-    const launchPipelineStep = async (niche: NicheFE) => {
+    const launchPipelineStep = async (niche: NicheFE, cfg?: { catalogs: number; imagesPerCatalog: number }) => {
         const phase = niche.phase ?? "niche";
         if (phase === "niche" || phase === "catalog") {
-            await runNichePipeline(niche);
+            await runNichePipeline(niche, cfg);
         } else if (phase === "pdf") {
             setNichePublishPanelId(niche._id);
         } else if (phase === "published") {
@@ -3218,6 +3229,32 @@ export function KdpFactoryApp() {
         }
     };
 
+    // ── Save content generator result to a niche's listings ──────────────────
+    const saveContentToNiche = async () => {
+        if (!contentSaveNicheId || !contentResult || typeof contentResult !== "object") return;
+        setSavingContentListing(true);
+        try {
+            const descHtml = typeof contentResult.description === "string" ? contentResult.description.trim() : "";
+            const keywords = Array.isArray(contentResult.keywords) ? contentResult.keywords : [];
+            const res = await fetch(`${API_BASE_URL}/niches/${contentSaveNicheId}/listings`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: contentResult.title ?? "", subtitle: contentResult.subtitle ?? "", description: descHtml, keywords }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error guardando");
+            if (data.niche) setNiches(prev => prev.map(n => n._id === contentSaveNicheId ? { ...n, listings: data.niche.listings } : n));
+            const nicheName = niches.find(n => n._id === contentSaveNicheId)?.name ?? "nicho";
+            toast.success(`Listing guardado en "${nicheName}" · Cierra este modal y pulsa "Contenido" en la card del nicho para verlo`);
+            // Open the content panel for the target niche so it's visible when the modal is closed
+            setContentPanelNicheId(contentSaveNicheId);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error guardando");
+        } finally {
+            setSavingContentListing(false);
+        }
+    };
+
     // ── Upscale image via HuggingFace SR ─────────────────────────────────────
     const upscaleImage = async (url: string, publicId: string) => {
         setUpscalingPublicId(publicId);
@@ -3250,10 +3287,10 @@ export function KdpFactoryApp() {
     };
 
     // ── Pipeline automático: genera catálogos + KDP listing ──────────────────
-    const runNichePipeline = async (niche: NicheFE) => {
-        const IMAGES_PER_CATALOG = 5;
-        const IMAGES_TARGET = 20;
-        const MAX_CATALOGS = 10;
+    const runNichePipeline = async (niche: NicheFE, cfg?: { catalogs: number; imagesPerCatalog: number }) => {
+        const IMAGES_PER_CATALOG = cfg?.imagesPerCatalog ?? pipelineConfig.imagesPerCatalog;
+        const MAX_CATALOGS = cfg?.catalogs ?? pipelineConfig.catalogs;
+        const IMAGES_TARGET = MAX_CATALOGS * IMAGES_PER_CATALOG;
 
         const nicheImageCount = iaCatalogs
             .filter(c => c.nicheIds?.includes(niche._id))
@@ -3384,6 +3421,30 @@ export function KdpFactoryApp() {
                     }
                 }
             } catch { /* listing failure is non-blocking */ }
+
+            // ── Auto-build KDP book draft from niche images ──────────────────
+            try {
+                const allNicheCats = iaCatalogs.filter(c => c.nicheIds?.includes(niche._id) && c.status === "completed");
+                const allImgs = allNicheCats.flatMap(c => c.images);
+                if (allImgs.length > 0) {
+                    const shuffled = [...allImgs].sort(() => Math.random() - 0.5);
+                    const pages: BookPage[] = [];
+                    // Owner page first
+                    pages.push({ id: `pipe-owner-${Date.now()}`, type: "owner", text: defaultTextStyle() });
+                    // Image pages with color-test (owner) page every IMAGES_PER_CATALOG images
+                    shuffled.forEach((img, i) => {
+                        pages.push({ id: `pipe-img-${i}-${Date.now()}`, type: "image", image: { url: img.url, scale: 1, label: `${niche.name} #${i + 1}` }, text: defaultTextStyle() });
+                        pages.push({ id: `pipe-blank-${i}-${Date.now()}`, type: "text", text: defaultTextStyle() });
+                        if ((i + 1) % IMAGES_PER_CATALOG === 0 && i + 1 < shuffled.length) {
+                            pages.push({ id: `pipe-ct-${i}-${Date.now()}`, type: "owner", text: defaultTextStyle() });
+                        }
+                    });
+                    const draftId = `pipeline-${niche._id}-${Date.now()}`;
+                    const newDraft = { id: draftId, fileName: `${niche.name} — Pipeline Draft`, pages, savedAt: new Date().toISOString() };
+                    setBookDrafts(prev => [newDraft, ...prev.filter(d => !d.id.startsWith(`pipeline-${niche._id}`))]);
+                    toast.success(`Borrador de libro listo · ${shuffled.length} imágenes · ábrelo en el tab PDF`);
+                }
+            } catch { /* non-blocking */ }
 
             changeTab("creation");
 
@@ -7121,11 +7182,54 @@ export function KdpFactoryApp() {
 
                                                 {/* ─ Pipeline action ─ */}
                                                 {(niche.phase ?? "niche") !== "published" && (
-                                                    <button
-                                                        onClick={() => void launchPipelineStep(niche)}
-                                                        className="w-full flex items-center justify-center gap-2 h-8 rounded-xl bg-gradient-to-r from-violet-600/15 to-blue-600/15 border border-violet-500/20 text-[9px] font-black text-violet-300 hover:from-violet-600/25 hover:to-blue-600/25 hover:border-violet-500/35 transition-all">
-                                                        <Play size={9} /> Lanzar siguiente paso
-                                                    </button>
+                                                    <div className="space-y-1.5">
+                                                        <div className="flex gap-1.5">
+                                                            <button
+                                                                onClick={() => void launchPipelineStep(niche, pipelineConfig)}
+                                                                disabled={nicheGeneratingId === niche._id}
+                                                                className="flex-1 flex items-center justify-center gap-2 h-8 rounded-xl bg-gradient-to-r from-violet-600/15 to-blue-600/15 border border-violet-500/20 text-[9px] font-black text-violet-300 hover:from-violet-600/25 hover:to-blue-600/25 hover:border-violet-500/35 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                                                                {nicheGeneratingId === niche._id ? <><Loader2 size={9} className="animate-spin" />Ejecutando…</> : <><Play size={9} /> Lanzar pipeline</>}
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setShowPipelineConfigId(showPipelineConfigId === niche._id ? null : niche._id)}
+                                                                title="Configurar pipeline"
+                                                                className={`w-8 h-8 flex items-center justify-center rounded-xl border transition-all ${showPipelineConfigId === niche._id ? "border-violet-500/40 bg-violet-500/15 text-violet-300" : "border-white/10 bg-white/[0.03] text-neutral-600 hover:text-white hover:border-white/20"}`}>
+                                                                <Settings size={11} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => { setNicheDetailId(niche._id); setNicheDetailTab("images"); }}
+                                                                title="Ver todo el nicho"
+                                                                className="w-8 h-8 flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-neutral-600 hover:text-white hover:border-white/20 transition-all">
+                                                                <Eye size={11} />
+                                                            </button>
+                                                        </div>
+                                                        {showPipelineConfigId === niche._id && (
+                                                            <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.04] p-3 space-y-3">
+                                                                <p className="text-[8px] font-black uppercase tracking-widest text-violet-400">Configuración del pipeline</p>
+                                                                <div className="grid grid-cols-2 gap-3">
+                                                                    <div className="space-y-1">
+                                                                        <div className="flex items-center justify-between">
+                                                                            <label className="text-[8px] text-neutral-500 uppercase tracking-wider">Catálogos</label>
+                                                                            <span className="text-[10px] font-black text-violet-300">{pipelineConfig.catalogs}</span>
+                                                                        </div>
+                                                                        <input type="range" min={1} max={10} value={pipelineConfig.catalogs}
+                                                                            onChange={e => setPipelineConfig(p => ({ ...p, catalogs: Number(e.target.value) }))}
+                                                                            className="w-full h-1 accent-violet-500 cursor-pointer" />
+                                                                    </div>
+                                                                    <div className="space-y-1">
+                                                                        <div className="flex items-center justify-between">
+                                                                            <label className="text-[8px] text-neutral-500 uppercase tracking-wider">Imgs/cat.</label>
+                                                                            <span className="text-[10px] font-black text-violet-300">{pipelineConfig.imagesPerCatalog}</span>
+                                                                        </div>
+                                                                        <input type="range" min={3} max={10} value={pipelineConfig.imagesPerCatalog}
+                                                                            onChange={e => setPipelineConfig(p => ({ ...p, imagesPerCatalog: Number(e.target.value) }))}
+                                                                            className="w-full h-1 accent-violet-500 cursor-pointer" />
+                                                                    </div>
+                                                                </div>
+                                                                <p className="text-[8px] text-neutral-600">Total: {pipelineConfig.catalogs * pipelineConfig.imagesPerCatalog} imágenes · {pipelineConfig.catalogs} catálogos de {pipelineConfig.imagesPerCatalog} c/u</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 )}
 
                                                 {/* ─ Tags ─ */}
@@ -7305,14 +7409,6 @@ export function KdpFactoryApp() {
                                                             {(niche.listings?.length ?? 0) > 0 && (
                                                                 <span className="text-[7px] bg-amber-500/20 rounded-full px-1">{niche.listings!.length}</span>
                                                             )}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => void generateNicheContent(niche)}
-                                                            disabled={nicheGeneratingId === niche._id}
-                                                            className="flex items-center gap-1.5 px-4 h-8 rounded-xl bg-sky-500/15 border border-sky-500/30 text-[10px] font-black text-sky-300 hover:bg-sky-500/25 hover:border-sky-500/50 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                                                            {nicheGeneratingId === niche._id
-                                                                ? <><Loader2 size={11} className="animate-spin" /> Generando...</>
-                                                                : <><Sparkles size={11} /> Generar catálogo</>}
                                                         </button>
                                                     </div>
                                                 </div>
@@ -9939,6 +10035,36 @@ export function KdpFactoryApp() {
                                                         </div>
                                                     </div>
                                                 )}
+                                                {/* ── Save to niche ── */}
+                                                <div className="border-t border-white/[0.05] pt-2.5 space-y-2">
+                                                    <p className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Guardar en nicho</p>
+                                                    <div className="flex gap-1.5">
+                                                        <select
+                                                            value={contentSaveNicheId}
+                                                            onChange={e => setContentSaveNicheId(e.target.value)}
+                                                            className="flex-1 h-8 bg-black/40 border border-white/10 rounded-lg px-2 text-[9px] text-white outline-none focus:border-amber-500/40 transition-all appearance-none cursor-pointer">
+                                                            <option value="">— Seleccionar nicho —</option>
+                                                            {niches.map(n => (
+                                                                <option key={n._id} value={n._id}>{n.name}{(n.listings?.length ?? 0) > 0 ? ` (${n.listings!.length})` : ""}</option>
+                                                            ))}
+                                                        </select>
+                                                        <button
+                                                            onClick={() => void saveContentToNiche()}
+                                                            disabled={!contentSaveNicheId || savingContentListing}
+                                                            className="h-8 px-3 rounded-lg bg-amber-500/15 border border-amber-500/30 text-[9px] font-black text-amber-400 hover:bg-amber-500/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1">
+                                                            {savingContentListing ? <Loader2 size={9} className="animate-spin" /> : <Save size={9} />}
+                                                            Guardar
+                                                        </button>
+                                                        {contentSaveNicheId && (niches.find(n => n._id === contentSaveNicheId)?.listings?.length ?? 0) > 0 && (
+                                                            <button
+                                                                onClick={() => { setContentGeneratorOpen(false); setNicheDetailId(contentSaveNicheId); setNicheDetailTab("seo"); }}
+                                                                title="Ver listings guardados"
+                                                                className="h-8 w-8 rounded-lg bg-white/[0.04] border border-white/10 text-neutral-600 hover:text-white hover:bg-white/8 transition-all flex items-center justify-center">
+                                                                <Eye size={11} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
                                                 <button onClick={() => void generateContent()} className="w-full flex items-center justify-center gap-1.5 py-2 text-[9px] font-black uppercase tracking-widest text-neutral-700 hover:text-neutral-400 transition-colors">
                                                     <Sparkles size={9} /> Regenerar
                                                 </button>
@@ -10007,6 +10133,173 @@ export function KdpFactoryApp() {
                     </div>
                 </div>
             </Modal>
+
+            {/* ══ NICHE DETAIL MODAL ══ */}
+            {nicheDetailId && (() => {
+                const detailNiche = niches.find(n => n._id === nicheDetailId);
+                if (!detailNiche) return null;
+                const linkedCats = iaCatalogs.filter(c => c.nicheIds?.includes(nicheDetailId));
+                const allImgs = linkedCats.flatMap(c => c.images);
+                const pipelineDraft = bookDrafts.find(d => d.id.startsWith(`pipeline-${nicheDetailId}`));
+                const TABS = [
+                    { id: "images" as const, label: "Imágenes", icon: <ImageIcon size={11} />, count: allImgs.length },
+                    { id: "catalogs" as const, label: "Catálogos", icon: <Grid3x3 size={11} />, count: linkedCats.length },
+                    { id: "seo" as const, label: "SEO / Listing", icon: <FileText size={11} />, count: detailNiche.listings?.length ?? 0 },
+                    { id: "book" as const, label: "Libro KDP", icon: <Library size={11} />, count: pipelineDraft ? 1 : 0 },
+                ];
+                return createPortal(
+                    <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto" onClick={e => { if (e.target === e.currentTarget) setNicheDetailId(null); }}>
+                        <div className="w-full max-w-4xl mt-8 mb-8 rounded-3xl border border-white/10 bg-[#0a0a0a] shadow-2xl overflow-hidden">
+                            {/* Header */}
+                            <div className="relative p-6 border-b border-white/8">
+                                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-violet-500/60 via-blue-400/20 to-transparent" />
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <h2 className="text-xl font-black text-white">{detailNiche.name}</h2>
+                                            <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-300">{detailNiche.phase ?? "niche"}</span>
+                                            <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border border-white/10 text-neutral-500">{detailNiche.status}</span>
+                                        </div>
+                                        {detailNiche.description && <p className="text-[11px] text-neutral-500 max-w-xl leading-relaxed">{detailNiche.description}</p>}
+                                        <div className="flex items-center gap-3 text-[9px] text-neutral-600 pt-1">
+                                            <span>{allImgs.length} imágenes</span>
+                                            <span>·</span>
+                                            <span>{linkedCats.length} catálogos</span>
+                                            <span>·</span>
+                                            <span>{detailNiche.listings?.length ?? 0} listings SEO</span>
+                                            {detailNiche.generatedPrompt && <><span>·</span><span>prompt generado</span></>}
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setNicheDetailId(null)} className="p-2 rounded-xl text-neutral-600 hover:text-white hover:bg-white/10 transition-all shrink-0"><X size={16} /></button>
+                                </div>
+                                {/* Tabs */}
+                                <div className="flex gap-1 mt-4 overflow-x-auto no-scrollbar">
+                                    {TABS.map(tab => (
+                                        <button key={tab.id} onClick={() => setNicheDetailTab(tab.id)}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[9px] font-black transition-all shrink-0 ${nicheDetailTab === tab.id ? "border-violet-500/40 bg-violet-500/10 text-violet-300" : "border-white/8 bg-transparent text-neutral-600 hover:text-neutral-400"}`}>
+                                            {tab.icon}{tab.label}
+                                            {tab.count > 0 && <span className="bg-white/10 rounded-full px-1 text-[7px]">{tab.count}</span>}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Tab content */}
+                            <div className="p-6">
+                                {nicheDetailTab === "images" && (
+                                    <div className="space-y-4">
+                                        {allImgs.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center py-16 gap-3 opacity-30">
+                                                <ImageIcon size={32} strokeWidth={1} className="text-neutral-600" />
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Sin imágenes aún — lanza el pipeline para generar</p>
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                                                {allImgs.map(img => (
+                                                    <div key={img.publicId} className="aspect-square rounded-xl overflow-hidden border border-white/8 bg-white/[0.02] group relative">
+                                                        <img src={img.url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                                {nicheDetailTab === "catalogs" && (
+                                    <div className="space-y-3">
+                                        {linkedCats.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center py-16 gap-3 opacity-30">
+                                                <Grid3x3 size={32} strokeWidth={1} className="text-neutral-600" />
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Sin catálogos vinculados</p>
+                                            </div>
+                                        ) : linkedCats.map(cat => (
+                                            <div key={cat._id} className="flex items-center gap-3 p-3 rounded-xl border border-white/8 bg-white/[0.02]">
+                                                {cat.images[0] && <img src={cat.images[0].url} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />}
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[11px] font-bold text-white truncate">{cat.name}</p>
+                                                    <p className="text-[9px] text-neutral-600 truncate">{cat.prompt}</p>
+                                                </div>
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    <span className="text-[8px] text-neutral-600">{cat.images.length} imgs</span>
+                                                    <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded-full ${cat.status === "completed" ? "bg-emerald-500/15 text-emerald-400" : cat.status === "running" ? "bg-blue-500/15 text-blue-400" : "bg-neutral-500/15 text-neutral-500"}`}>{cat.status}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {nicheDetailTab === "seo" && (
+                                    <div className="space-y-3">
+                                        {(detailNiche.listings?.length ?? 0) === 0 ? (
+                                            <div className="flex flex-col items-center justify-center py-16 gap-3 opacity-30">
+                                                <FileText size={32} strokeWidth={1} className="text-neutral-600" />
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Sin listings SEO — genera contenido desde el pipeline o el generador</p>
+                                            </div>
+                                        ) : detailNiche.listings!.map((listing, i) => (
+                                            <div key={listing._id ?? i} className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-2.5">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <p className="text-[12px] font-black text-white leading-tight">{listing.title}</p>
+                                                    <button onClick={() => { navigator.clipboard.writeText([listing.title, listing.subtitle, listing.description.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim(), listing.keywords.join(", ")].filter(Boolean).join("\n\n")); toast.success("Copiado"); }} className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all shrink-0"><Copy size={11} /></button>
+                                                </div>
+                                                {listing.subtitle && <p className="text-[10px] text-neutral-500">{listing.subtitle}</p>}
+                                                {listing.description && (
+                                                    <div className="text-[9px] text-neutral-400 leading-relaxed [&_p]:mb-1.5 [&_ul]:list-disc [&_ul]:pl-3 [&_li]:mb-0.5 [&_strong]:text-amber-300"
+                                                        dangerouslySetInnerHTML={{ __html: listing.description }} />
+                                                )}
+                                                {listing.keywords.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1 pt-1">
+                                                        {listing.keywords.map((kw, j) => (
+                                                            <span key={j} className="text-[8px] px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300">{kw}</span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <p className="text-[7px] text-neutral-700">{new Date(listing.generatedAt).toLocaleDateString("es-ES")}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {nicheDetailTab === "book" && (
+                                    <div className="space-y-4">
+                                        {detailNiche.generatedPrompt && (
+                                            <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-1.5">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Prompt de generación</p>
+                                                    <button onClick={() => { navigator.clipboard.writeText(detailNiche.generatedPrompt!); toast.success("Copiado"); }} className="p-1 rounded text-neutral-700 hover:text-white transition-colors"><Copy size={9} /></button>
+                                                </div>
+                                                <p className="text-[9px] text-neutral-400 leading-relaxed">{detailNiche.generatedPrompt}</p>
+                                            </div>
+                                        )}
+                                        {pipelineDraft ? (
+                                            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-4 space-y-3">
+                                                <div className="flex items-center gap-2">
+                                                    <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
+                                                    <div>
+                                                        <p className="text-[11px] font-black text-emerald-300">{pipelineDraft.fileName}</p>
+                                                        <p className="text-[9px] text-neutral-600">{pipelineDraft.pages.length} páginas · {new Date(pipelineDraft.savedAt).toLocaleDateString("es-ES")}</p>
+                                                    </div>
+                                                </div>
+                                                <button onClick={() => { loadBookDraft(pipelineDraft); setNicheDetailId(null); changeTab("creation"); toast.success("Borrador cargado en el editor PDF"); }}
+                                                    className="w-full h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-[9px] font-black text-emerald-400 hover:bg-emerald-500/25 transition-all flex items-center justify-center gap-2">
+                                                    <Library size={11} /> Abrir en editor PDF
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center py-16 gap-3">
+                                                <Library size={32} strokeWidth={1} className="text-neutral-700 opacity-40" />
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 text-center">Sin borrador de libro — lanza el pipeline para generar uno automáticamente</p>
+                                                <button onClick={() => { setNicheDetailId(null); void runNichePipeline(detailNiche); }}
+                                                    disabled={nicheGeneratingId === nicheDetailId}
+                                                    className="mt-2 h-9 px-6 rounded-xl bg-violet-500/15 border border-violet-500/30 text-[9px] font-black text-violet-300 hover:bg-violet-500/25 transition-all flex items-center gap-2 disabled:opacity-40">
+                                                    <Play size={10} /> Lanzar pipeline ahora
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                );
+            })()}
 
             {/* Confirm Delete Cloudinary Image Dialog */}
             {confirmDeleteCloudinaryId && (
