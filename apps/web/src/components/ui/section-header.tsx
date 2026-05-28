@@ -43,7 +43,7 @@ export function SectionHeader({ icon, title, subtitle, color = "blue", size = "m
                 <h2 className={`${titleSize[size]} font-black text-white tracking-tight leading-none`}>{title}</h2>
             </div>
             <div className={`h-[2px] ${barWidth[size]} ${barGradients[color]} rounded-full`} />
-            {subtitle && <p className="text-[11px] text-neutral-500 leading-snug">{subtitle}</p>}
+            {subtitle && <p className="text-sm text-neutral-500 leading-snug">{subtitle}</p>}
         </div>
     );
 }

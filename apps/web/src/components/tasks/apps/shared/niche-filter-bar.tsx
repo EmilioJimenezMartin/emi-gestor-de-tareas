@@ -99,14 +99,14 @@ export function NicheFilterBar({
                         return (
                             <button key={n._id}
                                 onClick={() => onNicheChange(isAct ? null : n._id)}
-                                className={`flex items-center gap-1.5 h-7 px-3 rounded-xl border text-[9px] font-black whitespace-nowrap shrink-0 transition-all ${
+                                className={`flex items-center gap-1.5 h-7 px-3 rounded-xl border text-xs font-black whitespace-nowrap shrink-0 transition-all ${
                                     isAct
                                         ? "bg-sky-500/20 border-sky-500/40 text-sky-300"
                                         : "border-white/8 bg-white/[0.02] text-neutral-500 hover:text-neutral-300 hover:border-white/15"
                                 }`}>
                                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[n.status] ?? "bg-neutral-500"}`} />
                                 {n.name}
-                                <span className={`text-[8px] tabular-nums px-1 py-0.5 rounded ${isAct ? "bg-sky-500/30 text-sky-300" : count > 0 ? "bg-white/5 text-neutral-600" : "text-neutral-800"}`}>{count}</span>
+                                <span className={`text-xs tabular-nums px-1 py-0.5 rounded ${isAct ? "bg-sky-500/30 text-sky-300" : count > 0 ? "bg-white/5 text-neutral-600" : "text-neutral-800"}`}>{count}</span>
                             </button>
                         );
                     })}
@@ -117,7 +117,7 @@ export function NicheFilterBar({
             {hasActiveFilter && (
                 <div className="flex items-center gap-2 px-1">
                     <div className="h-px flex-1 bg-sky-500/15" />
-                    <span className="text-[8px] font-black uppercase tracking-widest text-sky-400/50">{filterLabel}</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-sky-400/50">{filterLabel}</span>
                     <button onClick={clearAll} className="text-neutral-700 hover:text-sky-400 transition-colors"><X size={10} /></button>
                     <div className="h-px flex-1 bg-sky-500/15" />
                 </div>

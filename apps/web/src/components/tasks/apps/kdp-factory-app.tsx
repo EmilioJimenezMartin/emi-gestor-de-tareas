@@ -374,7 +374,7 @@ function KdpSelect({ value, onChange, options, accent = "white" }: {
     return (
         <div ref={ref} className="relative">
             <button type="button" onClick={() => setOpen(o => !o)}
-                className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border text-[11px] font-bold text-white transition-all bg-white/[0.03] border-white/8 hover:${ringCls} ${open ? ringCls : ""}`}>
+                className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border text-sm font-bold text-white transition-all bg-white/[0.03] border-white/8 hover:${ringCls} ${open ? ringCls : ""}`}>
                 <span>{current?.label ?? value}</span>
                 <ChevronDown size={12} className={`text-neutral-500 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
             </button>
@@ -382,7 +382,7 @@ function KdpSelect({ value, onChange, options, accent = "white" }: {
                 <div className="absolute z-50 top-full mt-1.5 left-0 right-0 bg-[#141414] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
                     {options.map(opt => (
                         <button key={opt.value} type="button" onClick={() => { onChange(opt.value); setOpen(false); }}
-                            className={`w-full text-left px-3 py-2 text-[11px] font-medium transition-colors hover:bg-white/5 ${opt.value === value ? activeCls : "text-neutral-300"}`}>
+                            className={`w-full text-left px-3 py-2 text-sm font-medium transition-colors hover:bg-white/5 ${opt.value === value ? activeCls : "text-neutral-300"}`}>
                             {opt.label}
                         </button>
                     ))}
@@ -406,12 +406,12 @@ function ListingCardFields({
     const KWField = ({ label, value }: { label: string; value: string }) => (
         <div className="space-y-1">
             <div className="flex items-center justify-between">
-                <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600">{label}</span>
-                <button onClick={() => onCopy(value)} className="text-[8px] text-neutral-700 hover:text-indigo-400 flex items-center gap-0.5 transition-colors">
+                <span className="text-sm font-black uppercase tracking-widest text-neutral-600">{label}</span>
+                <button onClick={() => onCopy(value)} className="text-sm text-neutral-700 hover:text-indigo-400 flex items-center gap-0.5 transition-colors">
                     <Copy size={7} /> Copiar
                 </button>
             </div>
-            <p className="text-[9px] text-neutral-300 leading-relaxed bg-white/[0.03] border border-white/[0.05] rounded-lg px-2.5 py-2">{value || <span className="italic text-neutral-700">—</span>}</p>
+            <p className="text-sm text-neutral-300 leading-relaxed bg-white/[0.03] border border-white/[0.05] rounded-lg px-2.5 py-2">{value || <span className="italic text-neutral-700">—</span>}</p>
         </div>
     );
     return (
@@ -421,13 +421,13 @@ function ListingCardFields({
             {listing.keywords.length > 0 && (
                 <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                        <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Keywords ({listing.keywords.length})</span>
-                        <button onClick={() => onCopy(listing.keywords.join(", "))} className="text-[8px] text-neutral-700 hover:text-indigo-400 flex items-center gap-0.5 transition-colors"><Copy size={7} /> Todas</button>
+                        <span className="text-sm font-black uppercase tracking-widest text-neutral-600">Keywords ({listing.keywords.length})</span>
+                        <button onClick={() => onCopy(listing.keywords.join(", "))} className="text-sm text-neutral-700 hover:text-indigo-400 flex items-center gap-0.5 transition-colors"><Copy size={7} /> Todas</button>
                     </div>
                     <div className="flex flex-wrap gap-1">
                         {listing.keywords.map((kw, i) => (
                             <button key={i} onClick={() => onCopy(kw)}
-                                className="px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/20 rounded-md text-[8px] text-indigo-300 hover:bg-indigo-500/20 transition-all font-mono">
+                                className="px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/20 rounded-md text-sm text-indigo-300 hover:bg-indigo-500/20 transition-all font-mono">
                                 {kw}
                             </button>
                         ))}
@@ -437,18 +437,18 @@ function ListingCardFields({
             {listing.description && (
                 <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                        <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Descripción</span>
-                        <button onClick={() => onCopy(listing.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())} className="text-[8px] text-neutral-700 hover:text-indigo-400 flex items-center gap-0.5 transition-colors"><Copy size={7} /> Copiar</button>
+                        <span className="text-sm font-black uppercase tracking-widest text-neutral-600">Descripción</span>
+                        <button onClick={() => onCopy(listing.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())} className="text-sm text-neutral-700 hover:text-indigo-400 flex items-center gap-0.5 transition-colors"><Copy size={7} /> Copiar</button>
                     </div>
                     {/<[a-z][\s\S]*>/i.test(listing.description)
-                        ? <div className="text-[9px] text-neutral-300 leading-relaxed bg-white/[0.03] border border-white/[0.05] rounded-lg px-2.5 py-2 [&_p]:mb-1.5 [&_ul]:list-disc [&_ul]:pl-3 [&_li]:mb-0.5 [&_strong]:text-amber-300" dangerouslySetInnerHTML={{ __html: listing.description }} />
-                        : <p className="text-[9px] text-neutral-300 leading-relaxed bg-white/[0.03] border border-white/[0.05] rounded-lg px-2.5 py-2">{listing.description}</p>
+                        ? <div className="text-sm text-neutral-300 leading-relaxed bg-white/[0.03] border border-white/[0.05] rounded-lg px-2.5 py-2 [&_p]:mb-1.5 [&_ul]:list-disc [&_ul]:pl-3 [&_li]:mb-0.5 [&_strong]:text-amber-300" dangerouslySetInnerHTML={{ __html: listing.description }} />
+                        : <p className="text-sm text-neutral-300 leading-relaxed bg-white/[0.03] border border-white/[0.05] rounded-lg px-2.5 py-2">{listing.description}</p>
                     }
                 </div>
             )}
             <button
                 onClick={() => onCopy([listing.title, listing.subtitle, listing.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(), listing.keywords.length > 0 ? `Keywords: ${listing.keywords.join(", ")}` : ""].filter(Boolean).join("\n\n"))}
-                className="w-full flex items-center justify-center gap-1 h-6 rounded-lg bg-white/[0.04] border border-white/8 text-[8px] text-neutral-500 hover:text-white hover:bg-white/8 transition-all"
+                className="w-full flex items-center justify-center gap-1 h-6 rounded-lg bg-white/[0.04] border border-white/8 text-sm text-neutral-500 hover:text-white hover:bg-white/8 transition-all"
             >
                 <Copy size={8} /> Copiar listing completo
             </button>
@@ -632,7 +632,7 @@ function GelatoUploadModal({
                     </div>
                     <div>
                         <p className="font-bold text-white">Subir a Gelato</p>
-                        <p className="text-[11px] text-neutral-500">Impresión Wire-O bajo demanda</p>
+                        <p className="text-sm text-neutral-500">Impresión Wire-O bajo demanda</p>
                     </div>
                     <button onClick={onClose} className="ml-auto p-1.5 rounded-lg hover:bg-white/8">
                         <X size={14} className="text-neutral-400" />
@@ -642,13 +642,13 @@ function GelatoUploadModal({
                 {pageCount < 20 && (
                     <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 flex gap-2 mb-4">
                         <AlertTriangle size={14} className="text-amber-400 shrink-0 mt-0.5" />
-                        <p className="text-[11px] text-amber-300">Wire-O requiere mínimo 20 páginas. Tu libro tiene {pageCount}.</p>
+                        <p className="text-sm text-amber-300">Wire-O requiere mínimo 20 páginas. Tu libro tiene {pageCount}.</p>
                     </div>
                 )}
                 {needsSplit && (
                     <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 p-3 flex gap-2 mb-4">
                         <AlertTriangle size={14} className="text-sky-400 shrink-0 mt-0.5" />
-                        <div className="text-[11px] text-sky-300 space-y-1">
+                        <div className="text-sm text-sky-300 space-y-1">
                             <p className="font-bold">Tu libro tiene {pageCount} páginas — máximo {MAX_GELATO_PAGES} imágenes por PDF en Gelato.</p>
                             <p>Se dividirá en <span className="font-bold">{chunks.length} archivos</span>. Cada uno: <span className="font-mono text-white/70">prueba colores + blanco + {chunks.map(c => c.length).join(" / ")} imágenes</span> = <span className="font-bold">{chunks.map(c => 2 + c.length).join(" / ")} páginas totales (par ✓)</span>.</p>
                         </div>
@@ -659,8 +659,8 @@ function GelatoUploadModal({
                 <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3 mb-4">
                     {SPECS.map(([k, v]) => (
                         <div key={k} className="flex items-baseline gap-1">
-                            <span className="text-[9px] text-neutral-600">{k}:</span>
-                            <span className="text-[10px] text-neutral-300 font-medium">{v}</span>
+                            <span className="text-sm text-neutral-600">{k}:</span>
+                            <span className="text-sm text-neutral-300 font-medium">{v}</span>
                         </div>
                     ))}
                 </div>
@@ -673,24 +673,24 @@ function GelatoUploadModal({
                                 <Check size={9} className="text-emerald-400" />
                             </div>
                             <p className="text-sm font-bold text-white">Manual</p>
-                            <span className="ml-auto text-[9px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/15 border border-emerald-500/25 rounded-full px-2 py-0.5">Disponible</span>
+                            <span className="ml-auto text-sm font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/15 border border-emerald-500/25 rounded-full px-2 py-0.5">Disponible</span>
                         </div>
                         <ol className="space-y-2 mb-4">
                             {MANUAL_STEPS.map(({ n, text }) => (
                                 <li key={n} className="flex gap-2.5 items-start">
-                                    <span className="w-4 h-4 rounded-full bg-white/8 flex items-center justify-center text-[8px] font-black text-neutral-400 shrink-0 mt-0.5">{n}</span>
-                                    <span className="text-[11px] text-neutral-400 leading-relaxed">{text}</span>
+                                    <span className="w-4 h-4 rounded-full bg-white/8 flex items-center justify-center text-sm font-black text-neutral-400 shrink-0 mt-0.5">{n}</span>
+                                    <span className="text-sm text-neutral-400 leading-relaxed">{text}</span>
                                 </li>
                             ))}
                         </ol>
-                        {manualError && <p className="text-xs text-red-400 bg-red-500/10 rounded-xl px-3 py-2 mb-3">{manualError}</p>}
+                        {manualError && <p className="text-sm text-red-400 bg-red-500/10 rounded-xl px-3 py-2 mb-3">{manualError}</p>}
                         {manualDone && (
-                            <div className="flex items-center gap-2 text-[11px] text-emerald-400 mb-3">
+                            <div className="flex items-center gap-2 text-sm text-emerald-400 mb-3">
                                 <Check size={12} /> {needsSplit ? `${chunks.length} PDFs descargados` : "PDF descargado"} — continúa en Gelato Dashboard
                             </div>
                         )}
                         {multiProgress && (
-                            <div className="flex items-center gap-2 text-[11px] text-sky-400 mb-3">
+                            <div className="flex items-center gap-2 text-sm text-sky-400 mb-3">
                                 <Loader2 size={12} className="animate-spin" /> Generando parte {multiProgress.current} de {multiProgress.total}...
                             </div>
                         )}
@@ -698,7 +698,7 @@ function GelatoUploadModal({
                             <button
                                 onClick={needsSplit ? handleDownloadMultiple : handleDownload}
                                 disabled={manualGenerating || !isValidForWireO}
-                                className="flex-1 py-2.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-bold text-xs flex items-center justify-center gap-2 disabled:opacity-40 transition-all"
+                                className="flex-1 py-2.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40 transition-all"
                             >
                                 {manualGenerating ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
                                 {manualGenerating ? (multiProgress ? `Parte ${multiProgress.current}/${multiProgress.total}...` : "Generando...") : needsSplit ? `1. Descargar ${chunks.length} PDFs` : "1. Descargar PDF"}
@@ -706,7 +706,7 @@ function GelatoUploadModal({
                             <a
                                 href="https://dashboard.gelato.com/store-products/product-list"
                                 target="_blank" rel="noreferrer"
-                                className="flex-1 py-2.5 rounded-2xl bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 font-bold text-xs flex items-center justify-center gap-2 transition-all"
+                                className="flex-1 py-2.5 rounded-2xl bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 font-bold text-sm flex items-center justify-center gap-2 transition-all"
                             >
                                 <ExternalLink size={12} /> 2. Abrir Gelato
                             </a>
@@ -720,9 +720,9 @@ function GelatoUploadModal({
                                 <Zap size={9} className="text-neutral-500" />
                             </div>
                             <p className="text-sm font-bold text-neutral-400">Automática</p>
-                            <span className="ml-auto text-[9px] font-black uppercase tracking-widest text-neutral-500 bg-white/5 border border-white/10 rounded-full px-2 py-0.5">Próximamente</span>
+                            <span className="ml-auto text-sm font-black uppercase tracking-widest text-neutral-500 bg-white/5 border border-white/10 rounded-full px-2 py-0.5">Próximamente</span>
                         </div>
-                        <p className="text-[11px] text-neutral-600 pl-7">
+                        <p className="text-sm text-neutral-600 pl-7">
                             Cuando alguien compre en Etsy, generará el PDF y creará el pedido en Gelato automáticamente. Requiere servidor en producción y webhooks de Etsy.
                         </p>
                     </div>
@@ -738,7 +738,7 @@ export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
         if (typeof window === "undefined") return "insights";
         const saved = localStorage.getItem("kdp-active-tab");
-        return (saved && ["insights", "creation", "studio", "gelato"].includes(saved)) ? saved as TabID : "insights";
+        return (saved && ["insights", "creation", "studio", "gelato"].includes(saved)) ? saved as TabID : "studio";
     });
     const changeTab = (tab: TabID) => { localStorage.setItem("kdp-active-tab", tab); setActiveTab(tab); };
     const [chartPeriod, setChartPeriod] = useState<PeriodID>("month");
@@ -972,7 +972,7 @@ export function KdpFactoryApp() {
     const [showPipelineConfigId, setShowPipelineConfigId] = useState<string | null>(null);
     // Niche detail modal
     const [nicheDetailId, setNicheDetailId] = useState<string | null>(null);
-    const [nicheDetailTab, setNicheDetailTab] = useState<"images" | "catalogs" | "seo" | "book">("images");
+    const [nicheDetailTab, setNicheDetailTab] = useState<"images" | "catalogs" | "seo" | "book" | "actions">("images");
     const [imagePromptSuggestion, setImagePromptSuggestion] = useState<string | null>(null);
     const [isGeneratingImagePrompt, setIsGeneratingImagePrompt] = useState(false);
 
@@ -2846,6 +2846,31 @@ export function KdpFactoryApp() {
         }
     }, [generatedImage]);
 
+    // Pre-fill edit + publish state when opening Acciones tab in niche detail modal
+    useEffect(() => {
+        if (nicheDetailTab === "actions" && nicheDetailId) {
+            const niche = niches.find(n => n._id === nicheDetailId);
+            if (niche) {
+                setNicheEditTarget(niche);
+                setNicheFormName(niche.name);
+                setNicheFormDesc(niche.description);
+                setNicheFormTags(niche.tags.join(", "));
+                setNicheFormStatus(niche.status);
+                setNicheFormComp(niche.competition);
+                setNicheFormDemand(niche.demand);
+                setNicheFormProductType(niche.productType ?? "coloring-book");
+                setNicheFormStyles(niche.styleCategories?.length ? niche.styleCategories : [niche.styleCategory ?? "generic"]);
+                setNicheFormNotes(niche.notes);
+                setNicheFormEtsyUrl(niche.etsyUrl ?? "");
+                setNicheFormPrompt(niche.generatedPrompt ?? "");
+                setPublishPanelAsin(niche.asin ?? "");
+                setPublishPanelEtsy(niche.etsyUrl ?? "");
+                setPublishPanelGumroad(niche.gumroadUrl ?? "");
+                setPublishPanelDate(niche.publishedAt ? niche.publishedAt.slice(0, 10) : "");
+            }
+        }
+    }, [nicheDetailTab, nicheDetailId]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const handleGenerateImage = async (retryCount = 0) => {
         if (!imagePrompt.trim()) return;
 
@@ -3572,51 +3597,51 @@ export function KdpFactoryApp() {
                     <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-indigo-500/30 hover:shadow-[0_0_30px_rgba(99,102,241,0.12)] transition-all duration-500 group relative overflow-hidden">
                         <div className="absolute -right-4 -top-4 w-16 h-16 bg-indigo-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
                         <div className="flex items-center justify-between relative">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Ganancias Totales</span>
+                            <span className="text-sm font-black uppercase tracking-widest text-neutral-500">Ganancias Totales</span>
                             <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400"><TrendingUp size={16} /></div>
                         </div>
                         <div className="space-y-1 relative">
                             <p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.total.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p>
                             {monthTrend !== null ? (
-                                <div className={`flex items-center gap-1.5 text-[10px] font-bold ${monthTrend >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                                <div className={`flex items-center gap-1.5 text-sm font-bold ${monthTrend >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                                     {monthTrend >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
                                     <span>{monthTrend >= 0 ? "+" : ""}{monthTrend.toFixed(1)}% vs mes anterior</span>
                                 </div>
                             ) : (
-                                <div className="text-[10px] font-bold text-neutral-600 italic">Sin datos comparativos</div>
+                                <div className="text-sm font-bold text-neutral-600 italic">Sin datos comparativos</div>
                             )}
                         </div>
                     </Card>
                     <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.12)] transition-all duration-500 group relative overflow-hidden">
                         <div className="absolute -right-4 -top-4 w-16 h-16 bg-blue-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
-                        <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Promedio / Asset</span><div className="p-2 rounded-xl bg-blue-500/10 text-blue-400"><BarChart size={16} /></div></div>
-                        <div className="space-y-1"><p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.avg.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p><div className="text-[10px] font-bold text-blue-400 italic">{stats.avg >= 5 ? "Rendimiento Saludable" : stats.avg > 0 ? "En crecimiento" : "Sin ventas aún"}</div></div>
+                        <div className="flex items-center justify-between"><span className="text-sm font-black uppercase tracking-widest text-neutral-500">Promedio / Asset</span><div className="p-2 rounded-xl bg-blue-500/10 text-blue-400"><BarChart size={16} /></div></div>
+                        <div className="space-y-1"><p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.avg.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p><div className="text-sm font-bold text-blue-400 italic">{stats.avg >= 5 ? "Rendimiento Saludable" : stats.avg > 0 ? "En crecimiento" : "Sin ventas aún"}</div></div>
                     </Card>
                     <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.12)] transition-all duration-500 group relative overflow-hidden">
                         <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
-                        <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Market Reach</span><div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400"><Globe size={16} /></div></div>
+                        <div className="flex items-center justify-between"><span className="text-sm font-black uppercase tracking-widest text-neutral-500">Market Reach</span><div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400"><Globe size={16} /></div></div>
                         <div className="space-y-1">
                             <div className="text-3xl font-black italic tracking-tighter text-white">
                                 {activePlatforms.size}<span className="text-sm font-bold text-neutral-500 not-italic">/{totalPlatforms.size}</span>
-                                <span className="text-xs uppercase text-neutral-500 tracking-widest not-italic ml-2">Platforms</span>
+                                <span className="text-sm uppercase text-neutral-500 tracking-widest not-italic ml-2">Platforms</span>
                             </div>
                             {totalPlatforms.size > 0 && (
-                                <div className="text-[10px] font-bold text-emerald-400 italic">{[...activePlatforms].slice(0, 2).join(" · ")}{activePlatforms.size > 2 ? ` +${activePlatforms.size - 2}` : ""}</div>
+                                <div className="text-sm font-bold text-emerald-400 italic">{[...activePlatforms].slice(0, 2).join(" · ")}{activePlatforms.size > 2 ? ` +${activePlatforms.size - 2}` : ""}</div>
                             )}
                         </div>
                     </Card>
                     <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.12)] transition-all duration-500 group relative overflow-hidden">
                         <div className="absolute -right-4 -top-4 w-16 h-16 bg-blue-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
-                        <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Top Nicho</span><div className="p-2 rounded-xl bg-blue-500/10 text-blue-400"><Activity size={16} /></div></div>
+                        <div className="flex items-center justify-between"><span className="text-sm font-black uppercase tracking-widest text-neutral-500">Top Nicho</span><div className="p-2 rounded-xl bg-blue-500/10 text-blue-400"><Activity size={16} /></div></div>
                         {topNiche ? (
                             <div className="space-y-1 text-xl font-black italic tracking-tighter text-white flex flex-col">
                                 <span className="truncate">{topNiche.name}</span>
-                                <span className="text-[11px] uppercase font-black tracking-widest text-blue-400">
+                                <span className="text-sm uppercase font-black tracking-widest text-blue-400">
                                     {topNicheImages > 0 ? `${topNicheImages} imágenes` : "Sin imágenes aún"}
                                 </span>
                             </div>
                         ) : (
-                            <div className="text-[11px] text-neutral-700 italic">Sin nichos aún</div>
+                            <div className="text-sm text-neutral-700 italic">Sin nichos aún</div>
                         )}
                     </Card>
                 </>}
@@ -3641,12 +3666,12 @@ export function KdpFactoryApp() {
                             <SectionHeader icon={<TrendingUp size={15} />} title="Ingresos Mensuales" subtitle="Evolución real por plataforma · últimos 12 meses" color="emerald" size="sm" />
                             <div className="flex items-center gap-4 shrink-0">
                                 {trend !== null && (
-                                    <span className={`text-[10px] font-black tabular-nums flex items-center gap-1 ${Number(trend) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                                    <span className={`text-sm font-black tabular-nums flex items-center gap-1 ${Number(trend) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                                         {Number(trend) >= 0 ? <ArrowUpRight size={12} /> : <ArrowUpRight size={12} className="rotate-90" />}
                                         {Number(trend) >= 0 ? "+" : ""}{trend}% vs mes ant.
                                     </span>
                                 )}
-                                <span className="text-[11px] font-black text-white tabular-nums">{totalMo.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€ total</span>
+                                <span className="text-sm font-black text-white tabular-nums">{totalMo.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€ total</span>
                             </div>
                         </div>
                         <div className="relative h-28">
@@ -3669,8 +3694,8 @@ export function KdpFactoryApp() {
                         <div className="flex justify-between gap-1 overflow-x-auto">
                             {monthlyEarningsData.map((d, i) => (
                                 <div key={i} className="flex flex-col items-center gap-0.5 shrink-0">
-                                    <span className="text-[9px] font-black text-white tabular-nums">{d.earnings > 0 ? `${d.earnings.toFixed(0)}€` : ""}</span>
-                                    <span className="text-[8px] text-neutral-700 font-mono">{d.month.slice(5)}</span>
+                                    <span className="text-sm font-black text-white tabular-nums">{d.earnings > 0 ? `${d.earnings.toFixed(0)}€` : ""}</span>
+                                    <span className="text-sm text-neutral-700 font-mono">{d.month.slice(5)}</span>
                                 </div>
                             ))}
                         </div>
@@ -3696,20 +3721,20 @@ export function KdpFactoryApp() {
                     <Card variant="outline" className="p-5 border-white/5 bg-white/[0.01] space-y-4">
                         <div className="flex items-center justify-between gap-4">
                             <SectionHeader icon={<Star size={15} />} title="Top Productos" subtitle="Ranking por ingresos acumulados" color="amber" size="sm" />
-                            <span className="text-[9px] font-mono text-neutral-700">{products.filter(p => p.totalEarnings > 0).length} con ingresos</span>
+                            <span className="text-sm font-mono text-neutral-700">{products.filter(p => p.totalEarnings > 0).length} con ingresos</span>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             {top3.map((p, i) => (
                                 <div key={p.id} className={`rounded-2xl bg-gradient-to-br ${colors[i]} border p-4 space-y-2 relative overflow-hidden`}>
                                     <div className="flex items-start justify-between gap-2">
                                         <span className="text-xl leading-none">{medals[i]}</span>
-                                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-black/30 ${textColors[i]}`}>{p.type?.split(" ")[0] ?? "KDP"}</span>
+                                        <span className={`text-sm font-black uppercase px-2 py-0.5 rounded-full bg-black/30 ${textColors[i]}`}>{p.type?.split(" ")[0] ?? "KDP"}</span>
                                     </div>
-                                    <p className="text-[11px] font-black text-white leading-snug line-clamp-2">{p.title}</p>
+                                    <p className="text-sm font-black text-white leading-snug line-clamp-2">{p.title}</p>
                                     <p className={`text-lg font-black tabular-nums ${textColors[i]}`}>{p.totalEarnings.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p>
                                     <div className="flex flex-wrap gap-1">
                                         {p.platforms?.map((pl: any) => (
-                                            <span key={pl.name} className="text-[8px] text-neutral-600 bg-white/5 border border-white/8 px-1.5 py-0.5 rounded-full">{pl.name}</span>
+                                            <span key={pl.name} className="text-sm text-neutral-600 bg-white/5 border border-white/8 px-1.5 py-0.5 rounded-full">{pl.name}</span>
                                         ))}
                                     </div>
                                 </div>
@@ -3741,11 +3766,11 @@ export function KdpFactoryApp() {
                                     <div className="absolute inset-x-0 top-0 h-0.5 bg-white/40 blur-[1px]" />
                                     <div className="absolute inset-0 bg-white/10 translate-y-full group-hover/bar:translate-y-0 transition-transform duration-500" />
                                 </div>
-                                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-white text-[10px] font-black text-black px-2 py-1 rounded-lg opacity-0 group-hover/bar:opacity-100 transition-all scale-75 group-hover/bar:scale-100 pointer-events-none shadow-2xl z-20">{height}€</div>
+                                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-white text-sm font-black text-black px-2 py-1 rounded-lg opacity-0 group-hover/bar:opacity-100 transition-all scale-75 group-hover/bar:scale-100 pointer-events-none shadow-2xl z-20">{height}€</div>
                             </div>
                         ))}
                     </div>
-                    <div className="flex justify-between px-2 text-[10px] font-black text-neutral-600 uppercase tracking-widest pt-3 border-t border-white/5">
+                    <div className="flex justify-between px-2 text-sm font-black text-neutral-600 uppercase tracking-widest pt-3 border-t border-white/5">
                         {chartPeriod === "month" && <><span>Semana 1</span><span>Semana 2</span><span>Semana 3</span><span>Semana 4</span></>}
                         {chartPeriod === "6months" && <><span>Mes 1</span><span>Mes 3</span><span>Mes 6</span></>}
                         {chartPeriod === "year" && <><span>Q1</span><span>Q2</span><span>Q3</span><span>Q4</span></>}
@@ -3758,7 +3783,7 @@ export function KdpFactoryApp() {
                         <div className="space-y-5">
                             {[{ name: "Amazon KDP", percent: 65, color: "bg-orange-500" }, { name: "Etsy", percent: 25, color: "bg-indigo-500" }, { name: "Creative Fabrica", percent: 10, color: "bg-blue-500" }].map(plat => (
                                 <div key={plat.name} className="space-y-2.5">
-                                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest"><span className="text-neutral-400">{plat.name}</span><span className="text-white italic tabular-nums">{plat.percent}%</span></div>
+                                    <div className="flex justify-between items-center text-sm font-black uppercase tracking-widest"><span className="text-neutral-400">{plat.name}</span><span className="text-white italic tabular-nums">{plat.percent}%</span></div>
                                     <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden p-[2px]"><div className={`h-full ${plat.color} rounded-full flex items-center justify-end px-1`} style={{ width: `${plat.percent}%` }}><div className="w-1 h-1 bg-white/40 rounded-full blur-[1px]" /></div></div>
                                 </div>
                             ))}
@@ -3766,8 +3791,8 @@ export function KdpFactoryApp() {
                     </div>
                     <div className="p-5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 space-y-3 relative group/alert hover:shadow-[0_0_20px_rgba(99,102,241,0.15)] transition-all duration-500">
                         <div className="absolute inset-0 bg-indigo-500/5 opacity-0 group-hover/alert:opacity-100 transition-opacity duration-500 rounded-2xl" />
-                        <p className="text-[11px] font-black text-indigo-400 uppercase tracking-[0.05em] flex items-center gap-2"><Lightbulb size={10} /> Smart Insight</p>
-                        <p className="text-[11px] text-neutral-400 leading-relaxed italic relative">"Los posters digitales de la serie 'Cyberpunk' están rindiendo un 25% mejor en Etsy que en otras plataformas este mes."</p>
+                        <p className="text-sm font-black text-indigo-400 uppercase tracking-[0.05em] flex items-center gap-2"><Lightbulb size={10} /> Smart Insight</p>
+                        <p className="text-sm text-neutral-400 leading-relaxed italic relative">"Los posters digitales de la serie 'Cyberpunk' están rindiendo un 25% mejor en Etsy que en otras plataformas este mes."</p>
                     </div>
                 </Card>
             </section>
@@ -3793,15 +3818,15 @@ export function KdpFactoryApp() {
                                     <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-emerald-500 via-emerald-400 to-cyan-400 opacity-40 group-hover:opacity-100 transition-all duration-300" />
                                     <div className="flex items-start justify-between gap-2">
                                         <div className="space-y-0.5">
-                                            <p className="text-[12px] font-black text-white">{n.name}</p>
-                                            <div className="flex items-center gap-3 text-[9px]">
+                                            <p className="text-sm font-black text-white">{n.name}</p>
+                                            <div className="flex items-center gap-3 text-sm">
                                                 <span className="text-neutral-600">{(n.royalties ?? []).length} entradas</span>
                                                 <span className="font-black text-emerald-400 tabular-nums">{totalRevenue.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</span>
                                                 {totalSales > 0 && <span className="text-neutral-600">{totalSales} ventas</span>}
                                             </div>
                                         </div>
                                         <button onClick={() => setRoyaltiesNicheId(isSelected ? null : n._id)}
-                                            className={`flex items-center gap-1 px-3 h-7 rounded-xl border text-[9px] font-black transition-all ${isSelected ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300" : "border-white/10 bg-white/5 text-neutral-500 hover:text-emerald-400 hover:border-emerald-500/20"}`}>
+                                            className={`flex items-center gap-1 px-3 h-7 rounded-xl border text-sm font-black transition-all ${isSelected ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300" : "border-white/10 bg-white/5 text-neutral-500 hover:text-emerald-400 hover:border-emerald-500/20"}`}>
                                             <Plus size={10} /> Añadir
                                         </button>
                                     </div>
@@ -3811,23 +3836,23 @@ export function KdpFactoryApp() {
                                         <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 space-y-2.5">
                                             <div className="grid grid-cols-3 gap-2">
                                                 <div>
-                                                    <label className="text-[8px] font-black uppercase tracking-widest text-neutral-600 block mb-1">Mes</label>
+                                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600 block mb-1">Mes</label>
                                                     <input type="month" value={royaltiesMonth} onChange={e => setRoyaltiesMonth(e.target.value)}
-                                                        className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2 text-[10px] text-white focus:outline-none focus:border-emerald-500/30" />
+                                                        className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2 text-sm text-white focus:outline-none focus:border-emerald-500/30" />
                                                 </div>
                                                 <div>
-                                                    <label className="text-[8px] font-black uppercase tracking-widest text-neutral-600 block mb-1">Ventas</label>
+                                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600 block mb-1">Ventas</label>
                                                     <input type="number" value={royaltiesSales} onChange={e => setRoyaltiesSales(e.target.value)} min="0" placeholder="0"
-                                                        className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-emerald-500/30" />
+                                                        className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-emerald-500/30" />
                                                 </div>
                                                 <div>
-                                                    <label className="text-[8px] font-black uppercase tracking-widest text-neutral-600 block mb-1">Ingresos €</label>
+                                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600 block mb-1">Ingresos €</label>
                                                     <input type="number" value={royaltiesRevenue} onChange={e => setRoyaltiesRevenue(e.target.value)} min="0" step="0.01" placeholder="0.00"
-                                                        className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-emerald-500/30" />
+                                                        className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-emerald-500/30" />
                                                 </div>
                                             </div>
                                             <button onClick={() => void addRoyaltyEntry(n._id)} disabled={isSavingRoyalties}
-                                                className="w-full h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+                                                className="w-full h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-sm font-black text-emerald-300 hover:bg-emerald-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
                                                 {isSavingRoyalties ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
                                                 Registrar royalties
                                             </button>
@@ -3839,10 +3864,10 @@ export function KdpFactoryApp() {
                                         <div className="space-y-1 max-h-40 overflow-y-auto">
                                             {[...(n.royalties ?? [])].reverse().map((r, i) => (
                                                 <div key={i} className="flex items-center justify-between gap-2 py-1 border-b border-white/[0.04] last:border-0 group/row">
-                                                    <span className="text-[9px] font-mono text-neutral-500">{r.month}</span>
+                                                    <span className="text-sm font-mono text-neutral-500">{r.month}</span>
                                                     <div className="flex items-center gap-3">
-                                                        {r.sales > 0 && <span className="text-[9px] text-neutral-600">{r.sales} vtas.</span>}
-                                                        <span className="text-[10px] font-black text-emerald-400 tabular-nums">{r.revenue.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</span>
+                                                        {r.sales > 0 && <span className="text-sm text-neutral-600">{r.sales} vtas.</span>}
+                                                        <span className="text-sm font-black text-emerald-400 tabular-nums">{r.revenue.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</span>
                                                         <button onClick={() => void deleteRoyaltyEntry(n._id, r.month)}
                                                             className="opacity-0 group-hover/row:opacity-100 p-0.5 text-neutral-700 hover:text-rose-400 transition-all">
                                                             <X size={10} />
@@ -3853,7 +3878,7 @@ export function KdpFactoryApp() {
                                         </div>
                                     )}
                                     {(n.royalties?.length ?? 0) === 0 && (
-                                        <p className="text-[9px] text-neutral-700 italic text-center py-2">Sin entradas aún — pulsa "Añadir" para registrar</p>
+                                        <p className="text-sm text-neutral-700 italic text-center py-2">Sin entradas aún — pulsa "Añadir" para registrar</p>
                                     )}
                                 </Card>
                             );
@@ -3876,30 +3901,30 @@ export function KdpFactoryApp() {
                     <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         {/* Products bar chart */}
                         <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 space-y-4">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Ganancias por producto</p>
+                            <p className="text-sm font-black uppercase tracking-widest text-neutral-500">Ganancias por producto</p>
                             <div className="space-y-2">
                                 {sorted.map((p, i) => (
                                     <div key={p.id} className="flex items-center gap-3 group">
-                                        <span className="text-[9px] text-neutral-500 truncate w-28 shrink-0 group-hover:text-white transition-colors">{p.title}</span>
+                                        <span className="text-sm text-neutral-500 truncate w-28 shrink-0 group-hover:text-white transition-colors">{p.title}</span>
                                         <div className="flex-1 h-5 bg-white/[0.04] rounded-lg overflow-hidden">
                                             <div className={`h-full bg-gradient-to-r ${colors[i % colors.length]} rounded-lg transition-all duration-700`} style={{ width: `${(p.totalEarnings / maxE) * 100}%` }} />
                                         </div>
-                                        <span className="text-[10px] font-black text-white tabular-nums shrink-0 w-16 text-right">{p.totalEarnings.toFixed(0)}€</span>
+                                        <span className="text-sm font-black text-white tabular-nums shrink-0 w-16 text-right">{p.totalEarnings.toFixed(0)}€</span>
                                     </div>
                                 ))}
                             </div>
                         </Card>
                         {/* Platform bar chart */}
                         <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 space-y-4">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Ganancias por plataforma</p>
+                            <p className="text-sm font-black uppercase tracking-widest text-neutral-500">Ganancias por plataforma</p>
                             <div className="space-y-2">
                                 {platSorted.map(([name, val], i) => (
                                     <div key={name} className="flex items-center gap-3 group">
-                                        <span className="text-[9px] text-neutral-500 truncate w-28 shrink-0 group-hover:text-white transition-colors">{name}</span>
+                                        <span className="text-sm text-neutral-500 truncate w-28 shrink-0 group-hover:text-white transition-colors">{name}</span>
                                         <div className="flex-1 h-5 bg-white/[0.04] rounded-lg overflow-hidden">
                                             <div className={`h-full bg-gradient-to-r ${colors[(i + 2) % colors.length]} rounded-lg transition-all duration-700`} style={{ width: `${(val / maxP) * 100}%` }} />
                                         </div>
-                                        <span className="text-[10px] font-black text-white tabular-nums shrink-0 w-16 text-right">{val.toFixed(0)}€</span>
+                                        <span className="text-sm font-black text-white tabular-nums shrink-0 w-16 text-right">{val.toFixed(0)}€</span>
                                     </div>
                                 ))}
                             </div>
@@ -3918,8 +3943,8 @@ export function KdpFactoryApp() {
                         <Sparkles size={14} className="text-amber-400" />
                     </div>
                     <div className="flex-1 text-left min-w-0">
-                        <p className="text-[12px] font-black text-white">Generador de Listing KDP</p>
-                        <p className="text-[10px] text-neutral-600">Título · 7 keywords · Descripción HTML lista para publicar</p>
+                        <p className="text-sm font-black text-white">Generador de Listing KDP</p>
+                        <p className="text-sm text-neutral-600">Título · 7 keywords · Descripción HTML lista para publicar</p>
                     </div>
                     <ChevronDown size={14} className={`text-neutral-600 transition-transform shrink-0 ${listingCardOpen ? "rotate-180" : ""}`} />
                 </button>
@@ -3928,7 +3953,7 @@ export function KdpFactoryApp() {
                         {/* Niche selector */}
                         {niches.filter(n => n.status !== "archived").length > 0 && (
                             <div className="space-y-1.5">
-                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Desde nicho</p>
+                                <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Desde nicho</p>
                                 <div className="flex flex-wrap gap-1.5">
                                     {niches.filter(n => n.status !== "archived").map(n => {
                                         const isSelected = selectedListingNicheId === n._id;
@@ -3939,7 +3964,7 @@ export function KdpFactoryApp() {
                                                     setSelectedListingNicheId(n._id);
                                                     setListingTopic(n.name);
                                                 }}
-                                                className={`flex items-center gap-1 h-6 px-2.5 rounded-lg border text-[9px] font-black transition-all ${
+                                                className={`flex items-center gap-1 h-6 px-2.5 rounded-lg border text-sm font-black transition-all ${
                                                     isSelected ? "border-amber-500/50 bg-amber-500/15 text-amber-300"
                                                     : n.phase === "published" ? "border-emerald-500/25 bg-emerald-500/8 text-emerald-400 hover:bg-emerald-500/15"
                                                     : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"
@@ -3960,12 +3985,12 @@ export function KdpFactoryApp() {
                                 onChange={e => setListingTopic(e.target.value)}
                                 onKeyDown={e => { if (e.key === "Enter") void generateListing(); }}
                                 placeholder="Ej: Libro de colorear de mandalas zen para adultos"
-                                className="flex-1 h-10 px-3 bg-white/5 border border-white/10 rounded-xl text-[12px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40"
+                                className="flex-1 h-10 px-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40"
                             />
                             <button
                                 onClick={() => void generateListing()}
                                 disabled={isGeneratingListing || !listingTopic.trim()}
-                                className="h-10 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all disabled:opacity-40 shrink-0"
+                                className="h-10 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-sm font-black uppercase tracking-wider flex items-center gap-1.5 transition-all disabled:opacity-40 shrink-0"
                             >
                                 {isGeneratingListing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                                 Generar
@@ -3977,10 +4002,10 @@ export function KdpFactoryApp() {
                             const Field = ({ label, value, mono }: { label: string; value: string; mono?: boolean }) => (
                                 <div className="space-y-1.5">
                                     <div className="flex items-center justify-between gap-2">
-                                        <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">{label}</span>
-                                        <button onClick={() => copy(value)} className="flex items-center gap-1 text-[9px] text-neutral-700 hover:text-indigo-400 transition-all"><Copy size={9} />Copiar</button>
+                                        <span className="text-sm font-black uppercase tracking-widest text-neutral-600">{label}</span>
+                                        <button onClick={() => copy(value)} className="flex items-center gap-1 text-sm text-neutral-700 hover:text-indigo-400 transition-all"><Copy size={9} />Copiar</button>
                                     </div>
-                                    <div className={`px-3 py-2.5 bg-white/[0.03] border border-white/[0.06] rounded-xl text-[11px] text-neutral-300 leading-relaxed ${mono ? "font-mono" : ""}`}>
+                                    <div className={`px-3 py-2.5 bg-white/[0.03] border border-white/[0.06] rounded-xl text-sm text-neutral-300 leading-relaxed ${mono ? "font-mono" : ""}`}>
                                         {value || <span className="text-neutral-700 italic">—</span>}
                                     </div>
                                 </div>
@@ -3994,12 +4019,12 @@ export function KdpFactoryApp() {
                                     {keywords.length > 0 && (
                                         <div className="space-y-1.5">
                                             <div className="flex items-center justify-between gap-2">
-                                                <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Keywords ({keywords.length})</span>
-                                                <button onClick={() => copy(keywords.join(", "))} className="flex items-center gap-1 text-[9px] text-neutral-700 hover:text-indigo-400 transition-all"><Copy size={9} />Copiar todo</button>
+                                                <span className="text-sm font-black uppercase tracking-widest text-neutral-600">Keywords ({keywords.length})</span>
+                                                <button onClick={() => copy(keywords.join(", "))} className="flex items-center gap-1 text-sm text-neutral-700 hover:text-indigo-400 transition-all"><Copy size={9} />Copiar todo</button>
                                             </div>
                                             <div className="flex flex-wrap gap-1.5">
                                                 {keywords.map((kw: string, i: number) => (
-                                                    <button key={i} onClick={() => copy(kw)} className="px-2.5 py-1 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-[9px] text-indigo-300 hover:bg-indigo-500/20 transition-all font-mono">
+                                                    <button key={i} onClick={() => copy(kw)} className="px-2.5 py-1 bg-indigo-500/10 border border-indigo-500/20 rounded-lg text-sm text-indigo-300 hover:bg-indigo-500/20 transition-all font-mono">
                                                         {kw}
                                                     </button>
                                                 ))}
@@ -4009,12 +4034,12 @@ export function KdpFactoryApp() {
                                     {descText && <Field label="Descripción" value={descText} />}
                                     {/* ── Guardar en producto ── */}
                                     <div className="pt-2 border-t border-white/[0.05] space-y-2">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Guardar en producto</p>
+                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Guardar en producto</p>
                                         <div className="flex gap-2">
                                             <select
                                                 value={listingSaveProductId}
                                                 onChange={e => setListingSaveProductId(e.target.value)}
-                                                className="flex-1 h-9 px-2.5 bg-white/5 border border-white/10 rounded-xl text-[11px] text-neutral-300 focus:outline-none focus:border-amber-500/40"
+                                                className="flex-1 h-9 px-2.5 bg-white/5 border border-white/10 rounded-xl text-sm text-neutral-300 focus:outline-none focus:border-amber-500/40"
                                             >
                                                 <option value="new">+ Nuevo producto (borrador)</option>
                                                 {products.map(p => (
@@ -4024,7 +4049,7 @@ export function KdpFactoryApp() {
                                             <button
                                                 onClick={() => void saveListingToProduct()}
                                                 disabled={isSavingListing}
-                                                className="h-9 px-3.5 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/30 transition-all disabled:opacity-40 flex items-center gap-1.5 shrink-0"
+                                                className="h-9 px-3.5 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-sm font-black text-emerald-300 hover:bg-emerald-500/30 transition-all disabled:opacity-40 flex items-center gap-1.5 shrink-0"
                                             >
                                                 {isSavingListing ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />}
                                                 Guardar
@@ -4074,7 +4099,7 @@ export function KdpFactoryApp() {
                                     setTimeout(() => URL.revokeObjectURL(url), 10000);
                                     toast.success("CSV exportado");
                                 }}
-                                className="h-9 px-3 rounded-xl bg-white/5 border border-white/10 text-neutral-400 hover:text-white hover:border-white/20 flex items-center gap-1.5 transition-all text-[10px] font-black uppercase"
+                                className="h-9 px-3 rounded-xl bg-white/5 border border-white/10 text-neutral-400 hover:text-white hover:border-white/20 flex items-center gap-1.5 transition-all text-sm font-black uppercase"
                                 title="Exportar CSV"
                             >
                                 <Download size={12} /> CSV
@@ -4112,7 +4137,7 @@ export function KdpFactoryApp() {
                                 setEditingProductId(tempId);
                                 setEditDraft({ ...newP, platforms: [{ ...newP.platforms[0] }] });
                             }}
-                            className="h-9 px-4 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 transition-all"
+                            className="h-9 px-4 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-black uppercase tracking-widest flex items-center gap-1.5 transition-all"
                         >
                             <Plus size={12} /> Añadir
                         </button>
@@ -4122,15 +4147,15 @@ export function KdpFactoryApp() {
                 {/* ── Bulk action bar ── */}
                 {selectedProductIds.size > 0 && (
                     <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 animate-in fade-in slide-in-from-top-2 duration-200">
-                        <span className="text-[11px] font-black text-indigo-300 mr-auto">{selectedProductIds.size} seleccionado{selectedProductIds.size !== 1 ? "s" : ""}</span>
+                        <span className="text-sm font-black text-indigo-300 mr-auto">{selectedProductIds.size} seleccionado{selectedProductIds.size !== 1 ? "s" : ""}</span>
                         {(["activo", "pausado", "borrador"] as const).map(s => (
                             <button key={s} onClick={() => void handleBulkStatus(s)}
-                                className="h-7 px-3 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all border-white/10 bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10">
+                                className="h-7 px-3 rounded-xl border text-sm font-black uppercase tracking-widest transition-all border-white/10 bg-white/5 text-neutral-400 hover:text-white hover:bg-white/10">
                                 {s}
                             </button>
                         ))}
                         <button onClick={() => void handleBulkDelete()} disabled={isBulkDeletingProducts}
-                            className="h-7 px-3 rounded-xl bg-rose-500/15 border border-rose-500/20 text-[9px] font-black uppercase tracking-widest text-rose-400 hover:bg-rose-500/25 transition-all flex items-center gap-1.5 disabled:opacity-50">
+                            className="h-7 px-3 rounded-xl bg-rose-500/15 border border-rose-500/20 text-sm font-black uppercase tracking-widest text-rose-400 hover:bg-rose-500/25 transition-all flex items-center gap-1.5 disabled:opacity-50">
                             {isBulkDeletingProducts ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />} Eliminar
                         </button>
                         <button onClick={() => setSelectedProductIds(new Set())} className="h-7 px-2 rounded-xl text-neutral-600 hover:text-white transition-all">
@@ -4149,7 +4174,7 @@ export function KdpFactoryApp() {
                             value={productSearch}
                             onChange={e => setProductSearch(e.target.value)}
                             placeholder="Buscar producto…"
-                            className="h-9 w-full bg-white/[0.04] border border-white/8 rounded-xl pl-9 pr-3 text-[11px] text-white placeholder:text-neutral-700 outline-none focus:border-indigo-500/40 transition-all"
+                            className="h-9 w-full bg-white/[0.04] border border-white/8 rounded-xl pl-9 pr-3 text-sm text-white placeholder:text-neutral-700 outline-none focus:border-indigo-500/40 transition-all"
                         />
                         {productSearch && (
                             <button onClick={() => setProductSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-all">
@@ -4159,7 +4184,7 @@ export function KdpFactoryApp() {
                     </div>
                     {/* Category filter */}
                     <select value={catalogFilter} onChange={e => setCatalogFilter(e.target.value)}
-                        className="h-9 rounded-xl bg-white/[0.04] border border-white/8 px-3 text-[11px] text-white outline-none [color-scheme:dark] cursor-pointer hover:border-white/15 transition-all">
+                        className="h-9 rounded-xl bg-white/[0.04] border border-white/8 px-3 text-sm text-white outline-none [color-scheme:dark] cursor-pointer hover:border-white/15 transition-all">
                         <option value="all">Todos los tipos</option>
                         {PRODUCT_TYPES.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                     </select>
@@ -4167,14 +4192,14 @@ export function KdpFactoryApp() {
                     <div className="flex p-1 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5">
                         {([["earnings", "€"], ["date", "Fecha"], ["status", "Estado"]] as const).map(([val, label]) => (
                             <button key={val} onClick={() => setProductSort(val)}
-                                className={`h-7 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${productSort === val ? "bg-indigo-500/20 text-indigo-300" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                className={`h-7 px-3 rounded-lg text-sm font-black uppercase tracking-widest transition-all ${productSort === val ? "bg-indigo-500/20 text-indigo-300" : "text-neutral-600 hover:text-neutral-400"}`}>
                                 {label}
                             </button>
                         ))}
                     </div>
                     {/* Result count */}
                     {(productSearch || catalogFilter !== "all") && (
-                        <span className="text-[10px] font-mono text-neutral-600">{filteredProducts.length} resultado{filteredProducts.length !== 1 ? "s" : ""}</span>
+                        <span className="text-sm font-mono text-neutral-600">{filteredProducts.length} resultado{filteredProducts.length !== 1 ? "s" : ""}</span>
                     )}
                 </div>
                 <div className="grid grid-cols-1 gap-5">
@@ -4201,7 +4226,7 @@ export function KdpFactoryApp() {
                                 } catch { /**/ }
                                 setProducts([newP]); setEditingProductId(tempId); setEditDraft({ ...newP, platforms: [{ ...newP.platforms[0] }] });
                             }}
-                                className="h-10 px-6 rounded-2xl bg-indigo-500 hover:bg-indigo-400 text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-[0_4px_20px_rgba(99,102,241,0.4)]">
+                                className="h-10 px-6 rounded-2xl bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-[0_4px_20px_rgba(99,102,241,0.4)]">
                                 <Plus size={13} /> Añadir mi primer producto
                             </button>
                         </Card>
@@ -4210,7 +4235,7 @@ export function KdpFactoryApp() {
                         <Card variant="outline" className="p-14 border-dashed border-white/8 bg-white/[0.01] flex flex-col items-center justify-center text-center space-y-3">
                             <Search size={28} strokeWidth={1.2} className="text-neutral-700" />
                             <p className="text-sm font-black text-neutral-500 italic">Sin resultados para «{productSearch || catalogFilter}»</p>
-                            <button onClick={() => { setProductSearch(""); setCatalogFilter("all"); }} className="text-[10px] font-black text-indigo-400 hover:text-indigo-300 transition-all">Limpiar filtros</button>
+                            <button onClick={() => { setProductSearch(""); setCatalogFilter("all"); }} className="text-sm font-black text-indigo-400 hover:text-indigo-300 transition-all">Limpiar filtros</button>
                         </Card>
                     ) : !isLoadingProducts && (
                         filteredProducts.map((product) => {
@@ -4221,10 +4246,10 @@ export function KdpFactoryApp() {
                                     <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${isSelected ? "border-indigo-400 bg-indigo-500" : "border-white/15 group-hover:border-white/30"}`}>
                                         {isSelected && <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><polyline points="1,4 3.2,6.2 7,1.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                                     </div>
-                                    <span className="text-[10px] text-neutral-600 shrink-0 font-mono w-16 truncate">{product.type}</span>
-                                    <span className="flex-1 text-[12px] font-black text-white truncate">{product.title}</span>
-                                    <span className={`text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border shrink-0 ${{ activo: "bg-emerald-500/15 border-emerald-500/20 text-emerald-400", pausado: "bg-neutral-500/15 border-neutral-500/20 text-neutral-500", borrador: "bg-amber-500/15 border-amber-500/20 text-amber-500" }[product.status] ?? ""}`}>{product.status}</span>
-                                    <span className="text-[11px] font-black text-white tabular-nums shrink-0 w-20 text-right">{product.totalEarnings.toFixed(2)}€</span>
+                                    <span className="text-sm text-neutral-600 shrink-0 font-mono w-16 truncate">{product.type}</span>
+                                    <span className="flex-1 text-sm font-black text-white truncate">{product.title}</span>
+                                    <span className={`text-sm font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border shrink-0 ${{ activo: "bg-emerald-500/15 border-emerald-500/20 text-emerald-400", pausado: "bg-neutral-500/15 border-neutral-500/20 text-neutral-500", borrador: "bg-amber-500/15 border-amber-500/20 text-amber-500" }[product.status] ?? ""}`}>{product.status}</span>
+                                    <span className="text-sm font-black text-white tabular-nums shrink-0 w-20 text-right">{product.totalEarnings.toFixed(2)}€</span>
                                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={e => e.stopPropagation()}>
                                         <button onClick={() => void handleDuplicateProduct(product)} className="w-6 h-6 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center text-neutral-600 hover:text-sky-400 transition-all"><Copy size={9} /></button>
                                         <button onClick={() => setConfirmDeleteProductId(product.id)} className="w-6 h-6 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center text-neutral-600 hover:text-rose-400 transition-all"><Trash2 size={9} /></button>
@@ -4245,8 +4270,8 @@ export function KdpFactoryApp() {
                                     /* ── EDIT MODE ── */
                                     <div className="space-y-4 relative">
                                         <div className="flex items-center gap-2 mb-1">
-                                            <Badge variant="neutral" className="bg-indigo-500/10 border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-[0.05em] px-2.5">{product.type}</Badge>
-                                            <span className="text-[10px] font-medium text-neutral-700 font-mono">#{product.id.slice(-6)}</span>
+                                            <Badge variant="neutral" className="bg-indigo-500/10 border-indigo-500/20 text-indigo-400 text-sm font-black uppercase tracking-[0.05em] px-2.5">{product.type}</Badge>
+                                            <span className="text-sm font-medium text-neutral-700 font-mono">#{product.id.slice(-6)}</span>
                                         </div>
                                         <input
                                             value={editDraft.title}
@@ -4263,9 +4288,9 @@ export function KdpFactoryApp() {
                                         />
                                         {/* Niche link */}
                                         <div className="space-y-1.5">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Nicho vinculado</p>
+                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Nicho vinculado</p>
                                             {niches.length === 0 ? (
-                                                <p className="text-[11px] text-neutral-600 italic px-1">No hay nichos creados todavía</p>
+                                                <p className="text-sm text-neutral-600 italic px-1">No hay nichos creados todavía</p>
                                             ) : (
                                                 <select
                                                     value={editDraft.nicheId ?? ""}
@@ -4281,13 +4306,13 @@ export function KdpFactoryApp() {
                                         </div>
                                         {/* Platforms edit */}
                                         <div className="space-y-2">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Plataformas</p>
+                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Plataformas</p>
                                             {editDraft.platforms.map((plat, pi) => (
                                                 <div key={pi} className="flex flex-wrap gap-2 items-center p-3 rounded-xl bg-white/[0.02] border border-white/8">
                                                     <input
                                                         value={plat.name}
                                                         onChange={e => setEditDraft(d => { if (!d) return d; const p = [...d.platforms]; p[pi] = { ...p[pi], name: e.target.value }; return { ...d, platforms: p }; })}
-                                                        className="w-28 bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 text-[11px] font-black text-white outline-none focus:border-indigo-500/40"
+                                                        className="w-28 bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 text-sm font-black text-white outline-none focus:border-indigo-500/40"
                                                         placeholder="Plataforma"
                                                     />
                                                     <div className="flex items-center gap-1">
@@ -4295,21 +4320,21 @@ export function KdpFactoryApp() {
                                                             type="number"
                                                             value={plat.earnings}
                                                             onChange={e => setEditDraft(d => { if (!d) return d; const p = [...d.platforms]; p[pi] = { ...p[pi], earnings: parseFloat(e.target.value) || 0 }; return { ...d, platforms: p, totalEarnings: p.reduce((s, x) => s + (x.earnings || 0), 0) }; })}
-                                                            className="w-24 bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 text-[11px] font-black text-emerald-400 outline-none focus:border-emerald-500/40"
+                                                            className="w-24 bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 text-sm font-black text-emerald-400 outline-none focus:border-emerald-500/40"
                                                             placeholder="0.00"
                                                         />
-                                                        <span className="text-[10px] text-neutral-600">€</span>
+                                                        <span className="text-sm text-neutral-600">€</span>
                                                     </div>
                                                     <input
                                                         type="date"
                                                         value={plat.date ?? ""}
                                                         onChange={e => setEditDraft(d => { if (!d) return d; const p = [...d.platforms]; p[pi] = { ...p[pi], date: e.target.value }; return { ...d, platforms: p }; })}
-                                                        className="bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 text-[11px] text-neutral-400 outline-none focus:border-indigo-500/40 [color-scheme:dark]"
+                                                        className="bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 text-sm text-neutral-400 outline-none focus:border-indigo-500/40 [color-scheme:dark]"
                                                     />
                                                     <input
                                                         value={plat.url ?? ""}
                                                         onChange={e => setEditDraft(d => { if (!d) return d; const p = [...d.platforms]; p[pi] = { ...p[pi], url: e.target.value }; return { ...d, platforms: p }; })}
-                                                        className="flex-1 min-w-[120px] bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 text-[11px] text-neutral-500 outline-none focus:border-indigo-500/40"
+                                                        className="flex-1 min-w-[120px] bg-white/[0.06] border border-white/10 rounded-lg px-2 py-1 text-sm text-neutral-500 outline-none focus:border-indigo-500/40"
                                                         placeholder="https://... (URL oculta)"
                                                     />
                                                     <button onClick={() => setEditDraft(d => { if (!d) return d; const p = d.platforms.filter((_, i) => i !== pi); return { ...d, platforms: p, totalEarnings: p.reduce((s, x) => s + x.earnings, 0) }; })}
@@ -4319,20 +4344,20 @@ export function KdpFactoryApp() {
                                                 </div>
                                             ))}
                                             <button onClick={() => setEditDraft(d => d && ({ ...d, platforms: [...d.platforms, { name: "", earnings: 0, url: "", date: "" }] }))}
-                                                className="flex items-center gap-1.5 text-[10px] font-black text-neutral-600 hover:text-neutral-300 transition-all px-1">
+                                                className="flex items-center gap-1.5 text-sm font-black text-neutral-600 hover:text-neutral-300 transition-all px-1">
                                                 <Plus size={11} /> Añadir plataforma
                                             </button>
                                         </div>
                                         {/* Status */}
                                         <div className="flex items-center gap-3">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 shrink-0">Estado</p>
+                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600 shrink-0">Estado</p>
                                             <div className="flex gap-2">
                                                 {(["activo", "pausado", "borrador"] as const).map(s => {
                                                     const colors = { activo: "border-emerald-500/40 bg-emerald-500/10 text-emerald-400", pausado: "border-amber-500/40 bg-amber-500/10 text-amber-400", borrador: "border-neutral-500/30 bg-neutral-500/10 text-neutral-400" };
                                                     const active = editDraft?.status === s;
                                                     return (
                                                         <button key={s} onClick={() => setEditDraft(d => d && ({ ...d, status: s }))}
-                                                            className={`h-7 px-3 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${active ? colors[s] : "border-white/8 text-neutral-600 hover:text-neutral-400"}`}>
+                                                            className={`h-7 px-3 rounded-xl border text-sm font-black uppercase tracking-widest transition-all ${active ? colors[s] : "border-white/8 text-neutral-600 hover:text-neutral-400"}`}>
                                                             {s}
                                                         </button>
                                                     );
@@ -4342,7 +4367,7 @@ export function KdpFactoryApp() {
                                         {/* Actions */}
                                         <div className="flex items-center justify-end gap-2 pt-1">
                                             <button onClick={() => { setEditingProductId(null); setEditDraft(null); }}
-                                                className="h-8 px-3 rounded-xl border border-white/10 text-[10px] font-black text-neutral-400 hover:text-white transition-all">
+                                                className="h-8 px-3 rounded-xl border border-white/10 text-sm font-black text-neutral-400 hover:text-white transition-all">
                                                 Cancelar
                                             </button>
                                             <button onClick={async () => {
@@ -4350,7 +4375,7 @@ export function KdpFactoryApp() {
                                                 await handleSaveProduct(editDraft);
                                                 setEditingProductId(null); setEditDraft(null);
                                             }}
-                                                className="h-8 px-4 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-[10px] font-black transition-all flex items-center gap-1.5">
+                                                className="h-8 px-4 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-black transition-all flex items-center gap-1.5">
                                                 <Check size={11} /> Guardar
                                             </button>
                                         </div>
@@ -4361,23 +4386,23 @@ export function KdpFactoryApp() {
                                         <div className="flex-1 space-y-5">
                                             <div className="space-y-1">
                                                 <div className="flex items-center gap-2 flex-wrap">
-                                                    <Badge variant="neutral" className="bg-indigo-500/10 border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-[0.05em] px-2.5">
+                                                    <Badge variant="neutral" className="bg-indigo-500/10 border-indigo-500/20 text-indigo-400 text-sm font-black uppercase tracking-[0.05em] px-2.5">
                                                         {product.type}
                                                     </Badge>
                                                     {(() => {
                                                         const st = product.status ?? "activo";
                                                         const cls = { activo: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400", pausado: "bg-amber-500/10 border-amber-500/20 text-amber-400", borrador: "bg-neutral-500/10 border-neutral-500/20 text-neutral-500" }[st];
-                                                        return <Badge variant="neutral" className={`${cls} text-[9px] font-black uppercase tracking-[0.05em] px-2`}>{st}</Badge>;
+                                                        return <Badge variant="neutral" className={`${cls} text-sm font-black uppercase tracking-[0.05em] px-2`}>{st}</Badge>;
                                                     })()}
                                                     {product.nicheId && (() => {
                                                         const linkedNiche = niches.find(n => n._id === product.nicheId);
                                                         return linkedNiche ? (
-                                                            <Badge variant="neutral" className="bg-violet-500/10 border-violet-500/20 text-violet-400 text-[10px] font-black px-2.5 flex items-center gap-1">
+                                                            <Badge variant="neutral" className="bg-violet-500/10 border-violet-500/20 text-violet-400 text-sm font-black px-2.5 flex items-center gap-1">
                                                                 <Target size={9} /> {linkedNiche.name}
                                                             </Badge>
                                                         ) : null;
                                                     })()}
-                                                    <span className="text-[10px] font-medium text-neutral-700 font-mono">#{product.id.slice(-6)}</span>
+                                                    <span className="text-sm font-medium text-neutral-700 font-mono">#{product.id.slice(-6)}</span>
                                                 </div>
                                                 <h3 className="text-xl font-black text-white italic tracking-tight">{product.title}</h3>
                                             </div>
@@ -4391,11 +4416,11 @@ export function KdpFactoryApp() {
                                                             <div className="flex items-center gap-2">
                                                                 {plat.url ? (
                                                                     <a href={plat.url} target="_blank" rel="noopener noreferrer"
-                                                                        className="text-[10px] font-black uppercase text-neutral-500 hover:text-indigo-400 tracking-tighter transition-colors flex items-center gap-1">
+                                                                        className="text-sm font-black uppercase text-neutral-500 hover:text-indigo-400 tracking-tighter transition-colors flex items-center gap-1">
                                                                         {plat.name} <ExternalLink size={9} />
                                                                     </a>
                                                                 ) : (
-                                                                    <span className="text-[10px] font-black uppercase text-neutral-600 tracking-tighter">{plat.name}</span>
+                                                                    <span className="text-sm font-black uppercase text-neutral-600 tracking-tighter">{plat.name}</span>
                                                                 )}
                                                                 <div className="w-px h-2.5 bg-white/10" />
                                                                 {isQE ? (
@@ -4411,19 +4436,19 @@ export function KdpFactoryApp() {
                                                                         <input autoFocus type="number" step="0.01" value={quickEditEarnings!.value}
                                                                             onChange={e => setQuickEditEarnings(q => q && ({ ...q, value: e.target.value }))}
                                                                             onKeyDown={e => e.key === "Escape" && setQuickEditEarnings(null)}
-                                                                            className="w-20 bg-white/[0.08] border border-emerald-500/40 rounded-lg px-2 py-0.5 text-[11px] font-black text-emerald-400 outline-none tabular-nums" />
+                                                                            className="w-20 bg-white/[0.08] border border-emerald-500/40 rounded-lg px-2 py-0.5 text-sm font-black text-emerald-400 outline-none tabular-nums" />
                                                                         <button type="submit" className="text-emerald-400 hover:text-emerald-300"><Check size={11} /></button>
                                                                         <button type="button" onClick={() => setQuickEditEarnings(null)} className="text-neutral-600 hover:text-white"><X size={11} /></button>
                                                                     </form>
                                                                 ) : (
                                                                     <button onClick={() => setQuickEditEarnings({ productId: product.id, platIdx, value: String(plat.earnings) })}
-                                                                        className="text-[11px] font-black italic tracking-tighter text-emerald-400 tabular-nums hover:text-emerald-300 transition-colors" title="Click para editar">
+                                                                        className="text-sm font-black italic tracking-tighter text-emerald-400 tabular-nums hover:text-emerald-300 transition-colors" title="Click para editar">
                                                                         {plat.earnings.toFixed(2)}€
                                                                     </button>
                                                                 )}
                                                             </div>
                                                             {plat.date && (
-                                                                <span className="text-[9px] text-neutral-700 font-mono">{new Date(plat.date).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}</span>
+                                                                <span className="text-sm text-neutral-700 font-mono">{new Date(plat.date).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}</span>
                                                             )}
                                                         </div>
                                                     );
@@ -4432,15 +4457,15 @@ export function KdpFactoryApp() {
                                         </div>
                                         <div className="flex md:flex-col justify-between items-end md:items-end gap-3 md:gap-4 md:w-48 md:border-l border-white/5 md:pl-8 pt-5 md:pt-0 border-t md:border-t-0">
                                             <div className="text-right space-y-0.5">
-                                                <span className="text-[11px] font-black uppercase tracking-[0.05em] text-neutral-600 block">Total Profit</span>
+                                                <span className="text-sm font-black uppercase tracking-[0.05em] text-neutral-600 block">Total Profit</span>
                                                 <span className="text-2xl md:text-3xl font-black italic tracking-tighter text-white tabular-nums">{product.totalEarnings.toFixed(2)}€</span>
                                             </div>
-                                            <Button className="h-9 md:h-10 px-4 md:w-full rounded-xl bg-white text-black text-[10px] font-black uppercase tracking-widest hover:bg-neutral-200 transition-all shadow-xl shadow-white/10">
+                                            <Button className="h-9 md:h-10 px-4 md:w-full rounded-xl bg-white text-black text-sm font-black uppercase tracking-widest hover:bg-neutral-200 transition-all shadow-xl shadow-white/10">
                                                 Informe
                                             </Button>
                                             <div className="flex items-center gap-1 md:w-full">
                                                 <button onClick={() => { setEditingProductId(product.id); setEditDraft({ ...product, platforms: product.platforms.map(p => ({ ...p })) }); }}
-                                                    className="flex-1 h-8 rounded-xl border border-white/8 text-neutral-600 hover:text-indigo-400 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-all flex items-center justify-center gap-1.5 text-[9px] font-black uppercase tracking-widest">
+                                                    className="flex-1 h-8 rounded-xl border border-white/8 text-neutral-600 hover:text-indigo-400 hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-all flex items-center justify-center gap-1.5 text-sm font-black uppercase tracking-widest">
                                                     <Pencil size={11} /> Editar
                                                 </button>
                                                 <button onClick={() => void handleDuplicateProduct(product)} title="Duplicar"
@@ -4476,7 +4501,7 @@ export function KdpFactoryApp() {
                             <SectionHeader icon={<Store size={15} />} title="Integraciones" subtitle="Estado de los marketplaces conectados o en hoja de ruta" color="indigo" size="sm" />
                             <button
                                 onClick={() => { setEditingIntegration(null); setIntegrationDraft({ status: "study", statusLabel: "En estudio", icon: "🔗" }); setShowIntegrationModal(true); }}
-                                className="flex items-center gap-1.5 h-8 px-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20 hover:border-indigo-500/40 transition-all text-[10px] font-black uppercase tracking-wider shrink-0"
+                                className="flex items-center gap-1.5 h-8 px-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20 hover:border-indigo-500/40 transition-all text-sm font-black uppercase tracking-wider shrink-0"
                             >
                                 <Plus size={11} /> Añadir
                             </button>
@@ -4498,7 +4523,7 @@ export function KdpFactoryApp() {
                             ) : integrations.length === 0 ? (
                                 <div className="flex flex-col items-center gap-3 py-10 text-center">
                                     <Store size={28} className="text-neutral-700" />
-                                    <p className="text-[11px] text-neutral-600">No hay integraciones. Añade la primera.</p>
+                                    <p className="text-sm text-neutral-600">No hay integraciones. Añade la primera.</p>
                                 </div>
                             ) : (
                                 <div className="divide-y divide-white/[0.05]">
@@ -4506,11 +4531,11 @@ export function KdpFactoryApp() {
                                         <div key={int.id} className="group flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.02] transition-all">
                                             <span className="text-lg w-7 shrink-0">{int.icon}</span>
                                             <div className="flex-1 min-w-0">
-                                                <p className="text-[12px] font-black text-white">{int.name}</p>
-                                                <p className="text-[10px] text-neutral-600 truncate">{int.desc}</p>
-                                                {int.url && <a href={int.url} target="_blank" rel="noreferrer" className="text-[9px] text-indigo-500 hover:text-indigo-400 truncate block">{int.url}</a>}
+                                                <p className="text-sm font-black text-white">{int.name}</p>
+                                                <p className="text-sm text-neutral-600 truncate">{int.desc}</p>
+                                                {int.url && <a href={int.url} target="_blank" rel="noreferrer" className="text-sm text-indigo-500 hover:text-indigo-400 truncate block">{int.url}</a>}
                                             </div>
-                                            <span className={`shrink-0 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${badge[int.status] ?? badge.study}`}>
+                                            <span className={`shrink-0 text-sm font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${badge[int.status] ?? badge.study}`}>
                                                 {int.statusLabel}
                                             </span>
                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
@@ -4566,7 +4591,7 @@ export function KdpFactoryApp() {
                         />
                         <button
                             onClick={() => setShowSafeArea(v => !v)}
-                            className={`flex items-center gap-2 h-9 px-4 rounded-2xl border transition-all text-[10px] font-black uppercase tracking-wider shrink-0 ${showSafeArea ? "bg-amber-500/20 border-amber-500/40 text-amber-400 shadow-[0_0_16px_rgba(245,158,11,0.2)]" : "bg-white/5 border-white/10 text-neutral-500 hover:text-amber-400 hover:border-amber-500/30"}`}
+                            className={`flex items-center gap-2 h-9 px-4 rounded-2xl border transition-all text-sm font-black uppercase tracking-wider shrink-0 ${showSafeArea ? "bg-amber-500/20 border-amber-500/40 text-amber-400 shadow-[0_0_16px_rgba(245,158,11,0.2)]" : "bg-white/5 border-white/10 text-neutral-500 hover:text-amber-400 hover:border-amber-500/30"}`}
                         >
                             <Maximize size={11} /> Safe area
                         </button>
@@ -4582,13 +4607,13 @@ export function KdpFactoryApp() {
                         {/* ── 01 MODELO & FORMATO ── */}
                         <div className="p-6 space-y-4 relative z-10">
                             <div className="flex items-center gap-3">
-                                <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-[9px] font-black text-neutral-500 flex items-center justify-center shrink-0">01</span>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Modelo & Formato</p>
+                                <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-sm font-black text-neutral-500 flex items-center justify-center shrink-0">01</span>
+                                <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Modelo & Formato</p>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 {/* Model picker */}
                                 <div className="space-y-2">
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600 ml-1">Modelo I.A.</label>
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600 ml-1">Modelo I.A.</label>
                                     <div className="relative">
                                         <button ref={modelPickerBtnRef} type="button"
                                             onClick={() => {
@@ -4601,7 +4626,7 @@ export function KdpFactoryApp() {
                                             <div className={`w-2 h-2 rounded-full bg-${pColor}-400 shrink-0 shadow-[0_0_8px_2px] shadow-${pColor}-400/40`} />
                                             <div className="flex-1 min-w-0 text-left">
                                                 <p className="text-sm font-bold text-white truncate leading-tight">{currentModel?.name}</p>
-                                                <p className="text-[9px] text-neutral-500 truncate leading-tight">{currentModel?.provider} · {currentModel?.type}</p>
+                                                <p className="text-sm text-neutral-500 truncate leading-tight">{currentModel?.provider} · {currentModel?.type}</p>
                                             </div>
                                             <ChevronDown size={14} className={`text-neutral-600 shrink-0 transition-transform duration-200 ${showModelPicker ? "rotate-180" : ""}`} />
                                         </button>
@@ -4628,7 +4653,7 @@ export function KdpFactoryApp() {
                                                                 <div className={`w-2 h-2 rounded-full bg-${mColor}-400 shrink-0`} />
                                                                 <div className="flex-1 min-w-0">
                                                                     <p className="text-sm font-bold text-white leading-tight">{m.name}</p>
-                                                                    <p className="text-[10px] text-neutral-500 leading-tight mt-0.5">{m.provider} · {m.type}</p>
+                                                                    <p className="text-sm text-neutral-500 leading-tight mt-0.5">{m.provider} · {m.type}</p>
                                                                 </div>
                                                                 {selectedModel === m.id && <Check size={14} className="text-emerald-400 shrink-0" />}
                                                             </button>
@@ -4643,14 +4668,14 @@ export function KdpFactoryApp() {
 
                                 {/* Dimension picker */}
                                 <div className="space-y-2">
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600 ml-1">Dimensiones</label>
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600 ml-1">Dimensiones</label>
                                     <div className="grid grid-cols-4 gap-1.5 mb-2">
                                         {AI_DIMENSIONS.filter(d => ["sq", "pt", "p23", "p34"].includes(d.id)).map(d => (
                                             <button key={d.id} type="button" onClick={() => setSelectedDim(d.id)}
                                                 className={`h-10 rounded-xl border flex flex-col items-center justify-center gap-0.5 transition-all ${selectedDim === d.id ? "bg-white text-black border-white shadow-[0_4px_12px_rgba(255,255,255,0.15)]" : "bg-white/4 border-white/8 text-neutral-500 hover:bg-white/7"}`}
                                             >
                                                 {d.id === "sq" ? <Monitor size={11} /> : <Maximize size={11} />}
-                                                <span className="text-[8px] font-black uppercase">{d.ratio}</span>
+                                                <span className="text-sm font-black uppercase">{d.ratio}</span>
                                             </button>
                                         ))}
                                     </div>
@@ -4665,7 +4690,7 @@ export function KdpFactoryApp() {
                                         >
                                             <div className="flex-1 min-w-0 text-left">
                                                 <p className="text-sm font-bold text-white truncate leading-tight">{currentDim?.name} <span className="font-normal text-neutral-500">({currentDim?.ratio})</span></p>
-                                                <p className="text-[9px] text-neutral-600 leading-tight">{currentDim?.width}×{currentDim?.height}px</p>
+                                                <p className="text-sm text-neutral-600 leading-tight">{currentDim?.width}×{currentDim?.height}px</p>
                                             </div>
                                             <ChevronDown size={14} className={`text-neutral-600 shrink-0 transition-transform duration-200 ${showDimPicker ? "rotate-180" : ""}`} />
                                         </button>
@@ -4689,7 +4714,7 @@ export function KdpFactoryApp() {
                                                         >
                                                             <div className="flex-1 min-w-0">
                                                                 <p className="text-sm font-bold text-white leading-tight">{d.name} <span className="font-normal text-neutral-500">({d.ratio})</span></p>
-                                                                <p className="text-[10px] text-neutral-500 leading-tight mt-0.5">{d.width}×{d.height}px</p>
+                                                                <p className="text-sm text-neutral-500 leading-tight mt-0.5">{d.width}×{d.height}px</p>
                                                             </div>
                                                             {selectedDim === d.id && <Check size={14} className="text-emerald-400 shrink-0" />}
                                                         </button>
@@ -4709,7 +4734,7 @@ export function KdpFactoryApp() {
                         <div className="p-6 space-y-4 relative z-10">
                             {niches.length > 0 && (
                                 <div className="space-y-2">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Cargar desde nicho</p>
+                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Cargar desde nicho</p>
                                     <div className="flex flex-wrap gap-1.5">
                                         {niches.filter(n => n.status !== "archived").map(niche => (
                                             <button
@@ -4734,7 +4759,7 @@ export function KdpFactoryApp() {
                                                     setLoadedNicheForPrompt(niche);
                                                     toast.success(`Prompt cargado desde "${niche.name}"`);
                                                 }}
-                                                className={`flex items-center gap-1.5 h-6 px-2.5 rounded-lg border text-[9px] font-black transition-all ${
+                                                className={`flex items-center gap-1.5 h-6 px-2.5 rounded-lg border text-sm font-black transition-all ${
                                                     niche.phase === "published" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
                                                     : niche.status === "active" ? "border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
                                                     : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"
@@ -4749,15 +4774,15 @@ export function KdpFactoryApp() {
                             )}
                             <div className="flex items-center justify-between gap-3">
                                 <div className="flex items-center gap-3">
-                                    <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-[9px] font-black text-neutral-500 flex items-center justify-center shrink-0">02</span>
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Prompt del Activo</p>
+                                    <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-sm font-black text-neutral-500 flex items-center justify-center shrink-0">02</span>
+                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Prompt del Activo</p>
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                     {loadedNicheForPrompt && (
                                         <button type="button"
                                             onClick={() => void suggestPromptForNiche(loadedNicheForPrompt!)}
                                             disabled={isSuggestingPrompt}
-                                            className="flex items-center gap-1 px-2.5 h-7 rounded-lg bg-violet-500/15 border border-violet-500/25 text-[9px] font-black text-violet-300 hover:bg-violet-500/25 transition-all disabled:opacity-50"
+                                            className="flex items-center gap-1 px-2.5 h-7 rounded-lg bg-violet-500/15 border border-violet-500/25 text-sm font-black text-violet-300 hover:bg-violet-500/25 transition-all disabled:opacity-50"
                                             title="Sugerir variación con IA">
                                             {isSuggestingPrompt ? <Loader2 size={9} className="animate-spin" /> : <Sparkles size={9} />}
                                             IA
@@ -4804,13 +4829,13 @@ export function KdpFactoryApp() {
                                         placeholder="Particularidades · editado por IA en catálogo"
                                         className="w-full h-10 bg-sky-500/[0.06] border border-sky-500/20 rounded-xl px-4 pr-20 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-sky-500/40 focus:bg-sky-500/[0.09] transition-all font-medium"
                                     />
-                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black uppercase tracking-widest text-sky-400/60 pointer-events-none flex items-center gap-1">
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-black uppercase tracking-widest text-sky-400/60 pointer-events-none flex items-center gap-1">
                                         <Sparkles size={7} className="animate-pulse" /> IA
                                     </span>
                                 </div>
                             </div>
                             {imagePrompt && (
-                                <p className="text-[9px] text-neutral-700 font-mono truncate px-1" title={imagePrompt}>{imagePrompt}</p>
+                                <p className="text-sm text-neutral-700 font-mono truncate px-1" title={imagePrompt}>{imagePrompt}</p>
                             )}
                         </div>
 
@@ -4822,8 +4847,8 @@ export function KdpFactoryApp() {
                                 onClick={() => setShowAdvancedOptions(v => !v)}
                                 className="w-full px-6 py-4 flex items-center gap-3 hover:bg-white/2 transition-colors group"
                             >
-                                <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-[9px] font-black text-neutral-500 flex items-center justify-center shrink-0">03</span>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 group-hover:text-neutral-200 transition-colors flex-1 text-left">Opciones avanzadas</p>
+                                <span className="w-6 h-6 rounded-full bg-white/6 border border-white/12 text-sm font-black text-neutral-500 flex items-center justify-center shrink-0">03</span>
+                                <p className="text-sm font-black uppercase tracking-widest text-neutral-400 group-hover:text-neutral-200 transition-colors flex-1 text-left">Opciones avanzadas</p>
                                 <ChevronDown size={13} className={`text-neutral-600 transition-transform duration-300 ${showAdvancedOptions ? "rotate-180" : ""}`} />
                             </button>
 
@@ -4832,7 +4857,7 @@ export function KdpFactoryApp() {
                                 return (
                                     <div className="px-6 pb-5 space-y-4">
                                         <div className="space-y-2">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Prompt negativo</label>
+                                            <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Prompt negativo</label>
                                             <input value={negativePrompt} onChange={e => setNegativePrompt(e.target.value)}
                                                 placeholder="Ej: ugly, deformed, blurry, watermark"
                                                 className="w-full h-10 bg-white/4 border border-white/8 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-rose-500/25 transition-all"
@@ -4840,8 +4865,8 @@ export function KdpFactoryApp() {
                                         </div>
                                         <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 space-y-3">
                                             <div className="flex items-center justify-between gap-2">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Imagen de referencia</p>
-                                                <p className="text-[9px] text-neutral-700 italic">Ctrl/⌘+V o arrastra</p>
+                                                <p className="text-sm font-black uppercase tracking-widest text-neutral-500">Imagen de referencia</p>
+                                                <p className="text-sm text-neutral-700 italic">Ctrl/⌘+V o arrastra</p>
                                             </div>
                                             <div className="grid grid-cols-[96px_1fr] gap-3 items-start">
                                                 <div
@@ -4856,22 +4881,22 @@ export function KdpFactoryApp() {
                                                     ) : (
                                                         <div className="space-y-1 p-2">
                                                             <Camera size={18} className="text-neutral-600 mx-auto" />
-                                                            <p className="text-[8px] text-neutral-700 italic">Pegar</p>
+                                                            <p className="text-sm text-neutral-700 italic">Pegar</p>
                                                         </div>
                                                     )}
                                                 </div>
                                                 <div className="space-y-3">
-                                                    <p className="text-[9px] text-neutral-600 italic">Enviada junto al prompt (Gemini / Leonardo).</p>
+                                                    <p className="text-sm text-neutral-600 italic">Enviada junto al prompt (Gemini / Leonardo).</p>
                                                     {initImageDataUrl && (
                                                         <>
                                                             <Button onClick={() => setInitImageDataUrl(null)} variant="outline"
-                                                                className="h-8 rounded-xl border-white/10 bg-white/5 text-[9px] font-black uppercase text-neutral-400 hover:text-white">
+                                                                className="h-8 rounded-xl border-white/10 bg-white/5 text-sm font-black uppercase text-neutral-400 hover:text-white">
                                                                 Quitar imagen
                                                             </Button>
                                                             <div className="space-y-1.5">
                                                                 <div className="flex justify-between">
-                                                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Fuerza</label>
-                                                                    <span className="text-[9px] font-mono text-amber-400">{initImageStrength.toFixed(2)}</span>
+                                                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Fuerza</label>
+                                                                    <span className="text-sm font-mono text-amber-400">{initImageStrength.toFixed(2)}</span>
                                                                 </div>
                                                                 <input type="range" min={0.1} max={0.9} step={0.05} value={initImageStrength}
                                                                     onChange={e => setInitImageStrength(Number(e.target.value))}
@@ -4885,25 +4910,25 @@ export function KdpFactoryApp() {
                                         {(prov === "Hugging Face" || prov === "Leonardo") && (
                                             <div className="space-y-2">
                                                 <div className="flex justify-between items-center">
-                                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Pasos de inferencia</label>
-                                                    <span className="text-[10px] font-mono text-amber-400">{inferenceSteps}</span>
+                                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Pasos de inferencia</label>
+                                                    <span className="text-sm font-mono text-amber-400">{inferenceSteps}</span>
                                                 </div>
                                                 <input type="range" min={10} max={50} step={1} value={inferenceSteps} onChange={e => setInferenceSteps(Number(e.target.value))} className="w-full accent-amber-500 h-1" />
-                                                <div className="flex justify-between text-[8px] text-neutral-700 font-mono"><span>10 rápido</span><span>50 calidad</span></div>
+                                                <div className="flex justify-between text-sm text-neutral-700 font-mono"><span>10 rápido</span><span>50 calidad</span></div>
                                             </div>
                                         )}
                                         {(prov === "Hugging Face" || prov === "Leonardo") && (
                                             <div className="space-y-2">
                                                 <div className="flex justify-between items-center">
-                                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Guidance Scale (CFG)</label>
-                                                    <span className="text-[10px] font-mono text-amber-400">{guidanceScale.toFixed(1)}</span>
+                                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Guidance Scale (CFG)</label>
+                                                    <span className="text-sm font-mono text-amber-400">{guidanceScale.toFixed(1)}</span>
                                                 </div>
                                                 <input type="range" min={1} max={20} step={0.5} value={guidanceScale} onChange={e => setGuidanceScale(Number(e.target.value))} className="w-full accent-amber-500 h-1" />
-                                                <div className="flex justify-between text-[8px] text-neutral-700 font-mono"><span>1 creativo</span><span>20 fiel</span></div>
+                                                <div className="flex justify-between text-sm text-neutral-700 font-mono"><span>1 creativo</span><span>20 fiel</span></div>
                                             </div>
                                         )}
                                         <div className="space-y-2">
-                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Seed fijo (vacío = aleatorio)</label>
+                                            <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Seed fijo (vacío = aleatorio)</label>
                                             <input type="text" inputMode="numeric" value={fixedSeed}
                                                 onChange={e => setFixedSeed(e.target.value.replace(/\D/g, ""))}
                                                 placeholder="Ej: 42069"
@@ -4912,7 +4937,7 @@ export function KdpFactoryApp() {
                                         </div>
                                         {prov === "Ideogram" && (
                                             <div className="space-y-2">
-                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Estilo Ideogram</label>
+                                                <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Estilo Ideogram</label>
                                                 <KdpSelect accent="amber" value={ideogramStyle} onChange={setIdeogramStyle}
                                                     options={["AUTO", "REALISTIC", "DESIGN", "RENDER_3D", "ANIME"].map(s => ({ value: s, label: s }))} />
                                             </div>
@@ -4935,7 +4960,7 @@ export function KdpFactoryApp() {
                                         <Button
                                             onClick={() => handleGenerateImage()}
                                             disabled={isGenerating || !imagePrompt.trim() || isCatalogActive}
-                                            className={`w-full h-14 rounded-2xl font-black uppercase tracking-widest text-[11px] transition-all duration-500 ${isGenerating
+                                            className={`w-full h-14 rounded-2xl font-black uppercase tracking-widest text-sm transition-all duration-500 ${isGenerating
                                                 ? "bg-amber-500/15 text-amber-400 border border-amber-500/25"
                                                 : isCatalogActive
                                                     ? "bg-white/4 text-neutral-500 border border-white/8 cursor-not-allowed"
@@ -4959,10 +4984,10 @@ export function KdpFactoryApp() {
                                                     <div className="absolute inset-0 rounded-full bg-sky-400/40 animate-ping" />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
-                                                    <p className="text-[10px] font-black text-sky-300 leading-tight">
+                                                    <p className="text-sm font-black text-sky-300 leading-tight">
                                                         {running.length > 0 ? `Generando — ${running[0]?.name || "catálogo"}` : `En cola — ${queued[0]?.name || "catálogo"}`}
                                                     </p>
-                                                    <p className="text-[9px] text-neutral-600 mt-0.5">
+                                                    <p className="text-sm text-neutral-600 mt-0.5">
                                                         {running.length > 0 && `${running[0]?.images?.length ?? 0}/${running[0]?.totalImages ?? "?"} imágenes`}
                                                         {running.length > 0 && queued.length > 0 && " · "}
                                                         {queued.length > 0 && `${queued.length} en cola`}
@@ -4970,7 +4995,7 @@ export function KdpFactoryApp() {
                                                 </div>
                                                 <button
                                                     onClick={() => setShowCatalogAccordion(true)}
-                                                    className="text-[9px] font-black uppercase tracking-widest text-sky-400/60 hover:text-sky-300 transition-colors shrink-0"
+                                                    className="text-sm font-black uppercase tracking-widest text-sky-400/60 hover:text-sky-300 transition-colors shrink-0"
                                                 >
                                                     Ver
                                                 </button>
@@ -4987,10 +5012,10 @@ export function KdpFactoryApp() {
                                 onClick={() => setShowCatalogAccordion(v => !v)}
                                 className="w-full px-6 py-4 flex items-center gap-3 hover:bg-white/2 transition-colors group"
                             >
-                                <span className="w-6 h-6 rounded-full bg-sky-500/10 border border-sky-500/20 text-[9px] font-black text-sky-400 flex items-center justify-center shrink-0">04</span>
+                                <span className="w-6 h-6 rounded-full bg-sky-500/10 border border-sky-500/20 text-sm font-black text-sky-400 flex items-center justify-center shrink-0">04</span>
                                 <div className="flex-1 text-left">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 group-hover:text-neutral-200 transition-colors">Generar catálogo</p>
-                                    <p className="text-[9px] text-neutral-600 mt-0.5">Producción masiva con estos ajustes</p>
+                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-400 group-hover:text-neutral-200 transition-colors">Generar catálogo</p>
+                                    <p className="text-sm text-neutral-600 mt-0.5">Producción masiva con estos ajustes</p>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     {iaCatalogs.some(c => c.status === "running" || c.status === "queued") && (
@@ -5002,7 +5027,7 @@ export function KdpFactoryApp() {
                             {showCatalogAccordion && (
                                 <div className="px-6 pb-6 space-y-4">
                                     <div className="space-y-2">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Tipo de producto</p>
+                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Tipo de producto</p>
                                         <div className="flex gap-1.5">
                                             {([
                                                 { id: "coloring-book" as const, label: "Colorear", desc: "B&W line art" },
@@ -5012,8 +5037,8 @@ export function KdpFactoryApp() {
                                                 <button key={pt.id} onClick={() => setCatalogProductType(pt.id)}
                                                     className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 px-2 rounded-xl border transition-all ${catalogProductType === pt.id ? "border-sky-500/40 bg-sky-500/[0.08] text-sky-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}
                                                 >
-                                                    <span className="text-[9px] font-black uppercase tracking-wide">{pt.label}</span>
-                                                    <span className={`text-[8px] ${catalogProductType === pt.id ? "text-sky-500/60" : "text-neutral-700"}`}>{pt.desc}</span>
+                                                    <span className="text-sm font-black uppercase tracking-wide">{pt.label}</span>
+                                                    <span className={`text-sm ${catalogProductType === pt.id ? "text-sky-500/60" : "text-neutral-700"}`}>{pt.desc}</span>
                                                 </button>
                                             ))}
                                         </div>
@@ -5021,8 +5046,8 @@ export function KdpFactoryApp() {
                                     {catalogProductType === "coloring-book" && (
                                         <div className="space-y-2">
                                             <div className="flex items-center justify-between">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Prompt negativo adicional</p>
-                                                <span className="text-[8px] text-neutral-700 italic">Auto: sombreado, color…</span>
+                                                <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Prompt negativo adicional</p>
+                                                <span className="text-sm text-neutral-700 italic">Auto: sombreado, color…</span>
                                             </div>
                                             <input value={catalogNegativePrompt} onChange={e => setCatalogNegativePrompt(e.target.value)}
                                                 placeholder="Ej: cartoon, hands, text, watermark…"
@@ -5030,34 +5055,34 @@ export function KdpFactoryApp() {
                                             />
                                             <div className="flex flex-wrap gap-1">
                                                 {["shading", "gray tones", "gradients", "color", "sepia"].map(t => (
-                                                    <span key={t} className="text-[8px] px-1.5 py-0.5 rounded-full bg-rose-500/6 border border-rose-500/12 text-rose-400/50 font-mono">{t}</span>
+                                                    <span key={t} className="text-sm px-1.5 py-0.5 rounded-full bg-rose-500/6 border border-rose-500/12 text-rose-400/50 font-mono">{t}</span>
                                                 ))}
                                             </div>
                                         </div>
                                     )}
                                     <div className="space-y-2">
                                         <div className="flex items-center justify-between">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Variación IA</p>
-                                            <span className={`text-[9px] font-black tabular-nums ${catalogCreativity <= 10 ? "text-neutral-700" : catalogCreativity <= 35 ? "text-sky-400/70" : catalogCreativity <= 65 ? "text-emerald-400/70" : catalogCreativity <= 85 ? "text-amber-400/70" : "text-orange-400/70"}`}>
+                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Variación IA</p>
+                                            <span className={`text-sm font-black tabular-nums ${catalogCreativity <= 10 ? "text-neutral-700" : catalogCreativity <= 35 ? "text-sky-400/70" : catalogCreativity <= 65 ? "text-emerald-400/70" : catalogCreativity <= 85 ? "text-amber-400/70" : "text-orange-400/70"}`}>
                                                 {catalogCreativity <= 10 ? "Sin variación" : catalogCreativity <= 35 ? "Sutil" : catalogCreativity <= 65 ? "Moderada" : catalogCreativity <= 85 ? "Alta" : "Máxima"}
                                             </span>
                                         </div>
                                         <input type="range" min={0} max={100} step={5} value={catalogCreativity}
                                             onChange={e => setCatalogCreativity(Number(e.target.value))}
                                             className="w-full accent-sky-500 h-1.5 rounded-full cursor-pointer" />
-                                        <div className="flex justify-between text-[8px] text-neutral-700"><span>Idénticas</span><span>Diferentes</span></div>
+                                        <div className="flex justify-between text-sm text-neutral-700"><span>Idénticas</span><span>Diferentes</span></div>
                                     </div>
                                     {/* Niche linker */}
                                     {niches.filter(n => n.status !== "archived").length > 0 && (
                                         <div className="space-y-1.5">
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Vincular a nicho <span className="normal-case font-medium">(opcional)</span></p>
+                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Vincular a nicho <span className="normal-case font-medium">(opcional)</span></p>
                                             <div className="flex flex-wrap gap-1.5">
                                                 {niches.filter(n => n.status !== "archived").slice(0, 12).map(n => {
                                                     const isSelected = catalogFormNicheId === n._id;
                                                     return (
                                                         <button key={n._id} type="button"
                                                             onClick={() => setCatalogFormNicheId(isSelected ? null : n._id)}
-                                                            className={`flex items-center gap-1 h-6 px-2.5 rounded-lg border text-[9px] font-black transition-all ${isSelected ? "border-sky-500/50 bg-sky-500/15 text-sky-300" : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"}`}>
+                                                            className={`flex items-center gap-1 h-6 px-2.5 rounded-lg border text-sm font-black transition-all ${isSelected ? "border-sky-500/50 bg-sky-500/15 text-sky-300" : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"}`}>
                                                             <Target size={8} />
                                                             {n.name}
                                                             {isSelected && <Check size={8} />}
@@ -5080,7 +5105,7 @@ export function KdpFactoryApp() {
                                             />
                                             <button onClick={() => void createCatalogFromStudio()}
                                                 disabled={isCreatingCatalog || !promptTheme.trim()}
-                                                className="flex-1 sm:flex-none h-10 px-5 bg-sky-600/80 hover:bg-sky-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_4px_20px_rgba(14,165,233,0.2)]"
+                                                className="flex-1 sm:flex-none h-10 px-5 bg-sky-600/80 hover:bg-sky-500 text-white text-sm font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_4px_20px_rgba(14,165,233,0.2)]"
                                             >
                                                 {isCreatingCatalog ? <Loader2 size={13} className="animate-spin" /> : <><Layers size={13} />Crear</>}
                                             </button>
@@ -5091,7 +5116,7 @@ export function KdpFactoryApp() {
                                         const queued = iaCatalogs.filter(c => c.status === "queued");
                                         if (running.length === 0 && queued.length === 0) return null;
                                         return (
-                                            <p className="text-[10px] text-amber-500/70 italic flex items-center gap-1.5">
+                                            <p className="text-sm text-amber-500/70 italic flex items-center gap-1.5">
                                                 <Loader2 size={9} className="animate-spin" />
                                                 {running.length > 0 ? `${running.length} en progreso` : ""}
                                                 {running.length > 0 && queued.length > 0 ? " · " : ""}
@@ -5100,7 +5125,7 @@ export function KdpFactoryApp() {
                                             </p>
                                         );
                                     })()}
-                                    <p className="text-[9px] text-neutral-700 italic">
+                                    <p className="text-sm text-neutral-700 italic">
                                         ~{Math.ceil(catalogFormCount * 1.5)} min · {catalogFormCount} imágenes · {currentModel?.name} · {currentDim?.ratio}
                                     </p>
                                 </div>
@@ -5156,7 +5181,7 @@ export function KdpFactoryApp() {
                                                 <div className="w-16 h-16 rounded-full border-2 border-amber-500/20 border-t-amber-500 animate-spin" />
                                                 <Zap size={20} className="absolute inset-0 m-auto text-amber-500 animate-pulse" />
                                             </div>
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-amber-500">Renderizando Arte...</p>
+                                            <p className="text-sm font-black uppercase tracking-widest text-amber-500">Renderizando Arte...</p>
                                         </div>
                                     )}
 
@@ -5164,16 +5189,16 @@ export function KdpFactoryApp() {
                                         <div className="absolute inset-0 pointer-events-none">
                                             <div className="absolute inset-[3%] border border-dashed border-amber-400/50 rounded-md" />
                                             <div className="absolute inset-[9%] border border-dashed border-amber-300/25 rounded-sm" />
-                                            <div className="absolute top-[3%] left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-amber-500/70 backdrop-blur-sm text-[8px] font-black text-black uppercase tracking-widest whitespace-nowrap">Bleed · Trim</div>
-                                            <div className="absolute bottom-[9%] left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-black/50 backdrop-blur-sm text-[8px] font-black text-amber-300/80 uppercase tracking-widest whitespace-nowrap">Safe area</div>
+                                            <div className="absolute top-[3%] left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-amber-500/70 backdrop-blur-sm text-sm font-black text-black uppercase tracking-widest whitespace-nowrap">Bleed · Trim</div>
+                                            <div className="absolute bottom-[9%] left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-black/50 backdrop-blur-sm text-sm font-black text-amber-300/80 uppercase tracking-widest whitespace-nowrap">Safe area</div>
                                         </div>
                                     )}
                                     {!isImageLoading && (
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/40 p-8 flex flex-col justify-between">
                                             <div className="flex justify-between items-start">
                                                 <div className="flex flex-col gap-2">
-                                                    <Badge className="bg-amber-500 text-black font-black text-[10px] uppercase tracking-widest px-3 border-none">Master Draft</Badge>
-                                                    <div className="px-3 py-1.5 rounded-xl bg-black/40 backdrop-blur-md border border-white/10 text-[9px] font-bold text-neutral-300 w-fit">
+                                                    <Badge className="bg-amber-500 text-black font-black text-sm uppercase tracking-widest px-3 border-none">Master Draft</Badge>
+                                                    <div className="px-3 py-1.5 rounded-xl bg-black/40 backdrop-blur-md border border-white/10 text-sm font-bold text-neutral-300 w-fit">
                                                         {AI_MODELS.find(m => m.id === selectedModel)?.name} • {AI_DIMENSIONS.find(d => d.id === selectedDim)?.ratio}
                                                     </div>
                                                 </div>
@@ -5204,13 +5229,13 @@ export function KdpFactoryApp() {
                                                 <Button
                                                     onClick={() => setGeneratedImage(null)}
                                                     variant="outline"
-                                                    className="h-14 rounded-2xl border-white/10 bg-white/5 backdrop-blur-md text-[10px] font-black uppercase tracking-widest text-white hover:bg-white/10"
+                                                    className="h-14 rounded-2xl border-white/10 bg-white/5 backdrop-blur-md text-sm font-black uppercase tracking-widest text-white hover:bg-white/10"
                                                 >
                                                     <X size={16} className="mr-2" /> Descartar
                                                 </Button>
                                                 <Button
                                                     onClick={handleKeepImage}
-                                                    className="h-14 rounded-2xl bg-white text-black text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all shadow-2xl shadow-white/10"
+                                                    className="h-14 rounded-2xl bg-white text-black text-sm font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all shadow-2xl shadow-white/10"
                                                 >
                                                     <Check size={16} className="mr-2" /> Conservar Activo
                                                 </Button>
@@ -5236,7 +5261,7 @@ export function KdpFactoryApp() {
                                             <div className="h-2 w-4/5 rounded-full bg-white/[0.04] animate-pulse" />
                                             <div className="h-2 w-3/5 rounded-full bg-white/[0.03] animate-pulse" />
                                         </div>
-                                        <p className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-500/40 animate-pulse">
+                                        <p className="text-sm font-black uppercase tracking-[0.18em] text-amber-500/40 animate-pulse">
                                             {AI_MODELS.find(m => m.id === selectedModel)?.name}
                                         </p>
                                     </div>
@@ -5263,9 +5288,9 @@ export function KdpFactoryApp() {
                                             <Camera size={36} strokeWidth={1.5} className="text-neutral-400" />
                                         </div>
                                         <div className="space-y-1.5">
-                                            <p className="text-xs font-black uppercase tracking-widest text-white">Visual Engine Ready</p>
-                                            <p className="text-[10px] text-neutral-600 font-medium italic">Arrastra o pega (Ctrl/⌘+V) una imagen</p>
-                                            <p className="text-[10px] text-amber-500/50 font-black uppercase tracking-widest">→ va directo al vault</p>
+                                            <p className="text-sm font-black uppercase tracking-widest text-white">Visual Engine Ready</p>
+                                            <p className="text-sm text-neutral-600 font-medium italic">Arrastra o pega (Ctrl/⌘+V) una imagen</p>
+                                            <p className="text-sm text-amber-500/50 font-black uppercase tracking-widest">→ va directo al vault</p>
                                         </div>
                                     </div>
                                 </div>
@@ -5281,8 +5306,8 @@ export function KdpFactoryApp() {
                                         <Wand2 size={14} className="text-sky-400" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-[11px] font-black text-white tracking-tight">Generador de prompt con IA</p>
-                                        <p className="text-[9px] text-neutral-600">Describe tu producto y la IA crea el prompt ideal para guardar en biblioteca</p>
+                                        <p className="text-sm font-black text-white tracking-tight">Generador de prompt con IA</p>
+                                        <p className="text-sm text-neutral-600">Describe tu producto y la IA crea el prompt ideal para guardar en biblioteca</p>
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
@@ -5296,7 +5321,7 @@ export function KdpFactoryApp() {
                                     <button
                                         onClick={() => void generateImagePromptSuggestion()}
                                         disabled={isGeneratingImagePrompt || !contentNiche.trim()}
-                                        className="h-10 px-4 rounded-xl border border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 text-[10px] font-black uppercase tracking-wider flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
+                                        className="h-10 px-4 rounded-xl border border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20 text-sm font-black uppercase tracking-wider flex items-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
                                         {isGeneratingImagePrompt ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                                         {isGeneratingImagePrompt ? "..." : "Generar"}
                                     </button>
@@ -5310,24 +5335,24 @@ export function KdpFactoryApp() {
                                     <div className="space-y-2">
                                         <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] px-3 py-2.5 space-y-1.5">
                                             <div className="flex items-center justify-between">
-                                                <p className="text-[8px] font-black uppercase tracking-widest text-amber-400/70">Prompt generado</p>
+                                                <p className="text-sm font-black uppercase tracking-widest text-amber-400/70">Prompt generado</p>
                                                 <button onClick={() => copyText(imagePromptSuggestion)} className="p-1 rounded text-neutral-700 hover:text-white transition-colors"><Copy size={8} /></button>
                                             </div>
-                                            <p className="text-[10px] text-neutral-300 leading-relaxed font-mono">{imagePromptSuggestion}</p>
+                                            <p className="text-sm text-neutral-300 leading-relaxed font-mono">{imagePromptSuggestion}</p>
                                         </div>
                                         <div className="flex gap-2 flex-wrap">
                                             <button
                                                 onClick={() => { setPromptTheme(imagePromptSuggestion); toast.success("Prompt aplicado al formulario"); }}
-                                                className="flex-1 h-9 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 hover:bg-amber-500 hover:text-black text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]">
+                                                className="flex-1 h-9 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 hover:bg-amber-500 hover:text-black text-sm font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]">
                                                 <ArrowRight size={11} /> Aplicar al formulario
                                             </button>
                                             <button
                                                 onClick={() => saveImagePromptToLibrary(imagePromptSuggestion)}
-                                                className="flex-1 h-9 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]">
+                                                className="flex-1 h-9 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors active:scale-[0.98]">
                                                 <BookMarked size={11} /> Guardar
                                             </button>
                                             <button onClick={() => void generateImagePromptSuggestion()}
-                                                className="h-9 px-3 rounded-xl border border-white/10 bg-white/5 text-neutral-500 hover:text-white text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-colors">
+                                                className="h-9 px-3 rounded-xl border border-white/10 bg-white/5 text-neutral-500 hover:text-white text-sm font-black uppercase tracking-wider flex items-center gap-1.5 transition-colors">
                                                 <Sparkles size={10} /> Regenerar
                                             </button>
                                         </div>
@@ -5339,7 +5364,7 @@ export function KdpFactoryApp() {
                                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                                 <div className="flex items-center gap-3">
                                     <BookMarked size={14} className="text-sky-400" />
-                                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Biblioteca de Prompts</h3>
+                                    <h3 className="text-sm font-black uppercase tracking-[0.2em] text-neutral-400">Biblioteca de Prompts</h3>
                                 </div>
                                 <button onClick={() => void fetchSavedPrompts()} disabled={isLoadingSavedPrompts} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-sky-400 hover:border-sky-500/30 transition-all disabled:opacity-40">
                                     {isLoadingSavedPrompts ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
@@ -5351,7 +5376,7 @@ export function KdpFactoryApp() {
                                 <div className="flex gap-2 flex-wrap px-2">
                                     <button
                                         onClick={() => setPromptCategoryFilter("all")}
-                                        className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === "all" ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                                        className={`px-3 py-1.5 rounded-xl text-sm font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === "all" ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
                                     >
                                         Todos ({savedPrompts.length})
                                     </button>
@@ -5359,7 +5384,7 @@ export function KdpFactoryApp() {
                                         <button
                                             key={cat}
                                             onClick={() => setPromptCategoryFilter(cat)}
-                                            className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === cat ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                                            className={`px-3 py-1.5 rounded-xl text-sm font-black uppercase tracking-widest transition-all border ${promptCategoryFilter === cat ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
                                         >
                                             {cat} ({savedPrompts.filter(p => p.category === cat).length})
                                         </button>
@@ -5370,7 +5395,7 @@ export function KdpFactoryApp() {
                             {savedPrompts.length === 0 && !isLoadingSavedPrompts ? (
                                 <div className="flex flex-col items-center gap-3 py-10 opacity-40">
                                     <BookMarked size={28} strokeWidth={1.2} className="text-neutral-600" />
-                                    <p className="text-[11px] font-black uppercase tracking-widest text-neutral-600">Sin prompts guardados aún</p>
+                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Sin prompts guardados aún</p>
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -5388,14 +5413,14 @@ export function KdpFactoryApp() {
                                                             <div className="flex-1 min-w-0">
                                                                 {isFullEdit ? (
                                                                     <input autoFocus value={(fe.name ?? p.name)} onChange={e => setFullEditingPrompt(prev => ({ ...prev, name: e.target.value }))}
-                                                                        className="w-full bg-white/5 border border-sky-500/40 rounded-lg px-2 py-1 text-[12px] font-black text-white outline-none mb-1" />
+                                                                        className="w-full bg-white/5 border border-sky-500/40 rounded-lg px-2 py-1 text-sm font-black text-white outline-none mb-1" />
                                                                 ) : (
-                                                                    <p className="text-[12px] font-black text-white truncate leading-tight">{p.name}</p>
+                                                                    <p className="text-sm font-black text-white truncate leading-tight">{p.name}</p>
                                                                 )}
                                                                 <div className="flex items-center gap-1 flex-wrap mt-0.5">
-                                                                    <span className="px-2 py-0.5 rounded-md bg-sky-500/10 border border-sky-500/20 text-[8px] font-black uppercase tracking-widest text-sky-400">{p.category}</span>
+                                                                    <span className="px-2 py-0.5 rounded-md bg-sky-500/10 border border-sky-500/20 text-sm font-black uppercase tracking-widest text-sky-400">{p.category}</span>
                                                                     {p.aiModel?.name && (
-                                                                        <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[8px] text-neutral-500 font-black uppercase truncate max-w-[120px]" title={p.aiModel.name}>
+                                                                        <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-sm text-neutral-500 font-black uppercase truncate max-w-[120px]" title={p.aiModel.name}>
                                                                             {p.aiModel.provider} · {p.aiModel.name.split(" ").slice(0, 2).join(" ")}
                                                                         </span>
                                                                     )}
@@ -5420,19 +5445,19 @@ export function KdpFactoryApp() {
                                                                 <textarea value={(fe.promptParts?.theme ?? p.promptParts.theme)}
                                                                     onChange={e => setFullEditingPrompt(prev => ({ ...prev, promptParts: { ...(prev.promptParts ?? p.promptParts), theme: e.target.value } }))}
                                                                     rows={3} placeholder="Temática / prompt principal…"
-                                                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 resize-none font-mono" />
+                                                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 resize-none font-mono" />
                                                                 <select value={(fe.aiModel?.id ?? p.aiModel?.id ?? "")}
                                                                     onChange={e => {
                                                                         const m = AI_MODELS.find(m => m.id === e.target.value);
                                                                         setFullEditingPrompt(prev => ({ ...prev, aiModel: m ? { id: m.id, name: m.name, provider: m.provider, modelId: m.modelId } : undefined }));
                                                                     }}
-                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-xl px-3 text-[10px] text-white focus:outline-none focus:border-sky-500/40">
+                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-xl px-3 text-sm text-white focus:outline-none focus:border-sky-500/40">
                                                                     <option value="">Sin modelo asociado</option>
                                                                     {AI_MODELS.map(m => <option key={m.id} value={m.id}>{m.provider} · {m.name}</option>)}
                                                                 </select>
                                                                 <div className="flex gap-2">
                                                                     <button onClick={() => setFullEditingPromptId(null)}
-                                                                        className="flex-1 h-8 rounded-xl bg-white/5 border border-white/10 text-[9px] font-black uppercase text-neutral-400 hover:text-white transition-all">
+                                                                        className="flex-1 h-8 rounded-xl bg-white/5 border border-white/10 text-sm font-black uppercase text-neutral-400 hover:text-white transition-all">
                                                                         Cancelar
                                                                     </button>
                                                                     <button onClick={() => {
@@ -5445,19 +5470,19 @@ export function KdpFactoryApp() {
                                                                         setFullEditingPromptId(null);
                                                                         toast.success("Prompt actualizado");
                                                                     }}
-                                                                        className="flex-1 h-8 rounded-xl bg-sky-600 text-white text-[9px] font-black uppercase tracking-widest hover:bg-sky-500 transition-all flex items-center justify-center gap-1.5">
+                                                                        className="flex-1 h-8 rounded-xl bg-sky-600 text-white text-sm font-black uppercase tracking-widest hover:bg-sky-500 transition-all flex items-center justify-center gap-1.5">
                                                                         <Save size={10} /> Guardar
                                                                     </button>
                                                                 </div>
                                                             </div>
                                                         ) : (
                                                             <>
-                                                                <p className="text-[10px] text-neutral-500 line-clamp-2 leading-relaxed italic">
+                                                                <p className="text-sm text-neutral-500 line-clamp-2 leading-relaxed italic">
                                                                     {p.promptParts.theme || <span className="opacity-40">Sin temática</span>}
                                                                 </p>
                                                                 <button
                                                                     onClick={() => loadSavedPrompt(p)}
-                                                                    className="w-full h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[10px] font-black uppercase tracking-widest hover:bg-sky-600 hover:text-white hover:border-sky-600 transition-all flex items-center justify-center gap-1.5">
+                                                                    className="w-full h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-sm font-black uppercase tracking-widest hover:bg-sky-600 hover:text-white hover:border-sky-600 transition-all flex items-center justify-center gap-1.5">
                                                                     <ArrowRight size={11} />Cargar prompt
                                                                 </button>
                                                             </>
@@ -5487,7 +5512,7 @@ export function KdpFactoryApp() {
                         {vaultImages.length > 0 && (
                             <button
                                 onClick={() => { setIsVaultSelectMode(v => !v); setSelectedImageUrls(new Set()); }}
-                                className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${isVaultSelectMode ? "bg-amber-500/20 border-amber-500/40 text-amber-400" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white hover:border-white/20"}`}
+                                className={`px-3 py-1.5 rounded-xl text-sm font-black uppercase tracking-widest transition-all border ${isVaultSelectMode ? "bg-amber-500/20 border-amber-500/40 text-amber-400" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white hover:border-white/20"}`}
                             >
                                 {isVaultSelectMode ? "Cancelar" : "Seleccionar"}
                             </button>
@@ -5496,7 +5521,7 @@ export function KdpFactoryApp() {
                             <div className="flex items-center gap-2 flex-wrap">
                                 <button
                                     onClick={() => { addSelectedAsPages(); setIsVaultSelectMode(false); }}
-                                    className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-amber-500 text-black hover:bg-amber-400 transition-all border border-amber-500/50 flex items-center gap-1.5"
+                                    className="px-3 py-1.5 rounded-xl text-sm font-black uppercase tracking-widest bg-amber-500 text-black hover:bg-amber-400 transition-all border border-amber-500/50 flex items-center gap-1.5"
                                 >
                                     <Plus size={11} />
                                     {selectedImageUrls.size} al libro
@@ -5504,7 +5529,7 @@ export function KdpFactoryApp() {
                                 <select
                                     value={kdpPdfSize}
                                     onChange={e => setKdpPdfSize(e.target.value as typeof kdpPdfSize)}
-                                    className="h-7 bg-neutral-900 border border-white/10 rounded-xl px-2 text-[10px] font-black text-white outline-none focus:border-sky-500/40"
+                                    className="h-7 bg-neutral-900 border border-white/10 rounded-xl px-2 text-sm font-black text-white outline-none focus:border-sky-500/40"
                                 >
                                     <option value="6x9">6"×9"</option>
                                     <option value="8x10">8"×10"</option>
@@ -5514,7 +5539,7 @@ export function KdpFactoryApp() {
                                 <button
                                     onClick={() => void exportKdpPdf()}
                                     disabled={isExportingKdpPdf}
-                                    className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-sky-600/80 hover:bg-sky-500 text-white transition-all border border-sky-500/50 flex items-center gap-1.5 disabled:opacity-40"
+                                    className="px-3 py-1.5 rounded-xl text-sm font-black uppercase tracking-widest bg-sky-600/80 hover:bg-sky-500 text-white transition-all border border-sky-500/50 flex items-center gap-1.5 disabled:opacity-40"
                                 >
                                     {isExportingKdpPdf ? <Loader2 size={11} className="animate-spin" /> : <FileText size={11} />}
                                     PDF KDP
@@ -5526,7 +5551,7 @@ export function KdpFactoryApp() {
                     {vaultImages.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-10 text-center space-y-3 opacity-40">
                             <Box size={32} className="text-neutral-600" strokeWidth={1.5} />
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">
+                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">
                                 Vault vacío · Genera y conserva imágenes para crear libros PDF
                             </p>
                         </div>
@@ -5596,7 +5621,7 @@ export function KdpFactoryApp() {
                                         {!isVaultSelectMode && usedImageUrls.has(img.url) && (
                                             <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-xl bg-emerald-500/90 backdrop-blur-sm pointer-events-none">
                                                 <FileText size={10} className="text-white" />
-                                                <span className="text-[9px] font-black text-white uppercase tracking-wide">En PDF</span>
+                                                <span className="text-sm font-black text-white uppercase tracking-wide">En PDF</span>
                                             </div>
                                         )}
                                         {!isVaultSelectMode && favorites.has(img.url) && (
@@ -5606,7 +5631,7 @@ export function KdpFactoryApp() {
                                         )}
                                         {!isVaultSelectMode && img.seed !== undefined && (
                                             <div className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-1 rounded-lg bg-black/70 backdrop-blur-sm pointer-events-none">
-                                                <span className="text-[8px] font-mono text-amber-400/80">seed {img.seed}</span>
+                                                <span className="text-sm font-mono text-amber-400/80">seed {img.seed}</span>
                                             </div>
                                         )}
                                         {isVaultSelectMode && isSelected && (
@@ -5626,7 +5651,7 @@ export function KdpFactoryApp() {
                         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                         <div className="flex items-center gap-3">
                             <Cloud size={14} className="text-cyan-400" />
-                            <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">Cloudinary · Almacén Persistente</h3>
+                            <h3 className="text-sm font-black uppercase tracking-[0.2em] text-neutral-400">Cloudinary · Almacén Persistente</h3>
                         </div>
                         {cloudinaryImages.length > 0 && (
                             <button
@@ -5636,7 +5661,7 @@ export function KdpFactoryApp() {
                                         return !v;
                                     });
                                 }}
-                                className={`h-7 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${isCloudSelectMode ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white hover:border-white/20"}`}
+                                className={`h-7 px-3 rounded-xl text-sm font-black uppercase tracking-wider transition-all border ${isCloudSelectMode ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-300" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white hover:border-white/20"}`}
                             >
                                 {isCloudSelectMode ? "Cancelar" : "Seleccionar"}
                             </button>
@@ -5655,17 +5680,17 @@ export function KdpFactoryApp() {
                     {/* Selection action bar */}
                     {isCloudSelectMode && selectedCloudUrls.size > 0 && (
                         <div className="mx-2 flex items-center gap-3 px-4 py-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/20">
-                            <span className="text-[11px] font-black text-cyan-300 flex-1">{selectedCloudUrls.size} imagen{selectedCloudUrls.size !== 1 ? "es" : ""} seleccionada{selectedCloudUrls.size !== 1 ? "s" : ""}</span>
+                            <span className="text-sm font-black text-cyan-300 flex-1">{selectedCloudUrls.size} imagen{selectedCloudUrls.size !== 1 ? "es" : ""} seleccionada{selectedCloudUrls.size !== 1 ? "s" : ""}</span>
                             <button
                                 onClick={() => setSelectedCloudUrls(new Set(cloudinaryImages.map(i => i.url)))}
-                                className="text-[10px] font-bold text-cyan-400 hover:text-cyan-200 transition-colors"
+                                className="text-sm font-bold text-cyan-400 hover:text-cyan-200 transition-colors"
                             >Selec. todo</button>
                             <button
                                 onClick={() => {
                                     setCustomCatalogName(`Catálogo Cloudinary ${new Date().toLocaleDateString("es-ES")}`);
                                     setShowCustomCatalogModal(true);
                                 }}
-                                className="h-8 px-4 rounded-xl bg-cyan-500 text-black text-[11px] font-black hover:bg-cyan-400 transition-all flex items-center gap-2"
+                                className="h-8 px-4 rounded-xl bg-cyan-500 text-black text-sm font-black hover:bg-cyan-400 transition-all flex items-center gap-2"
                             >
                                 <Layers size={12} />
                                 Crear Catálogo
@@ -5680,7 +5705,7 @@ export function KdpFactoryApp() {
                                 value={cloudSearch}
                                 onChange={e => setCloudSearch(e.target.value)}
                                 placeholder="Buscar por nombre de archivo…"
-                                className="w-full h-8 bg-white/5 border border-white/10 rounded-xl px-3 text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-cyan-500/40 transition-all"
+                                className="w-full h-8 bg-white/5 border border-white/10 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-cyan-500/40 transition-all"
                             />
                         </div>
                     )}
@@ -5688,7 +5713,7 @@ export function KdpFactoryApp() {
                     {cloudinaryImages.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-10 text-center space-y-3 opacity-40">
                             <Cloud size={32} className="text-neutral-600" strokeWidth={1.5} />
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">
+                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">
                                 {isLoadingCloudinary ? "Cargando..." : "Sin imágenes en Cloudinary · Sube assets desde el vault"}
                             </p>
                         </div>
@@ -5824,22 +5849,22 @@ export function KdpFactoryApp() {
                                                     {isDraggable && <GripVertical size={12} className="text-neutral-700 shrink-0" />}
                                                     <h4 className="font-black text-white text-lg leading-tight truncate">{catalog.name}</h4>
                                                 </div>
-                                                <p className="text-xs text-neutral-500 line-clamp-1 leading-relaxed pl-0.5 italic">{catalog.prompt}</p>
+                                                <p className="text-sm text-neutral-500 line-clamp-1 leading-relaxed pl-0.5 italic">{catalog.prompt}</p>
                                             </div>
                                             <div className="flex flex-col items-end gap-1.5 shrink-0">
                                                 {statusBadge(catalog.status)}
-                                                <span className="text-[9px] text-neutral-600 font-mono">{new Date(catalog.createdAt).toLocaleDateString("es-ES")}</span>
+                                                <span className="text-sm text-neutral-600 font-mono">{new Date(catalog.createdAt).toLocaleDateString("es-ES")}</span>
                                             </div>
                                         </div>
                                         {/* Model badge + meta */}
                                         <div className="flex items-center justify-between gap-2 flex-wrap">
                                             <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-black/50 border border-white/10 backdrop-blur-sm">
                                                 <div className={`w-1.5 h-1.5 rounded-full ${providerColor.dot} shrink-0`} />
-                                                <span className={`text-[9px] font-black uppercase tracking-wider ${providerColor.badge.split(" ").find(c => c.startsWith("text-")) ?? "text-neutral-400"}`}>{catalog.aiModel?.provider}</span>
-                                                <span className="text-neutral-700 text-[9px]">·</span>
-                                                <span className="text-[9px] font-mono text-neutral-400 truncate max-w-[160px]">{catalog.aiModel?.name.split(" ").slice(0, 3).join(" ")}</span>
+                                                <span className={`text-sm font-black uppercase tracking-wider ${providerColor.badge.split(" ").find(c => c.startsWith("text-")) ?? "text-neutral-400"}`}>{catalog.aiModel?.provider}</span>
+                                                <span className="text-neutral-700 text-sm">·</span>
+                                                <span className="text-sm font-mono text-neutral-400 truncate max-w-[160px]">{catalog.aiModel?.name.split(" ").slice(0, 3).join(" ")}</span>
                                             </div>
-                                            <div className="flex items-center gap-1.5 text-[9px] font-mono text-neutral-600">
+                                            <div className="flex items-center gap-1.5 text-sm font-mono text-neutral-600">
                                                 <span>{catalog.width}×{catalog.height}</span>
                                                 <span className="text-neutral-700">·</span>
                                                 <span className="font-black text-neutral-400">{catalog.images.length}/{catalog.totalImages}</span>
@@ -5854,7 +5879,7 @@ export function KdpFactoryApp() {
                                                 {catalog.nicheIds!.map(nid => {
                                                     const n = niches.find(n => n._id === nid);
                                                     return n ? (
-                                                        <span key={nid} className="flex items-center gap-1 px-2 h-5 rounded-full bg-sky-500/10 border border-sky-500/20 text-[9px] font-bold text-sky-400">
+                                                        <span key={nid} className="flex items-center gap-1 px-2 h-5 rounded-full bg-sky-500/10 border border-sky-500/20 text-xs font-bold text-sky-400">
                                                             <Target size={7} /> {n.name}
                                                         </span>
                                                     ) : null;
@@ -5863,7 +5888,7 @@ export function KdpFactoryApp() {
                                         )}
                                         {/* Error */}
                                         {catalog.lastError && (
-                                            <p className="text-[9px] text-red-400/70 font-mono break-all leading-relaxed bg-red-500/5 border border-red-500/10 rounded-lg px-2 py-1.5">
+                                            <p className="text-sm text-red-400/70 font-mono break-all leading-relaxed bg-red-500/5 border border-red-500/10 rounded-lg px-2 py-1.5">
                                                 ⚠ {catalog.lastError.length > 100 ? catalog.lastError.slice(0, 100) + "…" : catalog.lastError}
                                             </p>
                                         )}
@@ -5902,7 +5927,7 @@ export function KdpFactoryApp() {
                                                         toast.success("Prompt, modelo y resolución cargados");
                                                     }}
                                                     title="Cargar prompt, modelo y resolución"
-                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-white transition-all border border-white/10 text-[9px] font-black uppercase tracking-widest"
+                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-white transition-all border border-white/10 text-sm font-black uppercase tracking-widest"
                                                 >
                                                     <Copy size={11} /> Reusar
                                                 </button>
@@ -5911,7 +5936,7 @@ export function KdpFactoryApp() {
                                                         <button
                                                             onClick={() => { const pages: BookPage[] = catalog.images.map((img, i) => ({ id: genPageId(), type: "image" as const, image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` }, text: defaultTextStyle() })); setBookPages(pages); setSelectedPageId(pages[0]?.id ?? null); setBookEditorOpen(true); }}
                                                             title="Editar PDF en editor"
-                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-[9px] font-black uppercase tracking-widest"
+                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-sm font-black uppercase tracking-widest"
                                                         >
                                                             <FileText size={11} /> Editor
                                                         </button>
@@ -5919,7 +5944,7 @@ export function KdpFactoryApp() {
                                                             onClick={() => void downloadCatalogPdfDirect(catalog)}
                                                             disabled={directPdfCatalogId === catalog._id}
                                                             title={`Descargar PDF directo · ${catalog.images.length} páginas`}
-                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-all border border-sky-500/20 text-[9px] font-black uppercase tracking-widest disabled:opacity-50"
+                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-all border border-sky-500/20 text-sm font-black uppercase tracking-widest disabled:opacity-50"
                                                         >
                                                             {directPdfCatalogId === catalog._id ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
                                                             PDF
@@ -5939,7 +5964,7 @@ export function KdpFactoryApp() {
                                                                 toast.success(`Contenido listo para: ${linkedNiche.name}`);
                                                             }}
                                                             title="Generar contenido KDP para este nicho"
-                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all border border-emerald-500/20 text-[9px] font-black uppercase tracking-widest"
+                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all border border-emerald-500/20 text-sm font-black uppercase tracking-widest"
                                                         >
                                                             <ArrowRight size={11} /> Contenido
                                                         </button>
@@ -5950,7 +5975,7 @@ export function KdpFactoryApp() {
                                                         onClick={() => void retryFailedSlots(catalog._id)}
                                                         disabled={retryingCatalogId === catalog._id}
                                                         title={`Reintentar ${catalog.skippedImages} fallados`}
-                                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20 text-[9px] font-black uppercase tracking-widest disabled:opacity-50"
+                                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20 text-sm font-black uppercase tracking-widest disabled:opacity-50"
                                                     >
                                                         {retryingCatalogId === catalog._id ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
                                                         {catalog.skippedImages} fallidos
@@ -5965,7 +5990,7 @@ export function KdpFactoryApp() {
                                                             onClick={() => hasNiches && setCatalogNichePickerId(isOpen ? null : catalog._id)}
                                                             title={hasNiches ? "Vincular nicho" : "No hay nichos — créalos primero en la pestaña Nichos"}
                                                             disabled={!hasNiches}
-                                                            className={`flex items-center gap-1.5 h-8 px-2.5 rounded-xl border transition-all text-[9px] font-black uppercase tracking-wider shrink-0 disabled:opacity-40 disabled:cursor-not-allowed
+                                                            className={`flex items-center gap-1.5 h-8 px-2.5 rounded-xl border transition-all text-sm font-black uppercase tracking-wider shrink-0 disabled:opacity-40 disabled:cursor-not-allowed
                                                                 ${linkedNiches.length > 0
                                                                     ? isOpen
                                                                         ? "bg-sky-500/20 border-sky-500/40 text-sky-300 shadow-[0_0_12px_rgba(14,165,233,0.2)]"
@@ -5989,7 +6014,7 @@ export function KdpFactoryApp() {
                                                 {isActive && (
                                                     <button
                                                         onClick={() => setConfirmStopCatalogId(catalog._id)}
-                                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-orange-500/10 text-orange-400 border border-orange-500/20 hover:bg-orange-500 hover:text-white transition-all text-[9px] font-black uppercase tracking-widest"
+                                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-orange-500/10 text-orange-400 border border-orange-500/20 hover:bg-orange-500 hover:text-white transition-all text-sm font-black uppercase tracking-widest"
                                                     >
                                                         <StopCircle size={11} /> Detener
                                                     </button>
@@ -6003,7 +6028,7 @@ export function KdpFactoryApp() {
                                     {/* Progress bar */}
                                     {isActive && (
                                         <div className="px-4 pb-3 space-y-1.5 border-t border-white/5 pt-3">
-                                            <div className="flex justify-between text-[9px] uppercase tracking-widest text-neutral-600">
+                                            <div className="flex justify-between text-sm uppercase tracking-widest text-neutral-600">
                                                 <span className="flex items-center gap-1.5"><Loader2 size={8} className="animate-spin text-blue-400" />{catalog.status === "queued" ? `En cola · posición ${queuePos}` : catalog.status === "pending" ? "Iniciando..." : "Generando"}</span>
                                                 {catalog.status !== "queued" && <span className="font-black text-neutral-400">{Math.round(progress)}% {timeStr && <span className="text-sky-400/80 normal-case">{timeStr}</span>}</span>}
                                             </div>
@@ -6023,7 +6048,7 @@ export function KdpFactoryApp() {
                                                     <div className="w-5 h-5 rounded-lg bg-sky-500/15 border border-sky-500/25 flex items-center justify-center">
                                                         <Target size={10} className="text-sky-400" />
                                                     </div>
-                                                    <span className="text-[10px] font-black uppercase tracking-widest text-sky-400/80">Vincular nichos</span>
+                                                    <span className="text-sm font-black uppercase tracking-widest text-sky-400/80">Vincular nichos</span>
                                                 </div>
                                                 <button onClick={() => setCatalogNichePickerId(null)} className="w-5 h-5 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-neutral-600 hover:text-white hover:bg-white/10 transition-all">
                                                     <X size={9} />
@@ -6062,10 +6087,10 @@ export function KdpFactoryApp() {
                                                             <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${assigned ? "bg-sky-500 border-sky-400 shadow-[0_0_8px_rgba(14,165,233,0.4)]" : "border-neutral-700 bg-transparent"}`}>
                                                                 {assigned && <Check size={8} className="text-white" strokeWidth={3} />}
                                                             </div>
-                                                            <span className={`text-[11px] font-bold flex-1 truncate ${assigned ? "text-white" : "text-neutral-400"}`}>{n.name}</span>
+                                                            <span className={`text-sm font-bold flex-1 truncate ${assigned ? "text-white" : "text-neutral-400"}`}>{n.name}</span>
                                                             <div className="flex items-center gap-1.5 shrink-0">
-                                                                {catCount > 0 && <span className="text-[8px] font-black text-sky-400/60 bg-sky-500/10 border border-sky-500/15 px-1.5 py-0.5 rounded-full">{catCount} cat</span>}
-                                                                {n.status && <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full ${n.status === "active" ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/15" : "text-neutral-600 bg-white/5 border border-white/8"}`}>{n.status}</span>}
+                                                                {catCount > 0 && <span className="text-sm font-black text-sky-400/60 bg-sky-500/10 border border-sky-500/15 px-1.5 py-0.5 rounded-full">{catCount} cat</span>}
+                                                                {n.status && <span className={`text-sm font-black uppercase px-1.5 py-0.5 rounded-full ${n.status === "active" ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/15" : "text-neutral-600 bg-white/5 border border-white/8"}`}>{n.status}</span>}
                                                             </div>
                                                         </button>
                                                     );
@@ -6078,7 +6103,7 @@ export function KdpFactoryApp() {
                                         <div className="px-4 pb-4 border-t border-white/5 pt-3 space-y-2">
                                             {/* Bulk delete toolbar */}
                                             <div className="flex items-center justify-between gap-2">
-                                                <span className="text-[9px] text-neutral-700 font-mono">{catalog.images.length} imgs</span>
+                                                <span className="text-sm text-neutral-700 font-mono">{catalog.images.length} imgs</span>
                                                 <div className="flex items-center gap-1.5">
                                                     {bulkDeleteCatalogId === catalog._id && (
                                                         <button
@@ -6087,7 +6112,7 @@ export function KdpFactoryApp() {
                                                                 const allSelected = allIds.every(id => bulkDeleteSelection.has(id));
                                                                 setBulkDeleteSelection(allSelected ? new Set() : new Set(allIds));
                                                             }}
-                                                            className="h-6 px-2 rounded-lg bg-white/5 border border-white/10 text-[9px] text-neutral-500 hover:text-white transition-all">
+                                                            className="h-6 px-2 rounded-lg bg-white/5 border border-white/10 text-sm text-neutral-500 hover:text-white transition-all">
                                                             {catalog.images.every(i => bulkDeleteSelection.has(i.publicId)) ? "Desel. todo" : "Sel. todo"}
                                                         </button>
                                                     )}
@@ -6095,7 +6120,7 @@ export function KdpFactoryApp() {
                                                         <button
                                                             onClick={() => void bulkDeleteSelectedImages(catalog._id)}
                                                             disabled={isBulkDeleting}
-                                                            className="flex items-center gap-1 h-6 px-2.5 rounded-lg bg-red-500/15 border border-red-500/30 text-red-400 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-all disabled:opacity-50"
+                                                            className="flex items-center gap-1 h-6 px-2.5 rounded-lg bg-red-500/15 border border-red-500/30 text-red-400 text-sm font-black uppercase hover:bg-red-500 hover:text-white transition-all disabled:opacity-50"
                                                         >
                                                             {isBulkDeleting ? <Loader2 size={9} className="animate-spin" /> : <Trash2 size={9} />}
                                                             Borrar {bulkDeleteSelection.size}
@@ -6103,7 +6128,7 @@ export function KdpFactoryApp() {
                                                     )}
                                                     {bulkDeleteCatalogId === catalog._id && bulkDeleteSelection.size > 0 && (
                                                         <button onClick={() => setBulkDeleteSelection(new Set())}
-                                                            className="h-6 px-2 rounded-lg bg-white/5 border border-white/10 text-[9px] text-neutral-500 hover:text-white transition-all">
+                                                            className="h-6 px-2 rounded-lg bg-white/5 border border-white/10 text-sm text-neutral-500 hover:text-white transition-all">
                                                             Limpiar
                                                         </button>
                                                     )}
@@ -6117,7 +6142,7 @@ export function KdpFactoryApp() {
                                                                 setBulkDeleteSelection(new Set());
                                                             }
                                                         }}
-                                                        className={`h-6 px-2.5 rounded-lg text-[9px] font-black uppercase transition-all border ${bulkDeleteCatalogId === catalog._id ? "bg-rose-500/15 border-rose-500/30 text-rose-400 hover:bg-rose-500/25" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                                                        className={`h-6 px-2.5 rounded-lg text-sm font-black uppercase transition-all border ${bulkDeleteCatalogId === catalog._id ? "bg-rose-500/15 border-rose-500/30 text-rose-400 hover:bg-rose-500/25" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
                                                     >
                                                         {bulkDeleteCatalogId === catalog._id ? "✕ Cancelar" : "Seleccionar"}
                                                     </button>
@@ -6196,7 +6221,7 @@ export function KdpFactoryApp() {
                                     <div className="flex-1">
                                         <SectionHeader
                                             icon={<Layers size={16} />}
-                                            title={<>Catálogos IA{totalImages > 0 && <span className="text-[9px] font-black text-sky-400/60 tabular-nums ml-2 not-italic">{totalImages} imgs</span>}</>}
+                                            title={<>Catálogos IA{totalImages > 0 && <span className="text-sm font-black text-sky-400/60 tabular-nums ml-2 not-italic">{totalImages} imgs</span>}</>}
                                             color="sky"
                                             size="sm"
                                         />
@@ -6247,15 +6272,15 @@ export function KdpFactoryApp() {
                                                 <div className="flex-1 min-w-0 space-y-1.5">
                                                     <div className="flex items-center justify-between gap-3">
                                                         <div className="space-y-0.5">
-                                                            <p className="text-[10px] font-black text-sky-300 leading-tight">
+                                                            <p className="text-sm font-black text-sky-300 leading-tight">
                                                                 {running.length > 0 ? `Generando catálogo ${running.length > 1 ? `(${running.length})` : `"${running[0].name}"`}` : `En cola — ${queued.length} catálogo${queued.length !== 1 ? "s" : ""}`}
                                                                 {queued.length > 0 && running.length > 0 && <span className="text-sky-500/60 font-normal"> · {queued.length} en cola</span>}
                                                             </p>
                                                             {running[0]?.currentPrompt && (
-                                                                <p className="text-[9px] text-sky-500/70 font-mono truncate max-w-[260px]" title={running[0].currentPrompt}>"{running[0].currentPrompt}"</p>
+                                                                <p className="text-sm text-sky-500/70 font-mono truncate max-w-[260px]" title={running[0].currentPrompt}>"{running[0].currentPrompt}"</p>
                                                             )}
                                                         </div>
-                                                        <span className="text-[11px] font-black text-white tabular-nums shrink-0">~{timeLabel}</span>
+                                                        <span className="text-sm font-black text-white tabular-nums shrink-0">~{timeLabel}</span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <div className="flex-1 h-1 bg-white/[0.06] rounded-full overflow-hidden">
@@ -6264,7 +6289,7 @@ export function KdpFactoryApp() {
                                                                 style={{ width: `${overallPct}%` }}
                                                             />
                                                         </div>
-                                                        <span className="text-[9px] text-neutral-600 tabular-nums shrink-0">{totalGenerated}/{totalImagesAll} imgs</span>
+                                                        <span className="text-sm text-neutral-600 tabular-nums shrink-0">{totalGenerated}/{totalImagesAll} imgs</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -6287,10 +6312,10 @@ export function KdpFactoryApp() {
                                             className="w-full flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-all text-left"
                                         >
                                             <ChevronDown size={12} className={`text-neutral-600 transition-transform duration-300 ${collapsedCompleted ? "" : "rotate-180"}`} />
-                                            <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">
+                                            <span className="text-sm font-black uppercase tracking-widest text-neutral-600">
                                                 {collapsedCompleted ? `Ver ${doneCatalogs.length} catálogo${doneCatalogs.length > 1 ? "s" : ""} finalizado${doneCatalogs.length > 1 ? "s" : ""}` : `Ocultar finalizados`}
                                             </span>
-                                            <span className="ml-auto text-[9px] text-neutral-700 font-mono">{doneCatalogs.reduce((s, c) => s + c.images.length, 0)} imgs</span>
+                                            <span className="ml-auto text-sm text-neutral-700 font-mono">{doneCatalogs.reduce((s, c) => s + c.images.length, 0)} imgs</span>
                                         </button>
                                         {!collapsedCompleted && (
                                             <div className="space-y-3">
@@ -6306,7 +6331,7 @@ export function KdpFactoryApp() {
                     {iaCatalogs.length === 0 && !isLoadingCatalogs && (
                         <div className="flex items-center gap-4 px-2 opacity-30">
                             <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-600 flex items-center gap-2"><Layers size={12} />Sin catálogos aún</span>
+                            <span className="text-sm font-black uppercase tracking-[0.2em] text-neutral-600 flex items-center gap-2"><Layers size={12} />Sin catálogos aún</span>
                             <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                         </div>
                     )}
@@ -6332,7 +6357,7 @@ export function KdpFactoryApp() {
             cancelled: { label: "Cancelado", cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
         };
         const { label, cls } = map[status] ?? { label: status, cls: "bg-white/5 text-neutral-400 border-white/10" };
-        return <Badge variant="neutral" className={`text-[9px] font-black uppercase ${cls}`}>{label}</Badge>;
+        return <Badge variant="neutral" className={`text-sm font-black uppercase ${cls}`}>{label}</Badge>;
     };
 
     // ─── STUDIO (Tendencias + Contenido) ─────────────────────────────────────
@@ -6494,7 +6519,7 @@ export function KdpFactoryApp() {
                 {/* ── Gelato real data ── */}
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Tu tienda Gelato</p>
+                        <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Tu tienda Gelato</p>
                         <button
                             onClick={() => {
                                 setGelatoStoreProducts([]);
@@ -6508,7 +6533,7 @@ export function KdpFactoryApp() {
                                 }).finally(() => setLoadingGelatoData(false));
                             }}
                             disabled={loadingGelatoData}
-                            className="flex items-center gap-1.5 text-[10px] text-neutral-500 hover:text-white transition-colors"
+                            className="flex items-center gap-1.5 text-sm text-neutral-500 hover:text-white transition-colors"
                         >
                             {loadingGelatoData ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Actualizar
                         </button>
@@ -6540,10 +6565,10 @@ export function KdpFactoryApp() {
                                                 : <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center shrink-0"><Package size={16} className="text-neutral-700" /></div>
                                             }
                                             <div className="min-w-0 flex-1">
-                                                <p className="text-xs font-bold text-white truncate">{p.title ?? p.externalId ?? "Sin título"}</p>
+                                                <p className="text-sm font-bold text-white truncate">{p.title ?? p.externalId ?? "Sin título"}</p>
                                                 <div className="flex items-center gap-2 mt-0.5">
-                                                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-full border ${(p.status === "active" || p.status === "published") ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/25" : "text-neutral-400 bg-white/5 border-white/10"}`}>{p.status}</span>
-                                                    {p.retailPrice && <span className="text-[9px] text-neutral-500">{p.currency ?? "EUR"} {p.retailPrice}</span>}
+                                                    <span className={`text-sm font-black uppercase px-1.5 py-0.5 rounded-full border ${(p.status === "active" || p.status === "published") ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/25" : "text-neutral-400 bg-white/5 border-white/10"}`}>{p.status}</span>
+                                                    {p.retailPrice && <span className="text-sm text-neutral-500">{p.currency ?? "EUR"} {p.retailPrice}</span>}
                                                 </div>
                                             </div>
                                             <a href="https://dashboard.gelato.com/store-products/product-list" target="_blank" rel="noreferrer" className="shrink-0 p-1 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all">
@@ -6557,18 +6582,18 @@ export function KdpFactoryApp() {
                             {/* Recent orders */}
                             {gelatoOrders.length > 0 && (
                                 <div>
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-700 mb-2">Pedidos recientes</p>
+                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-700 mb-2">Pedidos recientes</p>
                                     <div className="space-y-1.5">
                                         {gelatoOrders.slice(0, 5).map((o: any) => {
                                             const statusColor = o.fulfillmentStatus === "fulfilled" ? "text-emerald-400" : o.fulfillmentStatus === "canceled" ? "text-red-400" : "text-amber-400";
                                             return (
                                                 <div key={o.id ?? o.orderId} className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.01] px-3 py-2 hover:border-white/10 transition-all">
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-[10px] font-bold text-white truncate">{o.orderReferenceId ?? o.id ?? "—"}</p>
-                                                        <p className="text-[9px] text-neutral-600">{o.createdAt ? new Date(o.createdAt).toLocaleDateString("es-ES") : ""}</p>
+                                                        <p className="text-sm font-bold text-white truncate">{o.orderReferenceId ?? o.id ?? "—"}</p>
+                                                        <p className="text-sm text-neutral-600">{o.createdAt ? new Date(o.createdAt).toLocaleDateString("es-ES") : ""}</p>
                                                     </div>
-                                                    <span className={`text-[9px] font-black uppercase ${statusColor}`}>{o.fulfillmentStatus ?? o.status ?? "—"}</span>
-                                                    {o.totalAmount && <span className="text-[9px] text-neutral-500 tabular-nums">{o.currency} {o.totalAmount}</span>}
+                                                    <span className={`text-sm font-black uppercase ${statusColor}`}>{o.fulfillmentStatus ?? o.status ?? "—"}</span>
+                                                    {o.totalAmount && <span className="text-sm text-neutral-500 tabular-nums">{o.currency} {o.totalAmount}</span>}
                                                 </div>
                                             );
                                         })}
@@ -6579,7 +6604,7 @@ export function KdpFactoryApp() {
                             {gelatoStoreProducts.length === 0 && gelatoOrders.length === 0 && (
                                 <div className="rounded-2xl border border-dashed border-white/8 bg-white/[0.01] p-8 text-center text-neutral-600">
                                     <Store size={24} className="mx-auto mb-2 opacity-40" />
-                                    <p className="text-[11px]">Sin datos — comprueba que GELATO_API_KEY y GELATO_STORE_ID están configurados en Ajustes</p>
+                                    <p className="text-sm">Sin datos — comprueba que GELATO_API_KEY y GELATO_STORE_ID están configurados en Ajustes</p>
                                 </div>
                             )}
                         </>
@@ -6588,7 +6613,7 @@ export function KdpFactoryApp() {
 
                 {/* ── Factories ── */}
                 <div className="space-y-4 pt-4 border-t border-white/8">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Herramientas de Producción</p>
+                    <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Herramientas de Producción</p>
 
                     {/* Book Factory */}
                     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -6601,20 +6626,20 @@ export function KdpFactoryApp() {
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Book Factory</h4>
-                                        <p className="text-[10px] text-neutral-500 font-medium">
+                                        <p className="text-sm text-neutral-500 font-medium">
                                             {bookDrafts.length === 0 ? "Sin borradores" : `${bookDrafts.length} borrador${bookDrafts.length !== 1 ? "es" : ""}`}
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-1.5 shrink-0">
                                         <button
                                             onClick={() => openKdpTemplateSelector()}
-                                            className="h-8 px-3 rounded-xl border border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-600 hover:text-white hover:border-sky-600 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 active:scale-95"
+                                            className="h-8 px-3 rounded-xl border border-sky-500/30 bg-sky-500/10 text-sky-300 hover:bg-sky-600 hover:text-white hover:border-sky-600 transition-all text-sm font-black uppercase tracking-widest flex items-center justify-center gap-1.5 active:scale-95"
                                         >
                                             <BookOpen size={11} /> Plantilla
                                         </button>
                                         <button
                                             onClick={newBookDraft}
-                                            className="h-8 px-3 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_16px_rgba(245,158,11,0.25)] active:scale-95"
+                                            className="h-8 px-3 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-sm font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_16px_rgba(245,158,11,0.25)] active:scale-95"
                                         >
                                             <Plus size={11} /> Nuevo
                                         </button>
@@ -6628,8 +6653,8 @@ export function KdpFactoryApp() {
                                             ))}
                                         </div>
                                         <div>
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Sin borradores</p>
-                                            <p className="text-[9px] text-neutral-700">Pulsa "Nuevo" para crear tu primer libro</p>
+                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Sin borradores</p>
+                                            <p className="text-sm text-neutral-700">Pulsa "Nuevo" para crear tu primer libro</p>
                                         </div>
                                     </div>
                                 ) : (
@@ -6646,16 +6671,16 @@ export function KdpFactoryApp() {
                                                         </div>
                                                     ))}
                                                     {draft.pages.length > 4 && (
-                                                        <div className="w-7 h-9 rounded-md bg-white/5 border border-white/10 flex items-center justify-center text-[7px] font-black text-neutral-600">+{draft.pages.length - 4}</div>
+                                                        <div className="w-7 h-9 rounded-md bg-white/5 border border-white/10 flex items-center justify-center text-sm font-black text-neutral-600">+{draft.pages.length - 4}</div>
                                                     )}
                                                 </div>
                                                 <div className="flex-1 min-w-0">
-                                                    <p className="text-[11px] font-black text-white truncate">{draft.fileName || "libro-kdp"}</p>
-                                                    <p className="text-[9px] text-neutral-600">{draft.pages.length} pág · {new Date(draft.savedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                                                    <p className="text-sm font-black text-white truncate">{draft.fileName || "libro-kdp"}</p>
+                                                    <p className="text-sm text-neutral-600">{draft.pages.length} pág · {new Date(draft.savedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
                                                 </div>
                                                 <div className="flex items-center gap-1 shrink-0">
                                                     <button onClick={() => loadBookDraft(draft)}
-                                                        className="h-7 px-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black transition-all text-[9px] font-black uppercase tracking-widest">
+                                                        className="h-7 px-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black transition-all text-sm font-black uppercase tracking-widest">
                                                         {activeDraftId === draft.id ? "Editando" : "Abrir"}
                                                     </button>
                                                     <button onClick={() => setConfirmDeleteDraftId(draft.id)}
@@ -6675,7 +6700,7 @@ export function KdpFactoryApp() {
                                         className="w-full flex items-center gap-2.5 px-4 py-3 bg-white/[0.02] hover:bg-white/[0.04] transition-all text-left"
                                     >
                                         <Lightbulb size={12} className="text-amber-400 shrink-0" />
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400 flex-1">Consejos Amazon KDP</span>
+                                        <span className="text-sm font-black uppercase tracking-widest text-neutral-400 flex-1">Consejos Amazon KDP</span>
                                         <ChevronDown size={12} className={`text-neutral-600 transition-transform duration-300 ${showKdpTips ? "rotate-180" : ""}`} />
                                     </button>
                                     {showKdpTips && (
@@ -6689,14 +6714,14 @@ export function KdpFactoryApp() {
                                                     <div key={label} className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-white/[0.03] border border-white/[0.05]">
                                                         <div className={`mt-0.5 p-1 rounded-md ${color} shrink-0`}>{icon}</div>
                                                         <div>
-                                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-0.5">{label}</p>
-                                                            <p className="text-[11px] font-bold text-white leading-tight">{value}</p>
+                                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600 mb-0.5">{label}</p>
+                                                            <p className="text-sm font-bold text-white leading-tight">{value}</p>
                                                         </div>
                                                     </div>
                                                 ))}
                                             </div>
                                             <div>
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-1.5 flex items-center gap-1.5"><Tag size={9} />Categorías activas</p>
+                                                <p className="text-sm font-black uppercase tracking-widest text-neutral-600 mb-1.5 flex items-center gap-1.5"><Tag size={9} />Categorías activas</p>
                                                 <div className="space-y-1">
                                                     {[
                                                         "Libros para Colorear para Adultos › Fantasía y Ciencia Ficción",
@@ -6705,7 +6730,7 @@ export function KdpFactoryApp() {
                                                     ].map(cat => (
                                                         <div key={cat} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/[0.025] border border-white/[0.05]">
                                                             <div className="w-1 h-1 rounded-full bg-amber-400 shrink-0" />
-                                                            <span className="text-[10px] text-neutral-400 leading-snug">Libros › … › Manualidades › <span className="text-white font-semibold">{cat}</span></span>
+                                                            <span className="text-sm text-neutral-400 leading-snug">Libros › … › Manualidades › <span className="text-white font-semibold">{cat}</span></span>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -6728,50 +6753,20 @@ export function KdpFactoryApp() {
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Zip Factory</h4>
-                                        <p className="text-[10px] text-neutral-500 font-medium">Selecciona imágenes y descárgalas comprimidas</p>
+                                        <p className="text-sm text-neutral-500 font-medium">Selecciona imágenes y descárgalas comprimidas</p>
                                     </div>
                                     <Button
                                         onClick={() => setZipFactoryOpen(true)}
-                                        className="h-9 px-4 rounded-xl bg-emerald-500 text-black hover:bg-emerald-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_20px_rgba(16,185,129,0.3)] active:scale-95 shrink-0"
+                                        className="h-9 px-4 rounded-xl bg-emerald-500 text-black hover:bg-emerald-400 transition-all text-sm font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_20px_rgba(16,185,129,0.3)] active:scale-95 shrink-0"
                                     >
                                         <FolderArchive size={13} />
                                         Abrir
                                     </Button>
                                 </div>
-                                <div className="flex items-center gap-3 text-[10px] text-neutral-600">
+                                <div className="flex items-center gap-3 text-sm text-neutral-600">
                                     <span className="flex items-center gap-1"><Box size={10} className="text-emerald-600" />{vaultImages.length} vault</span>
                                     <span className="flex items-center gap-1"><Layers size={10} className="text-emerald-600" />{iaCatalogs.reduce((s, c) => s + c.images.length, 0)} catálogos</span>
                                     <span className="flex items-center gap-1"><Cloud size={10} className="text-emerald-600" />{cloudinaryImages.length} cloud</span>
-                                </div>
-                            </div>
-                        </Card>
-                    </div>
-
-                    {/* Generador de Contenido */}
-                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                        <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
-                            <div className="absolute -top-16 -right-16 w-48 h-48 bg-amber-500/8 blur-[60px] pointer-events-none" />
-                            <div className="p-5 space-y-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500/20 to-orange-600/10 border border-amber-500/20 flex items-center justify-center shadow-lg shadow-amber-500/10 shrink-0">
-                                        <Sparkles size={19} className="text-amber-400" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Generador de Contenido</h4>
-                                        <p className="text-[10px] text-neutral-500 font-medium">Títulos · Descripción · Keywords · Listing completo</p>
-                                    </div>
-                                    <Button
-                                        onClick={() => setContentGeneratorOpen(true)}
-                                        className="h-9 px-4 rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_20px_rgba(245,158,11,0.3)] active:scale-95 shrink-0"
-                                    >
-                                        <Sparkles size={13} />
-                                        Abrir
-                                    </Button>
-                                </div>
-                                <div className="flex items-center gap-3 text-[10px] text-neutral-600">
-                                    <span className="flex items-center gap-1"><BookOpen size={10} className="text-amber-600" />KDP físico</span>
-                                    <span className="flex items-center gap-1"><Type size={10} className="text-amber-600" />Títulos &amp; Keywords</span>
-                                    <span className="flex items-center gap-1"><AlignLeft size={10} className="text-amber-600" />Listings Etsy</span>
                                 </div>
                             </div>
                         </Card>
@@ -6788,11 +6783,11 @@ export function KdpFactoryApp() {
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Cover Factory</h4>
-                                        <p className="text-[10px] text-neutral-500 font-medium">Portada tall-format · 1600×2560px · Lista para KDP</p>
+                                        <p className="text-sm text-neutral-500 font-medium">Portada tall-format · 1600×2560px · Lista para KDP</p>
                                     </div>
                                     <button
                                         onClick={() => setShowCoverModal(true)}
-                                        className="h-8 px-3 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white transition-all text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_16px_rgba(192,38,211,0.25)] active:scale-95 shrink-0"
+                                        className="h-8 px-3 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white transition-all text-sm font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_16px_rgba(192,38,211,0.25)] active:scale-95 shrink-0"
                                     >
                                         <ImageIcon size={11} /> Abrir
                                     </button>
@@ -6801,12 +6796,12 @@ export function KdpFactoryApp() {
                                     <div className="flex items-center gap-3 p-3 rounded-2xl bg-fuchsia-500/[0.04] border border-fuchsia-500/15">
                                         <img src={generatedCoverUrl} alt="" className="w-8 h-12 rounded-lg object-cover border border-fuchsia-500/20 shrink-0" />
                                         <div className="flex-1 min-w-0">
-                                            <p className="text-[10px] font-black text-white truncate">{coverTitle || "Portada generada"}</p>
-                                            <p className="text-[9px] text-neutral-600">1600×2560px · Lista para descargar</p>
+                                            <p className="text-sm font-black text-white truncate">{coverTitle || "Portada generada"}</p>
+                                            <p className="text-sm text-neutral-600">1600×2560px · Lista para descargar</p>
                                         </div>
                                         <div className="flex items-center gap-1.5 shrink-0">
                                             <a href={generatedCoverUrl} download={`portada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
-                                                className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-[9px] font-black uppercase text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all">
+                                                className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-sm font-black uppercase text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all">
                                                 <Download size={9} /> DL
                                             </a>
                                             <button onClick={() => setGeneratedCoverUrl(null)}
@@ -6857,7 +6852,7 @@ export function KdpFactoryApp() {
                                 </button>
                             </div>
                             <button onClick={() => openNicheForm()}
-                                className="flex items-center gap-2 h-10 px-5 rounded-2xl bg-gradient-to-r from-sky-600 to-sky-600 hover:from-sky-500 hover:to-sky-500 text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-[0_4px_20px_rgba(14,165,233,0.4)]">
+                                className="flex items-center gap-2 h-10 px-5 rounded-2xl bg-gradient-to-r from-sky-600 to-sky-600 hover:from-sky-500 hover:to-sky-500 text-white text-sm font-black uppercase tracking-widest transition-all shadow-[0_4px_20px_rgba(14,165,233,0.4)]">
                                 <Plus size={14} /> Nuevo nicho
                             </button>
                         </div>
@@ -6917,15 +6912,15 @@ export function KdpFactoryApp() {
                             const dot: Record<string, string> = { found: "bg-sky-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
                             return (
                                 <button key={s} onClick={() => setNicheStatusFilter(s)}
-                                    className={`flex-1 h-8 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${isAct ? "bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                    className={`flex-1 h-8 rounded-xl text-sm font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${isAct ? "bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]" : "text-neutral-600 hover:text-neutral-400"}`}>
                                     {s !== "all" && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot[s]}`} />}
                                     <span className="truncate">{s === "all" ? "Todos" : STATUS_LABELS[s].label}</span>
-                                    {cnt > 0 && <span className={`text-[8px] tabular-nums ${isAct ? "text-white/50" : "text-neutral-700"}`}>{cnt}</span>}
+                                    {cnt > 0 && <span className={`text-sm tabular-nums ${isAct ? "text-white/50" : "text-neutral-700"}`}>{cnt}</span>}
                                 </button>
                             );
                         })}
                         <button onClick={() => setNicheSortBy(p => p === "score" ? "date" : "score")}
-                            className="ml-1 h-8 px-3 rounded-xl bg-white/5 border border-white/8 text-[9px] font-black uppercase text-neutral-500 hover:text-white transition-all shrink-0">
+                            className="ml-1 h-8 px-3 rounded-xl bg-white/5 border border-white/8 text-sm font-black uppercase text-neutral-500 hover:text-white transition-all shrink-0">
                             {nicheSortBy === "score" ? "★" : "↓"}
                         </button>
                     </div>
@@ -6963,27 +6958,27 @@ export function KdpFactoryApp() {
                                         <div key={col.id} className={`rounded-2xl border ${col.color} p-3 space-y-2 min-h-[120px]`}>
                                             <div className="flex items-center gap-2 pb-1 border-b border-white/5">
                                                 <span className={`w-2 h-2 rounded-full shrink-0 ${col.dot}`} />
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">{col.label}</span>
-                                                <span className="ml-auto text-[9px] font-mono text-neutral-600">{colNiches.length}</span>
+                                                <span className="text-sm font-black uppercase tracking-widest text-neutral-400">{col.label}</span>
+                                                <span className="ml-auto text-sm font-mono text-neutral-600">{colNiches.length}</span>
                                             </div>
                                             {colNiches.length === 0 && (
                                                 <div className="flex items-center justify-center h-16 opacity-30">
-                                                    <span className="text-[9px] text-neutral-600">Sin nichos</span>
+                                                    <span className="text-sm text-neutral-600">Sin nichos</span>
                                                 </div>
                                             )}
                                             {colNiches.map(niche => (
                                                 <div key={niche._id} className="group rounded-xl border border-white/8 bg-white/[0.03] hover:bg-white/[0.06] p-3 space-y-2 transition-all cursor-pointer" onClick={() => openNicheForm(niche)}>
-                                                    <p className="text-[11px] font-black text-white leading-tight line-clamp-2">{niche.name}</p>
-                                                    {niche.tags.length > 0 && <p className="text-[9px] text-neutral-600 truncate">{niche.tags.slice(0, 3).join(" · ")}</p>}
+                                                    <p className="text-sm font-black text-white leading-tight line-clamp-2">{niche.name}</p>
+                                                    {niche.tags.length > 0 && <p className="text-sm text-neutral-600 truncate">{niche.tags.slice(0, 3).join(" · ")}</p>}
                                                     {niche.etsyUrl && (
                                                         <a href={niche.etsyUrl} target="_blank" rel="noopener noreferrer"
                                                             onClick={e => e.stopPropagation()}
-                                                            className="inline-flex items-center gap-1 text-[8px] font-black text-sky-400 hover:text-sky-300 transition-colors">
+                                                            className="inline-flex items-center gap-1 text-sm font-black text-sky-400 hover:text-sky-300 transition-colors">
                                                             <ExternalLink size={8} /> Ver fuente
                                                         </a>
                                                     )}
                                                     <div className="flex items-center justify-between">
-                                                        <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md ${niche.status === "active" ? "bg-emerald-500/15 text-emerald-400" : niche.status === "archived" ? "bg-neutral-500/15 text-neutral-500" : "bg-sky-500/15 text-sky-400"}`}>{niche.status}</span>
+                                                        <span className={`text-sm font-black uppercase px-1.5 py-0.5 rounded-md ${niche.status === "active" ? "bg-emerald-500/15 text-emerald-400" : niche.status === "archived" ? "bg-neutral-500/15 text-neutral-500" : "bg-sky-500/15 text-sky-400"}`}>{niche.status}</span>
                                                         <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                                             <button onClick={e => { e.stopPropagation(); void movePhase(niche._id, -1); }} className="w-5 h-5 rounded-md bg-white/10 hover:bg-white/20 flex items-center justify-center text-neutral-400 hover:text-white transition-all" title="Retroceder">‹</button>
                                                             <button onClick={e => { e.stopPropagation(); void movePhase(niche._id, 1); }} className="w-5 h-5 rounded-md bg-white/10 hover:bg-white/20 flex items-center justify-center text-neutral-400 hover:text-white transition-all" title="Avanzar">›</button>
@@ -7004,7 +6999,7 @@ export function KdpFactoryApp() {
                             <div className="w-16 h-16 rounded-3xl bg-white/5 border border-white/8 flex items-center justify-center">
                                 <Target size={28} strokeWidth={1.2} className="text-neutral-600" />
                             </div>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">
+                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">
                                 {niches.length === 0 ? "Sin nichos aún — crea el primero" : "Sin resultados para este filtro"}
                             </p>
                         </div>
@@ -7017,8 +7012,6 @@ export function KdpFactoryApp() {
                                 .slice()
                                 .sort((a, b) => nicheSortBy === "score" ? nicheScore(b) - nicheScore(a) : 0)
                                 .map(niche => {
-                                    const score = nicheScore(niche);
-                                    const scoreColor = score >= 70 ? "text-emerald-400" : score >= 40 ? "text-amber-400" : "text-sky-400";
                                     const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
                                     const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
                                     const statusDotMap: Record<NicheStatus, string> = { found: "bg-sky-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
@@ -7027,57 +7020,38 @@ export function KdpFactoryApp() {
                                     return (
                                         <div key={niche._id} className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] ${statusHoverBorder[niche.status]} hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden`}>
                                             <div className={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${statusGradient[niche.status]} opacity-40 group-hover:opacity-100 transition-all duration-300`} />
-                                            <div className="p-5 pl-6 space-y-4 relative">
+                                            <div className="p-4 pl-5 sm:p-5 sm:pl-6 space-y-4 relative">
 
                                                 {/* ─ Card header ─ */}
                                                 <div className="flex items-start gap-3">
-                                                    {/* Score ring with gradient */}
-                                                    <div className="shrink-0 relative w-14 h-14">
-                                                        <svg className="w-full h-full -rotate-90" viewBox="0 0 44 44">
-                                                            <defs>
-                                                                <linearGradient id={`ring-grad-${niche._id}`} x1="0%" y1="0%" x2="100%" y2="100%">
-                                                                    {score >= 70
-                                                                        ? <><stop offset="0%" stopColor="#10b981" /><stop offset="100%" stopColor="#22d3ee" /></>
-                                                                        : score >= 40
-                                                                            ? <><stop offset="0%" stopColor="#f59e0b" /><stop offset="100%" stopColor="#fb923c" /></>
-                                                                            : <><stop offset="0%" stopColor="#0284c7" /><stop offset="50%" stopColor="#0ea5e9" /><stop offset="100%" stopColor="#38bdf8" /></>}
-                                                                </linearGradient>
-                                                            </defs>
-                                                            <circle cx="22" cy="22" r="17" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4.5" />
-                                                            <circle cx="22" cy="22" r="17" fill="none"
-                                                                stroke={`url(#ring-grad-${niche._id})`} strokeWidth="4.5" strokeLinecap="round"
-                                                                strokeDasharray={`${Math.min((score / 90) * 107, 107)} 107`} />
-                                                        </svg>
-                                                        <span className={`absolute inset-0 flex items-center justify-center text-[12px] font-black ${scoreColor}`}>{score}</span>
-                                                    </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-xl font-black text-white leading-tight tracking-tight">{niche.name}</p>
+                                                        <p className="text-xl sm:text-2xl font-black text-white leading-tight tracking-tight">{niche.name}</p>
                                                         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                                                            <span className="text-[9px] font-black uppercase tracking-wide text-sky-400/80 bg-sky-500/10 border border-sky-500/20 px-2 py-0.5 rounded-full">
+                                                            <span className="text-xs font-black uppercase tracking-wide text-sky-400/80 bg-sky-500/10 border border-sky-500/20 px-2 py-0.5 rounded-full">
                                                                 {NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType}
                                                             </span>
-                                                            <span className="text-[9px] font-black uppercase tracking-wide text-neutral-400 bg-white/[0.04] border border-white/8 px-2 py-0.5 rounded-full">
+                                                            <span className="text-xs font-black uppercase tracking-wide text-neutral-400 bg-white/[0.04] border border-white/8 px-2 py-0.5 rounded-full">
                                                                 {NICHE_STYLE_OPTIONS.find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory}
                                                             </span>
                                                         </div>
-                                                        {niche.description && <p className="text-xs text-neutral-500 mt-2 line-clamp-2 leading-relaxed">{niche.description}</p>}
+                                                        {niche.description && <p className="text-sm text-neutral-500 mt-2 line-clamp-2 leading-relaxed">{niche.description}</p>}
                                                         {niche.etsyUrl && (
                                                             <a href={niche.etsyUrl} target="_blank" rel="noopener noreferrer"
-                                                                className="inline-flex items-center gap-1 mt-1.5 text-[9px] font-black text-sky-400 hover:text-sky-300 transition-colors">
-                                                                <ExternalLink size={9} /> Ver en Etsy
+                                                                className="inline-flex items-center gap-1 mt-1.5 text-sm font-black text-sky-400 hover:text-sky-300 transition-colors">
+                                                                <ExternalLink size={10} /> Ver en Etsy
                                                             </a>
                                                         )}
                                                     </div>
-                                                    {/* Actions — visible on hover */}
-                                                    <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    {/* Actions — always visible on mobile, hover on desktop */}
+                                                    <div className="flex items-center gap-0.5 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                                                         {niche.generatedPrompt && (
                                                             <button onClick={() => saveNichePromptToLibrary(niche)} title="Guardar prompt en biblioteca"
-                                                                className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all">
-                                                                <BookMarked size={12} />
+                                                                className="p-2 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all">
+                                                                <BookMarked size={14} />
                                                             </button>
                                                         )}
-                                                        <button onClick={() => openNicheForm(niche)} className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Pencil size={12} /></button>
-                                                        <button onClick={() => setNicheDeleteId(niche._id)} className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all"><Trash2 size={12} /></button>
+                                                        <button onClick={() => openNicheForm(niche)} className="p-2 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Pencil size={14} /></button>
+                                                        <button onClick={() => setNicheDeleteId(niche._id)} className="p-2 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all"><Trash2 size={14} /></button>
                                                     </div>
                                                 </div>
 
@@ -7087,9 +7061,9 @@ export function KdpFactoryApp() {
                                                         { label: "Catálogos", value: linkedCats.length, color: linkedCats.length > 0 ? "text-sky-400" : "text-neutral-700" },
                                                         { label: "Imágenes", value: linkedImgs, color: linkedImgs > 0 ? "text-blue-400" : "text-neutral-700" },
                                                     ].map(st => (
-                                                        <div key={st.label} className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-2.5 text-center">
-                                                            <p className="text-[9px] uppercase tracking-wider text-neutral-600 font-black">{st.label}</p>
-                                                            <p className={`text-xl font-black mt-0.5 tabular-nums ${st.color}`}>{st.value}</p>
+                                                        <div key={st.label} className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 text-center">
+                                                            <p className="text-xs uppercase tracking-wider text-neutral-600 font-black">{st.label}</p>
+                                                            <p className={`text-2xl font-black mt-0.5 tabular-nums ${st.color}`}>{st.value}</p>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -7099,20 +7073,20 @@ export function KdpFactoryApp() {
                                                     <div className="space-y-2">
                                                         {niche.competition !== "unknown" && (
                                                             <div className="flex items-center gap-2.5">
-                                                                <span className="text-[9px] text-neutral-600 uppercase font-black w-14 shrink-0">Comp.</span>
+                                                                <span className="text-xs text-neutral-600 uppercase font-black w-14 shrink-0">Comp.</span>
                                                                 <div className="flex-1 h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
                                                                     <div className={`h-full rounded-full transition-all ${niche.competition === "low" ? "w-1/3 bg-emerald-500" : niche.competition === "medium" ? "w-2/3 bg-amber-500" : "w-full bg-rose-500"}`} />
                                                                 </div>
-                                                                <span className={`text-[9px] font-black w-12 text-right ${COMPETITION_LABELS[niche.competition].color.split(" ")[0]}`}>{COMPETITION_LABELS[niche.competition].label}</span>
+                                                                <span className={`text-xs font-black w-14 text-right ${COMPETITION_LABELS[niche.competition].color.split(" ")[0]}`}>{COMPETITION_LABELS[niche.competition].label}</span>
                                                             </div>
                                                         )}
                                                         {niche.demand !== "unknown" && (
                                                             <div className="flex items-center gap-2.5">
-                                                                <span className="text-[9px] text-neutral-600 uppercase font-black w-14 shrink-0">Dem.</span>
+                                                                <span className="text-xs text-neutral-600 uppercase font-black w-14 shrink-0">Dem.</span>
                                                                 <div className="flex-1 h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
                                                                     <div className={`h-full rounded-full transition-all ${niche.demand === "high" ? "w-full bg-emerald-500" : niche.demand === "medium" ? "w-2/3 bg-amber-500" : "w-1/3 bg-rose-500"}`} />
                                                                 </div>
-                                                                <span className={`text-[9px] font-black w-12 text-right ${DEMAND_LABELS[niche.demand].color.split(" ")[0]}`}>{DEMAND_LABELS[niche.demand].label}</span>
+                                                                <span className={`text-xs font-black w-14 text-right ${DEMAND_LABELS[niche.demand].color.split(" ")[0]}`}>{DEMAND_LABELS[niche.demand].label}</span>
                                                             </div>
                                                         )}
                                                     </div>
@@ -7133,8 +7107,8 @@ export function KdpFactoryApp() {
                                                                     }).catch(() => { });
                                                                     setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, status: s } : n));
                                                                 }}
-                                                                className={`flex items-center gap-1 px-2.5 h-6 rounded-lg border text-[9px] font-black uppercase tracking-widest transition-all ${isActive ? STATUS_LABELS[s].color : "border-white/8 bg-transparent text-neutral-700 hover:text-neutral-400 hover:border-white/20"}`}>
-                                                                {isActive && <span className={`w-1 h-1 rounded-full ${statusDotMap[s]}`} />}
+                                                                className={`flex items-center gap-1 px-2.5 h-6 rounded-lg border text-xs font-black uppercase tracking-widest transition-all ${isActive ? STATUS_LABELS[s].color : "border-white/8 bg-transparent text-neutral-700 hover:text-neutral-400 hover:border-white/20"}`}>
+                                                                {isActive && <span className={`w-1.5 h-1.5 rounded-full ${statusDotMap[s]}`} />}
                                                                 {STATUS_LABELS[s].label}
                                                             </button>
                                                         );
@@ -7151,13 +7125,13 @@ export function KdpFactoryApp() {
                                                     };
                                                     const phases = ["niche", "catalog", "pdf", "published"] as NonNullable<NicheFE["phase"]>[];
                                                     return (
-                                                        <div className="flex items-center gap-1 pt-2 border-t border-white/[0.04]">
+                                                        <div className="flex items-center gap-1 pt-2 border-t border-white/[0.04] flex-wrap">
                                                             {phases.map((p, i) => {
                                                                 const isActive = (niche.phase ?? "niche") === p;
                                                                 const meta = PHASE_META[p];
                                                                 return (
                                                                     <React.Fragment key={p}>
-                                                                        {i > 0 && <span className="text-neutral-800 text-[8px] select-none">›</span>}
+                                                                        {i > 0 && <span className="text-neutral-800 text-xs select-none">›</span>}
                                                                         <button
                                                                             onClick={() => {
                                                                                 if (isActive) return;
@@ -7168,7 +7142,7 @@ export function KdpFactoryApp() {
                                                                                 }).catch(() => {});
                                                                                 setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase: p } : n));
                                                                             }}
-                                                                            className={`flex items-center gap-1 px-2 h-5 rounded-md border text-[8px] font-black uppercase tracking-wider transition-all ${isActive ? meta.active : "border-white/8 bg-transparent text-neutral-700 hover:text-neutral-400 hover:border-white/20"}`}
+                                                                            className={`flex items-center gap-1 px-2 h-5 rounded-md border text-xs font-black uppercase tracking-wider transition-all ${isActive ? meta.active : "border-white/8 bg-transparent text-neutral-700 hover:text-neutral-400 hover:border-white/20"}`}
                                                                         >
                                                                             {isActive && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dot}`} />}
                                                                             {meta.label}
@@ -7187,30 +7161,30 @@ export function KdpFactoryApp() {
                                                             <button
                                                                 onClick={() => void launchPipelineStep(niche, pipelineConfig)}
                                                                 disabled={nicheGeneratingId === niche._id}
-                                                                className="flex-1 flex items-center justify-center gap-2 h-8 rounded-xl bg-gradient-to-r from-violet-600/15 to-blue-600/15 border border-violet-500/20 text-[9px] font-black text-violet-300 hover:from-violet-600/25 hover:to-blue-600/25 hover:border-violet-500/35 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                                                                {nicheGeneratingId === niche._id ? <><Loader2 size={9} className="animate-spin" />Ejecutando…</> : <><Play size={9} /> Lanzar pipeline</>}
+                                                                className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl bg-gradient-to-r from-violet-600/15 to-blue-600/15 border border-violet-500/20 text-sm font-black text-violet-300 hover:from-violet-600/25 hover:to-blue-600/25 hover:border-violet-500/35 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+                                                                {nicheGeneratingId === niche._id ? <><Loader2 size={11} className="animate-spin" />Ejecutando…</> : <><Play size={11} /> Lanzar pipeline</>}
                                                             </button>
                                                             <button
                                                                 onClick={() => setShowPipelineConfigId(showPipelineConfigId === niche._id ? null : niche._id)}
                                                                 title="Configurar pipeline"
-                                                                className={`w-8 h-8 flex items-center justify-center rounded-xl border transition-all ${showPipelineConfigId === niche._id ? "border-violet-500/40 bg-violet-500/15 text-violet-300" : "border-white/10 bg-white/[0.03] text-neutral-600 hover:text-white hover:border-white/20"}`}>
-                                                                <Settings size={11} />
+                                                                className={`w-10 h-10 flex items-center justify-center rounded-xl border transition-all ${showPipelineConfigId === niche._id ? "border-violet-500/40 bg-violet-500/15 text-violet-300" : "border-white/10 bg-white/[0.03] text-neutral-600 hover:text-white hover:border-white/20"}`}>
+                                                                <Settings size={13} />
                                                             </button>
                                                             <button
                                                                 onClick={() => { setNicheDetailId(niche._id); setNicheDetailTab("images"); }}
                                                                 title="Ver todo el nicho"
-                                                                className="w-8 h-8 flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-neutral-600 hover:text-white hover:border-white/20 transition-all">
-                                                                <Eye size={11} />
+                                                                className="w-10 h-10 flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-neutral-600 hover:text-white hover:border-white/20 transition-all">
+                                                                <Eye size={13} />
                                                             </button>
                                                         </div>
                                                         {showPipelineConfigId === niche._id && (
                                                             <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.04] p-3 space-y-3">
-                                                                <p className="text-[8px] font-black uppercase tracking-widest text-violet-400">Configuración del pipeline</p>
+                                                                <p className="text-sm font-black uppercase tracking-widest text-violet-400">Configuración del pipeline</p>
                                                                 <div className="grid grid-cols-2 gap-3">
                                                                     <div className="space-y-1">
                                                                         <div className="flex items-center justify-between">
-                                                                            <label className="text-[8px] text-neutral-500 uppercase tracking-wider">Catálogos</label>
-                                                                            <span className="text-[10px] font-black text-violet-300">{pipelineConfig.catalogs}</span>
+                                                                            <label className="text-sm text-neutral-500 uppercase tracking-wider">Catálogos</label>
+                                                                            <span className="text-sm font-black text-violet-300">{pipelineConfig.catalogs}</span>
                                                                         </div>
                                                                         <input type="range" min={1} max={10} value={pipelineConfig.catalogs}
                                                                             onChange={e => setPipelineConfig(p => ({ ...p, catalogs: Number(e.target.value) }))}
@@ -7218,15 +7192,15 @@ export function KdpFactoryApp() {
                                                                     </div>
                                                                     <div className="space-y-1">
                                                                         <div className="flex items-center justify-between">
-                                                                            <label className="text-[8px] text-neutral-500 uppercase tracking-wider">Imgs/cat.</label>
-                                                                            <span className="text-[10px] font-black text-violet-300">{pipelineConfig.imagesPerCatalog}</span>
+                                                                            <label className="text-sm text-neutral-500 uppercase tracking-wider">Imgs/cat.</label>
+                                                                            <span className="text-sm font-black text-violet-300">{pipelineConfig.imagesPerCatalog}</span>
                                                                         </div>
                                                                         <input type="range" min={3} max={10} value={pipelineConfig.imagesPerCatalog}
                                                                             onChange={e => setPipelineConfig(p => ({ ...p, imagesPerCatalog: Number(e.target.value) }))}
                                                                             className="w-full h-1 accent-violet-500 cursor-pointer" />
                                                                     </div>
                                                                 </div>
-                                                                <p className="text-[8px] text-neutral-600">Total: {pipelineConfig.catalogs * pipelineConfig.imagesPerCatalog} imágenes · {pipelineConfig.catalogs} catálogos de {pipelineConfig.imagesPerCatalog} c/u</p>
+                                                                <p className="text-sm text-neutral-600">Total: {pipelineConfig.catalogs * pipelineConfig.imagesPerCatalog} imágenes · {pipelineConfig.catalogs} catálogos de {pipelineConfig.imagesPerCatalog} c/u</p>
                                                             </div>
                                                         )}
                                                     </div>
@@ -7236,9 +7210,9 @@ export function KdpFactoryApp() {
                                                 {niche.tags.length > 0 && (
                                                     <div className="flex flex-wrap gap-1">
                                                         {niche.tags.slice(0, 6).map(tag => (
-                                                            <span key={tag} className="text-[9px] px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] text-neutral-500">#{tag}</span>
+                                                            <span key={tag} className="text-sm px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] text-neutral-500">#{tag}</span>
                                                         ))}
-                                                        {niche.tags.length > 6 && <span className="text-[9px] text-neutral-700">+{niche.tags.length - 6} más</span>}
+                                                        {niche.tags.length > 6 && <span className="text-sm text-neutral-700">+{niche.tags.length - 6} más</span>}
                                                     </div>
                                                 )}
 
@@ -7247,36 +7221,36 @@ export function KdpFactoryApp() {
                                                 {nichePublishPanelId === niche._id && (
                                                     <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 space-y-2.5">
                                                         <div className="flex items-center justify-between">
-                                                            <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">Datos de publicación</span>
+                                                            <span className="text-sm font-black uppercase tracking-widest text-emerald-400">Datos de publicación</span>
                                                             <button onClick={() => setNichePublishPanelId(null)} className="text-neutral-600 hover:text-white transition-colors"><X size={11} /></button>
                                                         </div>
                                                         <div className="grid grid-cols-2 gap-2">
                                                             <div>
-                                                                <label className="text-[8px] font-black uppercase tracking-widest text-neutral-600 block mb-1">ASIN (KDP)</label>
+                                                                <label className="text-sm font-black uppercase tracking-widest text-neutral-600 block mb-1">ASIN (KDP)</label>
                                                                 <input value={publishPanelAsin} onChange={e => setPublishPanelAsin(e.target.value)}
                                                                     placeholder="B0XXXXXXXXX"
-                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2.5 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-orange-500/30 font-mono" />
+                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2.5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-orange-500/30 font-mono" />
                                                             </div>
                                                             <div>
-                                                                <label className="text-[8px] font-black uppercase tracking-widest text-neutral-600 block mb-1">Fecha publicación</label>
+                                                                <label className="text-sm font-black uppercase tracking-widest text-neutral-600 block mb-1">Fecha publicación</label>
                                                                 <input type="date" value={publishPanelDate} onChange={e => setPublishPanelDate(e.target.value)}
-                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2.5 text-[10px] text-white focus:outline-none focus:border-emerald-500/30" />
+                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2.5 text-sm text-white focus:outline-none focus:border-emerald-500/30" />
                                                             </div>
                                                             <div>
-                                                                <label className="text-[8px] font-black uppercase tracking-widest text-neutral-600 block mb-1">URL Etsy</label>
+                                                                <label className="text-sm font-black uppercase tracking-widest text-neutral-600 block mb-1">URL Etsy</label>
                                                                 <input value={publishPanelEtsy} onChange={e => setPublishPanelEtsy(e.target.value)}
                                                                     placeholder="https://etsy.com/listing/..."
-                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2.5 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/30" />
+                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2.5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/30" />
                                                             </div>
                                                             <div>
-                                                                <label className="text-[8px] font-black uppercase tracking-widest text-neutral-600 block mb-1">URL Gumroad</label>
+                                                                <label className="text-sm font-black uppercase tracking-widest text-neutral-600 block mb-1">URL Gumroad</label>
                                                                 <input value={publishPanelGumroad} onChange={e => setPublishPanelGumroad(e.target.value)}
                                                                     placeholder="https://gumroad.com/..."
-                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2.5 text-[10px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-pink-500/30" />
+                                                                    className="w-full h-8 bg-white/5 border border-white/10 rounded-lg px-2.5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-pink-500/30" />
                                                             </div>
                                                         </div>
                                                         <button onClick={() => void savePublishPanel(niche._id)} disabled={isSavingPublish}
-                                                            className="w-full h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
+                                                            className="w-full h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-sm font-black text-emerald-300 hover:bg-emerald-500/30 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5">
                                                             {isSavingPublish ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
                                                             Guardar y marcar publicado
                                                         </button>
@@ -7292,7 +7266,7 @@ export function KdpFactoryApp() {
                                                         <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.03] p-3 space-y-3">
                                                             {/* Header */}
                                                             <div className="flex items-center justify-between">
-                                                                <span className="text-[9px] font-black uppercase tracking-widest text-amber-400 flex items-center gap-1.5">
+                                                                <span className="text-sm font-black uppercase tracking-widest text-amber-400 flex items-center gap-1.5">
                                                                     <Sparkles size={9} /> Contenido KDP
                                                                     {saved.length > 0 && <span className="text-amber-500/60">· {saved.length} guardado{saved.length > 1 ? "s" : ""}</span>}
                                                                 </span>
@@ -7300,7 +7274,7 @@ export function KdpFactoryApp() {
                                                                     <button
                                                                         onClick={() => void generateNicheListing(niche)}
                                                                         disabled={generatingListingNicheId === niche._id}
-                                                                        className="flex items-center gap-1 h-6 px-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[8px] font-black uppercase tracking-wider hover:bg-amber-500/25 transition-all disabled:opacity-50"
+                                                                        className="flex items-center gap-1 h-6 px-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-sm font-black uppercase tracking-wider hover:bg-amber-500/25 transition-all disabled:opacity-50"
                                                                     >
                                                                         {generatingListingNicheId === niche._id ? <Loader2 size={8} className="animate-spin" /> : <Sparkles size={8} />}
                                                                         {generatingListingNicheId === niche._id ? "Generando…" : "Generar nuevo"}
@@ -7313,11 +7287,11 @@ export function KdpFactoryApp() {
                                                             {draft && (
                                                                 <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3 space-y-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
                                                                     <div className="flex items-center justify-between gap-2">
-                                                                        <span className="text-[8px] font-black uppercase tracking-widest text-amber-400/70">Borrador</span>
+                                                                        <span className="text-sm font-black uppercase tracking-widest text-amber-400/70">Borrador</span>
                                                                         <button
                                                                             onClick={() => void saveNicheListing(niche._id)}
                                                                             disabled={savingListingNicheId === niche._id}
-                                                                            className="flex items-center gap-1 h-6 px-2.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[8px] font-black uppercase tracking-wider hover:bg-emerald-500/30 transition-all disabled:opacity-50"
+                                                                            className="flex items-center gap-1 h-6 px-2.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-sm font-black uppercase tracking-wider hover:bg-emerald-500/30 transition-all disabled:opacity-50"
                                                                         >
                                                                             {savingListingNicheId === niche._id ? <Loader2 size={8} className="animate-spin" /> : <Save size={8} />}
                                                                             Guardar
@@ -7333,9 +7307,9 @@ export function KdpFactoryApp() {
                                                                     {[...saved].reverse().map((lst) => (
                                                                         <div key={lst._id} className="rounded-lg border border-white/8 bg-white/[0.02] p-3 space-y-2">
                                                                             <div className="flex items-center justify-between gap-2">
-                                                                                <span className="text-[9px] font-black text-white truncate flex-1">{lst.title}</span>
+                                                                                <span className="text-sm font-black text-white truncate flex-1">{lst.title}</span>
                                                                                 <div className="flex items-center gap-1 shrink-0">
-                                                                                    <span className="text-[7px] text-neutral-700">{new Date(lst.generatedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}</span>
+                                                                                    <span className="text-sm text-neutral-700">{new Date(lst.generatedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}</span>
                                                                                     <button
                                                                                         onClick={() => setExpandedListingId(expandedListingId === lst._id ? null : lst._id)}
                                                                                         className="w-5 h-5 rounded-md bg-white/5 border border-white/10 text-neutral-500 hover:text-white flex items-center justify-center transition-all"
@@ -7360,55 +7334,38 @@ export function KdpFactoryApp() {
                                                             )}
 
                                                             {saved.length === 0 && !draft && !generatingListingNicheId && (
-                                                                <p className="text-[9px] text-neutral-700 text-center py-2">Sin listings guardados aún. Genera el primero.</p>
+                                                                <p className="text-sm text-neutral-700 text-center py-2">Sin listings guardados aún. Genera el primero.</p>
                                                             )}
                                                         </div>
                                                     );
                                                 })()}
 
-                                                {/* ─ Footer: generate action ─ */}
+                                                {/* ─ Footer ─ */}
                                                 <div className="flex items-center justify-between pt-1 border-t border-white/[0.05]">
-                                                    <div className="text-[9px] text-neutral-700 tabular-nums">
+                                                    <span className="text-sm text-neutral-700 tabular-nums">
                                                         {new Date(niche.createdAt).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
-                                                    </div>
+                                                    </span>
                                                     <div className="flex items-center gap-1.5">
-                                                        <button
-                                                            title="Pre-llenar formulario de catálogo"
-                                                            onClick={() => {
-                                                                setPromptTheme(niche.name);
-                                                                setPromptSpecs("");
-                                                                setPromptDetails("");
-                                                                setPromptParticulars("");
-                                                                const style = niche.styleCategory ?? "generic";
-                                                                const modelId = NICHE_STYLE_MODEL[style as NicheStyle] ?? NICHE_STYLE_MODEL["generic"];
-                                                                setSelectedModel(modelId);
-                                                                setCatalogFormName(niche.name);
-                                                                setCatalogProductType(niche.productType ?? "coloring-book");
-                                                                setShowCatalogAccordion(true);
-                                                                changeTab("creation");
-                                                                toast.success(`Formulario pre-cargado con "${niche.name}"`);
-                                                            }}
-                                                            className="flex items-center gap-1 px-2.5 h-8 rounded-xl bg-white/[0.04] border border-white/10 text-[9px] font-black text-neutral-500 hover:text-white hover:bg-white/8 transition-all">
-                                                            <Layers size={10} /> Form
-                                                        </button>
                                                         {linkedImgs > 0 && (
-                                                            <button
-                                                                onClick={() => void downloadNichePdfDirect(niche, linkedCats)}
+                                                            <button onClick={() => void downloadNichePdfDirect(niche, linkedCats)}
                                                                 disabled={directNichePdfId === niche._id}
-                                                                title={`PDF directo · ${linkedImgs} imágenes sin páginas en blanco`}
-                                                                className="flex items-center gap-1 px-2.5 h-8 rounded-xl bg-sky-500/10 border border-sky-500/20 text-[9px] font-black text-sky-400 hover:bg-sky-500/20 transition-all disabled:opacity-40">
-                                                                {directNichePdfId === niche._id ? <Loader2 size={10} className="animate-spin" /> : <Download size={10} />}
-                                                                PDF
+                                                                title={`PDF directo · ${linkedImgs} imágenes`}
+                                                                className="flex items-center gap-1 px-2.5 h-7 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sm font-black text-sky-400 hover:bg-sky-500/20 transition-all disabled:opacity-40">
+                                                                {directNichePdfId === niche._id ? <Loader2 size={9} className="animate-spin" /> : <Download size={9} />} PDF
                                                             </button>
                                                         )}
-                                                        <button
-                                                            onClick={() => setContentPanelNicheId(contentPanelNicheId === niche._id ? null : niche._id)}
-                                                            className={`flex items-center gap-1 px-2.5 h-8 rounded-xl border text-[9px] font-black transition-all ${contentPanelNicheId === niche._id ? "border-amber-500/40 bg-amber-500/15 text-amber-300" : "border-amber-500/20 bg-amber-500/8 text-amber-500 hover:bg-amber-500/15 hover:border-amber-500/35"}`}>
-                                                            <FileText size={10} />
-                                                            Contenido
-                                                            {(niche.listings?.length ?? 0) > 0 && (
-                                                                <span className="text-[7px] bg-amber-500/20 rounded-full px-1">{niche.listings!.length}</span>
-                                                            )}
+                                                        {(niche.listings?.length ?? 0) > 0 && (
+                                                            <button onClick={() => { changeTab("gelato"); }}
+                                                                title="Ver contenido SEO guardado"
+                                                                className="flex items-center gap-1 px-2.5 h-7 rounded-lg border border-amber-500/20 bg-amber-500/8 text-sm font-black text-amber-500 hover:bg-amber-500/15 transition-all">
+                                                                <FileText size={9} />
+                                                                <span className="bg-amber-500/20 rounded-full px-1 text-sm">{niche.listings!.length}</span>
+                                                            </button>
+                                                        )}
+                                                        <button onClick={() => { setNicheDetailId(niche._id); setNicheDetailTab("images"); }}
+                                                            title="Ver todo el nicho"
+                                                            className="flex items-center gap-1 px-2.5 h-7 rounded-lg border border-white/10 bg-white/[0.03] text-sm font-black text-neutral-500 hover:text-white hover:border-white/20 transition-all">
+                                                            <Eye size={9} /> Ver
                                                         </button>
                                                     </div>
                                                 </div>
@@ -7445,14 +7402,275 @@ export function KdpFactoryApp() {
         </div>
     );
 
+    // ══ CONTENIDO TAB ══════════════════════════════════════════════════════════
+    const renderContenido = () => {
+        const allListings = niches.flatMap(n =>
+            (n.listings ?? []).map(l => ({ ...l, nicheName: n.name, nicheId: n._id }))
+        ).sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
+
+        const nichesWithListings = niches.filter(n => (n.listings?.length ?? 0) > 0);
+
+        return (
+            <div className="grid lg:grid-cols-[420px_1fr] gap-6 items-start mt-12 pt-8 border-t border-white/[0.06]">
+                {/* ─ LEFT: Inline content generator ─ */}
+                <div className="lg:sticky lg:top-6 rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                    <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent" />
+                    <div className="p-6 space-y-5">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-amber-500/15 flex items-center justify-center">
+                                <Sparkles size={16} className="text-amber-400" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-black text-white">Generador de Contenido</h2>
+                                <p className="text-sm text-neutral-600">Metadatos KDP y Etsy con IA</p>
+                            </div>
+                        </div>
+
+                        {/* Type selector */}
+                        <div className="space-y-2">
+                            <button onClick={() => { setContentType("kdp-physical-book"); setContentResult(null); }}
+                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl border transition-all text-left ${contentType === "kdp-physical-book" ? "border-amber-500/40 bg-amber-500/[0.07]" : "border-white/8 bg-white/[0.02] hover:border-white/12"}`}>
+                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${contentType === "kdp-physical-book" ? "bg-amber-500/20" : "bg-white/5"}`}>
+                                    <BookOpen size={14} className={contentType === "kdp-physical-book" ? "text-amber-400" : "text-neutral-600"} />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className={`text-sm font-black leading-tight ${contentType === "kdp-physical-book" ? "text-amber-300" : "text-neutral-400"}`}>Libro físico KDP</p>
+                                    <p className="text-sm text-neutral-700 mt-0.5">Título · Subtítulo · Descripción HTML · 7 keywords</p>
+                                </div>
+                                {contentType === "kdp-physical-book" && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />}
+                            </button>
+                            <div className="flex gap-1.5 flex-wrap">
+                                {CONTENT_TYPES_SECONDARY.map(ct => (
+                                    <button key={ct.id} onClick={() => { setContentType(ct.id as any); setContentResult(null); }}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all ${contentType === ct.id ? "border-white/25 bg-white/10 text-white" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}>
+                                        {ct.icon}<span className="text-sm font-bold whitespace-nowrap">{ct.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Inputs */}
+                        {contentType === "kdp-physical-book" ? (
+                            <div className="space-y-3">
+                                <textarea value={contentNiche} onChange={e => setContentNiche(e.target.value)} rows={3}
+                                    placeholder="Describe tu libro: temática, género, público…&#10;ej: libro de colorear de mandalas zen para adultos"
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none leading-relaxed transition-all" />
+                                <div className="flex items-center gap-3">
+                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-600 shrink-0">Idioma</p>
+                                    <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl">
+                                        {(["en", "es"] as const).map(lang => (
+                                            <button key={lang} onClick={() => setContentLanguage(lang)}
+                                                className={`px-4 py-1 rounded-lg text-sm font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                                {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                <input value={contentNiche} onChange={e => setContentNiche(e.target.value)}
+                                    placeholder="Nicho / Tema — ej: zen mandalas, cats for beginners..."
+                                    onKeyDown={e => { if (e.key === "Enter") void generateContent(); }}
+                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 transition-all" />
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1.5">
+                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-500">Tipo</p>
+                                        <KdpSelect accent="amber" value={contentProductType} onChange={setContentProductType} options={CONTENT_PRODUCT_TYPES.map(pt => ({ value: pt, label: pt }))} />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-500">Idioma</p>
+                                        <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl h-[38px]">
+                                            {(["en", "es"] as const).map(lang => (
+                                                <button key={lang} onClick={() => setContentLanguage(lang)}
+                                                    className={`flex-1 rounded-lg text-sm font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                                    {lang === "en" ? "🇬🇧" : "🇪🇸"}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <textarea value={contentExtras} onChange={e => setContentExtras(e.target.value)} rows={2}
+                                    placeholder="Contexto adicional: estilo, audiencia, ocasión... (opcional)"
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none transition-all" />
+                            </div>
+                        )}
+
+                        {/* Generate */}
+                        <button onClick={() => void generateContent()} disabled={isGeneratingContent || !contentNiche.trim()}
+                            className="w-full h-11 rounded-xl text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500">
+                            {isGeneratingContent ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><Sparkles size={13} /> Generar con IA</>}
+                        </button>
+
+                        {/* Result */}
+                        {isGeneratingContent && (
+                            <div className="flex items-center justify-center py-8 gap-2">
+                                <Loader2 size={18} className="animate-spin text-amber-400" />
+                                <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Generando...</p>
+                            </div>
+                        )}
+                        {contentResult && !isGeneratingContent && contentType === "kdp-physical-book" && typeof contentResult === "object" && (
+                            <div className="space-y-2.5 border-t border-white/[0.05] pt-4">
+                                {contentResult.title && (
+                                    <div className="bg-amber-500/[0.04] border border-amber-500/15 rounded-2xl p-4 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-sm font-black uppercase tracking-widest text-amber-400/80">Título</p>
+                                            <button onClick={() => copyText(contentResult.title)} className="text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button>
+                                        </div>
+                                        <p className="text-[13px] font-black text-white leading-tight">{contentResult.title}</p>
+                                        {contentResult.subtitle && <p className="text-sm text-amber-200/60 leading-snug border-t border-amber-500/10 pt-2">{contentResult.subtitle}</p>}
+                                    </div>
+                                )}
+                                {contentResult.description && (
+                                    <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-sm font-black uppercase tracking-widest text-amber-400/80">Descripción</p>
+                                            <button onClick={() => copyText(typeof contentResult.description === "string" ? contentResult.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : contentResult.description)} className="text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button>
+                                        </div>
+                                        {typeof contentResult.description === "string" && /<[a-z]/i.test(contentResult.description)
+                                            ? <div className="text-sm text-neutral-300 leading-relaxed [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:space-y-1 [&_strong]:text-amber-300" dangerouslySetInnerHTML={{ __html: contentResult.description }} />
+                                            : <p className="text-sm text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
+                                        }
+                                    </div>
+                                )}
+                                {Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0 && (
+                                    <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-3 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-sm font-black uppercase tracking-widest text-amber-400/80">{contentResult.keywords.length} Keywords</p>
+                                            <button onClick={() => copyText(contentResult.keywords.join("\n"))} className="text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1">
+                                            {contentResult.keywords.map((k: string, i: number) => (
+                                                <button key={i} onClick={() => copyText(k)} className="text-sm px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 transition-colors">{k}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                {/* Save to niche */}
+                                <div className="border-t border-white/[0.05] pt-3 space-y-2">
+                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Vincular a nicho</p>
+                                    <div className="flex gap-1.5">
+                                        <select value={contentSaveNicheId} onChange={e => setContentSaveNicheId(e.target.value)}
+                                            className="flex-1 h-8 bg-black/40 border border-white/10 rounded-lg px-2 text-sm text-white outline-none focus:border-amber-500/40 transition-all appearance-none cursor-pointer">
+                                            <option value="">— Seleccionar nicho —</option>
+                                            {niches.map(n => <option key={n._id} value={n._id}>{n.name}{(n.listings?.length ?? 0) > 0 ? ` (${n.listings!.length})` : ""}</option>)}
+                                        </select>
+                                        <button onClick={() => void saveContentToNiche()} disabled={!contentSaveNicheId || savingContentListing}
+                                            className="h-8 px-3 rounded-lg bg-amber-500/15 border border-amber-500/30 text-sm font-black text-amber-400 hover:bg-amber-500/25 transition-all disabled:opacity-40 flex items-center gap-1">
+                                            {savingContentListing ? <Loader2 size={9} className="animate-spin" /> : <Save size={9} />} Guardar
+                                        </button>
+                                        {contentSaveNicheId && (niches.find(n => n._id === contentSaveNicheId)?.listings?.length ?? 0) > 0 && (
+                                            <button onClick={() => { setNicheDetailId(contentSaveNicheId); setNicheDetailTab("seo"); }}
+                                                title="Ver listings del nicho" className="h-8 w-8 rounded-lg bg-white/[0.04] border border-white/10 text-neutral-600 hover:text-white transition-all flex items-center justify-center">
+                                                <Eye size={11} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <button onClick={() => void generateContent()} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-sm font-black uppercase tracking-widest text-neutral-700 hover:text-neutral-400 transition-colors">
+                                    <Sparkles size={9} /> Regenerar
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* ─ RIGHT: Listings archive ─ */}
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h2 className="text-xl font-black text-white">Listings guardados</h2>
+                            <p className="text-sm text-neutral-600">{allListings.length} en total · {nichesWithListings.length} nichos</p>
+                        </div>
+                        {allListings.length > 0 && (
+                            <button onClick={() => { setNicheDetailId(null); }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 bg-white/[0.03] text-sm font-black text-neutral-500 hover:text-white transition-all">
+                                <Filter size={10} /> Filtrar
+                            </button>
+                        )}
+                    </div>
+
+                    {allListings.length === 0 ? (
+                        <div className="rounded-3xl border border-white/8 bg-white/[0.02] p-16 flex flex-col items-center gap-4 text-center">
+                            <FileText size={40} strokeWidth={1} className="text-neutral-700" />
+                            <div>
+                                <p className="text-sm font-black text-neutral-600">Sin listings guardados aún</p>
+                                <p className="text-sm text-neutral-700 mt-1">Genera contenido con el generador de la izquierda y vincúlalo a un nicho</p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-6">
+                            {nichesWithListings.map(n => (
+                                <div key={n._id} className="rounded-3xl border border-white/8 bg-white/[0.025] overflow-hidden">
+                                    <div className="h-px w-full bg-gradient-to-r from-amber-500/30 via-amber-400/10 to-transparent" />
+                                    {/* Niche header */}
+                                    <div className="px-5 py-4 flex items-center justify-between border-b border-white/[0.05]">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center">
+                                                <Target size={14} className="text-amber-400" />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-black text-white">{n.name}</p>
+                                                <p className="text-sm text-neutral-600">{n.listings!.length} listing{n.listings!.length !== 1 ? "s" : ""}</p>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => { setNicheDetailId(n._id); setNicheDetailTab("seo"); }}
+                                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-white/10 text-sm font-black text-neutral-600 hover:text-white hover:border-white/20 transition-all">
+                                            <Eye size={10} /> Ver nicho
+                                        </button>
+                                    </div>
+                                    {/* Listings */}
+                                    <div className="p-4 space-y-3">
+                                        {n.listings!.map((listing, i) => (
+                                            <div key={listing._id ?? i} className="rounded-2xl border border-white/[0.06] bg-black/20 p-4 space-y-2 group">
+                                                <div className="flex items-start gap-2">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-black text-white leading-tight">{listing.title}</p>
+                                                        {listing.subtitle && <p className="text-sm text-neutral-500 mt-0.5 leading-snug">{listing.subtitle}</p>}
+                                                    </div>
+                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                                                        <button onClick={() => { navigator.clipboard.writeText([listing.title, listing.subtitle, listing.description.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim(), listing.keywords.join(", ")].filter(Boolean).join("\n\n")); toast.success("Copiado"); }}
+                                                            className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Copy size={12} /></button>
+                                                        <button onClick={() => listing._id && void deleteNicheListing(n._id, listing._id)}
+                                                            disabled={deletingListingId === listing._id}
+                                                            className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all disabled:opacity-40">
+                                                            {deletingListingId === listing._id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                {listing.description && (
+                                                    <div className="text-sm text-neutral-500 leading-relaxed line-clamp-3 [&_strong]:text-amber-400/70"
+                                                        dangerouslySetInnerHTML={{ __html: listing.description }} />
+                                                )}
+                                                {listing.keywords.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1 pt-1">
+                                                        {listing.keywords.map((kw, j) => (
+                                                            <button key={j} onClick={() => copyText(kw)}
+                                                                className="text-sm px-1.5 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/15 text-indigo-400 hover:bg-indigo-500/20 transition-colors">{kw}</button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <p className="text-sm text-neutral-700">{new Date(listing.generatedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     return (
-        <div className="space-y-12 pb-24">
+        <div className="space-y-8 pb-24 px-0 sm:px-0">
             <AppTabNav
                 tabs={[
-                    { id: "insights", name: "Insights", icon: <Activity size={15} /> },
+                    { id: "studio", name: "Nichos", icon: <Target size={15} /> },
                     { id: "creation", name: "Imágenes", icon: <ImageIcon size={15} /> },
-                    { id: "studio", name: "Studio IA", icon: <Sparkles size={15} /> },
-                    { id: "gelato", name: "Factory", icon: <Store size={15} /> },
+                    { id: "gelato", name: "Factory", icon: <Package size={15} /> },
+                    { id: "insights", name: "Finanzas", icon: <Activity size={15} /> },
                 ] satisfies AppTab[]}
                 activeTab={activeTab}
                 onChange={(id) => changeTab(id as TabID)}
@@ -7460,11 +7678,11 @@ export function KdpFactoryApp() {
             />
 
             {/* Content Area Rendering Based on Active Tab */}
-            <div className="relative pt-6">
-                {activeTab === "insights" && renderInsights()}
-                {activeTab === "creation" && renderCreation()}
+            <div className="relative pt-2 sm:pt-6">
                 {activeTab === "studio" && renderStudio()}
-                {activeTab === "gelato" && renderGelato()}
+                {activeTab === "creation" && renderCreation()}
+                {activeTab === "insights" && renderInsights()}
+                {activeTab === "gelato" && <>{renderGelato()}{renderContenido()}</>}
             </div>
 
             {/* Image Preview Modal */}
@@ -7565,19 +7783,19 @@ export function KdpFactoryApp() {
                         >
                             <div className="flex items-center gap-3">
                                 {previewContext && (
-                                    <span className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">
+                                    <span className="text-sm font-black text-neutral-500 uppercase tracking-widest">
                                         {previewContext.index + 1} / {previewContext.urls.length}
                                     </span>
                                 )}
                                 {/* Magnifier toggle + zoom selector */}
                                 <div className="flex items-center gap-0.5 bg-black/60 backdrop-blur-md border border-white/10 rounded-2xl p-1">
                                     <button onClick={() => { setPreviewMagnifier(false); if (previewLensRef.current) previewLensRef.current.style.display = "none"; }}
-                                        className={`h-6 px-2.5 rounded-xl text-[9px] font-black transition-all ${!previewMagnifier ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                        className={`h-6 px-2.5 rounded-xl text-sm font-black transition-all ${!previewMagnifier ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
                                         Off
                                     </button>
                                     {([1.5, 2, 3, 4] as const).map(z => (
                                         <button key={z} onClick={() => { setPreviewZoom(z); setPreviewMagnifier(true); }}
-                                            className={`h-6 px-2.5 rounded-xl text-[9px] font-black transition-all ${previewMagnifier && previewZoom === z ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                            className={`h-6 px-2.5 rounded-xl text-sm font-black transition-all ${previewMagnifier && previewZoom === z ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
                                             {z}×
                                         </button>
                                     ))}
@@ -7776,13 +7994,13 @@ export function KdpFactoryApp() {
                             </div>
 
                             <div className="p-5 flex flex-col gap-4">
-                                <p className="text-[11px] text-neutral-400 leading-relaxed">
+                                <p className="text-sm text-neutral-400 leading-relaxed">
                                     Divide el libro en <span className="text-white font-bold">{chunks.length}</span> PDFs con páginas pares y página de propietario en cada uno.
                                 </p>
 
                                 {/* Parts selector */}
                                 <div className="flex items-center gap-3">
-                                    <span className="text-[11px] text-neutral-500 w-20 shrink-0">Nº de partes</span>
+                                    <span className="text-sm text-neutral-500 w-20 shrink-0">Nº de partes</span>
                                     <div className="flex items-center gap-2">
                                         <button onClick={() => setSplitParts(p => Math.max(2, p - 1))}
                                             className="w-7 h-7 rounded-lg bg-white/8 hover:bg-white/15 text-neutral-300 flex items-center justify-center transition-all text-lg leading-none">−</button>
@@ -7790,7 +8008,7 @@ export function KdpFactoryApp() {
                                         <button onClick={() => setSplitParts(p => Math.min(20, p + 1))}
                                             className="w-7 h-7 rounded-lg bg-white/8 hover:bg-white/15 text-neutral-300 flex items-center justify-center transition-all text-lg leading-none">+</button>
                                     </div>
-                                    <span className="text-[10px] text-neutral-600">{n} páginas en total</span>
+                                    <span className="text-sm text-neutral-600">{n} páginas en total</span>
                                 </div>
 
                                 {/* Preview of chunks */}
@@ -7801,9 +8019,9 @@ export function KdpFactoryApp() {
                                         return (
                                             <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.06]">
                                                 <BookOpen size={11} className="text-amber-400 shrink-0" />
-                                                <span className="text-[11px] text-neutral-300 flex-1">{bookFileName}-parte-{i + 1}.pdf</span>
-                                                <span className="text-[10px] font-mono text-neutral-500">{total}p</span>
-                                                <span className="text-[9px] text-neutral-600">{chunk.length} imgs</span>
+                                                <span className="text-sm text-neutral-300 flex-1">{bookFileName}-parte-{i + 1}.pdf</span>
+                                                <span className="text-sm font-mono text-neutral-500">{total}p</span>
+                                                <span className="text-sm text-neutral-600">{chunk.length} imgs</span>
                                             </div>
                                         );
                                     })}
@@ -7813,13 +8031,13 @@ export function KdpFactoryApp() {
                                 {splitProgress && (
                                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
                                         <Loader2 size={12} className="animate-spin text-amber-400 shrink-0" />
-                                        <span className="text-[11px] text-amber-300">Generando parte {splitProgress.current} de {splitProgress.total}…</span>
+                                        <span className="text-sm text-amber-300">Generando parte {splitProgress.current} de {splitProgress.total}…</span>
                                     </div>
                                 )}
 
                                 {/* Download button */}
                                 <button onClick={() => void handleDownloadAll()} disabled={!!splitProgress || chunks.length === 0}
-                                    className="w-full h-10 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all">
+                                    className="w-full h-10 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black font-black text-sm uppercase tracking-widest flex items-center justify-center gap-2 transition-all">
                                     {splitProgress ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
                                     {splitProgress ? `Parte ${splitProgress.current}/${splitProgress.total}…` : `Descargar ${chunks.length} PDFs`}
                                 </button>
@@ -7843,8 +8061,8 @@ export function KdpFactoryApp() {
                                 <ImageIcon size={15} className="text-fuchsia-400" />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Cover Factory</p>
-                                <p className="text-[10px] text-neutral-600">1600×2560px · Tall-format para Amazon KDP</p>
+                                <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Cover Factory</p>
+                                <p className="text-sm text-neutral-600">1600×2560px · Tall-format para Amazon KDP</p>
                             </div>
                             <button onClick={() => setShowCoverModal(false)}
                                 className="w-9 h-9 rounded-xl bg-white/5 text-neutral-400 hover:bg-rose-500 hover:text-white transition-all border border-white/10 shrink-0 flex items-center justify-center">
@@ -7855,7 +8073,7 @@ export function KdpFactoryApp() {
                         <div className="shrink-0 border-b border-white/6 px-5 flex gap-1 pt-3 pb-0">
                             {([["front", "Portada"], ["back", "Contraportada"]] as const).map(([id, label]) => (
                                 <button key={id} onClick={() => setCoverModalTab(id)}
-                                    className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-t-xl transition-all border-b-2 ${coverModalTab === id ? "text-fuchsia-300 border-fuchsia-500/60 bg-fuchsia-500/[0.06]" : "text-neutral-600 border-transparent hover:text-neutral-400"}`}>
+                                    className={`px-4 py-2 text-sm font-black uppercase tracking-widest rounded-t-xl transition-all border-b-2 ${coverModalTab === id ? "text-fuchsia-300 border-fuchsia-500/60 bg-fuchsia-500/[0.06]" : "text-neutral-600 border-transparent hover:text-neutral-400"}`}>
                                     {label}
                                     {id === "front" && generatedCoverUrl && <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-fuchsia-400 inline-block" />}
                                     {id === "back" && generatedBackCoverUrl && <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-violet-400 inline-block" />}
@@ -7867,7 +8085,7 @@ export function KdpFactoryApp() {
                             {/* ── Niche picker ── */}
                             {niches.filter(n => n.status !== "archived").length > 0 && (
                                 <div className="space-y-2">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 flex items-center gap-1.5">
+                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-600 flex items-center gap-1.5">
                                         <Target size={9} /> Cargar desde nicho
                                     </p>
                                     <div className="flex flex-wrap gap-1.5">
@@ -7898,7 +8116,7 @@ export function KdpFactoryApp() {
                                                         if (niche.description) setCoverDescription(niche.description);
                                                         toast.success(`Campos cargados desde "${niche.name}"`);
                                                     }}
-                                                    className={`flex items-center gap-1.5 h-6 px-2.5 rounded-lg border text-[9px] font-black transition-all ${
+                                                    className={`flex items-center gap-1.5 h-6 px-2.5 rounded-lg border text-sm font-black transition-all ${
                                                         isSelected
                                                             ? "border-fuchsia-500/50 bg-fuchsia-500/20 text-fuchsia-300"
                                                             : niche.phase === "published"
@@ -7914,7 +8132,7 @@ export function KdpFactoryApp() {
                                         })}
                                     </div>
                                     {selectedCoverNicheId && (
-                                        <p className="text-[8px] text-neutral-700 italic">
+                                        <p className="text-sm text-neutral-700 italic">
                                             Campos auto-rellenados · puedes editarlos libremente antes de generar
                                         </p>
                                     )}
@@ -7924,26 +8142,26 @@ export function KdpFactoryApp() {
                             {/* ── Shared fields (always visible) ── */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="space-y-1">
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Título <span className="text-fuchsia-500">*</span></label>
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Título <span className="text-fuchsia-500">*</span></label>
                                     <input type="text" value={coverTitle} onChange={e => setCoverTitle(e.target.value)} placeholder="Ej: Mandala Zen Coloring Book"
-                                        className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                                        className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Subtítulo</label>
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Subtítulo</label>
                                     <input type="text" value={coverSubtitle} onChange={e => setCoverSubtitle(e.target.value)} placeholder="Ej: 50 Relaxing Designs for Adults"
-                                        className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                                        className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
                                 </div>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="space-y-1">
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Estilo visual</label>
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Estilo visual</label>
                                     <input type="text" value={coverStyle} onChange={e => setCoverStyle(e.target.value)} placeholder="Ej: vibrant illustration, fantasy"
-                                        className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                                        className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Modelo</label>
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Modelo</label>
                                     <select value={coverModelId} onChange={e => setCoverModelId(e.target.value)}
-                                        className="w-full h-9 px-2.5 bg-white/[0.04] border border-white/10 rounded-xl text-[10px] text-white focus:outline-none focus:border-fuchsia-500/40 [color-scheme:dark]">
+                                        className="w-full h-9 px-2.5 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:border-fuchsia-500/40 [color-scheme:dark]">
                                         {AI_MODELS.filter(m => ["Pollinations", "fal.ai", "Ideogram", "Google"].includes(m.provider)).map(m => (
                                             <option key={m.id} value={m.id}>{m.name} · {m.provider}</option>
                                         ))}
@@ -7951,16 +8169,16 @@ export function KdpFactoryApp() {
                                 </div>
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Paleta de colores</label>
+                                <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Paleta de colores</label>
                                 <div className="flex flex-wrap gap-1.5">
                                     {["deep blue and gold", "pastel pink and mint", "dark forest green", "warm sunset orange", "purple and silver"].map(p => (
                                         <button key={p} onClick={() => setCoverColorTheme(p)}
-                                            className={`px-2 py-1 rounded-lg border text-[8px] font-black transition-all ${coverColorTheme === p ? "border-fuchsia-500/40 bg-fuchsia-500/15 text-fuchsia-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-400"}`}>
+                                            className={`px-2 py-1 rounded-lg border text-sm font-black transition-all ${coverColorTheme === p ? "border-fuchsia-500/40 bg-fuchsia-500/15 text-fuchsia-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-400"}`}>
                                             {p}
                                         </button>
                                     ))}
                                     <input type="text" value={coverColorTheme} onChange={e => setCoverColorTheme(e.target.value)}
-                                        className="flex-1 min-w-[90px] h-7 px-2 bg-white/[0.04] border border-white/10 rounded-lg text-[9px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" placeholder="tema libre..." />
+                                        className="flex-1 min-w-[90px] h-7 px-2 bg-white/[0.04] border border-white/10 rounded-lg text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" placeholder="tema libre..." />
                                 </div>
                             </div>
 
@@ -7970,7 +8188,7 @@ export function KdpFactoryApp() {
                             {coverModalTab === "front" ? (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                                     <button onClick={() => void generateCover()} disabled={isBuildingCover || !coverTitle.trim()}
-                                        className="h-10 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-95">
+                                        className="h-10 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-95">
                                         {isBuildingCover ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><ImageIcon size={13} /> Generar Portada</>}
                                     </button>
                                     <div className="flex items-start justify-center">
@@ -7980,14 +8198,14 @@ export function KdpFactoryApp() {
                                                     <img src={generatedCoverUrl} alt="Portada KDP" className="w-full object-cover" style={{ aspectRatio: "1600/2560" }} />
                                                     <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
                                                 </div>
-                                                <p className="text-[8px] text-neutral-700 text-center font-mono">1600×2560px · front</p>
+                                                <p className="text-sm text-neutral-700 text-center font-mono">1600×2560px · front</p>
                                                 <div className="flex gap-1.5 flex-wrap justify-center">
                                                     <a href={generatedCoverUrl} download={`portada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
-                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-[9px] font-black uppercase text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all">
+                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-sm font-black uppercase text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all">
                                                         <Download size={9} /> DL
                                                     </a>
                                                     <button onClick={() => void generateCover()} disabled={isBuildingCover}
-                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-white/5 border border-white/10 text-[9px] font-black text-neutral-500 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40">
+                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-white/5 border border-white/10 text-sm font-black text-neutral-500 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40">
                                                         <RefreshCw size={9} /> Regen.
                                                     </button>
                                                     <button onClick={() => setGeneratedCoverUrl(null)}
@@ -7999,9 +8217,9 @@ export function KdpFactoryApp() {
                                         ) : (
                                             <div className="w-full flex flex-col items-center justify-center gap-2 py-8 border border-dashed border-fuchsia-500/15 rounded-2xl bg-fuchsia-500/[0.02]">
                                                 {isBuildingCover ? (
-                                                    <><Loader2 size={24} className="text-fuchsia-500/50 animate-spin" /><p className="text-[9px] text-neutral-600">Generando…</p></>
+                                                    <><Loader2 size={24} className="text-fuchsia-500/50 animate-spin" /><p className="text-sm text-neutral-600">Generando…</p></>
                                                 ) : (
-                                                    <><div className="w-12 h-18 rounded-xl border-2 border-dashed border-fuchsia-500/20 flex items-center justify-center" style={{ height: 72 }}><ImageIcon size={16} className="text-fuchsia-500/20" /></div><p className="text-[9px] text-neutral-700">Portada · 1600×2560</p></>
+                                                    <><div className="w-12 h-18 rounded-xl border-2 border-dashed border-fuchsia-500/20 flex items-center justify-center" style={{ height: 72 }}><ImageIcon size={16} className="text-fuchsia-500/20" /></div><p className="text-sm text-neutral-700">Portada · 1600×2560</p></>
                                                 )}
                                             </div>
                                         )}
@@ -8012,19 +8230,19 @@ export function KdpFactoryApp() {
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         <div className="space-y-3">
                                             <div className="space-y-1">
-                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Autor <span className="text-neutral-700">(opcional)</span></label>
+                                                <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Autor <span className="text-neutral-700">(opcional)</span></label>
                                                 <input type="text" value={coverAuthor} onChange={e => setCoverAuthor(e.target.value)} placeholder="Ej: Editorial Zen Studio"
-                                                    className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40" />
+                                                    className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40" />
                                             </div>
                                             <div className="space-y-1">
-                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Descripción / Blurb</label>
+                                                <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Descripción / Blurb</label>
                                                 <textarea value={coverDescription} onChange={e => setCoverDescription(e.target.value)}
                                                     placeholder="Texto descriptivo que aparecerá en la contraportada..."
                                                     rows={4}
-                                                    className="w-full px-3 py-2 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none leading-relaxed" />
+                                                    className="w-full px-3 py-2 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none leading-relaxed" />
                                             </div>
                                             <button onClick={() => void generateBackCover()} disabled={isBuildingBackCover || !coverTitle.trim()}
-                                                className="w-full h-10 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(139,92,246,0.3)] active:scale-95">
+                                                className="w-full h-10 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(139,92,246,0.3)] active:scale-95">
                                                 {isBuildingBackCover ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><ImageIcon size={13} /> Generar Contraportada</>}
                                             </button>
                                         </div>
@@ -8047,14 +8265,14 @@ export function KdpFactoryApp() {
                                                             </div>
                                                         )}
                                                     </div>
-                                                    <p className="text-[8px] text-neutral-700 text-center font-mono">1600×2560px · back</p>
+                                                    <p className="text-sm text-neutral-700 text-center font-mono">1600×2560px · back</p>
                                                     <div className="flex gap-1.5 flex-wrap justify-center">
                                                         <a href={generatedBackCoverUrl} download={`contraportada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
-                                                            className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-violet-500/15 border border-violet-500/30 text-[9px] font-black uppercase text-violet-300 hover:bg-violet-500/25 transition-all">
+                                                            className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-violet-500/15 border border-violet-500/30 text-sm font-black uppercase text-violet-300 hover:bg-violet-500/25 transition-all">
                                                             <Download size={9} /> DL
                                                         </a>
                                                         <button onClick={() => void generateBackCover()} disabled={isBuildingBackCover}
-                                                            className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-white/5 border border-white/10 text-[9px] font-black text-neutral-500 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40">
+                                                            className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-white/5 border border-white/10 text-sm font-black text-neutral-500 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40">
                                                             <RefreshCw size={9} /> Regen.
                                                         </button>
                                                         <button onClick={() => setGeneratedBackCoverUrl(null)}
@@ -8066,9 +8284,9 @@ export function KdpFactoryApp() {
                                             ) : (
                                                 <div className="w-full flex flex-col items-center justify-center gap-2 py-8 border border-dashed border-violet-500/15 rounded-2xl bg-violet-500/[0.02]">
                                                     {isBuildingBackCover ? (
-                                                        <><Loader2 size={24} className="text-violet-500/50 animate-spin" /><p className="text-[9px] text-neutral-600">Generando…</p></>
+                                                        <><Loader2 size={24} className="text-violet-500/50 animate-spin" /><p className="text-sm text-neutral-600">Generando…</p></>
                                                     ) : (
-                                                        <><div className="w-12 rounded-xl border-2 border-dashed border-violet-500/20 flex items-center justify-center" style={{ height: 72 }}><AlignLeft size={16} className="text-violet-500/20" /></div><p className="text-[9px] text-neutral-700">Contraportada · 1600×2560</p></>
+                                                        <><div className="w-12 rounded-xl border-2 border-dashed border-violet-500/20 flex items-center justify-center" style={{ height: 72 }}><AlignLeft size={16} className="text-violet-500/20" /></div><p className="text-sm text-neutral-700">Contraportada · 1600×2560</p></>
                                                     )}
                                                 </div>
                                             )}
@@ -8095,16 +8313,16 @@ export function KdpFactoryApp() {
                         <div className="shrink-0 border-b border-white/8">
                             <div className="px-3 sm:px-4 pt-3 sm:pt-4 pb-3 flex items-center gap-2">
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-neutral-400">Editor · PDF</p>
-                                    <p className="text-[10px] sm:text-[11px] text-neutral-600">{bookPages.length} pág{bookPages.length !== 1 ? "s" : "."}</p>
+                                    <p className="text-sm sm:text-sm font-black uppercase tracking-widest text-neutral-400">Editor · PDF</p>
+                                    <p className="text-sm sm:text-sm text-neutral-600">{bookPages.length} pág{bookPages.length !== 1 ? "s" : "."}</p>
                                 </div>
                                 {/* Filename input — desktop */}
                                 <input value={bookFileName} onChange={e => setBookFileName(e.target.value)}
-                                    className="hidden sm:block w-28 h-9 rounded-xl bg-white/5 border border-white/10 px-2.5 text-[11px] text-white outline-none focus:border-amber-500/40 shrink-0"
+                                    className="hidden sm:block w-28 h-9 rounded-xl bg-white/5 border border-white/10 px-2.5 text-sm text-white outline-none focus:border-amber-500/40 shrink-0"
                                     placeholder="libro-kdp" />
                                 {/* Save */}
                                 <button onClick={() => void saveBookDraft()} disabled={isSavingDraft || bookPages.length === 0}
-                                    className="w-9 h-9 sm:w-auto sm:px-3 rounded-xl bg-white/5 border border-white/10 text-neutral-400 hover:text-white hover:border-white/20 shrink-0 flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-[11px] font-black uppercase"
+                                    className="w-9 h-9 sm:w-auto sm:px-3 rounded-xl bg-white/5 border border-white/10 text-neutral-400 hover:text-white hover:border-white/20 shrink-0 flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-sm font-black uppercase"
                                     title="Guardar borrador">
                                     {isSavingDraft ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                                     <span className="hidden sm:inline">Guardar</span>
@@ -8123,27 +8341,27 @@ export function KdpFactoryApp() {
                                         }
                                     }}
                                     title={includeOwnerPage ? "Primera página: propietario + copyright (activa)" : "Primera página: desactivada"}
-                                    className={`w-9 h-9 rounded-xl border shrink-0 flex items-center justify-center transition-all text-[9px] ${includeOwnerPage ? "bg-amber-500/15 border-amber-500/30 text-amber-400" : "bg-white/5 border-white/10 text-neutral-600 hover:text-neutral-400"}`}
+                                    className={`w-9 h-9 rounded-xl border shrink-0 flex items-center justify-center transition-all text-sm ${includeOwnerPage ? "bg-amber-500/15 border-amber-500/30 text-amber-400" : "bg-white/5 border-white/10 text-neutral-600 hover:text-neutral-400"}`}
                                 >
                                     <BookOpen size={14} />
                                 </button>
                                 {/* Subir a Gelato */}
                                 <button onClick={() => setShowGelatoUpload(true)} disabled={bookPages.length === 0}
-                                    className="h-9 px-3 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 shrink-0 flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 text-[10px] font-black uppercase"
+                                    className="h-9 px-3 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 shrink-0 flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 text-sm font-black uppercase"
                                     title="Subir a Gelato">
                                     <Package size={13} />
                                     <span className="hidden sm:inline">Gelato</span>
                                 </button>
                                 {/* Split into X books */}
                                 <button onClick={() => setShowSplitModal(true)} disabled={bookPages.length === 0}
-                                    className="h-9 px-3 rounded-xl bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/30 text-violet-300 shrink-0 flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 text-[10px] font-black uppercase"
+                                    className="h-9 px-3 rounded-xl bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/30 text-violet-300 shrink-0 flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 text-sm font-black uppercase"
                                     title="Dividir en varios PDFs">
                                     <Layers size={13} />
                                     <span className="hidden sm:inline">Dividir</span>
                                 </button>
                                 {/* Generate PDF — always shows text on mobile */}
                                 <button onClick={() => void buildBookPdf()} disabled={isBuildingPdf || bookPages.length === 0}
-                                    className="h-9 px-3 sm:px-4 rounded-xl bg-amber-500 text-black hover:bg-amber-400 shrink-0 flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-[10px] sm:text-[11px] font-black uppercase"
+                                    className="h-9 px-3 sm:px-4 rounded-xl bg-amber-500 text-black hover:bg-amber-400 shrink-0 flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-sm sm:text-sm font-black uppercase"
                                     title="Generar PDF">
                                     {isBuildingPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
                                     <span>PDF</span>
@@ -8157,9 +8375,9 @@ export function KdpFactoryApp() {
                             {/* Filename + page count — mobile only */}
                             <div className="sm:hidden px-3 pb-2.5 flex items-center gap-2">
                                 <input value={bookFileName} onChange={e => setBookFileName(e.target.value)}
-                                    className="flex-1 h-9 rounded-xl bg-white/5 border border-white/10 px-3 text-[12px] text-white outline-none focus:border-amber-500/40"
+                                    className="flex-1 h-9 rounded-xl bg-white/5 border border-white/10 px-3 text-sm text-white outline-none focus:border-amber-500/40"
                                     placeholder="Nombre del libro..." />
-                                <span className="text-[10px] font-mono text-neutral-600 shrink-0">{bookPages.length}p</span>
+                                <span className="text-sm font-mono text-neutral-600 shrink-0">{bookPages.length}p</span>
                             </div>
                         </div>
 
@@ -8167,7 +8385,7 @@ export function KdpFactoryApp() {
                         <div className="shrink-0 flex border-b border-white/8 bg-black/20">
                             {([["editor", "Editar", Pencil], ["preview", "Vista previa", FileText]] as [string, string, React.ElementType][]).map(([tab, label, Icon]) => (
                                 <button key={tab} onClick={() => setBookEditorTab(tab as "editor" | "preview")}
-                                    className={`flex-1 flex items-center justify-center gap-1.5 h-12 text-[11px] font-black uppercase tracking-widest border-b-2 transition-all ${bookEditorTab === tab ? "border-amber-500 text-amber-400 bg-amber-500/5" : "border-transparent text-neutral-600 hover:text-neutral-400"}`}>
+                                    className={`flex-1 flex items-center justify-center gap-1.5 h-12 text-sm font-black uppercase tracking-widest border-b-2 transition-all ${bookEditorTab === tab ? "border-amber-500 text-amber-400 bg-amber-500/5" : "border-transparent text-neutral-600 hover:text-neutral-400"}`}>
                                     <Icon size={13} />{label}
                                 </button>
                             ))}
@@ -8183,7 +8401,7 @@ export function KdpFactoryApp() {
                                         {/* Scrollable pages strip */}
                                         <div className="flex-1 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar min-w-0">
                                             {/* Page counter badge — always visible */}
-                                            <div className={`shrink-0 h-7 px-2.5 rounded-lg border flex items-center gap-1 text-[9px] font-black tabular-nums ${bookPages.length === 0 ? "bg-white/4 border-white/8 text-neutral-600" : bookPages.length < 20 ? "bg-amber-500/10 border-amber-500/25 text-amber-400" : "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"}`}>
+                                            <div className={`shrink-0 h-7 px-2.5 rounded-lg border flex items-center gap-1 text-sm font-black tabular-nums ${bookPages.length === 0 ? "bg-white/4 border-white/8 text-neutral-600" : bookPages.length < 20 ? "bg-amber-500/10 border-amber-500/25 text-amber-400" : "bg-emerald-500/10 border-emerald-500/25 text-emerald-400"}`}>
                                                 <FileText size={9} />
                                                 {bookPages.length} pág{bookPages.length !== 1 ? "s" : "."}
                                                 {bookPages.length > 0 && bookPages.length < 20 && <span className="text-amber-500/60 font-normal">· mín 20</span>}
@@ -8235,7 +8453,7 @@ export function KdpFactoryApp() {
                                                     </div>
                                                     {/* Page number */}
                                                     <div className="absolute bottom-0 inset-x-0 h-5 bg-gradient-to-t from-black/80 to-transparent flex items-end px-1 pb-0.5">
-                                                        <span className="text-[8px] font-mono text-white/50">{idx + 1}</span>
+                                                        <span className="text-sm font-mono text-white/50">{idx + 1}</span>
                                                     </div>
                                                     {/* Type badge */}
                                                     {page.type === "text" && <div className="absolute top-1 left-1 w-3 h-3 rounded bg-blue-500/80 flex items-center justify-center"><Type size={6} className="text-white" /></div>}
@@ -8251,7 +8469,7 @@ export function KdpFactoryApp() {
                                                 </div>
                                             ))}
                                             {bookPages.length === 0 && (
-                                                <p className="text-[11px] text-neutral-700 shrink-0 italic px-1">Todavía no hay páginas</p>
+                                                <p className="text-sm text-neutral-700 shrink-0 italic px-1">Todavía no hay páginas</p>
                                             )}
                                         </div>
                                         {/* Single add-page button */}
@@ -8259,7 +8477,7 @@ export function KdpFactoryApp() {
                                             onClick={() => addBlankPage("image")}
                                             className="shrink-0 flex flex-col items-center justify-center gap-1 w-12 h-[68px] rounded-xl border-2 border-dashed border-amber-500/40 text-amber-500 hover:bg-amber-500/10 hover:border-amber-500/70 transition-all">
                                             <Plus size={16} />
-                                            <span className="text-[8px] font-black uppercase">Nueva</span>
+                                            <span className="text-sm font-black uppercase">Nueva</span>
                                         </button>
                                     </div>
                                 </div>
@@ -8281,7 +8499,7 @@ export function KdpFactoryApp() {
                                                 {/* ── Page nav + actions ── */}
                                                 <div className="flex items-center gap-1.5 pt-1">
                                                     {/* Nav */}
-                                                    <span className="text-[11px] font-mono text-neutral-500 shrink-0 mr-1">
+                                                    <span className="text-sm font-mono text-neutral-500 shrink-0 mr-1">
                                                         {pageIdx + 1}<span className="text-neutral-700">/{bookPages.length}</span>
                                                     </span>
                                                     <button onClick={() => pageIdx > 0 && setSelectedPageId(bookPages[pageIdx - 1].id)}
@@ -8302,13 +8520,13 @@ export function KdpFactoryApp() {
                                                     )}
                                                     {selectedPage.type !== "owner" && (
                                                         <button onClick={() => deletePage(selectedPage.id)}
-                                                            className="ml-auto flex items-center gap-1.5 h-9 px-3 sm:px-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all text-[11px] font-black">
+                                                            className="ml-auto flex items-center gap-1.5 h-9 px-3 sm:px-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all text-sm font-black">
                                                             <Trash2 size={13} /><span className="hidden sm:inline">Eliminar</span>
                                                         </button>
                                                     )}
                                                     {selectedPage.type === "owner" && (
                                                         <button onClick={() => { setIncludeOwnerPage(false); deletePage(selectedPage.id); }}
-                                                            className="ml-auto flex items-center gap-1.5 h-9 px-3 sm:px-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all text-[11px] font-black">
+                                                            className="ml-auto flex items-center gap-1.5 h-9 px-3 sm:px-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all text-sm font-black">
                                                             <Trash2 size={13} /><span className="hidden sm:inline">Quitar</span>
                                                         </button>
                                                     )}
@@ -8320,30 +8538,30 @@ export function KdpFactoryApp() {
                                                         <div className="flex items-center gap-2.5">
                                                             <BookOpen size={16} className="text-amber-400 shrink-0" />
                                                             <div>
-                                                                <p className="text-xs font-bold text-amber-300">Página de propietario + colores</p>
-                                                                <p className="text-[10px] text-neutral-500">Generada automáticamente al crear el PDF</p>
+                                                                <p className="text-sm font-bold text-amber-300">Página de propietario + colores</p>
+                                                                <p className="text-sm text-neutral-500">Generada automáticamente al crear el PDF</p>
                                                             </div>
                                                         </div>
-                                                        <div className="rounded-xl bg-black/30 p-3 space-y-1.5 text-[11px] text-neutral-400">
+                                                        <div className="rounded-xl bg-black/30 p-3 space-y-1.5 text-sm text-neutral-400">
                                                             <p><span className="text-neutral-300 font-medium">«Este libro pertenece a:»</span> + línea de nombre</p>
                                                             <p><span className="text-neutral-300 font-medium">6 cuadraditos</span> para probar colores</p>
                                                             <p><span className="text-neutral-300 font-medium">Copyright</span> © {new Date().getFullYear()} Emilio Jiménez</p>
                                                         </div>
-                                                        <p className="text-[10px] text-neutral-600">Esta página no es editable. Puedes quitarla con el botón «Quitar».</p>
+                                                        <p className="text-sm text-neutral-600">Esta página no es editable. Puedes quitarla con el botón «Quitar».</p>
                                                     </div>
                                                 )}
 
                                                 {/* ── Type selector (compact pill row) — hidden for owner pages ── */}
                                                 {selectedPage.type !== "owner" && (
                                                 <div className="flex items-center gap-2 p-1 rounded-2xl bg-white/[0.03] border border-white/8">
-                                                    <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600 pl-2 shrink-0">Tipo:</span>
+                                                    <span className="text-sm font-black uppercase tracking-widest text-neutral-600 pl-2 shrink-0">Tipo:</span>
                                                     {([
                                                         ["image", "Solo imagen", ImageIcon],
                                                         ["text", "Solo texto", Type],
                                                         ["both", "Img + Texto", Layers],
                                                     ] as [BookPage["type"], string, React.ElementType][]).map(([type, label, Icon]) => (
                                                         <button key={type} onClick={() => updatePageType(selectedPage.id, type)}
-                                                            className={`flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl border text-[10px] font-black transition-all
+                                                            className={`flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl border text-sm font-black transition-all
                                                                 ${selectedPage.type === type
                                                                     ? "border-amber-500/60 bg-amber-500/15 text-amber-400"
                                                                     : "border-transparent text-neutral-600 hover:text-neutral-300 hover:bg-white/5"}`}>
@@ -8359,18 +8577,18 @@ export function KdpFactoryApp() {
                                                 {needsImage && (
                                                     <div className="space-y-3">
                                                         <div className="flex items-center justify-between">
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Imagen</p>
+                                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Imagen</p>
                                                             {selectedPage.image && (
                                                                 <div className="flex items-center gap-2">
                                                                     <button onClick={() => setShowInlineImagePicker(v => !v)}
-                                                                        className={`flex items-center gap-1.5 h-7 px-3 rounded-lg border text-[10px] font-bold transition-all
+                                                                        className={`flex items-center gap-1.5 h-7 px-3 rounded-lg border text-sm font-bold transition-all
                                                                             ${showInlineImagePicker
                                                                                 ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
                                                                                 : "border-white/10 text-neutral-500 hover:text-white"}`}>
                                                                         <ImagePlus size={10} />{showInlineImagePicker ? "Cerrar" : "Cambiar"}
                                                                     </button>
                                                                     <button onClick={() => clearPageImage(selectedPage.id)}
-                                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-all text-[10px] font-bold">
+                                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-all text-sm font-bold">
                                                                         <X size={10} />
                                                                     </button>
                                                                 </div>
@@ -8400,16 +8618,16 @@ export function KdpFactoryApp() {
                                                             <div className="space-y-2 p-3 rounded-2xl bg-white/[0.03] border border-white/8">
                                                                 {/* Zoom */}
                                                                 <div className="flex items-center gap-3">
-                                                                    <span className="text-[9px] font-black uppercase text-neutral-600 shrink-0 w-10">Zoom</span>
+                                                                    <span className="text-sm font-black uppercase text-neutral-600 shrink-0 w-10">Zoom</span>
                                                                     <input type="range" min={0.5} max={3} step={0.05} value={selectedPage.image.scale}
                                                                         onChange={e => updatePageImageScale(selectedPage.id, Number(e.target.value))}
                                                                         className="flex-1 accent-amber-500 h-1.5" />
-                                                                    <span className="text-[10px] font-mono text-amber-400 shrink-0 w-9 text-right">{Math.round(selectedPage.image.scale * 100)}%</span>
+                                                                    <span className="text-sm font-mono text-amber-400 shrink-0 w-9 text-right">{Math.round(selectedPage.image.scale * 100)}%</span>
                                                                 </div>
                                                                 {/* Border / Marco */}
                                                                 <div className="flex flex-col gap-2">
                                                                     <div className="flex items-center gap-3">
-                                                                        <span className="text-[9px] font-black uppercase text-neutral-600 shrink-0 w-10">Marco</span>
+                                                                        <span className="text-sm font-black uppercase text-neutral-600 shrink-0 w-10">Marco</span>
                                                                         <label className="flex items-center gap-2 cursor-pointer select-none">
                                                                             <div className="relative">
                                                                                 <input type="checkbox"
@@ -8419,11 +8637,11 @@ export function KdpFactoryApp() {
                                                                                 <div className="w-9 h-5 rounded-full bg-white/10 peer-checked:bg-amber-500/80 transition-colors border border-white/10 peer-checked:border-amber-500/50" />
                                                                                 <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white/60 peer-checked:translate-x-4 peer-checked:bg-white transition-transform" />
                                                                             </div>
-                                                                            <span className="text-[10px] font-bold text-neutral-500">{selectedPage.image.border ? "Activo" : "Sin marco"}</span>
+                                                                            <span className="text-sm font-bold text-neutral-500">{selectedPage.image.border ? "Activo" : "Sin marco"}</span>
                                                                         </label>
                                                                         {selectedPage.image.border && (
                                                                             <label className="ml-auto flex items-center gap-1.5 cursor-pointer" title="Color del marco">
-                                                                                <span className="text-[9px] text-neutral-600 font-bold">Color</span>
+                                                                                <span className="text-sm text-neutral-600 font-bold">Color</span>
                                                                                 <span className="w-6 h-6 rounded-lg border border-white/20 shadow-inner" style={{ background: selectedPage.image.border.color }} />
                                                                                 <input type="color" value={selectedPage.image.border.color}
                                                                                     onChange={e => updatePageImageBorder(selectedPage.id, { ...selectedPage.image!.border!, color: e.target.value })}
@@ -8433,12 +8651,12 @@ export function KdpFactoryApp() {
                                                                     </div>
                                                                     {selectedPage.image.border && (
                                                                         <div className="flex items-center gap-3">
-                                                                            <span className="text-[9px] font-black uppercase text-neutral-600 shrink-0 w-10">Grosor</span>
+                                                                            <span className="text-sm font-black uppercase text-neutral-600 shrink-0 w-10">Grosor</span>
                                                                             <input type="range" min={1} max={20} step={1}
                                                                                 value={selectedPage.image.border.width}
                                                                                 onChange={e => updatePageImageBorder(selectedPage.id, { ...selectedPage.image!.border!, width: Number(e.target.value) })}
                                                                                 className="flex-1 accent-amber-500 h-1.5" />
-                                                                            <span className="text-[10px] font-mono text-amber-400 shrink-0 w-6 text-right">{selectedPage.image.border.width}px</span>
+                                                                            <span className="text-sm font-mono text-amber-400 shrink-0 w-6 text-right">{selectedPage.image.border.width}px</span>
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -8451,7 +8669,7 @@ export function KdpFactoryApp() {
                                                                 {allImgSources.length === 0 ? (
                                                                     <div className="flex flex-col items-center gap-3 py-10 rounded-2xl bg-white/[0.02] border border-white/8 text-center">
                                                                         <ImageIcon size={28} strokeWidth={1.2} className="text-neutral-700" />
-                                                                        <p className="text-[11px] font-bold text-neutral-600">Sin imágenes disponibles.<br />Genera algunas en el Studio primero.</p>
+                                                                        <p className="text-sm font-bold text-neutral-600">Sin imágenes disponibles.<br />Genera algunas en el Studio primero.</p>
                                                                     </div>
                                                                 ) : (
                                                                     <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-56 overflow-y-auto rounded-2xl bg-white/[0.02] border border-white/8 p-2">
@@ -8499,7 +8717,7 @@ export function KdpFactoryApp() {
                                                             : "Helvetica, Arial, sans-serif";
                                                     return (
                                                         <div className="space-y-3">
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Texto</p>
+                                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Texto</p>
 
                                                             {/* Textarea */}
                                                             <textarea
@@ -8532,7 +8750,7 @@ export function KdpFactoryApp() {
                                                                         <input type="color" value={selectedPage.text.color} onChange={e => updatePageText(selectedPage.id, { color: e.target.value })} className="sr-only" />
                                                                     </label>
                                                                     <div className="flex items-center gap-1.5 ml-auto">
-                                                                        <span className="text-[9px] font-black uppercase text-neutral-600 shrink-0">pt</span>
+                                                                        <span className="text-sm font-black uppercase text-neutral-600 shrink-0">pt</span>
                                                                         <input type="number" min={6} max={200} value={selectedPage.text.fontSize}
                                                                             onChange={e => updatePageText(selectedPage.id, { fontSize: Math.max(6, Math.min(200, Number(e.target.value) || 14)) })}
                                                                             className="w-14 h-9 rounded-xl bg-white/5 border border-white/10 text-center text-[13px] font-mono text-amber-400 outline-none focus:border-amber-500/40" />
@@ -8549,7 +8767,7 @@ export function KdpFactoryApp() {
                                                                     {([["helvetica", "Helvetica", "Helvetica, Arial, sans-serif"], ["times", "Times New Roman", "Georgia, serif"], ["courier", "Courier", "'Courier New', monospace"]] as [PageTextStyle["fontFamily"], string, string][]).map(([ff, lbl, cssFf]) => (
                                                                         <button key={ff} type="button" onClick={() => updatePageText(selectedPage.id, { fontFamily: ff })}
                                                                             style={{ fontFamily: cssFf }}
-                                                                            className={`flex-1 h-9 rounded-xl border text-[12px] transition-all truncate px-1
+                                                                            className={`flex-1 h-9 rounded-xl border text-sm transition-all truncate px-1
                                                                                 ${selectedPage.text.fontFamily === ff
                                                                                     ? "bg-amber-500/20 border-amber-500/30 text-amber-300"
                                                                                     : "border-white/10 bg-white/[0.02] text-neutral-400 hover:border-white/20 hover:text-white"}`}>{lbl}</button>
@@ -8560,8 +8778,8 @@ export function KdpFactoryApp() {
                                                             {/* ── A4 Live preview ── */}
                                                             <div className="space-y-1.5">
                                                                 <div className="flex items-center justify-between">
-                                                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Vista previa de página</p>
-                                                                    <span className="text-[9px] text-neutral-600 font-mono">{selectedPage.text.fontSize}pt · {vAlign === "top" ? "Arriba" : vAlign === "middle" ? "Centro" : "Abajo"}</span>
+                                                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Vista previa de página</p>
+                                                                    <span className="text-sm text-neutral-600 font-mono">{selectedPage.text.fontSize}pt · {vAlign === "top" ? "Arriba" : vAlign === "middle" ? "Centro" : "Abajo"}</span>
                                                                 </div>
 
                                                                 {/* Page mock */}
@@ -8609,12 +8827,12 @@ export function KdpFactoryApp() {
 
                                                                     {/* Position label */}
                                                                     <div className="absolute bottom-1.5 right-2 pointer-events-none">
-                                                                        <span className="text-[8px] font-black uppercase text-black/40 bg-white/60 px-1.5 py-0.5 rounded-full backdrop-blur-sm">
+                                                                        <span className="text-sm font-black uppercase text-black/40 bg-white/60 px-1.5 py-0.5 rounded-full backdrop-blur-sm">
                                                                             {vAlign === "top" ? "▲ Arriba" : vAlign === "middle" ? "● Centro" : "▼ Abajo"}
                                                                         </span>
                                                                     </div>
                                                                 </div>
-                                                                <p className="text-[9px] text-neutral-700 text-center">Toca las zonas de la página para cambiar la posición del texto</p>
+                                                                <p className="text-sm text-neutral-700 text-center">Toca las zonas de la página para cambiar la posición del texto</p>
                                                             </div>
                                                         </div>
                                                     );
@@ -8626,11 +8844,11 @@ export function KdpFactoryApp() {
                                         <div className="flex flex-col items-center justify-center h-full p-8 text-center gap-5">
                                             <div className="opacity-25">
                                                 <BookOpen size={48} className="text-neutral-600 mx-auto" strokeWidth={1} />
-                                                <p className="text-[12px] font-black uppercase tracking-widest text-neutral-600 mt-3">Sin páginas todavía</p>
-                                                <p className="text-xs text-neutral-700 mt-1">Añade una página con el botón de arriba</p>
+                                                <p className="text-sm font-black uppercase tracking-widest text-neutral-600 mt-3">Sin páginas todavía</p>
+                                                <p className="text-sm text-neutral-700 mt-1">Añade una página con el botón de arriba</p>
                                             </div>
                                             <button onClick={() => addBlankPage("image")}
-                                                className="flex items-center gap-2 h-12 px-8 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 hover:border-amber-500/60 active:scale-95 transition-all text-[12px] font-black uppercase tracking-widest">
+                                                className="flex items-center gap-2 h-12 px-8 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 hover:border-amber-500/60 active:scale-95 transition-all text-sm font-black uppercase tracking-widest">
                                                 <Plus size={16} />Nueva página
                                             </button>
                                         </div>
@@ -8663,7 +8881,7 @@ export function KdpFactoryApp() {
                                         {isEmpty && (
                                             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-neutral-300/50">
                                                 <FileText size={24} strokeWidth={1} />
-                                                <span className="text-[8px] uppercase tracking-widest">En blanco</span>
+                                                <span className="text-sm uppercase tracking-widest">En blanco</span>
                                             </div>
                                         )}
                                         {page.image && (
@@ -8694,7 +8912,7 @@ export function KdpFactoryApp() {
 
                                     {/* ── Top bar ── */}
                                     <div className="shrink-0 flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06]">
-                                        <span className="text-[11px] text-neutral-500 font-medium truncate max-w-[120px]">{bookFileName || "Sin título"}</span>
+                                        <span className="text-sm text-neutral-500 font-medium truncate max-w-[120px]">{bookFileName || "Sin título"}</span>
                                         {/* Mode pills */}
                                         <div className="flex items-center gap-2">
                                             <div className="flex items-center gap-0.5 p-1 rounded-full bg-white/[0.07]">
@@ -8720,7 +8938,7 @@ export function KdpFactoryApp() {
                                                                 : (url.split("/").pop()?.split("?")[0] ?? "imagen");
                                                             downloadPng(url, name);
                                                         }}
-                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-full bg-white/[0.07] border border-white/10 text-[9px] font-black text-neutral-400 hover:text-white hover:bg-white/15 transition-all"
+                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-full bg-white/[0.07] border border-white/10 text-sm font-black text-neutral-400 hover:text-white hover:bg-white/15 transition-all"
                                                         title="Descargar imagen de esta página"
                                                     >
                                                         <Download size={10} /> Imagen
@@ -8733,7 +8951,7 @@ export function KdpFactoryApp() {
                                             value={bookPdfSize}
                                             onChange={e => setBookPdfSize(e.target.value)}
                                             title="Tamaño de página KDP"
-                                            className="h-7 rounded-full bg-white/[0.07] border border-white/10 px-2.5 text-[10px] font-black text-amber-400 outline-none [color-scheme:dark] cursor-pointer hover:bg-white/10 transition-all"
+                                            className="h-7 rounded-full bg-white/[0.07] border border-white/10 px-2.5 text-sm font-black text-amber-400 outline-none [color-scheme:dark] cursor-pointer hover:bg-white/10 transition-all"
                                         >
                                             {KDP_BOOK_SIZES.map(s => (
                                                 <option key={s.id} value={s.id}>{s.label}</option>
@@ -8744,7 +8962,7 @@ export function KdpFactoryApp() {
                                     {bookPages.length === 0 ? (
                                         <div className="flex-1 flex flex-col items-center justify-center gap-4 opacity-30">
                                             <FileText size={44} className="text-neutral-600" strokeWidth={1} />
-                                            <p className="text-[11px] font-medium text-neutral-600 uppercase tracking-widest">Sin páginas</p>
+                                            <p className="text-sm font-medium text-neutral-600 uppercase tracking-widest">Sin páginas</p>
                                         </div>
                                     ) : bookPreviewMode === "single" ? (
                                         /* ── Focused single-page reader ── */
@@ -8771,7 +8989,7 @@ export function KdpFactoryApp() {
                                                             {/* Edit hint — center */}
                                                             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
                                                                 onClick={() => { setBookEditorTab("editor"); setShowInlineImagePicker(false); }}>
-                                                                <span className="bg-black/60 backdrop-blur-md text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border border-white/20">
+                                                                <span className="bg-black/60 backdrop-blur-md text-white text-sm font-black uppercase tracking-widest px-3 py-1.5 rounded-full border border-white/20">
                                                                     Editar página
                                                                 </span>
                                                             </div>
@@ -8807,7 +9025,7 @@ export function KdpFactoryApp() {
 
                                             {/* Page counter + thumbnail strip */}
                                             <div className="shrink-0 pb-3 pt-1 flex flex-col items-center gap-2.5 border-t border-white/[0.05]">
-                                                <span className="text-[10px] font-medium text-neutral-600 tabular-nums pt-2">
+                                                <span className="text-sm font-medium text-neutral-600 tabular-nums pt-2">
                                                     {curIdx + 1} / {bookPages.length}
                                                 </span>
                                                 {/* Thumbnail filmstrip */}
@@ -8847,7 +9065,7 @@ export function KdpFactoryApp() {
                                                 const renderSpreadPage = (page: BookPage | undefined, absIdx: number) => {
                                                     if (!page) return (
                                                         <div className="flex-1 bg-white/[0.03] rounded-lg border border-dashed border-white/8 flex items-center justify-center" style={{ aspectRatio: `${previewW}/${previewH}` }}>
-                                                            <span className="text-[8px] text-neutral-700">—</span>
+                                                            <span className="text-sm text-neutral-700">—</span>
                                                         </div>
                                                     );
                                                     return (
@@ -8873,13 +9091,13 @@ export function KdpFactoryApp() {
                                                                     </button>
                                                                 )}
                                                             </div>
-                                                            <p className="text-[8px] font-mono text-neutral-700 text-center mt-1.5">{absIdx + 1}</p>
+                                                            <p className="text-sm font-mono text-neutral-700 text-center mt-1.5">{absIdx + 1}</p>
                                                         </div>
                                                     );
                                                 };
                                                 return (
                                                     <div key={spreadIdx} className="w-full max-w-sm mx-auto">
-                                                        <p className="text-[9px] font-medium text-neutral-700 text-center mb-2 tracking-widest uppercase">
+                                                        <p className="text-sm font-medium text-neutral-700 text-center mb-2 tracking-widest uppercase">
                                                             {spreadIdx * 2 + 1}{right ? ` · ${spreadIdx * 2 + 2}` : ""}
                                                         </p>
                                                         <div className="flex rounded-sm overflow-hidden shadow-[0_8px_48px_rgba(0,0,0,0.7)]">
@@ -8917,7 +9135,7 @@ export function KdpFactoryApp() {
                             <div className="px-6 pt-5 pb-2 flex items-center justify-between">
                                 <div>
                                     <p className="text-[13px] font-black text-white">{editingIntegration ? "Editar integración" : "Nueva integración"}</p>
-                                    <p className="text-[10px] text-neutral-600 mt-0.5">Añade un marketplace o plataforma a tu hoja de ruta</p>
+                                    <p className="text-sm text-neutral-600 mt-0.5">Añade un marketplace o plataforma a tu hoja de ruta</p>
                                 </div>
                                 <button onClick={() => { setShowIntegrationModal(false); setEditingIntegration(null); setIntegrationDraft({}); }} className="w-7 h-7 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-neutral-500 hover:text-white transition-all"><X size={13} /></button>
                             </div>
@@ -8925,7 +9143,7 @@ export function KdpFactoryApp() {
                                 {/* Icon + Name */}
                                 <div className="flex gap-3">
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Icono</label>
+                                        <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Icono</label>
                                         <input
                                             type="text"
                                             value={integrationDraft.icon ?? "🔗"}
@@ -8934,55 +9152,55 @@ export function KdpFactoryApp() {
                                         />
                                     </div>
                                     <div className="flex-1 flex flex-col gap-1">
-                                        <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Nombre <span className="text-rose-500">*</span></label>
+                                        <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Nombre <span className="text-rose-500">*</span></label>
                                         <input
                                             type="text"
                                             placeholder="Ej: Printful, Redbubble…"
                                             value={integrationDraft.name ?? ""}
                                             onChange={e => setIntegrationDraft(d => ({ ...d, name: e.target.value }))}
-                                            className="h-10 px-3 bg-white/5 border border-white/10 rounded-xl text-[12px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-indigo-500/50"
+                                            className="h-10 px-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-indigo-500/50"
                                         />
                                     </div>
                                 </div>
                                 {/* Status */}
                                 <div className="flex flex-col gap-1.5">
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Estado</label>
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Estado</label>
                                     <div className="flex flex-wrap gap-2">
                                         {STATUS_OPTIONS.map(opt => (
                                             <button key={opt.value} onClick={() => setIntegrationDraft(d => ({ ...d, status: opt.value as any, statusLabel: STATUS_LABELS[opt.value] }))}
-                                                className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl border transition-all ${integrationDraft.status === opt.value ? opt.color : "bg-white/5 border-white/10 text-neutral-600 hover:text-neutral-400"}`}
+                                                className={`text-sm font-black uppercase tracking-widest px-3 py-1.5 rounded-xl border transition-all ${integrationDraft.status === opt.value ? opt.color : "bg-white/5 border-white/10 text-neutral-600 hover:text-neutral-400"}`}
                                             >{opt.label}</button>
                                         ))}
                                     </div>
                                 </div>
                                 {/* Description */}
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Descripción</label>
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Descripción</label>
                                     <input
                                         type="text"
                                         placeholder="Breve descripción de la integración"
                                         value={integrationDraft.desc ?? ""}
                                         onChange={e => setIntegrationDraft(d => ({ ...d, desc: e.target.value }))}
-                                        className="h-10 px-3 bg-white/5 border border-white/10 rounded-xl text-[12px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-indigo-500/50"
+                                        className="h-10 px-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-indigo-500/50"
                                     />
                                 </div>
                                 {/* URL */}
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">URL <span className="text-neutral-700">(opcional)</span></label>
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600">URL <span className="text-neutral-700">(opcional)</span></label>
                                     <input
                                         type="url"
                                         placeholder="https://..."
                                         value={integrationDraft.url ?? ""}
                                         onChange={e => setIntegrationDraft(d => ({ ...d, url: e.target.value }))}
-                                        className="h-10 px-3 bg-white/5 border border-white/10 rounded-xl text-[12px] text-white placeholder:text-neutral-700 focus:outline-none focus:border-indigo-500/50"
+                                        className="h-10 px-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-indigo-500/50"
                                     />
                                 </div>
                             </div>
                             <div className="px-6 pb-5 flex gap-2 justify-end">
-                                <button onClick={() => { setShowIntegrationModal(false); setEditingIntegration(null); setIntegrationDraft({}); }} className="h-9 px-4 rounded-xl bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-wider text-neutral-500 hover:text-white transition-all">
+                                <button onClick={() => { setShowIntegrationModal(false); setEditingIntegration(null); setIntegrationDraft({}); }} className="h-9 px-4 rounded-xl bg-white/5 border border-white/10 text-sm font-black uppercase tracking-wider text-neutral-500 hover:text-white transition-all">
                                     Cancelar
                                 </button>
-                                <button onClick={handleSaveIntegration} disabled={isSavingIntegration || !integrationDraft.name?.trim()} className="h-9 px-5 rounded-xl bg-indigo-600 border border-indigo-500/60 text-[10px] font-black uppercase tracking-wider text-white hover:bg-indigo-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
+                                <button onClick={handleSaveIntegration} disabled={isSavingIntegration || !integrationDraft.name?.trim()} className="h-9 px-5 rounded-xl bg-indigo-600 border border-indigo-500/60 text-sm font-black uppercase tracking-wider text-white hover:bg-indigo-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
                                     {isSavingIntegration && <Loader2 size={11} className="animate-spin" />}
                                     {editingIntegration ? "Guardar" : "Añadir"}
                                 </button>
@@ -9070,13 +9288,13 @@ export function KdpFactoryApp() {
                 <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true" onClick={() => setShowSavePromptDialog(false)}>
                     <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl" onClick={e => e.stopPropagation()}>
                         <div className="space-y-1">
-                            <p className="text-base font-black text-white">Guardar prompt</p>
+                            <p className="text-sm font-black text-white">Guardar prompt</p>
                             <p className="text-sm text-neutral-500">Se guardará el prompt actual con todos sus campos.</p>
                         </div>
 
                         <div className="space-y-4">
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Nombre</label>
+                                <label className="text-sm font-black uppercase tracking-widest text-neutral-500">Nombre</label>
                                 <input
                                     value={savePromptName}
                                     onChange={e => setSavePromptName(e.target.value)}
@@ -9088,7 +9306,7 @@ export function KdpFactoryApp() {
                             </div>
 
                             <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Categoría</label>
+                                <label className="text-sm font-black uppercase tracking-widest text-neutral-500">Categoría</label>
                                 <KdpSelect accent="white"
                                     value={savePromptCategory}
                                     onChange={setSavePromptCategory}
@@ -9114,7 +9332,7 @@ export function KdpFactoryApp() {
                                         <button
                                             type="button"
                                             onClick={() => { if (newCategoryInput.trim()) { setSavePromptCategory(newCategoryInput.trim()); setNewCategoryInput(""); } }}
-                                            className="h-9 px-3 rounded-xl bg-sky-500/20 border border-sky-500/30 text-sky-400 text-[9px] font-black uppercase hover:bg-sky-500/30 transition-all"
+                                            className="h-9 px-3 rounded-xl bg-sky-500/20 border border-sky-500/30 text-sky-400 text-sm font-black uppercase hover:bg-sky-500/30 transition-all"
                                         >
                                             Crear
                                         </button>
@@ -9123,8 +9341,8 @@ export function KdpFactoryApp() {
                             </div>
 
                             <div className="rounded-2xl bg-white/[0.02] border border-white/5 p-3 space-y-1">
-                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Preview del prompt</p>
-                                <p className="text-[10px] text-neutral-400 line-clamp-3 font-medium">{promptTheme}{promptSpecs ? ` · ${promptSpecs}` : ""}{promptDetails ? ` · ${promptDetails}` : ""}</p>
+                                <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Preview del prompt</p>
+                                <p className="text-sm text-neutral-400 line-clamp-3 font-medium">{promptTheme}{promptSpecs ? ` · ${promptSpecs}` : ""}{promptDetails ? ` · ${promptDetails}` : ""}</p>
                             </div>
                         </div>
 
@@ -9148,25 +9366,25 @@ export function KdpFactoryApp() {
                 <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-md flex items-center justify-center p-4" role="dialog" aria-modal="true">
                     <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#0d0d0d] shadow-2xl flex flex-col max-h-[90vh]">
                         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-white/8 shrink-0">
-                            <p className="text-base font-black text-white">{nicheEditTarget ? "Editar nicho" : "Nuevo nicho"}</p>
+                            <p className="text-sm font-black text-white">{nicheEditTarget ? "Editar nicho" : "Nuevo nicho"}</p>
                             <button onClick={() => setNicheFormOpen(false)} className="p-2 rounded-xl text-neutral-500 hover:text-white hover:bg-white/10 transition-all"><X size={16} /></button>
                         </div>
                         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
                             {/* Name */}
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Nombre *</label>
+                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Nombre *</label>
                                 <input value={nicheFormName} onChange={e => setNicheFormName(e.target.value)} placeholder="Ej: Mandalas zen para adultos"
                                     className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all" />
                             </div>
                             {/* Description */}
                             <div className="space-y-1.5">
                                 <div className="flex items-center justify-between gap-2">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Descripción</label>
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Descripción</label>
                                     <button
                                         type="button"
                                         onClick={() => void suggestNicheDescription()}
                                         disabled={isSuggestingNicheDesc || !nicheFormName.trim()}
-                                        className="flex items-center gap-1 h-6 px-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 text-[8px] font-black uppercase tracking-wider hover:bg-amber-500/20 transition-all disabled:opacity-40"
+                                        className="flex items-center gap-1 h-6 px-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 text-sm font-black uppercase tracking-wider hover:bg-amber-500/20 transition-all disabled:opacity-40"
                                     >
                                         {isSuggestingNicheDesc ? <Loader2 size={8} className="animate-spin" /> : <Sparkles size={8} />}
                                         IA
@@ -9177,11 +9395,11 @@ export function KdpFactoryApp() {
                             </div>
                             {/* Status */}
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Estado</label>
+                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Estado</label>
                                 <div className="flex gap-2 flex-wrap">
                                     {(["found", "research", "active", "archived"] as const).map(s => (
                                         <button key={s} onClick={() => setNicheFormStatus(s)}
-                                            className={`flex-1 h-9 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${nicheFormStatus === s ? `${STATUS_LABELS[s].color} ring-1 ring-current/20` : "border-white/10 bg-white/5 text-neutral-600 hover:text-white"}`}>
+                                            className={`flex-1 h-9 rounded-xl border text-sm font-black uppercase tracking-widest transition-all ${nicheFormStatus === s ? `${STATUS_LABELS[s].color} ring-1 ring-current/20` : "border-white/10 bg-white/5 text-neutral-600 hover:text-white"}`}>
                                             {STATUS_LABELS[s].label}
                                         </button>
                                     ))}
@@ -9189,11 +9407,11 @@ export function KdpFactoryApp() {
                             </div>
                             {/* Product Type */}
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Tipo de producto</label>
+                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Tipo de producto</label>
                                 <div className="flex gap-2">
                                     {NICHE_PRODUCT_OPTIONS.map(opt => (
                                         <button key={opt.id} onClick={() => setNicheFormProductType(opt.id)}
-                                            className={`flex-1 h-9 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${nicheFormProductType === opt.id ? "border-sky-500/40 bg-sky-500/10 text-sky-400 ring-1 ring-violet-500/20" : "border-white/10 bg-white/5 text-neutral-600 hover:text-white"}`}>
+                                            className={`flex-1 h-9 rounded-xl border text-sm font-black uppercase tracking-widest transition-all ${nicheFormProductType === opt.id ? "border-sky-500/40 bg-sky-500/10 text-sky-400 ring-1 ring-violet-500/20" : "border-white/10 bg-white/5 text-neutral-600 hover:text-white"}`}>
                                             {opt.label}
                                         </button>
                                     ))}
@@ -9202,9 +9420,9 @@ export function KdpFactoryApp() {
                             {/* Style Category — multi-select */}
                             <div className="space-y-1.5">
                                 <div className="flex items-center justify-between">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Estilo visual</label>
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Estilo visual</label>
                                     {nicheFormStyles.length > 1 && (
-                                        <span className="text-[9px] font-black text-sky-400">{nicheFormStyles.length} seleccionados</span>
+                                        <span className="text-sm font-black text-sky-400">{nicheFormStyles.length} seleccionados</span>
                                     )}
                                 </div>
                                 <div className="grid grid-cols-2 gap-1.5">
@@ -9225,8 +9443,8 @@ export function KdpFactoryApp() {
                                                     {active && <Check size={8} className="text-white" strokeWidth={3} />}
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <span className={`block text-[9px] font-black uppercase tracking-widest ${active ? "text-sky-400" : "text-neutral-400"}`}>{opt.label}</span>
-                                                    <span className="block text-[8px] text-neutral-600 leading-tight">{opt.desc}</span>
+                                                    <span className={`block text-sm font-black uppercase tracking-widest ${active ? "text-sky-400" : "text-neutral-400"}`}>{opt.label}</span>
+                                                    <span className="block text-sm text-neutral-600 leading-tight">{opt.desc}</span>
                                                 </div>
                                             </button>
                                         );
@@ -9236,22 +9454,22 @@ export function KdpFactoryApp() {
                             {/* Competition + Demand */}
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Competencia</label>
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Competencia</label>
                                     <div className="flex flex-col gap-1">
                                         {(["unknown", "low", "medium", "high"] as const).map(v => (
                                             <button key={v} onClick={() => setNicheFormComp(v)}
-                                                className={`h-8 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${nicheFormComp === v ? `${COMPETITION_LABELS[v].color}` : "border-white/8 bg-white/[0.02] text-neutral-700 hover:text-neutral-400"}`}>
+                                                className={`h-8 rounded-xl border text-sm font-black uppercase tracking-widest transition-all ${nicheFormComp === v ? `${COMPETITION_LABELS[v].color}` : "border-white/8 bg-white/[0.02] text-neutral-700 hover:text-neutral-400"}`}>
                                                 {COMPETITION_LABELS[v].label}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
                                 <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Demanda</label>
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Demanda</label>
                                     <div className="flex flex-col gap-1">
                                         {(["unknown", "low", "medium", "high"] as const).map(v => (
                                             <button key={v} onClick={() => setNicheFormDemand(v)}
-                                                className={`h-8 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${nicheFormDemand === v ? `${DEMAND_LABELS[v].color}` : "border-white/8 bg-white/[0.02] text-neutral-700 hover:text-neutral-400"}`}>
+                                                className={`h-8 rounded-xl border text-sm font-black uppercase tracking-widest transition-all ${nicheFormDemand === v ? `${DEMAND_LABELS[v].color}` : "border-white/8 bg-white/[0.02] text-neutral-700 hover:text-neutral-400"}`}>
                                                 {DEMAND_LABELS[v].label}
                                             </button>
                                         ))}
@@ -9260,46 +9478,46 @@ export function KdpFactoryApp() {
                             </div>
                             {/* Tags */}
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Tags <span className="normal-case text-neutral-600">(separados por coma)</span></label>
+                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Tags <span className="normal-case text-neutral-600">(separados por coma)</span></label>
                                 <input value={nicheFormTags} onChange={e => setNicheFormTags(e.target.value)} placeholder="mandala, zen, adultos, colorear…"
                                     className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all" />
                                 {nicheFormTags.trim() && (
                                     <div className="flex flex-wrap gap-1 pt-1">
                                         {nicheFormTags.split(",").map(t => t.trim()).filter(Boolean).map(tag => (
-                                            <span key={tag} className="px-2 py-0.5 rounded-md bg-white/5 border border-white/8 text-[8px] text-neutral-400">{tag}</span>
+                                            <span key={tag} className="px-2 py-0.5 rounded-md bg-white/5 border border-white/8 text-sm text-neutral-400">{tag}</span>
                                         ))}
                                     </div>
                                 )}
                             </div>
                             {/* Etsy URL */}
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Enlace Etsy <span className="normal-case text-neutral-600">(opcional)</span></label>
+                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Enlace Etsy <span className="normal-case text-neutral-600">(opcional)</span></label>
                                 <input value={nicheFormEtsyUrl} onChange={e => setNicheFormEtsyUrl(e.target.value)} placeholder="https://www.etsy.com/listing/..."
                                     className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all" />
                                 {nicheFormEtsyUrl.trim() && (
                                     <a href={nicheFormEtsyUrl.trim()} target="_blank" rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-1 text-[9px] text-sky-400 hover:text-sky-300 transition-colors">
+                                        className="inline-flex items-center gap-1 text-sm text-sky-400 hover:text-sky-300 transition-colors">
                                         <ExternalLink size={9} /> Ver en Etsy
                                     </a>
                                 )}
                             </div>
                             {/* Notes */}
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Notas</label>
+                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Notas</label>
                                 <textarea value={nicheFormNotes} onChange={e => setNicheFormNotes(e.target.value)} rows={3} placeholder="Observaciones, ideas, URLs de referencia…"
                                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all resize-none" />
                             </div>
                             {/* Generated Prompt */}
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
+                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">
                                     Prompt generado <span className="normal-case text-neutral-600">(guardado automáticamente al generar contenido)</span>
                                 </label>
                                 <textarea value={nicheFormPrompt} onChange={e => setNicheFormPrompt(e.target.value)} rows={4} placeholder="El prompt de imagen se guardará aquí al usar Generar contenido…"
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-[11px] text-neutral-300 placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all resize-none font-mono leading-relaxed" />
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-neutral-300 placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all resize-none font-mono leading-relaxed" />
                                 {nicheFormPrompt.trim() && (
                                     <button
                                         onClick={() => { setPromptTheme(nicheFormPrompt.trim()); changeTab("creation"); setNicheFormOpen(false); toast.success("Prompt aplicado al generador"); }}
-                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[9px] font-black uppercase tracking-widest hover:bg-sky-500 hover:text-white hover:border-violet-500 transition-all">
+                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-sm font-black uppercase tracking-widest hover:bg-sky-500 hover:text-white hover:border-violet-500 transition-all">
                                         <ArrowRight size={10} /> Aplicar en generador
                                     </button>
                                 )}
@@ -9323,7 +9541,7 @@ export function KdpFactoryApp() {
                     <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
                         <div className="space-y-2 text-center">
                             <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto"><Target size={24} className="text-red-400" /></div>
-                            <p className="text-base font-black text-white">¿Eliminar nicho?</p>
+                            <p className="text-sm font-black text-white">¿Eliminar nicho?</p>
                             <p className="text-sm text-neutral-500">Esta acción no se puede deshacer.</p>
                         </div>
                         <div className="flex gap-3">
@@ -9341,8 +9559,8 @@ export function KdpFactoryApp() {
                         {/* Header */}
                         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-white/8 shrink-0">
                             <div className="space-y-0.5">
-                                <p className="text-base font-black text-white">Plantilla KDP — Seleccionar fuentes</p>
-                                <p className="text-[10px] text-neutral-500">Elige qué imágenes incluir en la plantilla de libro de colorear</p>
+                                <p className="text-sm font-black text-white">Plantilla KDP — Seleccionar fuentes</p>
+                                <p className="text-sm text-neutral-500">Elige qué imágenes incluir en la plantilla de libro de colorear</p>
                             </div>
                             <button onClick={() => setKdpTemplateOpen(false)} className="p-2 rounded-xl text-neutral-500 hover:text-white hover:bg-white/10 transition-all"><X size={16} /></button>
                         </div>
@@ -9351,7 +9569,7 @@ export function KdpFactoryApp() {
                         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
                             {/* Title input */}
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Título del libro</label>
+                                <label className="text-sm font-black uppercase tracking-widest text-neutral-400">Título del libro</label>
                                 <input
                                     value={kdpTemplateTitle}
                                     onChange={e => setKdpTemplateTitle(e.target.value)}
@@ -9364,13 +9582,13 @@ export function KdpFactoryApp() {
                             {vaultImages.length > 0 && (
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Vault ({vaultImages.length} imágenes)</p>
+                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Vault ({vaultImages.length} imágenes)</p>
                                         <button
                                             onClick={() => {
                                                 const allSelected = vaultImages.every((_, i) => kdpTemplateVaultSel.has(i));
                                                 setKdpTemplateVaultSel(allSelected ? new Set() : new Set(vaultImages.map((_, i) => i)));
                                             }}
-                                            className="text-[9px] font-black uppercase tracking-widest text-sky-400 hover:text-sky-300 transition-colors"
+                                            className="text-sm font-black uppercase tracking-widest text-sky-400 hover:text-sky-300 transition-colors"
                                         >
                                             {vaultImages.every((_, i) => kdpTemplateVaultSel.has(i)) ? "Deseleccionar todo" : "Seleccionar todo"}
                                         </button>
@@ -9405,13 +9623,13 @@ export function KdpFactoryApp() {
                             {cloudinaryImages.length > 0 && (
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Almacén Cloudinary ({cloudinaryImages.length} imágenes)</p>
+                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Almacén Cloudinary ({cloudinaryImages.length} imágenes)</p>
                                         <button
                                             onClick={() => {
                                                 const allSel = cloudinaryImages.every((_, i) => kdpTemplateCloudSel.has(i));
                                                 setKdpTemplateCloudSel(allSel ? new Set() : new Set(cloudinaryImages.map((_, i) => i)));
                                             }}
-                                            className="text-[9px] font-black uppercase tracking-widest text-sky-400 hover:text-sky-300 transition-colors"
+                                            className="text-sm font-black uppercase tracking-widest text-sky-400 hover:text-sky-300 transition-colors"
                                         >
                                             {cloudinaryImages.every((_, i) => kdpTemplateCloudSel.has(i)) ? "Deseleccionar todo" : "Seleccionar todo"}
                                         </button>
@@ -9448,7 +9666,7 @@ export function KdpFactoryApp() {
                                 <div className="space-y-2.5">
                                     <div className="flex items-center gap-2">
                                         <div className="h-px flex-1 bg-white/8" />
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5">
+                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5">
                                             <Target size={10} className="text-sky-400" /> Añadir nicho entero
                                         </p>
                                         <div className="h-px flex-1 bg-white/8" />
@@ -9474,8 +9692,8 @@ export function KdpFactoryApp() {
                                                         {allSel ? <Check size={14} className="text-white" strokeWidth={3} /> : <Target size={14} className="text-neutral-500" />}
                                                     </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <p className={`text-[11px] font-black truncate ${allSel ? "text-sky-300" : "text-neutral-300"}`}>{n.name}</p>
-                                                        <p className="text-[9px] text-neutral-600">{nicheCats.length} cat. · {nicheImgs} imgs completadas</p>
+                                                        <p className={`text-sm font-black truncate ${allSel ? "text-sky-300" : "text-neutral-300"}`}>{n.name}</p>
+                                                        <p className="text-sm text-neutral-600">{nicheCats.length} cat. · {nicheImgs} imgs completadas</p>
                                                     </div>
                                                 </button>
                                             );
@@ -9488,17 +9706,17 @@ export function KdpFactoryApp() {
                             {iaCatalogs.filter(c => c.images.length > 0).length > 0 && (
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Catálogos con imágenes</p>
+                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-400">Catálogos con imágenes</p>
                                         <div className="flex items-center gap-1.5 flex-wrap">
                                             {niches.length > 0 && (
                                                 <>
                                                     <button onClick={() => setKdpTemplateNicheFilter(null)}
-                                                        className={`px-2 h-5 rounded-full border text-[8px] font-black uppercase transition-all ${!kdpTemplateNicheFilter ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "border-white/10 text-neutral-700 hover:text-neutral-400"}`}>
+                                                        className={`px-2 h-5 rounded-full border text-sm font-black uppercase transition-all ${!kdpTemplateNicheFilter ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "border-white/10 text-neutral-700 hover:text-neutral-400"}`}>
                                                         Todos
                                                     </button>
                                                     {niches.map(n => (
                                                         <button key={n._id} onClick={() => setKdpTemplateNicheFilter(kdpTemplateNicheFilter === n._id ? null : n._id)}
-                                                            className={`px-2 h-5 rounded-full border text-[8px] font-bold transition-all truncate max-w-[100px] ${kdpTemplateNicheFilter === n._id ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "border-white/10 text-neutral-700 hover:text-neutral-400"}`}>
+                                                            className={`px-2 h-5 rounded-full border text-sm font-bold transition-all truncate max-w-[100px] ${kdpTemplateNicheFilter === n._id ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "border-white/10 text-neutral-700 hover:text-neutral-400"}`}>
                                                             {n.name}
                                                         </button>
                                                     ))}
@@ -9510,7 +9728,7 @@ export function KdpFactoryApp() {
                                                     const allSel = completed.every(c => kdpTemplateCatalogSel.has(c._id));
                                                     setKdpTemplateCatalogSel(allSel ? new Set() : new Set(completed.map(c => c._id)));
                                                 }}
-                                                className="text-[9px] font-black uppercase tracking-widest text-sky-400 hover:text-sky-300 transition-colors"
+                                                className="text-sm font-black uppercase tracking-widest text-sky-400 hover:text-sky-300 transition-colors"
                                             >
                                                 Sel. todo
                                             </button>
@@ -9538,12 +9756,12 @@ export function KdpFactoryApp() {
                                                             <img key={i} src={img.url} alt="" className="w-8 h-8 rounded-lg object-cover" />
                                                         ))}
                                                         {catalog.images.length > 4 && (
-                                                            <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-[8px] font-black text-neutral-400">+{catalog.images.length - 4}</div>
+                                                            <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-sm font-black text-neutral-400">+{catalog.images.length - 4}</div>
                                                         )}
                                                     </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-[11px] font-black text-white truncate">{catalog.name}</p>
-                                                        <p className="text-[9px] text-neutral-500">{catalog.images.length} imágenes</p>
+                                                        <p className="text-sm font-black text-white truncate">{catalog.name}</p>
+                                                        <p className="text-sm text-neutral-500">{catalog.images.length} imágenes</p>
                                                     </div>
                                                 </button>
                                             );
@@ -9563,8 +9781,8 @@ export function KdpFactoryApp() {
                                 <div className="flex items-center gap-2.5">
                                     <RefreshCw size={13} className={kdpTemplateRandom ? "text-sky-400" : "text-neutral-600"} />
                                     <div className="text-left">
-                                        <p className={`text-[10px] font-black ${kdpTemplateRandom ? "text-sky-300" : "text-neutral-400"}`}>Orden aleatorio</p>
-                                        <p className="text-[9px] text-neutral-600">Mezcla las imágenes aleatoriamente antes de añadirlas al libro</p>
+                                        <p className={`text-sm font-black ${kdpTemplateRandom ? "text-sky-300" : "text-neutral-400"}`}>Orden aleatorio</p>
+                                        <p className="text-sm text-neutral-600">Mezcla las imágenes aleatoriamente antes de añadirlas al libro</p>
                                     </div>
                                 </div>
                                 <div className={`w-8 h-4 rounded-full transition-all relative ${kdpTemplateRandom ? "bg-sky-500" : "bg-white/10"}`}>
@@ -9587,8 +9805,8 @@ export function KdpFactoryApp() {
                                 <div className="flex items-center gap-2.5">
                                     <BookOpen size={13} className={includeOwnerPage ? "text-amber-400" : "text-neutral-600"} />
                                     <div className="text-left">
-                                        <p className={`text-[10px] font-black ${includeOwnerPage ? "text-amber-300" : "text-neutral-400"}`}>Primera página: propietario + colores</p>
-                                        <p className="text-[9px] text-neutral-600">«Este libro pertenece a» · cuadraditos de prueba · copyright © {new Date().getFullYear()}</p>
+                                        <p className={`text-sm font-black ${includeOwnerPage ? "text-amber-300" : "text-neutral-400"}`}>Primera página: propietario + colores</p>
+                                        <p className="text-sm text-neutral-600">«Este libro pertenece a» · cuadraditos de prueba · copyright © {new Date().getFullYear()}</p>
                                     </div>
                                 </div>
                                 <div className={`w-8 h-4 rounded-full transition-all relative ${includeOwnerPage ? "bg-amber-500" : "bg-white/10"}`}>
@@ -9603,8 +9821,8 @@ export function KdpFactoryApp() {
                                 <div className="flex items-center gap-2.5">
                                     <Layers size={13} className={noBlankPages ? "text-sky-400" : "text-neutral-600"} />
                                     <div className="text-left">
-                                        <p className={`text-[10px] font-black ${noBlankPages ? "text-sky-300" : "text-neutral-400"}`}>No añadir páginas en blanco</p>
-                                        <p className="text-[9px] text-neutral-600">Solo imágenes, sin página en blanco al reverso de cada una</p>
+                                        <p className={`text-sm font-black ${noBlankPages ? "text-sky-300" : "text-neutral-400"}`}>No añadir páginas en blanco</p>
+                                        <p className="text-sm text-neutral-600">Solo imágenes, sin página en blanco al reverso de cada una</p>
                                     </div>
                                 </div>
                                 <div className={`w-8 h-4 rounded-full transition-all relative ${noBlankPages ? "bg-sky-500" : "bg-white/10"}`}>
@@ -9623,13 +9841,13 @@ export function KdpFactoryApp() {
                                     ? total + 1 + (includeOwnerPage ? 1 : 0)
                                     : total * 2 + 2 + (includeOwnerPage ? 1 : 0);
                                 return total > 0 ? (
-                                    <p className="text-[10px] text-neutral-500 text-center">
+                                    <p className="text-sm text-neutral-500 text-center">
                                         <span className="text-sky-400 font-black">{total}</span> imágenes · <span className="text-neutral-400 font-black">{pageTotal}</span> páginas
                                         {includeOwnerPage ? <span className="text-amber-400"> (+ pág. propietario)</span> : ""}
                                         {noBlankPages ? <span className="text-sky-400"> · sin blancos</span> : ""}
                                     </p>
                                 ) : (
-                                    <p className="text-[10px] text-amber-400/70 text-center font-black">Selecciona al menos una imagen</p>
+                                    <p className="text-sm text-amber-400/70 text-center font-black">Selecciona al menos una imagen</p>
                                 );
                             })()}
                             <div className="flex gap-3">
@@ -9692,20 +9910,20 @@ export function KdpFactoryApp() {
                                         <Archive size={15} className="text-emerald-400" />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-neutral-400">Zip Factory</p>
-                                        <p className="text-[10px] sm:text-[11px] text-neutral-600">{zipSelection.size} seleccionada{zipSelection.size !== 1 ? "s" : ""} · {allImages.length} total</p>
+                                        <p className="text-sm sm:text-sm font-black uppercase tracking-widest text-neutral-400">Zip Factory</p>
+                                        <p className="text-sm sm:text-sm text-neutral-600">{zipSelection.size} seleccionada{zipSelection.size !== 1 ? "s" : ""} · {allImages.length} total</p>
                                     </div>
                                     {/* ZIP name — desktop */}
                                     <input
                                         value={zipName}
                                         onChange={e => setZipName(e.target.value)}
-                                        className="hidden sm:block w-36 h-9 rounded-xl bg-white/5 border border-white/10 px-2.5 text-[11px] text-white outline-none focus:border-emerald-500/40 shrink-0"
+                                        className="hidden sm:block w-36 h-9 rounded-xl bg-white/5 border border-white/10 px-2.5 text-sm text-white outline-none focus:border-emerald-500/40 shrink-0"
                                         placeholder="imagenes-kdp"
                                     />
                                     <button
                                         onClick={() => void downloadZip()}
                                         disabled={zipSelection.size === 0 || isDownloadingZip}
-                                        className="h-9 px-3 sm:px-4 rounded-xl bg-emerald-500 text-black font-black text-[10px] sm:text-[11px] uppercase tracking-widest hover:bg-emerald-400 transition-all disabled:opacity-40 flex items-center gap-1.5 shadow-[0_4px_20px_rgba(16,185,129,0.3)]"
+                                        className="h-9 px-3 sm:px-4 rounded-xl bg-emerald-500 text-black font-black text-sm sm:text-sm uppercase tracking-widest hover:bg-emerald-400 transition-all disabled:opacity-40 flex items-center gap-1.5 shadow-[0_4px_20px_rgba(16,185,129,0.3)]"
                                     >
                                         {isDownloadingZip ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
                                         <span className="hidden sm:inline">{isDownloadingZip ? "Generando…" : `Descargar ZIP (${zipSelection.size})`}</span>
@@ -9723,7 +9941,7 @@ export function KdpFactoryApp() {
                                     <input
                                         value={zipName}
                                         onChange={e => setZipName(e.target.value)}
-                                        className="w-full h-9 rounded-xl bg-white/5 border border-white/10 px-3 text-[12px] text-white outline-none focus:border-emerald-500/40"
+                                        className="w-full h-9 rounded-xl bg-white/5 border border-white/10 px-3 text-sm text-white outline-none focus:border-emerald-500/40"
                                         placeholder="Nombre del ZIP…"
                                     />
                                 </div>
@@ -9739,9 +9957,9 @@ export function KdpFactoryApp() {
                                     { id: "favorites", label: "❤️", count: [...favorites.values()].filter(f => allImages.some(i => i.url === f.url)).length },
                                 ] as const).map(tab => (
                                     <button key={tab.id} onClick={() => setZipSource(tab.id)}
-                                        className={`shrink-0 h-7 px-3 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${zipSource === tab.id ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-300" : "bg-white/[0.03] border border-white/8 text-neutral-500 hover:text-white"}`}>
+                                        className={`shrink-0 h-7 px-3 rounded-lg text-sm sm:text-sm font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${zipSource === tab.id ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-300" : "bg-white/[0.03] border border-white/8 text-neutral-500 hover:text-white"}`}>
                                         {tab.label}
-                                        {tab.count > 0 && <span className={`text-[9px] tabular-nums ${zipSource === tab.id ? "text-emerald-400/70" : "text-neutral-700"}`}>{tab.count}</span>}
+                                        {tab.count > 0 && <span className={`text-sm tabular-nums ${zipSource === tab.id ? "text-emerald-400/70" : "text-neutral-700"}`}>{tab.count}</span>}
                                     </button>
                                 ))}
                                 <div className="ml-auto shrink-0 flex items-center gap-1.5">
@@ -9753,12 +9971,12 @@ export function KdpFactoryApp() {
                                                 setZipSelection(prev => { const next = new Set(prev); filtered.forEach(i => next.add(i.url)); return next; });
                                             }
                                         }}
-                                        className="h-7 px-3 rounded-lg bg-white/5 border border-white/10 text-[9px] font-black text-neutral-400 hover:text-white transition-all"
+                                        className="h-7 px-3 rounded-lg bg-white/5 border border-white/10 text-sm font-black text-neutral-400 hover:text-white transition-all"
                                     >
                                         {allSel ? "Desel. todo" : "Sel. todo"}
                                     </button>
                                     {zipSelection.size > 0 && (
-                                        <button onClick={() => setZipSelection(new Set())} className="h-7 px-3 rounded-lg bg-white/5 border border-white/10 text-[9px] font-black text-neutral-500 hover:text-rose-400 transition-all">
+                                        <button onClick={() => setZipSelection(new Set())} className="h-7 px-3 rounded-lg bg-white/5 border border-white/10 text-sm font-black text-neutral-500 hover:text-rose-400 transition-all">
                                             Limpiar
                                         </button>
                                     )}
@@ -9768,7 +9986,7 @@ export function KdpFactoryApp() {
                             {/* Niche quick-add row */}
                             {niches.length > 0 && (
                                 <div className="shrink-0 flex items-center gap-1.5 px-3 sm:px-4 py-2 border-b border-white/6 overflow-x-auto no-scrollbar">
-                                    <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600 shrink-0">Añadir nicho:</span>
+                                    <span className="text-sm font-black uppercase tracking-widest text-neutral-600 shrink-0">Añadir nicho:</span>
                                     {niches.map(n => {
                                         const nicheImgs = iaCatalogs
                                             .filter(c => (c.nicheIds ?? []).includes(n._id))
@@ -9783,10 +10001,10 @@ export function KdpFactoryApp() {
                                                     else nicheImgs.forEach(url => next.add(url));
                                                     return next;
                                                 })}
-                                                className={`shrink-0 h-6 px-2.5 rounded-full text-[9px] font-black border transition-all flex items-center gap-1.5 ${allAdded ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300" : "bg-white/[0.03] border-white/8 text-neutral-500 hover:text-white hover:border-white/20"}`}>
+                                                className={`shrink-0 h-6 px-2.5 rounded-full text-sm font-black border transition-all flex items-center gap-1.5 ${allAdded ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300" : "bg-white/[0.03] border-white/8 text-neutral-500 hover:text-white hover:border-white/20"}`}>
                                                 {allAdded ? <Check size={9} strokeWidth={3} /> : <Plus size={9} />}
                                                 {n.name}
-                                                <span className="text-[8px] opacity-60">{nicheImgs.length}</span>
+                                                <span className="text-sm opacity-60">{nicheImgs.length}</span>
                                             </button>
                                         );
                                     })}
@@ -9798,7 +10016,7 @@ export function KdpFactoryApp() {
                                 {filtered.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center h-full space-y-4 opacity-40">
                                         <Archive size={40} className="text-neutral-700" strokeWidth={1.5} />
-                                        <p className="text-[11px] font-black uppercase tracking-widest text-neutral-600">Sin imágenes en esta fuente</p>
+                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Sin imágenes en esta fuente</p>
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-9 xl:grid-cols-11 gap-1.5 sm:gap-2">
@@ -9818,7 +10036,7 @@ export function KdpFactoryApp() {
                                                     {isFav && <div className="absolute top-1 left-1 p-0.5 rounded-md bg-rose-500/80"><Heart size={7} className="fill-white text-white" /></div>}
                                                     {isSel && <div className="absolute inset-0 bg-emerald-500/10 pointer-events-none" />}
                                                     <div className="absolute bottom-0 inset-x-0 py-1 px-1 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <p className="text-[7px] sm:text-[8px] font-bold text-white/70 truncate">{img.label}</p>
+                                                        <p className="text-sm sm:text-sm font-bold text-white/70 truncate">{img.label}</p>
                                                     </div>
                                                 </div>
                                             );
@@ -9839,13 +10057,13 @@ export function KdpFactoryApp() {
                             <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 flex items-center justify-center mx-auto">
                                 <Layers size={24} className="text-cyan-400" />
                             </div>
-                            <p className="text-base font-black text-white">Catálogo Personalizado</p>
+                            <p className="text-sm font-black text-white">Catálogo Personalizado</p>
                             <p className="text-sm text-neutral-500 leading-relaxed">
                                 Se creará un catálogo con <span className="text-white font-bold">{selectedCloudUrls.size} imagen{selectedCloudUrls.size !== 1 ? "es" : ""}</span> de tu almacén Cloudinary.
                             </p>
                         </div>
                         <div>
-                            <label className="block text-[11px] font-black uppercase tracking-widest text-neutral-500 mb-2">Nombre del catálogo</label>
+                            <label className="block text-sm font-black uppercase tracking-widest text-neutral-500 mb-2">Nombre del catálogo</label>
                             <input
                                 autoFocus
                                 value={customCatalogName}
@@ -9879,7 +10097,7 @@ export function KdpFactoryApp() {
                             <h2 className="text-xl font-black bg-gradient-to-r from-amber-400 to-orange-300 bg-clip-text text-transparent flex items-center gap-2.5">
                                 <Sparkles size={20} className="text-amber-400" /> Generador de Contenido
                             </h2>
-                            <p className="text-xs text-neutral-500">Metadatos listos para publicar en KDP y Etsy</p>
+                            <p className="text-sm text-neutral-500">Metadatos listos para publicar en KDP y Etsy</p>
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -9894,7 +10112,7 @@ export function KdpFactoryApp() {
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <p className={`text-sm font-black leading-tight ${contentType === "kdp-physical-book" ? "text-amber-300" : "text-neutral-400"}`}>Libro físico KDP</p>
-                                        <p className="text-[10px] text-neutral-600 mt-0.5">Título · Subtítulo · Descripción · 7 keywords</p>
+                                        <p className="text-sm text-neutral-600 mt-0.5">Título · Subtítulo · Descripción · 7 keywords</p>
                                     </div>
                                     {contentType === "kdp-physical-book" && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />}
                                 </button>
@@ -9905,7 +10123,7 @@ export function KdpFactoryApp() {
                                         <button key={ct.id} onClick={() => { setContentType(ct.id as any); setContentResult(null); }}
                                             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all shrink-0 ${contentType === ct.id ? "border-white/25 bg-white/10 text-white" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:border-white/15 hover:text-neutral-400"}`}>
                                             {ct.icon}
-                                            <span className="text-[9px] font-bold whitespace-nowrap">{ct.label}</span>
+                                            <span className="text-sm font-bold whitespace-nowrap">{ct.label}</span>
                                         </button>
                                     ))}
                                 </div>
@@ -9918,11 +10136,11 @@ export function KdpFactoryApp() {
                                             placeholder="Describe tu libro: temática, género, público objetivo, estilo visual…&#10;ej: libro de colorear de mandalas zen para adultos, estilo minimalista"
                                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none leading-relaxed transition-all" />
                                         <div className="flex items-center gap-3">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 shrink-0">Idioma</p>
+                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600 shrink-0">Idioma</p>
                                             <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl">
                                                 {(["en", "es"] as const).map(lang => (
                                                     <button key={lang} onClick={() => setContentLanguage(lang)}
-                                                        className={`px-4 py-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                                        className={`px-4 py-1 rounded-lg text-sm font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
                                                         {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
                                                     </button>
                                                 ))}
@@ -9937,16 +10155,16 @@ export function KdpFactoryApp() {
                                             className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 transition-all" />
                                         <div className="grid grid-cols-2 gap-2">
                                             <div className="space-y-1.5">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Tipo de producto</p>
+                                                <p className="text-sm font-black uppercase tracking-widest text-neutral-500">Tipo de producto</p>
                                                 <KdpSelect accent="amber" value={contentProductType} onChange={setContentProductType}
                                                     options={CONTENT_PRODUCT_TYPES.map(pt => ({ value: pt, label: pt }))} />
                                             </div>
                                             <div className="space-y-1.5">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Idioma</p>
+                                                <p className="text-sm font-black uppercase tracking-widest text-neutral-500">Idioma</p>
                                                 <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl h-[38px]">
                                                     {(["en", "es"] as const).map(lang => (
                                                         <button key={lang} onClick={() => setContentLanguage(lang)}
-                                                            className={`flex-1 rounded-lg text-[10px] font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
+                                                            className={`flex-1 rounded-lg text-sm font-black uppercase transition-all ${contentLanguage === lang ? "bg-white text-black" : "text-neutral-500 hover:text-white"}`}>
                                                             {lang === "en" ? "🇬🇧 EN" : "🇪🇸 ES"}
                                                         </button>
                                                     ))}
@@ -9962,10 +10180,10 @@ export function KdpFactoryApp() {
                                 {/* Generate button */}
                                 <div className="space-y-1.5">
                                     <button onClick={() => void generateContent()} disabled={isGeneratingContent || !contentNiche.trim()}
-                                        className="w-full h-11 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500">
+                                        className="w-full h-11 rounded-xl text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-r from-amber-500 to-amber-600 text-black hover:from-amber-400 hover:to-amber-500">
                                         {isGeneratingContent ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><Sparkles size={13} /> Generar con IA</>}
                                     </button>
-                                    <p className="text-center text-[9px] text-neutral-700 flex items-center justify-center gap-1.5">
+                                    <p className="text-center text-sm text-neutral-700 flex items-center justify-center gap-1.5">
                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500/60 inline-block" />
                                         <span className="font-mono">gemini-2.5-flash</span> · gratuito
                                     </p>
@@ -9977,13 +10195,13 @@ export function KdpFactoryApp() {
                                 {isGeneratingContent && (
                                     <div className="flex flex-col items-center justify-center py-10 gap-3">
                                         <Loader2 size={24} className="animate-spin text-amber-400" />
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Generando con IA...</p>
+                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Generando con IA...</p>
                                     </div>
                                 )}
                                 {!contentResult && !isGeneratingContent && (
                                     <div className="flex flex-col items-center justify-center py-10 text-center space-y-2 opacity-20">
                                         <Wand2 size={24} strokeWidth={1.5} className="text-neutral-600" />
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">El resultado aparecerá aquí</p>
+                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-600">El resultado aparecerá aquí</p>
                                     </div>
                                 )}
                                 {contentResult && !isGeneratingContent && (
@@ -9992,43 +10210,43 @@ export function KdpFactoryApp() {
                                             <div className="space-y-2.5">
                                                 {(contentResult.title || contentResult.description || contentResult.keywords?.length) && (
                                                     <button onClick={() => { const parts: string[] = []; if (contentResult.title) parts.push(`TÍTULO: ${contentResult.title}${contentResult.subtitle ? `\nSUBTÍTULO: ${contentResult.subtitle}` : ""}`); if (contentResult.description) { const plain = typeof contentResult.description === "string" ? contentResult.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : contentResult.description; parts.push(`\nDESCRIPCIÓN:\n${plain}`); } if (Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0) parts.push(`\nKEYWORDS: ${contentResult.keywords.join(", ")}`); copyText(parts.join("\n")); }}
-                                                        className="w-full flex items-center justify-center gap-2 h-9 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest">
+                                                        className="w-full flex items-center justify-center gap-2 h-9 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black transition-all text-sm font-black uppercase tracking-widest">
                                                         <Copy size={12} /> Copiar listing completo
                                                     </button>
                                                 )}
                                                 {contentResult.title && (
                                                     <div className="bg-amber-500/[0.04] border border-amber-500/15 rounded-2xl p-4 space-y-2">
                                                         <div className="flex items-center justify-between">
-                                                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Título</p>
-                                                            <button onClick={() => copyText(`${contentResult.title}${contentResult.subtitle ? `: ${contentResult.subtitle}` : ""}`)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
+                                                            <p className="text-sm font-black uppercase tracking-widest text-amber-400/80">Título</p>
+                                                            <button onClick={() => copyText(`${contentResult.title}${contentResult.subtitle ? `: ${contentResult.subtitle}` : ""}`)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-sm transition-colors"><Copy size={9} /> Copiar</button>
                                                         </div>
                                                         <p className="text-[15px] font-black text-white leading-tight">{contentResult.title}</p>
-                                                        {contentResult.subtitle && <p className="text-[11px] text-amber-200/60 leading-snug border-t border-amber-500/10 pt-2">{contentResult.subtitle}</p>}
+                                                        {contentResult.subtitle && <p className="text-sm text-amber-200/60 leading-snug border-t border-amber-500/10 pt-2">{contentResult.subtitle}</p>}
                                                     </div>
                                                 )}
                                                 {contentResult.description && (
                                                     <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2">
                                                         <div className="flex items-center justify-between">
-                                                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Descripción</p>
-                                                            <button onClick={() => copyText(typeof contentResult.description === "string" ? contentResult.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : contentResult.description)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button>
+                                                            <p className="text-sm font-black uppercase tracking-widest text-amber-400/80">Descripción</p>
+                                                            <button onClick={() => copyText(typeof contentResult.description === "string" ? contentResult.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : contentResult.description)} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-sm transition-colors"><Copy size={9} /> Copiar</button>
                                                         </div>
                                                         {typeof contentResult.description === "string" && /<[a-z][\s\S]*>/i.test(contentResult.description)
-                                                            ? <div className="text-[10px] text-neutral-300 leading-relaxed [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:space-y-1 [&_li]:text-neutral-300 [&_strong]:text-amber-300 [&_strong]:font-bold" dangerouslySetInnerHTML={{ __html: contentResult.description }} />
-                                                            : <p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
+                                                            ? <div className="text-sm text-neutral-300 leading-relaxed [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:space-y-1 [&_li]:text-neutral-300 [&_strong]:text-amber-300 [&_strong]:font-bold" dangerouslySetInnerHTML={{ __html: contentResult.description }} />
+                                                            : <p className="text-sm text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p>
                                                         }
                                                     </div>
                                                 )}
                                                 {Array.isArray(contentResult.keywords) && contentResult.keywords.length > 0 && (
                                                     <div className="bg-white/[0.02] border border-white/6 rounded-2xl p-4 space-y-2.5">
                                                         <div className="flex items-center justify-between">
-                                                            <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">{contentResult.keywords.length} Palabras clave</p>
-                                                            <button onClick={() => copyText(contentResult.keywords.join("\n"))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar todo</button>
+                                                            <p className="text-sm font-black uppercase tracking-widest text-amber-400/80">{contentResult.keywords.length} Palabras clave</p>
+                                                            <button onClick={() => copyText(contentResult.keywords.join("\n"))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-500 hover:text-white text-sm transition-colors"><Copy size={9} /> Copiar todo</button>
                                                         </div>
                                                         <div className="space-y-1.5">
                                                             {contentResult.keywords.map((k: string, i: number) => (
                                                                 <div key={i} className="flex items-center gap-2 group">
-                                                                    <span className="text-[9px] font-black text-amber-500/50 w-4 shrink-0 tabular-nums">{i + 1}</span>
-                                                                    <p className="flex-1 text-[10px] text-neutral-300">{k}</p>
+                                                                    <span className="text-sm font-black text-amber-500/50 w-4 shrink-0 tabular-nums">{i + 1}</span>
+                                                                    <p className="flex-1 text-sm text-neutral-300">{k}</p>
                                                                     <button onClick={() => copyText(k)} className="opacity-0 group-hover:opacity-100 p-1 rounded text-neutral-600 hover:text-white transition-all"><Copy size={9} /></button>
                                                                 </div>
                                                             ))}
@@ -10037,12 +10255,12 @@ export function KdpFactoryApp() {
                                                 )}
                                                 {/* ── Save to niche ── */}
                                                 <div className="border-t border-white/[0.05] pt-2.5 space-y-2">
-                                                    <p className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Guardar en nicho</p>
+                                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Guardar en nicho</p>
                                                     <div className="flex gap-1.5">
                                                         <select
                                                             value={contentSaveNicheId}
                                                             onChange={e => setContentSaveNicheId(e.target.value)}
-                                                            className="flex-1 h-8 bg-black/40 border border-white/10 rounded-lg px-2 text-[9px] text-white outline-none focus:border-amber-500/40 transition-all appearance-none cursor-pointer">
+                                                            className="flex-1 h-8 bg-black/40 border border-white/10 rounded-lg px-2 text-sm text-white outline-none focus:border-amber-500/40 transition-all appearance-none cursor-pointer">
                                                             <option value="">— Seleccionar nicho —</option>
                                                             {niches.map(n => (
                                                                 <option key={n._id} value={n._id}>{n.name}{(n.listings?.length ?? 0) > 0 ? ` (${n.listings!.length})` : ""}</option>
@@ -10051,7 +10269,7 @@ export function KdpFactoryApp() {
                                                         <button
                                                             onClick={() => void saveContentToNiche()}
                                                             disabled={!contentSaveNicheId || savingContentListing}
-                                                            className="h-8 px-3 rounded-lg bg-amber-500/15 border border-amber-500/30 text-[9px] font-black text-amber-400 hover:bg-amber-500/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1">
+                                                            className="h-8 px-3 rounded-lg bg-amber-500/15 border border-amber-500/30 text-sm font-black text-amber-400 hover:bg-amber-500/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1">
                                                             {savingContentListing ? <Loader2 size={9} className="animate-spin" /> : <Save size={9} />}
                                                             Guardar
                                                         </button>
@@ -10065,27 +10283,27 @@ export function KdpFactoryApp() {
                                                         )}
                                                     </div>
                                                 </div>
-                                                <button onClick={() => void generateContent()} className="w-full flex items-center justify-center gap-1.5 py-2 text-[9px] font-black uppercase tracking-widest text-neutral-700 hover:text-neutral-400 transition-colors">
+                                                <button onClick={() => void generateContent()} className="w-full flex items-center justify-center gap-1.5 py-2 text-sm font-black uppercase tracking-widest text-neutral-700 hover:text-neutral-400 transition-colors">
                                                     <Sparkles size={9} /> Regenerar
                                                 </button>
                                             </div>
                                         )}
                                         {contentType === "full-listing" && typeof contentResult === "object" && (
                                             <>
-                                                {contentResult.title && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Título</p><button onClick={() => copyText(contentResult.title)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div><p className="text-sm text-white font-medium">{contentResult.title}</p>{contentResult.subtitle && <p className="text-[10px] text-neutral-500">{contentResult.subtitle}</p>}</div>}
-                                                {contentResult.description && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div><p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p></div>}
-                                                {Array.isArray(contentResult.bullets) && contentResult.bullets.length > 0 && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Bullets</p><ul className="space-y-0.5">{contentResult.bullets.map((b: string, i: number) => <li key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-amber-400/60 shrink-0">▸</span>{b}</li>)}</ul></div>}
-                                                {Array.isArray(contentResult.keywords) && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Keywords ({contentResult.keywords.length})</p><button onClick={() => copyText(contentResult.keywords.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px] transition-colors"><Copy size={9} /> Copiar</button></div><div className="flex flex-wrap gap-1">{contentResult.keywords.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[8px] px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 transition-colors">{k}</button>)}</div></div>}
-                                                {contentResult.price_suggestion_usd && <div className="flex items-center gap-3 px-3 py-2 bg-emerald-500/5 border border-emerald-500/15 rounded-xl"><DollarSign size={13} className="text-emerald-400 shrink-0" /><div><p className="text-[8px] text-neutral-600 uppercase">Precio sugerido</p><p className="text-sm font-black text-emerald-400">${contentResult.price_suggestion_usd}</p></div></div>}
+                                                {contentResult.title && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-sm font-black uppercase tracking-widest text-amber-400">Título</p><button onClick={() => copyText(contentResult.title)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div><p className="text-sm text-white font-medium">{contentResult.title}</p>{contentResult.subtitle && <p className="text-sm text-neutral-500">{contentResult.subtitle}</p>}</div>}
+                                                {contentResult.description && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-sm font-black uppercase tracking-widest text-amber-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white transition-colors"><Copy size={10} /></button></div><p className="text-sm text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p></div>}
+                                                {Array.isArray(contentResult.bullets) && contentResult.bullets.length > 0 && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><p className="text-sm font-black uppercase tracking-widest text-amber-400">Bullets</p><ul className="space-y-0.5">{contentResult.bullets.map((b: string, i: number) => <li key={i} className="text-sm text-neutral-300 flex gap-1.5"><span className="text-amber-400/60 shrink-0">▸</span>{b}</li>)}</ul></div>}
+                                                {Array.isArray(contentResult.keywords) && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5"><div className="flex items-center justify-between"><p className="text-sm font-black uppercase tracking-widest text-amber-400">Keywords ({contentResult.keywords.length})</p><button onClick={() => copyText(contentResult.keywords.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-sm transition-colors"><Copy size={9} /> Copiar</button></div><div className="flex flex-wrap gap-1">{contentResult.keywords.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-sm px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 transition-colors">{k}</button>)}</div></div>}
+                                                {contentResult.price_suggestion_usd && <div className="flex items-center gap-3 px-3 py-2 bg-emerald-500/5 border border-emerald-500/15 rounded-xl"><DollarSign size={13} className="text-emerald-400 shrink-0" /><div><p className="text-sm text-neutral-600 uppercase">Precio sugerido</p><p className="text-sm font-black text-emerald-400">${contentResult.price_suggestion_usd}</p></div></div>}
                                             </>
                                         )}
                                         {contentType === "titles" && Array.isArray(contentResult) && (
                                             <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1">
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Títulos ({contentResult.length})</p>
+                                                <p className="text-sm font-black uppercase tracking-widest text-amber-400">Títulos ({contentResult.length})</p>
                                                 {contentResult.map((t: string, i: number) => (
                                                     <div key={i} className="flex items-center gap-2 py-1.5 border-b border-white/5 last:border-0">
-                                                        <span className="text-[9px] text-neutral-700 w-4">{i + 1}.</span>
-                                                        <p className="text-[11px] text-neutral-200 flex-1">{t}</p>
+                                                        <span className="text-sm text-neutral-700 w-4">{i + 1}.</span>
+                                                        <p className="text-sm text-neutral-200 flex-1">{t}</p>
                                                         <button onClick={() => copyText(t)} className="p-1 rounded text-neutral-600 hover:text-white shrink-0"><Copy size={10} /></button>
                                                     </div>
                                                 ))}
@@ -10093,29 +10311,29 @@ export function KdpFactoryApp() {
                                         )}
                                         {contentType === "description" && typeof contentResult === "object" && (
                                             <>
-                                                {contentResult.description && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div><p className="text-[10px] text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p></div>}
-                                                {Array.isArray(contentResult.bullets) && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Bullets</p>{contentResult.bullets.map((b: string, i: number) => <p key={i} className="text-[10px] text-neutral-300 flex gap-1.5"><span className="text-amber-400/60 shrink-0">▸</span>{b}</p>)}</div>}
+                                                {contentResult.description && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><div className="flex items-center justify-between"><p className="text-sm font-black uppercase tracking-widest text-amber-400">Descripción</p><button onClick={() => copyText(contentResult.description)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div><p className="text-sm text-neutral-300 leading-relaxed whitespace-pre-line">{contentResult.description}</p></div>}
+                                                {Array.isArray(contentResult.bullets) && <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1"><p className="text-sm font-black uppercase tracking-widest text-amber-400">Bullets</p>{contentResult.bullets.map((b: string, i: number) => <p key={i} className="text-sm text-neutral-300 flex gap-1.5"><span className="text-amber-400/60 shrink-0">▸</span>{b}</p>)}</div>}
                                             </>
                                         )}
                                         {contentType === "keywords" && Array.isArray(contentResult) && (
                                             <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-2">
-                                                <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Keywords ({contentResult.length})</p><button onClick={() => copyText(contentResult.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-[9px]"><Copy size={9} /> Copiar todos</button></div>
-                                                <div className="flex flex-wrap gap-1.5">{contentResult.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-[9px] px-2 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 transition-colors">{k}</button>)}</div>
+                                                <div className="flex items-center justify-between"><p className="text-sm font-black uppercase tracking-widest text-amber-400">Keywords ({contentResult.length})</p><button onClick={() => copyText(contentResult.join(", "))} className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 text-neutral-400 hover:text-white text-sm"><Copy size={9} /> Copiar todos</button></div>
+                                                <div className="flex flex-wrap gap-1.5">{contentResult.map((k: string, i: number) => <button key={i} onClick={() => copyText(k)} className="text-sm px-2 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 transition-colors">{k}</button>)}</div>
                                             </div>
                                         )}
                                         {contentType === "back-cover" && typeof contentResult === "object" && contentResult.back_cover && (
                                             <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 space-y-1.5">
-                                                <div className="flex items-center justify-between"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Contraportada</p><button onClick={() => copyText(contentResult.back_cover)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
-                                                <p className="text-[11px] text-neutral-200 leading-relaxed whitespace-pre-line">{contentResult.back_cover}</p>
+                                                <div className="flex items-center justify-between"><p className="text-sm font-black uppercase tracking-widest text-amber-400">Contraportada</p><button onClick={() => copyText(contentResult.back_cover)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
+                                                <p className="text-sm text-neutral-200 leading-relaxed whitespace-pre-line">{contentResult.back_cover}</p>
                                             </div>
                                         )}
                                         {contentType === "series" && typeof contentResult === "object" && contentResult.series_name && (
                                             <div className="space-y-2">
-                                                <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3"><p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Serie</p><p className="text-base font-black text-white mt-0.5">{contentResult.series_name}</p>{contentResult.concept && <p className="text-[10px] text-neutral-400 mt-0.5">{contentResult.concept}</p>}</div>
+                                                <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3"><p className="text-sm font-black uppercase tracking-widest text-amber-400">Serie</p><p className="text-sm font-black text-white mt-0.5">{contentResult.series_name}</p>{contentResult.concept && <p className="text-sm text-neutral-400 mt-0.5">{contentResult.concept}</p>}</div>
                                                 {Array.isArray(contentResult.volumes) && contentResult.volumes.map((v: any, i: number) => (
                                                     <div key={i} className="bg-white/[0.02] border border-white/5 rounded-xl p-2.5 flex gap-2">
-                                                        <span className="text-[9px] font-black text-amber-400 w-4 shrink-0 mt-0.5">{i + 1}</span>
-                                                        <div><p className="text-[11px] font-bold text-white">{v.title}</p><p className="text-[9px] text-neutral-500">{v.theme} — {v.angle}</p></div>
+                                                        <span className="text-sm font-black text-amber-400 w-4 shrink-0 mt-0.5">{i + 1}</span>
+                                                        <div><p className="text-sm font-bold text-white">{v.title}</p><p className="text-sm text-neutral-500">{v.theme} — {v.angle}</p></div>
                                                     </div>
                                                 ))}
                                             </div>
@@ -10123,7 +10341,7 @@ export function KdpFactoryApp() {
                                         {typeof contentResult === "string" && (
                                             <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3">
                                                 <div className="flex justify-end mb-1"><button onClick={() => copyText(contentResult)} className="p-1 rounded text-neutral-600 hover:text-white"><Copy size={10} /></button></div>
-                                                <p className="text-[10px] text-neutral-300 whitespace-pre-wrap">{contentResult}</p>
+                                                <p className="text-sm text-neutral-300 whitespace-pre-wrap">{contentResult}</p>
                                             </div>
                                         )}
                                     </div>
@@ -10146,6 +10364,7 @@ export function KdpFactoryApp() {
                     { id: "catalogs" as const, label: "Catálogos", icon: <Grid3x3 size={11} />, count: linkedCats.length },
                     { id: "seo" as const, label: "SEO / Listing", icon: <FileText size={11} />, count: detailNiche.listings?.length ?? 0 },
                     { id: "book" as const, label: "Libro KDP", icon: <Library size={11} />, count: pipelineDraft ? 1 : 0 },
+                    { id: "actions" as const, label: "Acciones", icon: <Settings size={11} />, count: 0 },
                 ];
                 return createPortal(
                     <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto" onClick={e => { if (e.target === e.currentTarget) setNicheDetailId(null); }}>
@@ -10157,11 +10376,11 @@ export function KdpFactoryApp() {
                                     <div className="space-y-1">
                                         <div className="flex items-center gap-2 flex-wrap">
                                             <h2 className="text-xl font-black text-white">{detailNiche.name}</h2>
-                                            <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-300">{detailNiche.phase ?? "niche"}</span>
-                                            <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border border-white/10 text-neutral-500">{detailNiche.status}</span>
+                                            <span className="text-sm font-black uppercase tracking-widest px-2 py-0.5 rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-300">{detailNiche.phase ?? "niche"}</span>
+                                            <span className="text-sm font-black uppercase tracking-widest px-2 py-0.5 rounded-full border border-white/10 text-neutral-500">{detailNiche.status}</span>
                                         </div>
-                                        {detailNiche.description && <p className="text-[11px] text-neutral-500 max-w-xl leading-relaxed">{detailNiche.description}</p>}
-                                        <div className="flex items-center gap-3 text-[9px] text-neutral-600 pt-1">
+                                        {detailNiche.description && <p className="text-sm text-neutral-500 max-w-xl leading-relaxed">{detailNiche.description}</p>}
+                                        <div className="flex items-center gap-3 text-sm text-neutral-600 pt-1">
                                             <span>{allImgs.length} imágenes</span>
                                             <span>·</span>
                                             <span>{linkedCats.length} catálogos</span>
@@ -10170,15 +10389,26 @@ export function KdpFactoryApp() {
                                             {detailNiche.generatedPrompt && <><span>·</span><span>prompt generado</span></>}
                                         </div>
                                     </div>
-                                    <button onClick={() => setNicheDetailId(null)} className="p-2 rounded-xl text-neutral-600 hover:text-white hover:bg-white/10 transition-all shrink-0"><X size={16} /></button>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        {/* Pipeline launcher */}
+                                        <button
+                                            onClick={() => { void runNichePipeline(detailNiche); setNicheDetailId(null); }}
+                                            disabled={nicheGeneratingId === detailNiche._id}
+                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-violet-500/15 border border-violet-500/30 text-sm font-black text-violet-300 hover:bg-violet-500/25 transition-all disabled:opacity-40"
+                                        >
+                                            {nicheGeneratingId === detailNiche._id ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+                                            Pipeline
+                                        </button>
+                                        <button onClick={() => setNicheDetailId(null)} className="p-2 rounded-xl text-neutral-600 hover:text-white hover:bg-white/10 transition-all"><X size={16} /></button>
+                                    </div>
                                 </div>
                                 {/* Tabs */}
                                 <div className="flex gap-1 mt-4 overflow-x-auto no-scrollbar">
                                     {TABS.map(tab => (
                                         <button key={tab.id} onClick={() => setNicheDetailTab(tab.id)}
-                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[9px] font-black transition-all shrink-0 ${nicheDetailTab === tab.id ? "border-violet-500/40 bg-violet-500/10 text-violet-300" : "border-white/8 bg-transparent text-neutral-600 hover:text-neutral-400"}`}>
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-sm font-black transition-all shrink-0 ${nicheDetailTab === tab.id ? "border-violet-500/40 bg-violet-500/10 text-violet-300" : "border-white/8 bg-transparent text-neutral-600 hover:text-neutral-400"}`}>
                                             {tab.icon}{tab.label}
-                                            {tab.count > 0 && <span className="bg-white/10 rounded-full px-1 text-[7px]">{tab.count}</span>}
+                                            {tab.count > 0 && <span className="bg-white/10 rounded-full px-1 text-sm">{tab.count}</span>}
                                         </button>
                                     ))}
                                 </div>
@@ -10191,7 +10421,7 @@ export function KdpFactoryApp() {
                                         {allImgs.length === 0 ? (
                                             <div className="flex flex-col items-center justify-center py-16 gap-3 opacity-30">
                                                 <ImageIcon size={32} strokeWidth={1} className="text-neutral-600" />
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Sin imágenes aún — lanza el pipeline para generar</p>
+                                                <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Sin imágenes aún — lanza el pipeline para generar</p>
                                             </div>
                                         ) : (
                                             <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
@@ -10209,18 +10439,18 @@ export function KdpFactoryApp() {
                                         {linkedCats.length === 0 ? (
                                             <div className="flex flex-col items-center justify-center py-16 gap-3 opacity-30">
                                                 <Grid3x3 size={32} strokeWidth={1} className="text-neutral-600" />
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Sin catálogos vinculados</p>
+                                                <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Sin catálogos vinculados</p>
                                             </div>
                                         ) : linkedCats.map(cat => (
                                             <div key={cat._id} className="flex items-center gap-3 p-3 rounded-xl border border-white/8 bg-white/[0.02]">
                                                 {cat.images[0] && <img src={cat.images[0].url} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />}
                                                 <div className="flex-1 min-w-0">
-                                                    <p className="text-[11px] font-bold text-white truncate">{cat.name}</p>
-                                                    <p className="text-[9px] text-neutral-600 truncate">{cat.prompt}</p>
+                                                    <p className="text-sm font-bold text-white truncate">{cat.name}</p>
+                                                    <p className="text-sm text-neutral-600 truncate">{cat.prompt}</p>
                                                 </div>
                                                 <div className="flex items-center gap-2 shrink-0">
-                                                    <span className="text-[8px] text-neutral-600">{cat.images.length} imgs</span>
-                                                    <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded-full ${cat.status === "completed" ? "bg-emerald-500/15 text-emerald-400" : cat.status === "running" ? "bg-blue-500/15 text-blue-400" : "bg-neutral-500/15 text-neutral-500"}`}>{cat.status}</span>
+                                                    <span className="text-sm text-neutral-600">{cat.images.length} imgs</span>
+                                                    <span className={`text-sm font-black uppercase px-1.5 py-0.5 rounded-full ${cat.status === "completed" ? "bg-emerald-500/15 text-emerald-400" : cat.status === "running" ? "bg-blue-500/15 text-blue-400" : "bg-neutral-500/15 text-neutral-500"}`}>{cat.status}</span>
                                                 </div>
                                             </div>
                                         ))}
@@ -10231,27 +10461,27 @@ export function KdpFactoryApp() {
                                         {(detailNiche.listings?.length ?? 0) === 0 ? (
                                             <div className="flex flex-col items-center justify-center py-16 gap-3 opacity-30">
                                                 <FileText size={32} strokeWidth={1} className="text-neutral-600" />
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Sin listings SEO — genera contenido desde el pipeline o el generador</p>
+                                                <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Sin listings SEO — genera contenido desde el pipeline o el generador</p>
                                             </div>
                                         ) : detailNiche.listings!.map((listing, i) => (
                                             <div key={listing._id ?? i} className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-2.5">
                                                 <div className="flex items-start justify-between gap-2">
-                                                    <p className="text-[12px] font-black text-white leading-tight">{listing.title}</p>
+                                                    <p className="text-sm font-black text-white leading-tight">{listing.title}</p>
                                                     <button onClick={() => { navigator.clipboard.writeText([listing.title, listing.subtitle, listing.description.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim(), listing.keywords.join(", ")].filter(Boolean).join("\n\n")); toast.success("Copiado"); }} className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all shrink-0"><Copy size={11} /></button>
                                                 </div>
-                                                {listing.subtitle && <p className="text-[10px] text-neutral-500">{listing.subtitle}</p>}
+                                                {listing.subtitle && <p className="text-sm text-neutral-500">{listing.subtitle}</p>}
                                                 {listing.description && (
-                                                    <div className="text-[9px] text-neutral-400 leading-relaxed [&_p]:mb-1.5 [&_ul]:list-disc [&_ul]:pl-3 [&_li]:mb-0.5 [&_strong]:text-amber-300"
+                                                    <div className="text-sm text-neutral-400 leading-relaxed [&_p]:mb-1.5 [&_ul]:list-disc [&_ul]:pl-3 [&_li]:mb-0.5 [&_strong]:text-amber-300"
                                                         dangerouslySetInnerHTML={{ __html: listing.description }} />
                                                 )}
                                                 {listing.keywords.length > 0 && (
                                                     <div className="flex flex-wrap gap-1 pt-1">
                                                         {listing.keywords.map((kw, j) => (
-                                                            <span key={j} className="text-[8px] px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300">{kw}</span>
+                                                            <span key={j} className="text-sm px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300">{kw}</span>
                                                         ))}
                                                     </div>
                                                 )}
-                                                <p className="text-[7px] text-neutral-700">{new Date(listing.generatedAt).toLocaleDateString("es-ES")}</p>
+                                                <p className="text-sm text-neutral-700">{new Date(listing.generatedAt).toLocaleDateString("es-ES")}</p>
                                             </div>
                                         ))}
                                     </div>
@@ -10261,10 +10491,10 @@ export function KdpFactoryApp() {
                                         {detailNiche.generatedPrompt && (
                                             <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-1.5">
                                                 <div className="flex items-center justify-between">
-                                                    <p className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Prompt de generación</p>
+                                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Prompt de generación</p>
                                                     <button onClick={() => { navigator.clipboard.writeText(detailNiche.generatedPrompt!); toast.success("Copiado"); }} className="p-1 rounded text-neutral-700 hover:text-white transition-colors"><Copy size={9} /></button>
                                                 </div>
-                                                <p className="text-[9px] text-neutral-400 leading-relaxed">{detailNiche.generatedPrompt}</p>
+                                                <p className="text-sm text-neutral-400 leading-relaxed">{detailNiche.generatedPrompt}</p>
                                             </div>
                                         )}
                                         {pipelineDraft ? (
@@ -10272,26 +10502,143 @@ export function KdpFactoryApp() {
                                                 <div className="flex items-center gap-2">
                                                     <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />
                                                     <div>
-                                                        <p className="text-[11px] font-black text-emerald-300">{pipelineDraft.fileName}</p>
-                                                        <p className="text-[9px] text-neutral-600">{pipelineDraft.pages.length} páginas · {new Date(pipelineDraft.savedAt).toLocaleDateString("es-ES")}</p>
+                                                        <p className="text-sm font-black text-emerald-300">{pipelineDraft.fileName}</p>
+                                                        <p className="text-sm text-neutral-600">{pipelineDraft.pages.length} páginas · {new Date(pipelineDraft.savedAt).toLocaleDateString("es-ES")}</p>
                                                     </div>
                                                 </div>
                                                 <button onClick={() => { loadBookDraft(pipelineDraft); setNicheDetailId(null); changeTab("creation"); toast.success("Borrador cargado en el editor PDF"); }}
-                                                    className="w-full h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-[9px] font-black text-emerald-400 hover:bg-emerald-500/25 transition-all flex items-center justify-center gap-2">
+                                                    className="w-full h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-sm font-black text-emerald-400 hover:bg-emerald-500/25 transition-all flex items-center justify-center gap-2">
                                                     <Library size={11} /> Abrir en editor PDF
                                                 </button>
                                             </div>
                                         ) : (
                                             <div className="flex flex-col items-center justify-center py-16 gap-3">
                                                 <Library size={32} strokeWidth={1} className="text-neutral-700 opacity-40" />
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 text-center">Sin borrador de libro — lanza el pipeline para generar uno automáticamente</p>
+                                                <p className="text-sm font-black uppercase tracking-widest text-neutral-600 text-center">Sin borrador de libro — lanza el pipeline para generar uno automáticamente</p>
                                                 <button onClick={() => { setNicheDetailId(null); void runNichePipeline(detailNiche); }}
                                                     disabled={nicheGeneratingId === nicheDetailId}
-                                                    className="mt-2 h-9 px-6 rounded-xl bg-violet-500/15 border border-violet-500/30 text-[9px] font-black text-violet-300 hover:bg-violet-500/25 transition-all flex items-center gap-2 disabled:opacity-40">
+                                                    className="mt-2 h-9 px-6 rounded-xl bg-violet-500/15 border border-violet-500/30 text-sm font-black text-violet-300 hover:bg-violet-500/25 transition-all flex items-center gap-2 disabled:opacity-40">
                                                     <Play size={10} /> Lanzar pipeline ahora
                                                 </button>
                                             </div>
                                         )}
+                                    </div>
+                                )}
+                                {nicheDetailTab === "actions" && (
+                                    <div className="space-y-6">
+                                        {/* Edit niche */}
+                                        <div className="space-y-3">
+                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Editar nicho</p>
+                                            <div className="space-y-2">
+                                                <input value={nicheFormName} onChange={e => setNicheFormName(e.target.value)} placeholder="Nombre del nicho"
+                                                    className="w-full h-9 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
+                                                <textarea value={nicheFormDesc} onChange={e => setNicheFormDesc(e.target.value)} rows={2} placeholder="Descripción breve…"
+                                                    className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50 resize-none" />
+                                                <input value={nicheFormTags} onChange={e => setNicheFormTags(e.target.value)} placeholder="Tags separados por comas"
+                                                    className="w-full h-9 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
+                                                <div className="flex gap-1.5 flex-wrap">
+                                                    {(["found", "research", "active", "published", "paused"] as NicheStatus[]).map(s => (
+                                                        <button key={s} onClick={() => setNicheFormStatus(s)}
+                                                            className={`h-7 px-3 rounded-lg border text-sm font-black uppercase tracking-widest transition-all ${nicheFormStatus === s ? STATUS_LABELS[s].color : "border-white/10 bg-white/[0.02] text-neutral-600 hover:text-neutral-400"}`}>
+                                                            {STATUS_LABELS[s].label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                <textarea value={nicheFormNotes} onChange={e => setNicheFormNotes(e.target.value)} rows={2} placeholder="Notas internas…"
+                                                    className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50 resize-none" />
+                                                <button onClick={() => void saveNiche()} disabled={isSavingNiche || !nicheFormName.trim()}
+                                                    className="h-9 px-5 rounded-xl bg-violet-500/20 border border-violet-500/30 text-sm font-black text-violet-300 hover:bg-violet-500/30 transition-all flex items-center gap-2 disabled:opacity-40">
+                                                    {isSavingNiche ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} Guardar cambios
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Publish panel */}
+                                        <div className="space-y-3 pt-4 border-t border-white/6">
+                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Publicación</p>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div className="space-y-1">
+                                                    <label className="text-sm text-neutral-600 uppercase tracking-wider">ASIN</label>
+                                                    <input value={publishPanelAsin} onChange={e => setPublishPanelAsin(e.target.value)} placeholder="B0XXXXXXXX"
+                                                        className="w-full h-8 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-sm text-neutral-600 uppercase tracking-wider">Fecha publicación</label>
+                                                    <input type="date" value={publishPanelDate} onChange={e => setPublishPanelDate(e.target.value)}
+                                                        className="w-full h-8 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white focus:outline-none focus:border-violet-500/50" />
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-sm text-neutral-600 uppercase tracking-wider">Etsy URL</label>
+                                                <input value={publishPanelEtsy} onChange={e => setPublishPanelEtsy(e.target.value)} placeholder="https://etsy.com/listing/..."
+                                                    className="w-full h-8 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-sm text-neutral-600 uppercase tracking-wider">Gumroad URL</label>
+                                                <input value={publishPanelGumroad} onChange={e => setPublishPanelGumroad(e.target.value)} placeholder="https://gumroad.com/..."
+                                                    className="w-full h-8 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
+                                            </div>
+                                            <button onClick={() => void savePublishPanel(detailNiche._id)} disabled={isSavingPublish}
+                                                className="h-9 px-5 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sm font-black text-sky-300 hover:bg-sky-500/25 transition-all flex items-center gap-2 disabled:opacity-40">
+                                                {isSavingPublish ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} Guardar publicación
+                                            </button>
+                                        </div>
+
+                                        {/* Royalties */}
+                                        <div className="space-y-3 pt-4 border-t border-white/6">
+                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Royalties</p>
+                                            <div className="flex gap-2 items-end">
+                                                <div className="space-y-1 flex-1">
+                                                    <label className="text-sm text-neutral-600 uppercase tracking-wider">Mes</label>
+                                                    <input type="month" value={royaltiesMonth} onChange={e => setRoyaltiesMonth(e.target.value)}
+                                                        className="w-full h-8 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white focus:outline-none focus:border-violet-500/50" />
+                                                </div>
+                                                <div className="space-y-1 w-20">
+                                                    <label className="text-sm text-neutral-600 uppercase tracking-wider">Ventas</label>
+                                                    <input type="number" value={royaltiesSales} onChange={e => setRoyaltiesSales(e.target.value)} min="0" placeholder="0"
+                                                        className="w-full h-8 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
+                                                </div>
+                                                <div className="space-y-1 w-24">
+                                                    <label className="text-sm text-neutral-600 uppercase tracking-wider">Ingresos €</label>
+                                                    <input type="number" value={royaltiesRevenue} onChange={e => setRoyaltiesRevenue(e.target.value)} min="0" step="0.01" placeholder="0.00"
+                                                        className="w-full h-8 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
+                                                </div>
+                                                <button onClick={() => void addRoyaltyEntry(detailNiche._id)} disabled={isSavingRoyalties}
+                                                    className="h-8 w-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 transition-all flex items-center justify-center shrink-0 disabled:opacity-40">
+                                                    {isSavingRoyalties ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
+                                                </button>
+                                            </div>
+                                            {(detailNiche.royalties?.length ?? 0) > 0 && (
+                                                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                                                    {[...(detailNiche.royalties ?? [])].reverse().map((r, i) => (
+                                                        <div key={i} className="flex items-center justify-between px-3 py-2 rounded-xl border border-white/6 bg-white/[0.02]">
+                                                            <span className="text-sm font-black text-neutral-400">{r.month}</span>
+                                                            <div className="flex items-center gap-3">
+                                                                <span className="text-sm text-neutral-600">{r.sales} uds</span>
+                                                                <span className="text-sm font-black text-emerald-400">{r.revenue.toFixed(2)} €</span>
+                                                                <button onClick={() => void deleteRoyaltyEntry(detailNiche._id, r.month)} className="p-1 rounded-lg text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all"><X size={9} /></button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-white/[0.04] mt-1">
+                                                        <span className="text-sm font-black text-neutral-500 uppercase tracking-widest">Total</span>
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-sm text-neutral-600">{(detailNiche.royalties ?? []).reduce((s, r) => s + r.sales, 0)} uds</span>
+                                                            <span className="text-sm font-black text-emerald-300">{(detailNiche.royalties ?? []).reduce((s, r) => s + r.revenue, 0).toFixed(2)} €</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Danger zone */}
+                                        <div className="space-y-2 pt-4 border-t border-rose-500/10">
+                                            <p className="text-sm font-black uppercase tracking-widest text-rose-900">Zona peligrosa</p>
+                                            <button onClick={() => { setNicheDeleteId(detailNiche._id); setNicheDetailId(null); }}
+                                                className="h-9 px-5 rounded-xl border border-rose-500/20 bg-rose-500/5 text-sm font-black text-rose-500 hover:bg-rose-500/15 transition-all flex items-center gap-2">
+                                                <Trash2 size={10} /> Eliminar nicho
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -10307,7 +10654,7 @@ export function KdpFactoryApp() {
                     <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
                         <div className="space-y-2 text-center">
                             <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto"><Cloud size={24} className="text-red-400" /></div>
-                            <p className="text-base font-black text-white">¿Eliminar de Cloudinary?</p>
+                            <p className="text-sm font-black text-white">¿Eliminar de Cloudinary?</p>
                             <p className="text-sm text-neutral-500">La imagen se eliminará permanentemente del almacén en la nube.</p>
                         </div>
                         <div className="flex gap-3">

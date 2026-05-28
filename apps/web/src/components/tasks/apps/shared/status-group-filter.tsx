@@ -23,9 +23,9 @@ interface Props {
 
 export function StatusGroupFilter({ options, value, onChange, size = "sm" }: Props) {
     const h   = size === "xs" ? "h-6"  : "h-7";
-    const px  = size === "xs" ? "px-2" : "px-3";
-    const txt = size === "xs" ? "text-[8px]"  : "text-[9px]";
-    const cnt = size === "xs" ? "text-[7px]"  : "text-[8px]";
+    const px  = size === "xs" ? "px-2.5" : "px-3";
+    const txt = size === "xs" ? "text-xs"  : "text-xs";
+    const cnt = size === "xs" ? "text-xs"  : "text-xs";
 
     return (
         <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: "none" }}>
