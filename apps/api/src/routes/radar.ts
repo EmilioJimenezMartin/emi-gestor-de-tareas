@@ -36,6 +36,19 @@ export const EtsyNicheResultSchema = z.object({
 });
 export type EtsyNicheResult = z.infer<typeof EtsyNicheResultSchema>;
 
+export const AMAZON_SYSTEM_PROMPT = `Eres un analista experto en investigación de mercado para libros de colorear (coloring books), patrones, printables y productos digitales en Amazon KDP. Tu objetivo es extraer y estructurar TODOS los listados de productos visibles en la página de resultados.
+
+Para CADA producto encontrado en la página, aplica estas reglas de extracción:
+1. Extrae el título completo del producto y límpialo.
+2. Identifica si tiene la etiqueta "Best Seller", "#1 Best Seller", "Amazon's Choice" o similar — marca bestseller como true.
+3. Extrae el número de valoraciones/reseñas si está visible (ej: "1,234 ratings" → 1234).
+4. Extrae el precio de venta tal como aparece.
+5. Deduce el micronicho específico a partir de las palabras clave del título: temáticas, estilos, audiencias (niños, adultos, mandala, animales, patrones geométricos, etc.).
+6. Extrae el ASIN del producto si aparece en la URL o en el listado (formato: B0XXXXXXXX).
+7. Extrae la URL directa del listado de Amazon si está disponible.
+
+Extrae TODOS los productos visibles. El objetivo es detectar patrones de demanda y nichos populares en Amazon KDP.`;
+
 export const ETSY_SYSTEM_PROMPT = `Eres un analista experto en investigación de mercado para productos digitales en Etsy. Tu objetivo es extraer y estructurar TODOS los listados de productos visibles en la página de resultados, especialmente los relacionados con libros de colorear, coloring pages PDF, printables, pósters digitales o cualquier producto digital descargable.
 
 Para CADA producto encontrado en la página, aplica estas reglas de extracción:

@@ -37,6 +37,15 @@ export default function AjustesPage() {
     const [googleApiKey, setGoogleApiKey] = useState("");
     const [showGoogleKey, setShowGoogleKey] = useState(false);
 
+    const [groqApiKey, setGroqApiKey] = useState("");
+    const [showGroqKey, setShowGroqKey] = useState(false);
+
+    const [openrouterApiKey, setOpenrouterApiKey] = useState("");
+    const [showOpenrouterKey, setShowOpenrouterKey] = useState(false);
+
+    const [hfInferenceKey, setHfInferenceKey] = useState("");
+    const [showHfInferenceKey, setShowHfInferenceKey] = useState(false);
+
     const [cloudinaryCloudName, setCloudinaryCloudName] = useState("af6b2f473a2cd3539b6d7bef68fb37");
     const [cloudinaryApiKey, setCloudinaryApiKey] = useState("");
     const [cloudinaryApiSecret, setCloudinaryApiSecret] = useState("");
@@ -79,6 +88,9 @@ export default function AjustesPage() {
                 if (map.has("DEFAULT_LLM_PROVIDER")) setDefaultProvider(map.get("DEFAULT_LLM_PROVIDER"));
                 if (map.has("DEFAULT_LLM_MODEL")) setDefaultModel(map.get("DEFAULT_LLM_MODEL"));
                 if (map.has("GOOGLE_API_KEY")) setGoogleApiKey(map.get("GOOGLE_API_KEY"));
+                if (map.has("GROQ_API_KEY")) setGroqApiKey(map.get("GROQ_API_KEY"));
+                if (map.has("OPENROUTER_API_KEY")) setOpenrouterApiKey(map.get("OPENROUTER_API_KEY"));
+                if (map.has("HUGGINGFACE_API_KEY")) setHfInferenceKey(map.get("HUGGINGFACE_API_KEY"));
                 if (map.has("CLOUDINARY_CLOUD_NAME")) setCloudinaryCloudName(map.get("CLOUDINARY_CLOUD_NAME"));
                 if (map.has("CLOUDINARY_API_KEY")) setCloudinaryApiKey(map.get("CLOUDINARY_API_KEY"));
                 if (map.has("CLOUDINARY_API_SECRET")) setCloudinaryApiSecret(map.get("CLOUDINARY_API_SECRET"));
@@ -118,6 +130,9 @@ export default function AjustesPage() {
                 { key: "DEFAULT_LLM_PROVIDER", value: defaultProvider },
                 { key: "DEFAULT_LLM_MODEL", value: defaultModel },
                 { key: "GOOGLE_API_KEY", value: googleApiKey },
+                { key: "GROQ_API_KEY", value: groqApiKey },
+                { key: "OPENROUTER_API_KEY", value: openrouterApiKey },
+                { key: "HUGGINGFACE_API_KEY", value: hfInferenceKey },
                 { key: "CLOUDINARY_CLOUD_NAME", value: cloudinaryCloudName },
                 { key: "CLOUDINARY_API_KEY", value: cloudinaryApiKey },
                 { key: "CLOUDINARY_API_SECRET", value: cloudinaryApiSecret },
@@ -181,9 +196,9 @@ export default function AjustesPage() {
                     </div>
 
                     <Card variant="outline" className="relative overflow-hidden p-1 sm:p-1 border-white/5 bg-white/[0.01]">
-                        <div className="grid grid-cols-1 lg:grid-cols-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2">
                             {/* Gemini Provider */}
-                            <div className={`p-5 sm:p-8 lg:p-10 border-b lg:border-b-0 lg:border-r border-white/5 space-y-5 sm:space-y-8 relative transition-all duration-500 ${defaultProvider === 'google' ? 'bg-blue-600/[0.03]' : 'hover:bg-white/[0.01] opacity-70 hover:opacity-100'}`}>
+                            <div className={`p-5 sm:p-8 border-b md:border-r border-white/5 space-y-5 relative transition-all duration-500 ${defaultProvider === 'google' ? 'bg-blue-600/[0.03]' : 'hover:bg-white/[0.01] opacity-70 hover:opacity-100'}`}>
                                 <div className="absolute -left-10 -top-10 w-32 h-32 bg-blue-600/5 blur-[50px] pointer-events-none" />
                                 <div className="flex items-center justify-between relative z-10">
                                     <div className="flex items-center gap-4">
@@ -249,8 +264,71 @@ export default function AjustesPage() {
                                 </div>
                             </div>
 
+                            {/* Groq Provider */}
+                            <div className={`p-5 sm:p-8 border-b border-white/5 space-y-5 relative transition-all duration-500 ${defaultProvider === 'groq' ? 'bg-emerald-600/[0.03]' : 'hover:bg-white/[0.01] opacity-70 hover:opacity-100'}`}>
+                                <div className="absolute -left-10 -top-10 w-32 h-32 bg-emerald-600/5 blur-[50px] pointer-events-none" />
+                                <div className="flex items-center justify-between relative z-10">
+                                    <div className="flex items-center gap-4">
+                                        <div
+                                            className={`w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-lg ${defaultProvider === 'groq' ? 'shadow-emerald-500/20' : 'shadow-none cursor-pointer'} transition-all`}
+                                            onClick={() => handleProviderChange('groq', 'llama-3.3-70b-versatile')}
+                                        >
+                                            <Zap size={20} />
+                                        </div>
+                                        <div className="cursor-pointer" onClick={() => handleProviderChange('groq', 'llama-3.3-70b-versatile')}>
+                                            <h3 className="font-black text-lg text-white">Groq</h3>
+                                            <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Ultrarrápido · Gratis</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1 cursor-pointer" onClick={() => handleProviderChange('groq', 'llama-3.3-70b-versatile')}>
+                                        {defaultProvider === "groq" ? (
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
+                                                <span className="text-[8px] font-black text-emerald-500 uppercase">ACTIVE ALGORITHM</span>
+                                            </div>
+                                        ) : (
+                                            <span className="text-[8px] font-black text-neutral-500 uppercase hover:text-white transition-colors border border-white/10 px-2 py-1 rounded">SET AS DEFAULT</span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="space-y-4 relative z-10">
+                                    <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-1">
+                                        <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Cómo obtener tu API key gratis</p>
+                                        <ol className="text-[11px] text-neutral-400 space-y-0.5 list-decimal list-inside">
+                                            <li>Ve a <span className="text-emerald-400 font-mono">console.groq.com</span></li>
+                                            <li>Sign up con Google/GitHub (sin tarjeta)</li>
+                                            <li>API Keys → Create API Key</li>
+                                        </ol>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Groq Target Model</label>
+                                        <select
+                                            className="w-full h-10 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-bold text-white outline-none focus:border-emerald-500/40 transition-all appearance-none cursor-pointer"
+                                            value={defaultProvider === 'groq' ? defaultModel : 'llama-3.3-70b-versatile'}
+                                            onChange={(e) => handleProviderChange('groq', e.target.value)}
+                                        >
+                                            <optgroup label="── Llama (Meta) ──">
+                                                <option value="llama-3.3-70b-versatile">Llama 3.3 70B — mejor calidad ✓</option>
+                                                <option value="llama-3.1-8b-instant">Llama 3.1 8B — rapidísimo</option>
+                                                <option value="llama3-70b-8192">Llama 3 70B</option>
+                                                <option value="llama3-8b-8192">Llama 3 8B</option>
+                                            </optgroup>
+                                            <optgroup label="── Mixtral ──">
+                                                <option value="mixtral-8x7b-32768">Mixtral 8x7B — contexto largo</option>
+                                            </optgroup>
+                                            <optgroup label="── Google ──">
+                                                <option value="gemma2-9b-it">Gemma 2 9B</option>
+                                            </optgroup>
+                                        </select>
+                                    </div>
+                                    <p className="text-[11px] text-neutral-500 leading-relaxed">
+                                        ~30 req/min · ~14k req/día gratis. Hardware especializado, el más rápido del mercado.
+                                    </p>
+                                </div>
+                            </div>
+
                             {/* Hugging Face Provider */}
-                            <div className={`p-5 sm:p-8 lg:p-10 space-y-5 sm:space-y-8 relative transition-all duration-500 ${defaultProvider === 'huggingface' ? 'bg-amber-600/[0.03]' : 'hover:bg-white/[0.01] opacity-70 hover:opacity-100'}`}>
+                            <div className={`p-5 sm:p-8 md:border-r border-white/5 space-y-5 relative transition-all duration-500 ${defaultProvider === 'huggingface' ? 'bg-amber-600/[0.03]' : 'hover:bg-white/[0.01] opacity-70 hover:opacity-100'}`}>
                                 <div className="absolute -right-10 -top-10 w-32 h-32 bg-amber-600/5 blur-[50px] pointer-events-none" />
                                 <div className="flex items-center justify-between relative z-10">
                                     <div className="flex items-center gap-4">
@@ -302,18 +380,21 @@ export default function AjustesPage() {
                                             value={defaultProvider === 'huggingface' ? defaultModel : 'Qwen/Qwen2.5-7B-Instruct'}
                                             onChange={(e) => { handleProviderChange('huggingface', e.target.value) }}
                                         >
-                                            <optgroup label="── Qwen (recomendado) ──">
+                                            <optgroup label="── DeepSeek ──">
+                                                <option value="deepseek-ai/DeepSeek-R1-Distill-Qwen-7B">DeepSeek R1 Distill 7B ✓</option>
+                                                <option value="deepseek-ai/DeepSeek-R1-Distill-Llama-8B">DeepSeek R1 Distill 8B</option>
+                                                <option value="deepseek-ai/DeepSeek-V3-0324">DeepSeek V3 — más potente</option>
+                                            </optgroup>
+                                            <optgroup label="── Qwen ──">
                                                 <option value="Qwen/Qwen2.5-72B-Instruct">Qwen 2.5 72B — más potente</option>
-                                                <option value="Qwen/Qwen2.5-7B-Instruct">Qwen 2.5 7B — rápido ✓</option>
-                                                <option value="Qwen/Qwen2.5-Coder-32B-Instruct">Qwen 2.5 Coder 32B</option>
+                                                <option value="Qwen/Qwen2.5-7B-Instruct">Qwen 2.5 7B — rápido</option>
                                             </optgroup>
                                             <optgroup label="── Meta Llama ──">
                                                 <option value="meta-llama/Llama-3.3-70B-Instruct">Llama 3.3 70B</option>
                                                 <option value="meta-llama/Llama-3.1-8B-Instruct">Llama 3.1 8B</option>
-                                                <option value="meta-llama/Llama-3.2-3B-Instruct">Llama 3.2 3B — ligero</option>
                                             </optgroup>
                                             <optgroup label="── Mistral ──">
-                                                <option value="mistralai/Mistral-7B-Instruct-v0.3">Mistral 7B v0.3</option>
+                                                <option value="mistral-community/Mistral-7B-Instruct-v0.3">Mistral 7B v0.3</option>
                                                 <option value="mistralai/Mixtral-8x7B-Instruct-v0.1">Mixtral 8x7B</option>
                                             </optgroup>
                                             <optgroup label="── Microsoft ──">
@@ -323,6 +404,67 @@ export default function AjustesPage() {
                                     </div>
                                     <p className="text-[11px] text-neutral-500 leading-relaxed">
                                         Todos estos modelos usan la API chat/conversational de HF Inference. Necesitas un token HF guardado en Ajustes → API Keys.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* OpenRouter Provider */}
+                            <div className={`p-5 sm:p-8 space-y-5 relative transition-all duration-500 ${defaultProvider === 'openrouter' ? 'bg-violet-600/[0.03]' : 'hover:bg-white/[0.01] opacity-70 hover:opacity-100'}`}>
+                                <div className="absolute -right-10 -top-10 w-32 h-32 bg-violet-600/5 blur-[50px] pointer-events-none" />
+                                <div className="flex items-center justify-between relative z-10">
+                                    <div className="flex items-center gap-4">
+                                        <div
+                                            className={`w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center text-white shadow-lg ${defaultProvider === 'openrouter' ? 'shadow-violet-500/20' : 'shadow-none cursor-pointer'} transition-all`}
+                                            onClick={() => handleProviderChange('openrouter', 'google/gemini-2.5-flash')}
+                                        >
+                                            <Globe size={20} />
+                                        </div>
+                                        <div className="cursor-pointer" onClick={() => handleProviderChange('openrouter', 'google/gemini-2.5-flash')}>
+                                            <h3 className="font-black text-lg text-white">OpenRouter</h3>
+                                            <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">200+ modelos · 1 API</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1 cursor-pointer" onClick={() => handleProviderChange('openrouter', 'google/gemini-2.5-flash')}>
+                                        {defaultProvider === "openrouter" ? (
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
+                                                <span className="text-[8px] font-black text-emerald-500 uppercase">ACTIVE ALGORITHM</span>
+                                            </div>
+                                        ) : (
+                                            <span className="text-[8px] font-black text-neutral-500 uppercase hover:text-white transition-colors border border-white/10 px-2 py-1 rounded">SET AS DEFAULT</span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4 relative z-10">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Modelo</label>
+                                        <select
+                                            className="w-full h-10 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-bold text-white outline-none focus:border-violet-500/40 transition-all appearance-none cursor-pointer"
+                                            value={defaultProvider === 'openrouter' ? defaultModel : 'google/gemini-2.5-flash'}
+                                            onChange={(e) => handleProviderChange('openrouter', e.target.value)}
+                                        >
+                                            <optgroup label="── Gratis ──">
+                                                <option value="google/gemini-2.5-flash">Gemini 2.5 Flash ✓</option>
+                                                <option value="google/gemini-2.0-flash-exp:free">Gemini 2.0 Flash Exp (free)</option>
+                                                <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B (free)</option>
+                                                <option value="deepseek/deepseek-r1:free">DeepSeek R1 (free)</option>
+                                                <option value="deepseek/deepseek-chat-v3-0324:free">DeepSeek V3 (free)</option>
+                                                <option value="mistralai/mistral-nemo:free">Mistral Nemo (free)</option>
+                                                <option value="microsoft/phi-4:free">Microsoft Phi-4 (free)</option>
+                                            </optgroup>
+                                            <optgroup label="── Premium ──">
+                                                <option value="anthropic/claude-3.5-haiku">Claude 3.5 Haiku</option>
+                                                <option value="anthropic/claude-sonnet-4-5">Claude Sonnet 4.5</option>
+                                                <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+                                                <option value="openai/gpt-4o">GPT-4o</option>
+                                                <option value="google/gemini-2.5-pro">Gemini 2.5 Pro</option>
+                                                <option value="mistralai/mistral-large">Mistral Large</option>
+                                            </optgroup>
+                                        </select>
+                                    </div>
+                                    <p className="text-[11px] text-neutral-500 leading-relaxed">
+                                        Acceso a más de 200 modelos con una sola API key. Los marcados (free) no consumen créditos.
                                     </p>
                                 </div>
                             </div>
@@ -370,6 +512,140 @@ export default function AjustesPage() {
                                     </button>
                                 </div>
                                 <p className="text-[10px] text-neutral-600 italic">Gratis en <span className="text-blue-400">aistudio.google.com</span> · ~1500 peticiones/día sin coste</p>
+                            </div>
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* Groq API Key */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Groq API Key</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-emerald-500/10 text-emerald-400 border-emerald-500/20">GRATIS</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
+                                    <Zap size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Groq Cloud · LLM Ultrarrápido</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Listings · SEO · Contenido · Análisis</p>
+                                </div>
+                            </div>
+                            <div className="space-y-2 max-w-xl">
+                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">GROQ_API_KEY</label>
+                                <div className="relative">
+                                    <input
+                                        type={showGroqKey ? "text" : "password"}
+                                        value={groqApiKey}
+                                        onChange={(e) => setGroqApiKey(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-emerald-500/40 transition-all"
+                                        placeholder="gsk_..."
+                                    />
+                                    <button type="button" onClick={() => setShowGroqKey((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                        {showGroqKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-neutral-600 italic">Gratis en <span className="text-emerald-400">console.groq.com</span> · Sin tarjeta · ~14k req/día · Llama 3.3 70B incluido</p>
+                            </div>
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* OpenRouter API Key */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">OpenRouter API Key</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-violet-500/10 text-violet-400 border-violet-500/20">200+ MODELOS</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center text-white shadow-lg shadow-violet-500/20">
+                                    <Globe size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">OpenRouter · Gateway Unificado</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Gemini · Claude · GPT · DeepSeek · Llama · Mistral</p>
+                                </div>
+                            </div>
+                            <div className="space-y-2 max-w-xl">
+                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">OPENROUTER_API_KEY</label>
+                                <div className="relative">
+                                    <input
+                                        type={showOpenrouterKey ? "text" : "password"}
+                                        value={openrouterApiKey}
+                                        onChange={(e) => setOpenrouterApiKey(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-violet-500/40 transition-all"
+                                        placeholder="sk-or-v1-..."
+                                    />
+                                    <button type="button" onClick={() => setShowOpenrouterKey((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                        {showOpenrouterKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-neutral-600 italic">Regístrate en <span className="text-violet-400">openrouter.ai</span> → Keys → Create Key · Varios modelos gratuitos sin tarjeta</p>
+                            </div>
+                            <div className="rounded-2xl border border-violet-500/10 bg-violet-500/[0.03] p-4 space-y-2 max-w-xl">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-violet-400/80">Cómo obtener tu API Key</p>
+                                <ol className="text-[10px] text-neutral-500 space-y-1 list-decimal list-inside leading-relaxed">
+                                    <li>Ve a <span className="text-violet-400 font-mono">openrouter.ai</span> y crea una cuenta</li>
+                                    <li>En el panel lateral ve a <span className="text-neutral-300">Keys</span></li>
+                                    <li>Pulsa <span className="text-neutral-300">Create Key</span>, dale un nombre</li>
+                                    <li>Copia la key (empieza por <span className="font-mono text-violet-300">sk-or-v1-</span>)</li>
+                                    <li>Los modelos marcados (free) son gratis sin necesidad de añadir créditos</li>
+                                </ol>
+                            </div>
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* HuggingFace Inference Key */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">HuggingFace Inference Key</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-amber-500/10 text-amber-400 border-amber-500/20">GRATIS</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-lg shadow-amber-500/20 text-lg font-black italic">H</div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">HF Inference API · DeepSeek / Mistral / Llama</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Generación de texto · Open Source</p>
+                                </div>
+                            </div>
+                            <div className="space-y-2 max-w-xl">
+                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">HUGGINGFACE_API_KEY (Inference Token)</label>
+                                <div className="relative">
+                                    <input
+                                        type={showHfInferenceKey ? "text" : "password"}
+                                        value={hfInferenceKey}
+                                        onChange={(e) => setHfInferenceKey(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-amber-500/40 transition-all"
+                                        placeholder="hf_..."
+                                    />
+                                    <button type="button" onClick={() => setShowHfInferenceKey((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                        {showHfInferenceKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-neutral-600 italic">Gratis en <span className="text-amber-400">huggingface.co/settings/tokens</span> · Crea un token de tipo "Read" o "Inference"</p>
                             </div>
                             <div className="flex justify-end border-t border-white/5 pt-4">
                                 <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">

@@ -210,7 +210,7 @@ interface NicheFE {
     notes: string;
     generatedPrompt?: string;
     catalogIds?: string[];
-    phase?: "niche" | "catalog" | "pdf" | "published";
+    phase?: "niche" | "catalog" | "pdf" | "cover" | "published";
     publishedAt?: string;
     asin?: string;
     etsyUrl?: string;
@@ -704,7 +704,7 @@ function GelatoUploadModal({
                                 {manualGenerating ? (multiProgress ? `Parte ${multiProgress.current}/${multiProgress.total}...` : "Generando...") : needsSplit ? `1. Descargar ${chunks.length} PDFs` : "1. Descargar PDF"}
                             </button>
                             <a
-                                href="https://dashboard.gelato.com/store-products/product-list"
+                                href="https://dashboard.gelato.com/price-navigator/prices"
                                 target="_blank" rel="noreferrer"
                                 className="flex-1 py-2.5 rounded-2xl bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 font-bold text-sm flex items-center justify-center gap-2 transition-all"
                             >
@@ -1101,6 +1101,9 @@ export function KdpFactoryApp() {
             await runNichePipeline(niche, cfg);
         } else if (phase === "pdf") {
             setNichePublishPanelId(niche._id);
+        } else if (phase === "cover") {
+            setSelectedCoverNicheId(niche._id);
+            setShowCoverModal(true);
         } else if (phase === "published") {
             toast.info("Nicho ya publicado. Puedes añadir royalties o crear una nueva edición.");
         }
@@ -4556,6 +4559,113 @@ export function KdpFactoryApp() {
                     </section>
                 );
             })()}
+
+            {/* ══ TIENDA GELATO ══ */}
+            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                <div className="h-px w-full bg-gradient-to-r from-orange-500/60 via-amber-400/20 to-transparent" />
+                <div className="p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                        <SectionHeader
+                            icon={<Store size={18} />}
+                            title={<><span className="text-white">Tienda </span><span className="bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">Gelato</span></>}
+                            subtitle="Productos publicados · Pedidos recientes · Print-on-demand"
+                            color="orange"
+                            size="md"
+                        />
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button
+                                onClick={() => {
+                                    setGelatoStoreProducts([]);
+                                    setLoadingGelatoData(true);
+                                    Promise.all([
+                                        fetch(`${API_BASE_URL}/gelato/store/products?limit=50`).then(r => r.ok ? r.json() : { products: [] }).catch(() => ({ products: [] })),
+                                        fetch(`${API_BASE_URL}/gelato/orders?limit=10`).then(r => r.ok ? r.json() : { orders: [] }).catch(() => ({ orders: [] })),
+                                    ]).then(([prod, ord]) => {
+                                        setGelatoStoreProducts(prod.products ?? []);
+                                        setGelatoOrders(ord.orders ?? []);
+                                    }).finally(() => setLoadingGelatoData(false));
+                                }}
+                                disabled={loadingGelatoData}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 bg-white/[0.03] text-sm font-black text-neutral-500 hover:text-white hover:border-white/20 transition-all disabled:opacity-40"
+                            >
+                                {loadingGelatoData ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Actualizar
+                            </button>
+                            <a href="https://dashboard.gelato.com/price-navigator/prices" target="_blank" rel="noreferrer"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500/20 to-amber-500/20 hover:from-orange-500/30 hover:to-amber-500/30 border border-orange-500/30 text-orange-300 font-black text-sm transition-all">
+                                <ExternalLink size={11} /> Dashboard
+                            </a>
+                        </div>
+                    </div>
+
+                    {loadingGelatoData && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            {[1,2,3,4].map(i => <div key={i} className="h-20 rounded-2xl bg-white/[0.03] animate-pulse border border-white/5" />)}
+                        </div>
+                    )}
+
+                    {!loadingGelatoData && (
+                        <>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <KdpStatCard label="Productos totales" value={gelatoStoreProducts.length} icon={<Package size={16} />} color="orange" />
+                                <KdpStatCard label="Publicados" value={gelatoStoreProducts.filter((p: any) => p.status === "active" || p.status === "published").length} icon={<Store size={16} />} color="emerald" />
+                                <KdpStatCard label="Borradores" value={gelatoStoreProducts.filter((p: any) => p.status === "draft").length} icon={<FileText size={16} />} color="sky" />
+                                <KdpStatCard label="Pedidos (últimos 10)" value={gelatoOrders.length} icon={<ShoppingBag size={16} />} color="purple" />
+                            </div>
+
+                            {gelatoStoreProducts.length > 0 && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    {gelatoStoreProducts.slice(0, 6).map((p: any) => (
+                                        <div key={p.id ?? p.productUid} className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-3 hover:border-white/15 transition-all">
+                                            {p.previewUrl || p.thumbnail
+                                                ? <img src={p.previewUrl ?? p.thumbnail} alt={p.title} className="w-10 h-10 rounded-lg object-cover shrink-0 bg-white/5" />
+                                                : <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center shrink-0"><Package size={16} className="text-neutral-700" /></div>
+                                            }
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-bold text-white truncate">{p.title ?? p.externalId ?? "Sin título"}</p>
+                                                <div className="flex items-center gap-2 mt-0.5">
+                                                    <span className={`text-sm font-black uppercase px-1.5 py-0.5 rounded-full border ${(p.status === "active" || p.status === "published") ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/25" : "text-neutral-400 bg-white/5 border-white/10"}`}>{p.status}</span>
+                                                    {p.retailPrice && <span className="text-sm text-neutral-500">{p.currency ?? "EUR"} {p.retailPrice}</span>}
+                                                </div>
+                                            </div>
+                                            <a href="https://dashboard.gelato.com/price-navigator/prices" target="_blank" rel="noreferrer" className="shrink-0 p-1 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all">
+                                                <ExternalLink size={11} />
+                                            </a>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {gelatoOrders.length > 0 && (
+                                <div>
+                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-700 mb-2">Pedidos recientes</p>
+                                    <div className="space-y-1.5">
+                                        {gelatoOrders.slice(0, 5).map((o: any) => {
+                                            const statusColor = o.fulfillmentStatus === "fulfilled" ? "text-emerald-400" : o.fulfillmentStatus === "canceled" ? "text-red-400" : "text-amber-400";
+                                            return (
+                                                <div key={o.id ?? o.orderId} className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.01] px-3 py-2 hover:border-white/10 transition-all">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-bold text-white truncate">{o.orderReferenceId ?? o.id ?? "—"}</p>
+                                                        <p className="text-sm text-neutral-600">{o.createdAt ? new Date(o.createdAt).toLocaleDateString("es-ES") : ""}</p>
+                                                    </div>
+                                                    <span className={`text-sm font-black uppercase ${statusColor}`}>{o.fulfillmentStatus ?? o.status ?? "—"}</span>
+                                                    {o.totalAmount && <span className="text-sm text-neutral-500 tabular-nums">{o.currency} {o.totalAmount}</span>}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {gelatoStoreProducts.length === 0 && gelatoOrders.length === 0 && (
+                                <div className="rounded-2xl border border-dashed border-white/8 bg-white/[0.01] p-8 text-center text-neutral-600">
+                                    <Store size={24} className="mx-auto mb-2 opacity-40" />
+                                    <p className="text-sm">Sin datos — comprueba que GELATO_API_KEY y GELATO_STORE_ID están configurados en Ajustes</p>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+            </div>
         </div>
         );
     };
@@ -6506,109 +6616,24 @@ export function KdpFactoryApp() {
                         </h2>
                         <p className="text-sm text-neutral-500 mt-1">Herramientas de producción · libros, zips, contenido y print-on-demand</p>
                     </div>
-                    <a
-                        href="https://dashboard.gelato.com/store-products/product-list"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="shrink-0 flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-orange-500/20 to-amber-500/20 hover:from-orange-500/30 hover:to-amber-500/30 border border-orange-500/30 text-orange-300 font-bold text-sm transition-all shadow-lg shadow-orange-500/10"
-                    >
-                        <ExternalLink size={15} /> Gelato Dashboard
-                    </a>
-                </div>
-
-                {/* ── Gelato real data ── */}
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                        <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Tu tienda Gelato</p>
-                        <button
-                            onClick={() => {
-                                setGelatoStoreProducts([]);
-                                setLoadingGelatoData(true);
-                                Promise.all([
-                                    fetch(`${API_BASE_URL}/gelato/store/products?limit=50`).then(r => r.ok ? r.json() : { products: [] }).catch(() => ({ products: [] })),
-                                    fetch(`${API_BASE_URL}/gelato/orders?limit=10`).then(r => r.ok ? r.json() : { orders: [] }).catch(() => ({ orders: [] })),
-                                ]).then(([prod, ord]) => {
-                                    setGelatoStoreProducts(prod.products ?? []);
-                                    setGelatoOrders(ord.orders ?? []);
-                                }).finally(() => setLoadingGelatoData(false));
-                            }}
-                            disabled={loadingGelatoData}
-                            className="flex items-center gap-1.5 text-sm text-neutral-500 hover:text-white transition-colors"
+                    <div className="flex items-center gap-2 shrink-0">
+                        <a
+                            href="https://dashboard.gelato.com/price-navigator/prices"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/10 bg-white/[0.03] text-sm font-black text-neutral-500 hover:text-white hover:border-white/20 transition-all"
                         >
-                            {loadingGelatoData ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Actualizar
-                        </button>
+                            <ExternalLink size={12} /> Mis productos
+                        </a>
+                        <a
+                            href="https://dashboard.gelato.com/price-navigator/prices"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-orange-500/20 to-amber-500/20 hover:from-orange-500/30 hover:to-amber-500/30 border border-orange-500/30 text-orange-300 font-bold text-sm transition-all shadow-lg shadow-orange-500/10"
+                        >
+                            <ExternalLink size={15} /> Gelato Dashboard
+                        </a>
                     </div>
-
-                    {loadingGelatoData && (
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            {[1,2,3,4].map(i => <div key={i} className="h-20 rounded-2xl bg-white/[0.03] animate-pulse border border-white/5" />)}
-                        </div>
-                    )}
-
-                    {!loadingGelatoData && (
-                        <>
-                            {/* Stats row */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                <KdpStatCard label="Productos totales" value={gelatoStoreProducts.length} icon={<Package size={16} />} color="orange" />
-                                <KdpStatCard label="Publicados" value={gelatoStoreProducts.filter((p: any) => p.status === "active" || p.status === "published").length} icon={<Store size={16} />} color="emerald" />
-                                <KdpStatCard label="Borradores" value={gelatoStoreProducts.filter((p: any) => p.status === "draft").length} icon={<FileText size={16} />} color="sky" />
-                                <KdpStatCard label="Pedidos (últimos 10)" value={gelatoOrders.length} icon={<ShoppingBag size={16} />} color="purple" />
-                            </div>
-
-                            {/* Products list */}
-                            {gelatoStoreProducts.length > 0 && (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {gelatoStoreProducts.slice(0, 6).map((p: any) => (
-                                        <div key={p.id ?? p.productUid} className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-3 hover:border-white/15 transition-all">
-                                            {p.previewUrl || p.thumbnail
-                                                ? <img src={p.previewUrl ?? p.thumbnail} alt={p.title} className="w-10 h-10 rounded-lg object-cover shrink-0 bg-white/5" />
-                                                : <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center shrink-0"><Package size={16} className="text-neutral-700" /></div>
-                                            }
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-sm font-bold text-white truncate">{p.title ?? p.externalId ?? "Sin título"}</p>
-                                                <div className="flex items-center gap-2 mt-0.5">
-                                                    <span className={`text-sm font-black uppercase px-1.5 py-0.5 rounded-full border ${(p.status === "active" || p.status === "published") ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/25" : "text-neutral-400 bg-white/5 border-white/10"}`}>{p.status}</span>
-                                                    {p.retailPrice && <span className="text-sm text-neutral-500">{p.currency ?? "EUR"} {p.retailPrice}</span>}
-                                                </div>
-                                            </div>
-                                            <a href="https://dashboard.gelato.com/store-products/product-list" target="_blank" rel="noreferrer" className="shrink-0 p-1 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all">
-                                                <ExternalLink size={11} />
-                                            </a>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {/* Recent orders */}
-                            {gelatoOrders.length > 0 && (
-                                <div>
-                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-700 mb-2">Pedidos recientes</p>
-                                    <div className="space-y-1.5">
-                                        {gelatoOrders.slice(0, 5).map((o: any) => {
-                                            const statusColor = o.fulfillmentStatus === "fulfilled" ? "text-emerald-400" : o.fulfillmentStatus === "canceled" ? "text-red-400" : "text-amber-400";
-                                            return (
-                                                <div key={o.id ?? o.orderId} className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.01] px-3 py-2 hover:border-white/10 transition-all">
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-bold text-white truncate">{o.orderReferenceId ?? o.id ?? "—"}</p>
-                                                        <p className="text-sm text-neutral-600">{o.createdAt ? new Date(o.createdAt).toLocaleDateString("es-ES") : ""}</p>
-                                                    </div>
-                                                    <span className={`text-sm font-black uppercase ${statusColor}`}>{o.fulfillmentStatus ?? o.status ?? "—"}</span>
-                                                    {o.totalAmount && <span className="text-sm text-neutral-500 tabular-nums">{o.currency} {o.totalAmount}</span>}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-
-                            {gelatoStoreProducts.length === 0 && gelatoOrders.length === 0 && (
-                                <div className="rounded-2xl border border-dashed border-white/8 bg-white/[0.01] p-8 text-center text-neutral-600">
-                                    <Store size={24} className="mx-auto mb-2 opacity-40" />
-                                    <p className="text-sm">Sin datos — comprueba que GELATO_API_KEY y GELATO_STORE_ID están configurados en Ajustes</p>
-                                </div>
-                            )}
-                        </>
-                    )}
                 </div>
 
                 {/* ── Factories ── */}
@@ -6935,12 +6960,13 @@ export function KdpFactoryApp() {
                     {/* ── Kanban view ── */}
                     {!isLoadingNiches && nicheViewMode === "kanban" && niches.length > 0 && (() => {
                         const PHASES: { id: NicheFE["phase"]; label: string; color: string; dot: string }[] = [
-                            { id: "niche",     label: "Nicho",     color: "border-sky-500/30 bg-sky-500/[0.05]",     dot: "bg-sky-400" },
-                            { id: "catalog",   label: "Catálogo",  color: "border-blue-500/30 bg-blue-500/[0.05]",   dot: "bg-blue-400" },
+                            { id: "niche",     label: "Nicho",     color: "border-sky-500/30 bg-sky-500/[0.05]",       dot: "bg-sky-400" },
+                            { id: "catalog",   label: "Catálogo",  color: "border-blue-500/30 bg-blue-500/[0.05]",     dot: "bg-blue-400" },
                             { id: "pdf",       label: "PDF",       color: "border-violet-500/30 bg-violet-500/[0.05]", dot: "bg-violet-400" },
+                            { id: "cover",     label: "Cover",     color: "border-fuchsia-500/30 bg-fuchsia-500/[0.05]", dot: "bg-fuchsia-400" },
                             { id: "published", label: "Publicado", color: "border-emerald-500/30 bg-emerald-500/[0.05]", dot: "bg-emerald-400" },
                         ];
-                        const phaseOrder = ["niche", "catalog", "pdf", "published"] as const;
+                        const phaseOrder = ["niche", "catalog", "pdf", "cover", "published"] as const;
                         const movePhase = async (nicheId: string, direction: 1 | -1) => {
                             const niche = niches.find(n => n._id === nicheId);
                             if (!niche) return;
@@ -6951,7 +6977,7 @@ export function KdpFactoryApp() {
                             setNiches(ns => ns.map(n => n._id === nicheId ? { ...n, phase: next } : n));
                         };
                         return (
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                                 {PHASES.map(col => {
                                     const colNiches = niches.filter(n => (n.phase ?? "niche") === col.id);
                                     return (
@@ -7118,12 +7144,13 @@ export function KdpFactoryApp() {
                                                 {/* ─ Phase pipeline ─ */}
                                                 {(() => {
                                                     const PHASE_META: Record<NonNullable<NicheFE["phase"]>, { label: string; dot: string; active: string }> = {
-                                                        niche:     { label: "Nicho",     dot: "bg-sky-400",     active: "border-sky-500/40 bg-sky-500/10 text-sky-300" },
-                                                        catalog:   { label: "Catálogo",  dot: "bg-blue-400",    active: "border-blue-500/40 bg-blue-500/10 text-blue-300" },
-                                                        pdf:       { label: "PDF",       dot: "bg-violet-400",  active: "border-violet-500/40 bg-violet-500/10 text-violet-300" },
-                                                        published: { label: "Publicado", dot: "bg-emerald-400", active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" },
+                                                        niche:     { label: "Nicho",     dot: "bg-sky-400",      active: "border-sky-500/40 bg-sky-500/10 text-sky-300" },
+                                                        catalog:   { label: "Catálogo",  dot: "bg-blue-400",     active: "border-blue-500/40 bg-blue-500/10 text-blue-300" },
+                                                        pdf:       { label: "PDF",       dot: "bg-violet-400",   active: "border-violet-500/40 bg-violet-500/10 text-violet-300" },
+                                                        cover:     { label: "Cover",     dot: "bg-fuchsia-400",  active: "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-300" },
+                                                        published: { label: "Publicado", dot: "bg-emerald-400",  active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" },
                                                     };
-                                                    const phases = ["niche", "catalog", "pdf", "published"] as NonNullable<NicheFE["phase"]>[];
+                                                    const phases = ["niche", "catalog", "pdf", "cover", "published"] as NonNullable<NicheFE["phase"]>[];
                                                     return (
                                                         <div className="flex items-center gap-1 pt-2 border-t border-white/[0.04] flex-wrap">
                                                             {phases.map((p, i) => {
@@ -7162,19 +7189,17 @@ export function KdpFactoryApp() {
                                                                 onClick={() => void launchPipelineStep(niche, pipelineConfig)}
                                                                 disabled={nicheGeneratingId === niche._id}
                                                                 className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl bg-gradient-to-r from-violet-600/15 to-blue-600/15 border border-violet-500/20 text-sm font-black text-violet-300 hover:from-violet-600/25 hover:to-blue-600/25 hover:border-violet-500/35 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                                                                {nicheGeneratingId === niche._id ? <><Loader2 size={11} className="animate-spin" />Ejecutando…</> : <><Play size={11} /> Lanzar pipeline</>}
+                                                                {nicheGeneratingId === niche._id
+                                                                    ? <><Loader2 size={11} className="animate-spin" />Ejecutando…</>
+                                                                    : (niche.phase ?? "niche") === "cover"
+                                                                        ? <><ImageIcon size={11} /> Abrir Cover Factory</>
+                                                                        : <><Play size={11} /> Lanzar pipeline</>}
                                                             </button>
                                                             <button
                                                                 onClick={() => setShowPipelineConfigId(showPipelineConfigId === niche._id ? null : niche._id)}
                                                                 title="Configurar pipeline"
                                                                 className={`w-10 h-10 flex items-center justify-center rounded-xl border transition-all ${showPipelineConfigId === niche._id ? "border-violet-500/40 bg-violet-500/15 text-violet-300" : "border-white/10 bg-white/[0.03] text-neutral-600 hover:text-white hover:border-white/20"}`}>
                                                                 <Settings size={13} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => { setNicheDetailId(niche._id); setNicheDetailTab("images"); }}
-                                                                title="Ver todo el nicho"
-                                                                className="w-10 h-10 flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-neutral-600 hover:text-white hover:border-white/20 transition-all">
-                                                                <Eye size={13} />
                                                             </button>
                                                         </div>
                                                         {showPipelineConfigId === niche._id && (
@@ -7380,7 +7405,7 @@ export function KdpFactoryApp() {
                 </div>
             </div>
 
-            {/* ══ RADAR DE NICHOS ══ */}
+            {/* ══ RADAR DE NICHOS — ETSY ══ */}
             <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
                 <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent" />
                 <div className="p-6">
@@ -7388,6 +7413,26 @@ export function KdpFactoryApp() {
                     <RadarResultsTable
                         apiUrl={API_BASE_URL}
                         storageKey="RADAR_ETSY_RESULT"
+                        niches={niches}
+                        onNicheCreated={() => void fetchNiches()}
+                        pipelineAction={{
+                            label: "Pipeline",
+                            colorScheme: "amber",
+                            isCreated: (row) => niches.some(n => n.sourceTitulo === row.titulo_producto),
+                            onCreate: async (row) => { await launchPipelineFromRow(row); },
+                        }}
+                    />
+                </div>
+            </div>
+
+            {/* ══ RADAR DE NICHOS — AMAZON KDP ══ */}
+            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                <div className="h-px w-full bg-gradient-to-r from-orange-500/60 via-amber-400/20 to-transparent" />
+                <div className="p-6">
+                    <NicheRadar apiUrl={API_BASE_URL} storageKey="RADAR_AMAZON_RESULT" defaultMode="amazon-niches" />
+                    <RadarResultsTable
+                        apiUrl={API_BASE_URL}
+                        storageKey="RADAR_AMAZON_RESULT"
                         niches={niches}
                         onNicheCreated={() => void fetchNiches()}
                         pipelineAction={{
@@ -10546,7 +10591,7 @@ export function KdpFactoryApp() {
                                                 <input value={nicheFormTags} onChange={e => setNicheFormTags(e.target.value)} placeholder="Tags separados por comas"
                                                     className="w-full h-9 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
                                                 <div className="flex gap-1.5 flex-wrap">
-                                                    {(["found", "research", "active", "published", "paused"] as NicheStatus[]).map(s => (
+                                                    {(["found", "research", "active", "archived"] as NicheStatus[]).map(s => (
                                                         <button key={s} onClick={() => setNicheFormStatus(s)}
                                                             className={`h-7 px-3 rounded-lg border text-sm font-black uppercase tracking-widest transition-all ${nicheFormStatus === s ? STATUS_LABELS[s].color : "border-white/10 bg-white/[0.02] text-neutral-600 hover:text-neutral-400"}`}>
                                                             {STATUS_LABELS[s].label}

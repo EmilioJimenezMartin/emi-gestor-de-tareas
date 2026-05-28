@@ -1,28 +1,65 @@
 import mongoose from "mongoose";
 import { Settings } from "../models/settings.js";
 
-type LLMProvider = "google" | "huggingface";
+type LLMProvider = "google" | "huggingface" | "groq" | "openrouter";
 
-async function getConfig(): Promise<{ provider: LLMProvider; model: string; googleKey: string; hfKey: string }> {
+async function getConfig(): Promise<{ provider: LLMProvider; model: string; googleKey: string; hfKey: string; groqKey: string; openrouterKey: string }> {
     let provider: LLMProvider = "google";
     let model = "gemini-2.5-flash";
     let googleKey = process.env.GOOGLE_API_KEY ?? "";
     let hfKey = process.env.HUGGINGFACE_API_KEY ?? "";
+    let groqKey = process.env.GROQ_API_KEY ?? "";
+    let openrouterKey = process.env.OPENROUTER_API_KEY ?? "";
 
     if (mongoose.connection.readyState === 1) {
         try {
-            const rows = await Settings.find({ key: { $in: ["DEFAULT_LLM_PROVIDER", "DEFAULT_LLM_MODEL", "GOOGLE_API_KEY", "HUGGINGFACE_API_KEY"] } });
+            const rows = await Settings.find({ key: { $in: ["DEFAULT_LLM_PROVIDER", "DEFAULT_LLM_MODEL", "GOOGLE_API_KEY", "HUGGINGFACE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY"] } });
             const map = new Map(rows.map(r => [r.key, r.value]));
             if (map.has("DEFAULT_LLM_PROVIDER")) provider = map.get("DEFAULT_LLM_PROVIDER") as LLMProvider;
             if (map.has("DEFAULT_LLM_MODEL")) model = map.get("DEFAULT_LLM_MODEL");
             if (map.has("GOOGLE_API_KEY") && map.get("GOOGLE_API_KEY")) googleKey = map.get("GOOGLE_API_KEY");
             if (map.has("HUGGINGFACE_API_KEY") && map.get("HUGGINGFACE_API_KEY")) hfKey = map.get("HUGGINGFACE_API_KEY");
+            if (map.has("GROQ_API_KEY") && map.get("GROQ_API_KEY")) groqKey = map.get("GROQ_API_KEY");
+            if (map.has("OPENROUTER_API_KEY") && map.get("OPENROUTER_API_KEY")) openrouterKey = map.get("OPENROUTER_API_KEY");
         } catch {
             // Fallback to env
         }
     }
 
-    return { provider, model, googleKey, hfKey };
+    return { provider, model, googleKey, hfKey, groqKey, openrouterKey };
+}
+
+async function groqChat(groqKey: string, model: string, messages: Array<{ role: string; content: string }>, maxTokens = 1024, temperature = 0.4): Promise<string> {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
+        body: JSON.stringify({ model: model || "llama-3.3-70b-versatile", messages, max_tokens: maxTokens, temperature }),
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`Groq API error ${res.status}: ${err}`);
+    }
+    const data = await res.json() as { choices: Array<{ message: { content: string } }> };
+    return (data.choices[0]?.message?.content ?? "").trim();
+}
+
+async function openrouterChat(openrouterKey: string, model: string, messages: Array<{ role: string; content: string }>, maxTokens = 1024, temperature = 0.4): Promise<string> {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${openrouterKey}`,
+            "HTTP-Referer": "https://emi-gestor-de-tareas.local",
+            "X-Title": "Emi Gestor de Tareas",
+        },
+        body: JSON.stringify({ model: model || "google/gemini-2.5-flash", messages, max_tokens: maxTokens, temperature }),
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`OpenRouter API error ${res.status}: ${err}`);
+    }
+    const data = await res.json() as { choices: Array<{ message: { content: string } }> };
+    return (data.choices[0]?.message?.content ?? "").trim();
 }
 
 export interface AIExtractedItem {
@@ -67,6 +104,28 @@ ${rawText.substring(0, 4000)}`;
         }
     }
 
+    if (config.provider === "groq" && config.groqKey) {
+        const jsonNote = "\n\nCRITICAL: Respond with ONLY a valid JSON array. No markdown, no code fences, no backticks. Start with [ and end with ].";
+        const raw = await groqChat(config.groqKey, config.model, [{ role: "user", content: systemPrompt + jsonNote }], 1024, 0.1);
+        const text = raw.replace(/^```(?:json|)?\s*/i, "").replace(/```\s*$/i, "").trim();
+        const s = text.indexOf("["), e = text.lastIndexOf("]");
+        if (s !== -1 && e !== -1) {
+            try { return JSON.parse(text.substring(s, e + 1)); } catch { return []; }
+        }
+        return [];
+    }
+
+    if (config.provider === "openrouter" && config.openrouterKey) {
+        const jsonNote = "\n\nCRITICAL: Respond with ONLY a valid JSON array. No markdown, no code fences, no backticks. Start with [ and end with ].";
+        const raw = await openrouterChat(config.openrouterKey, config.model, [{ role: "user", content: systemPrompt + jsonNote }], 1024, 0.1);
+        const text = raw.replace(/^```(?:json|)?\s*/i, "").replace(/```\s*$/i, "").trim();
+        const s = text.indexOf("["), e = text.lastIndexOf("]");
+        if (s !== -1 && e !== -1) {
+            try { return JSON.parse(text.substring(s, e + 1)); } catch { return []; }
+        }
+        return [];
+    }
+
     if (config.provider === "huggingface" && config.hfKey) {
         const { HfInference } = await import("@huggingface/inference");
         const hf = new HfInference(config.hfKey);
@@ -95,7 +154,7 @@ ${rawText.substring(0, 4000)}`;
     return [{
         id: `item-${Date.now()}`,
         title: "AI no configurada — resultado de muestra",
-        description: `Extracto de ${sourceUrl}. Configura tu API key de Google o HuggingFace en Ajustes para análisis real.`,
+        description: `Extracto de ${sourceUrl}. Configura tu API key de Google, Groq o HuggingFace en Ajustes para análisis real.`,
         type: "sample",
         tags: ["sin-ia", "muestra"],
         confidence: 0.1,
@@ -109,7 +168,7 @@ export async function varyTextWithLLM(text: string, creativity = 50): Promise<st
 
     let instruction: string;
     if (creativity <= 10) {
-        return text; // no variation at all
+        return text;
     } else if (creativity <= 35) {
         instruction = "Slightly rephrase the following text — swap one or two synonyms at most, keep virtually the same meaning.";
     } else if (creativity <= 65) {
@@ -128,6 +187,16 @@ export async function varyTextWithLLM(text: string, creativity = 50): Promise<st
         const model = config.model || "gemini-2.5-flash";
         const response = await ai.models.generateContent({ model, contents: prompt });
         return (response.text ?? "").trim() || text;
+    }
+
+    if (config.provider === "groq" && config.groqKey) {
+        const result = await groqChat(config.groqKey, config.model, [{ role: "user", content: prompt }], 200, Math.max(0.3, creativity / 100));
+        return result || text;
+    }
+
+    if (config.provider === "openrouter" && config.openrouterKey) {
+        const result = await openrouterChat(config.openrouterKey, config.model, [{ role: "user", content: prompt }], 200, Math.max(0.3, creativity / 100));
+        return result || text;
     }
 
     if (config.provider === "huggingface" && config.hfKey) {
@@ -164,6 +233,23 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
         return result.response.text().trim();
     }
 
+    if (config.provider === "groq" && config.groqKey) {
+        const jsonEnforcement = "\n\nCRITICAL: Respond with ONLY a valid JSON object. No markdown, no code fences (```), no backticks, no explanations. Start with { and end with }.";
+        const raw = await groqChat(config.groqKey, config.model, [
+            { role: "system", content: systemPrompt + jsonEnforcement },
+            { role: "user", content: userPrompt },
+        ], 1024, 0.4);
+        return raw.replace(/^```(?:json|html|xml|)?\s*/i, "").replace(/```\s*$/i, "").trim();
+    }
+
+    if (config.provider === "openrouter" && config.openrouterKey) {
+        const raw = await openrouterChat(config.openrouterKey, config.model, [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+        ], 1024, 0.4);
+        return raw.replace(/^```(?:json|html|xml|)?\s*/i, "").replace(/```\s*$/i, "").trim();
+    }
+
     if (config.provider === "huggingface" && config.hfKey) {
         const { HfInference } = await import("@huggingface/inference");
         const hf = new HfInference(config.hfKey);
@@ -178,12 +264,11 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
             temperature: 0.4,
         });
         const raw = (response.choices[0].message.content ?? "").trim();
-        // Strip markdown code fences that some models insist on adding
         return raw
             .replace(/^```(?:json|html|xml|)?\s*/i, "")
             .replace(/```\s*$/i, "")
             .trim();
     }
 
-    throw new Error("No hay proveedor de IA configurado. Configura Google API key o HuggingFace en Ajustes → Núcleo de Inteligencia.");
+    throw new Error("No hay proveedor de IA configurado. Configura Google, Groq, OpenRouter o HuggingFace en Ajustes → Núcleo de Inteligencia.");
 }

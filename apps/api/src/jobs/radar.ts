@@ -1,6 +1,6 @@
 import type { Agenda, Job } from "agenda";
 import { RadarJob } from "../models/radar-job.js";
-import { EtsyNicheResultSchema, NicheInsightSchema, ETSY_SYSTEM_PROMPT, getHFKey } from "../routes/radar.js";
+import { EtsyNicheResultSchema, NicheInsightSchema, ETSY_SYSTEM_PROMPT, AMAZON_SYSTEM_PROMPT, getHFKey } from "../routes/radar.js";
 
 export const RADAR_JOB_NAME = "run-radar-analysis";
 
@@ -55,12 +55,14 @@ async function analyzeWithHF(pageText: string, mode: string, hfKey: string): Pro
     const { HfInference } = await import("@huggingface/inference");
     const hf = new HfInference(hfKey);
 
-    const schemaHint = mode === "etsy-niches"
-        ? `{"nichos_detectados":[{"titulo_producto":"string — título completo del listado","precio":"string — precio visible ej: '4,99 €'","bestseller":true/false,"personas_carrito":number,"total_reseñas":number,"sub_nicho_estimado":"string — micronicho deducido del título","url_producto":"string|undefined — href del listado en Etsy (https://www.etsy.com/listing/...)"}]}`
+    const isListingMode = mode === "etsy-niches" || mode === "amazon-niches";
+    const schemaHint = isListingMode
+        ? `{"nichos_detectados":[{"titulo_producto":"string — título completo del listado","precio":"string — precio visible ej: '4,99 €'","bestseller":true/false,"personas_carrito":number,"total_reseñas":number,"sub_nicho_estimado":"string — micronicho deducido del título","url_producto":"string|undefined — href del listado"}]}`
         : `{"niche":"string","competition":"low|medium|high","demand":"low|medium|high","trend":"rising|stable|declining","topKeywords":["string"],"priceRange":"string","topCompetitors":["string"],"entryOpportunity":"string","buyerProfile":"string","summary":"string"}`;
 
-    const systemContent = mode === "etsy-niches"
-        ? `${ETSY_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con un objeto JSON válido sin markdown ni explicaciones, con esta estructura exacta:\n${schemaHint}`
+    const basePrompt = mode === "etsy-niches" ? ETSY_SYSTEM_PROMPT : mode === "amazon-niches" ? AMAZON_SYSTEM_PROMPT : "";
+    const systemContent = isListingMode
+        ? `${basePrompt}\n\nResponde ÚNICAMENTE con un objeto JSON válido sin markdown ni explicaciones, con esta estructura exacta:\n${schemaHint}`
         : `Analiza la siguiente página de marketplace para investigar el nicho de mercado. Responde ÚNICAMENTE con un objeto JSON válido sin markdown ni explicaciones, con esta estructura exacta:\n${schemaHint}`;
 
     // Clean up whitespace and truncate (~14k chars ≈ 3500 tokens, fits 8B context comfortably)
@@ -161,7 +163,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 throw new Error(`Página bloqueada por anti-bot: "${pageTitle}". Intenta de nuevo en unos minutos.`);
             }
 
-            if (mode === "etsy-niches") {
+            if (mode === "etsy-niches" || mode === "amazon-niches") {
                 pushLog(jobDoc, io, "info", `[FETCH] Scroll para cargar resultados lazy...`);
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)");
                 await page.waitForTimeout(1500);
@@ -211,10 +213,11 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 const scraper = new LLMScraper(google(geminiModel));
 
                 try {
-                    if (mode === "etsy-niches") {
+                    if (mode === "etsy-niches" || mode === "amazon-niches") {
+                        const systemPrompt = mode === "amazon-niches" ? AMAZON_SYSTEM_PROMPT : ETSY_SYSTEM_PROMPT;
                         const output = Output.object(EtsyNicheResultSchema as any);
                         const result = await runWithRetry(
-                            () => scraper.run(page, output, { format: "markdown", system: ETSY_SYSTEM_PROMPT }),
+                            () => scraper.run(page, output, { format: "markdown", system: systemPrompt }),
                             (secs, attempt) => {
                                 const msg = `[QUOTA] Límite RPM · esperando ${secs}s (intento ${attempt}/1)...`;
                                 pushLog(jobDoc, io, "warning", msg);
@@ -262,7 +265,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 await jobDoc.save();
                 data = await analyzeWithHF(pageText, mode, hfKey);
                 const count = (data?.nichos_detectados ?? []).length;
-                const msg = mode === "etsy-niches"
+                const msg = (mode === "etsy-niches" || mode === "amazon-niches")
                     ? `[AI] ✓ HuggingFace · ${count} productos detectados`
                     : `[AI] ✓ HuggingFace · análisis completado`;
                 pushLog(jobDoc, io, "success", msg);

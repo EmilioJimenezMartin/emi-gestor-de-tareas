@@ -6,7 +6,7 @@ import {
     Loader2, RefreshCw, Target, BarChart3, ShoppingBag,
     Users, DollarSign, Tag, Zap, Search,
     ShoppingCart, ArrowRight, BookOpen, Plus, Flame,
-    HelpCircle,
+    HelpCircle, Star,
 } from "lucide-react";
 import { createApiSocket } from "@/lib/socket";
 import { Modal } from "@/components/ui/modal";
@@ -36,7 +36,7 @@ interface LogEntry {
     message: string;
 }
 
-type Mode = "etsy-niches" | "general";
+type Mode = "etsy-niches" | "amazon-niches" | "general";
 
 interface NicheRadarProps {
     apiUrl: string;
@@ -61,6 +61,13 @@ const ETSY_PRESET_URLS = [
     { label: "Bold & Easy", url: "https://www.etsy.com/es/search?q=bold+and+easy+coloring+book&page=1" },
     { label: "Coloring PDF Adults", url: "https://www.etsy.com/es/search?q=coloring+pages+pdf+adults&page=1" },
     { label: "Kawaii Digital", url: "https://www.etsy.com/es/search?q=kawaii+coloring+book+digital&page=1" },
+];
+
+const AMAZON_PRESET_URLS = [
+    { label: "Coloring Adults", url: "https://www.amazon.com/s?k=coloring+book+adults&rh=n%3A283155" },
+    { label: "Mandala Books", url: "https://www.amazon.com/s?k=mandala+coloring+book" },
+    { label: "Animal Patterns", url: "https://www.amazon.com/s?k=animal+coloring+book+adults" },
+    { label: "KDP Bestsellers", url: "https://www.amazon.com/Best-Sellers-Books-Coloring/zgbs/books/4291/ref=zg_bs_nav_books_3_4" },
 ];
 
 const LEVEL_COLOR: Record<string, any> = {
@@ -303,20 +310,16 @@ export function NicheRadar({
             {/* Mode tabs */}
             <div className="flex gap-1 p-1 bg-white/[0.03] border border-white/8 rounded-2xl w-fit">
                 {([
-                    { id: "etsy-niches" as Mode, label: modeLabels?.etsy ?? "Nichos Etsy", icon: ShoppingCart },
-                    { id: "general" as Mode, label: modeLabels?.general ?? "Análisis General", icon: BarChart3 },
+                    { id: "etsy-niches" as Mode, label: modeLabels?.etsy ?? "Nichos Etsy", icon: ShoppingCart, active: "bg-sky-500/15 border border-sky-500/25 text-sky-300" },
+                    { id: "amazon-niches" as Mode, label: "Amazon KDP", icon: ShoppingBag, active: "bg-orange-500/15 border border-orange-500/25 text-orange-300" },
+                    { id: "general" as Mode, label: modeLabels?.general ?? "Análisis General", icon: BarChart3, active: "bg-amber-500/15 border border-amber-500/25 text-amber-300" },
                 ] as const).map(tab => {
                     const Icon = tab.icon;
-                    const active = mode === tab.id;
+                    const isActive = mode === tab.id;
                     return (
                         <button key={tab.id}
                             onClick={() => { setMode(tab.id); setUrl(""); }}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${active
-                                ? tab.id === "etsy-niches"
-                                    ? "bg-sky-500/15 border border-sky-500/25 text-sky-300"
-                                    : "bg-amber-500/15 border border-amber-500/25 text-amber-300"
-                                : "text-neutral-600 hover:text-neutral-400"
-                                }`}>
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isActive ? tab.active : "text-neutral-600 hover:text-neutral-400"}`}>
                             <Icon size={12} />
                             {tab.label}
                         </button>
@@ -340,7 +343,7 @@ export function NicheRadar({
                                 value={url}
                                 onChange={e => setUrl(e.target.value)}
                                 onKeyDown={e => e.key === "Enter" && void analyze()}
-                                placeholder={mode === "etsy-niches" ? "https://www.etsy.com/es/search?q=..." : "https://www.amazon.com/s?k=..."}
+                                placeholder={mode === "etsy-niches" ? "https://www.etsy.com/es/search?q=..." : mode === "amazon-niches" ? "https://www.amazon.com/s?k=..." : "https://www.amazon.com/s?k=..."}
                                 className="flex-1 bg-transparent text-[11px] text-white placeholder:text-neutral-700 focus:outline-none font-mono"
                             />
                             {url && <button onClick={() => setUrl("")} className="text-neutral-700 hover:text-white transition-colors"><X size={11} /></button>}
@@ -362,6 +365,39 @@ export function NicheRadar({
                                             <span className="font-normal text-neutral-700 normal-case truncate flex-1 text-[8px]">{p.url.split("?q=")[1]?.replace(/\+/g, " ").replace("&page=1", "")}</span>
                                         </button>
                                     ))}
+                                </div>
+                            </div>
+                        ) : mode === "amazon-niches" ? (
+                            <div className="space-y-1.5">
+                                <span className="text-[8px] font-black uppercase tracking-widest text-neutral-700">Búsquedas predefinidas</span>
+                                <div className="flex flex-col gap-1">
+                                    {AMAZON_PRESET_URLS.map(p => (
+                                        <button key={p.label}
+                                            onClick={() => setUrl(p.url)}
+                                            className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all text-[9px] font-black uppercase ${url === p.url
+                                                ? "bg-orange-500/15 border-orange-500/25 text-orange-300"
+                                                : "bg-white/[0.02] border-white/8 text-neutral-600 hover:text-orange-400 hover:border-orange-500/20"
+                                                }`}>
+                                            <ShoppingBag size={9} />
+                                            {p.label} ↗
+                                            <span className="font-normal text-neutral-700 normal-case truncate flex-1 text-[8px]">{p.url.split("?k=")[1]?.replace(/\+/g, " ").split("&")[0]}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="rounded-xl bg-orange-500/[0.05] border border-orange-500/15 p-3 space-y-2">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-orange-400/80">Señales detectadas</p>
+                                    <div className="space-y-1">
+                                        {[
+                                            { icon: Star, label: "Rating + número de reseñas" },
+                                            { icon: Tag, label: "Sub-nicho / patrón estimado" },
+                                            { icon: Flame, label: "Best Seller / Amazon's Choice" },
+                                        ].map(({ icon: Icon, label }) => (
+                                            <div key={label} className="flex items-center gap-2 text-[9px] text-neutral-500">
+                                                <Icon size={9} className="text-orange-400/60 shrink-0" />
+                                                {label}
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         ) : (
@@ -463,15 +499,19 @@ export function NicheRadar({
                             ? "bg-sky-600/60 text-white cursor-not-allowed"
                             : mode === "etsy-niches"
                                 ? "bg-gradient-to-r from-sky-500 to-cyan-500 text-black hover:from-sky-400 hover:to-cyan-400 shadow-sky-500/20 active:scale-[0.98] disabled:opacity-40"
-                                : "bg-gradient-to-r from-amber-500 to-orange-500 text-black hover:from-amber-400 hover:to-orange-400 shadow-amber-500/20 active:scale-[0.98] disabled:opacity-40"
+                                : mode === "amazon-niches"
+                                    ? "bg-gradient-to-r from-orange-500 to-amber-500 text-black hover:from-orange-400 hover:to-amber-400 shadow-orange-500/20 active:scale-[0.98] disabled:opacity-40"
+                                    : "bg-gradient-to-r from-amber-500 to-orange-500 text-black hover:from-amber-400 hover:to-orange-400 shadow-amber-500/20 active:scale-[0.98] disabled:opacity-40"
                             }`}
                     >
                         {!isAnalyzing && url.trim() && <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12" />}
                         {isAnalyzing
                             ? <span className="flex items-center justify-center gap-2"><Loader2 size={14} className="animate-spin" /> Analizando con Gemini...</span>
                             : mode === "etsy-niches"
-                                ? <span className="flex items-center justify-center gap-2"><ShoppingCart size={14} className="fill-black" /> Escanear</span>
-                                : <span className="flex items-center justify-center gap-2"><Play size={14} className="fill-black" /> Analizar Mercado</span>
+                                ? <span className="flex items-center justify-center gap-2"><ShoppingCart size={14} className="fill-black" /> Escanear Etsy</span>
+                                : mode === "amazon-niches"
+                                    ? <span className="flex items-center justify-center gap-2"><ShoppingBag size={14} className="fill-black" /> Escanear Amazon</span>
+                                    : <span className="flex items-center justify-center gap-2"><Play size={14} className="fill-black" /> Analizar Mercado</span>
                         }
                     </button>
 
@@ -517,7 +557,7 @@ export function NicheRadar({
                                     <div className="w-2 h-2 rounded-full bg-rose-500/40" />
                                     <div className="w-2 h-2 rounded-full bg-amber-500/40" />
                                     <div className={`w-2 h-2 rounded-full ${isAnalyzing ? "bg-emerald-500/60 animate-pulse" : "bg-emerald-500/20"}`} />
-                                    <span className="text-[8px] font-mono text-neutral-800 ml-1">radar.log · Gemini + llm-scraper · {mode}</span>
+                                    <span className="text-[8px] font-mono text-neutral-800 ml-1">radar.log · Gemini + llm-scraper · {mode === "amazon-niches" ? "amazon" : mode}</span>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-3 font-mono text-[9px] space-y-0.5">
                                     {logs.length === 0 ? (
@@ -543,13 +583,13 @@ export function NicheRadar({
                     {/* Empty state */}
                     {!generalResult && !isAnalyzing && logs.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-14 rounded-2xl border border-dashed border-white/[0.06] bg-white/[0.01] gap-4">
-                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${mode === "etsy-niches" ? "bg-sky-500/8 border border-sky-500/15" : "bg-amber-500/8 border border-amber-500/15"}`}>
-                                {mode === "etsy-niches" ? <ShoppingCart size={24} className="text-sky-400/40" /> : <BarChart3 size={24} className="text-amber-400/40" />}
+                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${mode === "etsy-niches" ? "bg-sky-500/8 border border-sky-500/15" : mode === "amazon-niches" ? "bg-orange-500/8 border border-orange-500/15" : "bg-amber-500/8 border border-amber-500/15"}`}>
+                                {mode === "etsy-niches" ? <ShoppingCart size={24} className="text-sky-400/40" /> : mode === "amazon-niches" ? <ShoppingBag size={24} className="text-orange-400/40" /> : <BarChart3 size={24} className="text-amber-400/40" />}
                             </div>
                             <div className="text-center space-y-1">
                                 <p className="text-[11px] font-black uppercase tracking-widest text-neutral-700">Sin análisis aún</p>
                                 <p className="text-[10px] text-neutral-800">
-                                    {mode === "etsy-niches" ? "Selecciona una búsqueda predefinida o escribe una URL" : "Introduce una URL y pulsa Analizar"}
+                                    {mode === "etsy-niches" || mode === "amazon-niches" ? "Selecciona una búsqueda predefinida o escribe una URL" : "Introduce una URL y pulsa Analizar"}
                                 </p>
                             </div>
                         </div>
@@ -557,11 +597,11 @@ export function NicheRadar({
 
                     {/* Analyzing state */}
                     {isAnalyzing && !generalResult && (
-                        <div className={`flex flex-col items-center justify-center py-14 rounded-2xl gap-4 ${mode === "etsy-niches" ? "border border-sky-500/10 bg-sky-500/[0.02]" : "border border-amber-500/10 bg-amber-500/[0.02]"}`}>
-                            <Loader2 size={28} className={`animate-spin ${mode === "etsy-niches" ? "text-sky-400" : "text-amber-400"}`} />
+                        <div className={`flex flex-col items-center justify-center py-14 rounded-2xl gap-4 ${mode === "etsy-niches" ? "border border-sky-500/10 bg-sky-500/[0.02]" : mode === "amazon-niches" ? "border border-orange-500/10 bg-orange-500/[0.02]" : "border border-amber-500/10 bg-amber-500/[0.02]"}`}>
+                            <Loader2 size={28} className={`animate-spin ${mode === "etsy-niches" ? "text-sky-400" : mode === "amazon-niches" ? "text-orange-400" : "text-amber-400"}`} />
                             <div className="text-center space-y-1">
-                                <p className={`text-[11px] font-black uppercase tracking-widest ${mode === "etsy-niches" ? "text-sky-400/80" : "text-amber-400/80"}`}>
-                                    {mode === "etsy-niches" ? "Escaneando con Gemini..." : "Gemini analizando mercado..."}
+                                <p className={`text-[11px] font-black uppercase tracking-widest ${mode === "etsy-niches" ? "text-sky-400/80" : mode === "amazon-niches" ? "text-orange-400/80" : "text-amber-400/80"}`}>
+                                    {mode === "etsy-niches" ? "Escaneando Etsy con Gemini..." : mode === "amazon-niches" ? "Escaneando Amazon con Gemini..." : "Gemini analizando mercado..."}
                                 </p>
                                 <p className="text-[10px] text-neutral-600">Playwright cargando la página · llm-scraper extrayendo datos</p>
                             </div>
