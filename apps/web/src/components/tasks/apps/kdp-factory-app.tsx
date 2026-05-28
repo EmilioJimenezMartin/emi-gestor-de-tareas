@@ -184,6 +184,15 @@ interface NicheRoyaltyEntry {
     revenue: number;
 }
 
+interface NicheKDPListing {
+    _id: string;
+    title: string;
+    subtitle: string;
+    description: string;
+    keywords: string[];
+    generatedAt: string;
+}
+
 interface NicheFE {
     _id: string;
     name: string;
@@ -205,6 +214,7 @@ interface NicheFE {
     gumroadUrl?: string;
     sourceTitulo?: string;
     royalties?: NicheRoyaltyEntry[];
+    listings?: NicheKDPListing[];
     createdAt: string;
 }
 
@@ -380,6 +390,57 @@ function KdpSelect({ value, onChange, options, accent = "white" }: {
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
+// ── Listing card fields (reusable inside content panel) ───────────────────────
+function ListingCardFields({
+    listing, onCopy, onExpand, expandedId,
+}: {
+    listing: { _id: string; title: string; subtitle: string; description: string; keywords: string[] };
+    onCopy: (text: string) => void;
+    onExpand: (id: string | null) => void;
+    expandedId: string | null;
+}) {
+    const KWField = ({ label, value }: { label: string; value: string }) => (
+        <div className="space-y-1">
+            <div className="flex items-center justify-between">
+                <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600">{label}</span>
+                <button onClick={() => onCopy(value)} className="text-[8px] text-neutral-700 hover:text-indigo-400 flex items-center gap-0.5 transition-colors">
+                    <Copy size={7} /> Copiar
+                </button>
+            </div>
+            <p className="text-[9px] text-neutral-300 leading-relaxed bg-white/[0.03] border border-white/[0.05] rounded-lg px-2.5 py-2">{value || <span className="italic text-neutral-700">—</span>}</p>
+        </div>
+    );
+    return (
+        <div className="space-y-2">
+            {listing.title && <KWField label="Título" value={listing.title} />}
+            {listing.subtitle && <KWField label="Subtítulo" value={listing.subtitle} />}
+            {listing.keywords.length > 0 && (
+                <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Keywords ({listing.keywords.length})</span>
+                        <button onClick={() => onCopy(listing.keywords.join(", "))} className="text-[8px] text-neutral-700 hover:text-indigo-400 flex items-center gap-0.5 transition-colors"><Copy size={7} /> Todas</button>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                        {listing.keywords.map((kw, i) => (
+                            <button key={i} onClick={() => onCopy(kw)}
+                                className="px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/20 rounded-md text-[8px] text-indigo-300 hover:bg-indigo-500/20 transition-all font-mono">
+                                {kw}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+            {listing.description && <KWField label="Descripción" value={listing.description} />}
+            <button
+                onClick={() => onCopy([listing.title, listing.subtitle, listing.description, listing.keywords.length > 0 ? `Keywords: ${listing.keywords.join(", ")}` : ""].filter(Boolean).join("\n\n"))}
+                className="w-full flex items-center justify-center gap-1 h-6 rounded-lg bg-white/[0.04] border border-white/8 text-[8px] text-neutral-500 hover:text-white hover:bg-white/8 transition-all"
+            >
+                <Copy size={8} /> Copiar listing completo
+            </button>
+        </div>
+    );
+}
 
 // ── Gelato Upload Modal ───────────────────────────────────────────────────────
 const WIRE_O_UID = "wire-o-multi-page-brochures_pf_a4_pt_115-gsm-uncoated_cl_4-4_bt_wire-o-left_cpt_300-gsm-uncoated_ver";
@@ -825,6 +886,12 @@ export function KdpFactoryApp() {
     const [isSuggestingNicheDesc, setIsSuggestingNicheDesc] = useState(false);
     const [catalogFormNicheId, setCatalogFormNicheId] = useState<string | null>(null);
     const [upscalingPublicId, setUpscalingPublicId] = useState<string | null>(null);
+    const [contentPanelNicheId, setContentPanelNicheId] = useState<string | null>(null);
+    const [generatingListingNicheId, setGeneratingListingNicheId] = useState<string | null>(null);
+    const [draftListings, setDraftListings] = useState<Record<string, NicheKDPListing | null>>({});
+    const [savingListingNicheId, setSavingListingNicheId] = useState<string | null>(null);
+    const [deletingListingId, setDeletingListingId] = useState<string | null>(null);
+    const [expandedListingId, setExpandedListingId] = useState<string | null>(null);
     const [loadedNicheForPrompt, setLoadedNicheForPrompt] = useState<NicheFE | null>(null);
     const [catalogNichePickerId, setCatalogNichePickerId] = useState<string | null>(null);
     const [kdpTemplateNicheFilter, setKdpTemplateNicheFilter] = useState<string | null>(null);
@@ -3059,6 +3126,87 @@ export function KdpFactoryApp() {
         }
     };
 
+    // ── KDP Listing (contenido) per niche ────────────────────────────────────
+    const generateNicheListing = async (niche: NicheFE) => {
+        setGeneratingListingNicheId(niche._id);
+        setDraftListings(prev => ({ ...prev, [niche._id]: null }));
+        try {
+            const res = await fetch(`${API_BASE_URL}/ai/generate-text`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    type: "kdp-physical-book",
+                    niche: niche.name,
+                    productType: niche.productType === "coloring-book" ? "Libro de colorear KDP" : "Poster imprimible KDP",
+                    extras: [
+                        niche.tags.length > 0 ? `tags: ${niche.tags.join(", ")}` : "",
+                        niche.styleCategory ? `estilo: ${niche.styleCategory}` : "",
+                        niche.description ? `descripción: ${niche.description}` : "",
+                    ].filter(Boolean).join(" · "),
+                    language: "es",
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error generando listing");
+            const r = data.result;
+            const draft: NicheKDPListing = {
+                _id: `draft-${Date.now()}`,
+                title: r.title ?? niche.name,
+                subtitle: r.subtitle ?? "",
+                description: typeof r.description === "string" ? r.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "",
+                keywords: Array.isArray(r.keywords) ? r.keywords.map((k: string) => k.trim()).filter(Boolean) : [],
+                generatedAt: new Date().toISOString(),
+            };
+            setDraftListings(prev => ({ ...prev, [niche._id]: draft }));
+        } catch (e: any) {
+            toast.error(e.message ?? "Error generando listing");
+        } finally {
+            setGeneratingListingNicheId(null);
+        }
+    };
+
+    const saveNicheListing = async (nicheId: string) => {
+        const draft = draftListings[nicheId];
+        if (!draft) return;
+        setSavingListingNicheId(nicheId);
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches/${nicheId}/listings`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    title: draft.title,
+                    subtitle: draft.subtitle,
+                    description: draft.description,
+                    keywords: draft.keywords,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error guardando listing");
+            setNiches(prev => prev.map(n => n._id === nicheId ? { ...n, listings: data.niche.listings } : n));
+            setDraftListings(prev => ({ ...prev, [nicheId]: null }));
+            toast.success("Listing guardado en el nicho");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error guardando listing");
+        } finally {
+            setSavingListingNicheId(null);
+        }
+    };
+
+    const deleteNicheListing = async (nicheId: string, listingId: string) => {
+        setDeletingListingId(listingId);
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches/${nicheId}/listings/${listingId}`, { method: "DELETE" });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            setNiches(prev => prev.map(n => n._id === nicheId ? { ...n, listings: data.niche.listings } : n));
+            toast.success("Listing eliminado");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error eliminando listing");
+        } finally {
+            setDeletingListingId(null);
+        }
+    };
+
     // ── Upscale image via HuggingFace SR ─────────────────────────────────────
     const upscaleImage = async (url: string, publicId: string) => {
         setUpscalingPublicId(publicId);
@@ -3199,6 +3347,18 @@ export function KdpFactoryApp() {
                     const r = listingData.result;
                     const keywords = Array.isArray(r.keywords) ? r.keywords : [];
                     const descText = typeof r.description === "string" ? r.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
+                    // Save listing to niche.listings
+                    try {
+                        const saveRes = await fetch(`${API_BASE_URL}/niches/${niche._id}/listings`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ title: r.title ?? niche.name, subtitle: r.subtitle ?? "", description: descText, keywords }),
+                        });
+                        const saveData = await saveRes.json();
+                        if (saveRes.ok && saveData.niche) {
+                            setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, listings: saveData.niche.listings } : n));
+                        }
+                    } catch { /* non-blocking */ }
                     const fullDesc = [descText, keywords.length > 0 ? `Keywords: ${keywords.join(", ")}` : ""].filter(Boolean).join("\n\n");
                     const productRes = await fetch(`${API_BASE_URL}/digital-products`, {
                         method: "POST",
@@ -7007,6 +7167,89 @@ export function KdpFactoryApp() {
                                                     </div>
                                                 )}
 
+                                                {/* ─ Contenido KDP panel ─ */}
+                                                {contentPanelNicheId === niche._id && (() => {
+                                                    const draft = draftListings[niche._id];
+                                                    const saved = niche.listings ?? [];
+                                                    const copy = (text: string) => { navigator.clipboard.writeText(text); toast.success("Copiado"); };
+                                                    return (
+                                                        <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.03] p-3 space-y-3">
+                                                            {/* Header */}
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-[9px] font-black uppercase tracking-widest text-amber-400 flex items-center gap-1.5">
+                                                                    <Sparkles size={9} /> Contenido KDP
+                                                                    {saved.length > 0 && <span className="text-amber-500/60">· {saved.length} guardado{saved.length > 1 ? "s" : ""}</span>}
+                                                                </span>
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <button
+                                                                        onClick={() => void generateNicheListing(niche)}
+                                                                        disabled={generatingListingNicheId === niche._id}
+                                                                        className="flex items-center gap-1 h-6 px-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[8px] font-black uppercase tracking-wider hover:bg-amber-500/25 transition-all disabled:opacity-50"
+                                                                    >
+                                                                        {generatingListingNicheId === niche._id ? <Loader2 size={8} className="animate-spin" /> : <Sparkles size={8} />}
+                                                                        {generatingListingNicheId === niche._id ? "Generando…" : "Generar nuevo"}
+                                                                    </button>
+                                                                    <button onClick={() => setContentPanelNicheId(null)} className="text-neutral-600 hover:text-white transition-colors"><X size={10} /></button>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Draft card */}
+                                                            {draft && (
+                                                                <div className="rounded-lg border border-amber-500/25 bg-amber-500/[0.06] p-3 space-y-2.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                                    <div className="flex items-center justify-between gap-2">
+                                                                        <span className="text-[8px] font-black uppercase tracking-widest text-amber-400/70">Borrador</span>
+                                                                        <button
+                                                                            onClick={() => void saveNicheListing(niche._id)}
+                                                                            disabled={savingListingNicheId === niche._id}
+                                                                            className="flex items-center gap-1 h-6 px-2.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[8px] font-black uppercase tracking-wider hover:bg-emerald-500/30 transition-all disabled:opacity-50"
+                                                                        >
+                                                                            {savingListingNicheId === niche._id ? <Loader2 size={8} className="animate-spin" /> : <Save size={8} />}
+                                                                            Guardar
+                                                                        </button>
+                                                                    </div>
+                                                                    <ListingCardFields listing={draft} onCopy={copy} onExpand={setExpandedListingId} expandedId={expandedListingId} />
+                                                                </div>
+                                                            )}
+
+                                                            {/* Saved listing cards */}
+                                                            {saved.length > 0 && (
+                                                                <div className="space-y-2">
+                                                                    {[...saved].reverse().map((lst) => (
+                                                                        <div key={lst._id} className="rounded-lg border border-white/8 bg-white/[0.02] p-3 space-y-2">
+                                                                            <div className="flex items-center justify-between gap-2">
+                                                                                <span className="text-[9px] font-black text-white truncate flex-1">{lst.title}</span>
+                                                                                <div className="flex items-center gap-1 shrink-0">
+                                                                                    <span className="text-[7px] text-neutral-700">{new Date(lst.generatedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}</span>
+                                                                                    <button
+                                                                                        onClick={() => setExpandedListingId(expandedListingId === lst._id ? null : lst._id)}
+                                                                                        className="w-5 h-5 rounded-md bg-white/5 border border-white/10 text-neutral-500 hover:text-white flex items-center justify-center transition-all"
+                                                                                    >
+                                                                                        <ChevronDown size={8} className={`transition-transform ${expandedListingId === lst._id ? "rotate-180" : ""}`} />
+                                                                                    </button>
+                                                                                    <button
+                                                                                        onClick={() => void deleteNicheListing(niche._id, lst._id)}
+                                                                                        disabled={deletingListingId === lst._id}
+                                                                                        className="w-5 h-5 rounded-md bg-rose-500/10 border border-rose-500/20 text-rose-500 hover:bg-rose-500/20 flex items-center justify-center transition-all disabled:opacity-50"
+                                                                                    >
+                                                                                        {deletingListingId === lst._id ? <Loader2 size={7} className="animate-spin" /> : <Trash2 size={7} />}
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+                                                                            {expandedListingId === lst._id && (
+                                                                                <ListingCardFields listing={lst} onCopy={copy} onExpand={setExpandedListingId} expandedId={expandedListingId} />
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+
+                                                            {saved.length === 0 && !draft && !generatingListingNicheId && (
+                                                                <p className="text-[9px] text-neutral-700 text-center py-2">Sin listings guardados aún. Genera el primero.</p>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
+
                                                 {/* ─ Footer: generate action ─ */}
                                                 <div className="flex items-center justify-between pt-1 border-t border-white/[0.05]">
                                                     <div className="text-[9px] text-neutral-700 tabular-nums">
@@ -7042,6 +7285,15 @@ export function KdpFactoryApp() {
                                                                 PDF
                                                             </button>
                                                         )}
+                                                        <button
+                                                            onClick={() => setContentPanelNicheId(contentPanelNicheId === niche._id ? null : niche._id)}
+                                                            className={`flex items-center gap-1 px-2.5 h-8 rounded-xl border text-[9px] font-black transition-all ${contentPanelNicheId === niche._id ? "border-amber-500/40 bg-amber-500/15 text-amber-300" : "border-amber-500/20 bg-amber-500/8 text-amber-500 hover:bg-amber-500/15 hover:border-amber-500/35"}`}>
+                                                            <FileText size={10} />
+                                                            Contenido
+                                                            {(niche.listings?.length ?? 0) > 0 && (
+                                                                <span className="text-[7px] bg-amber-500/20 rounded-full px-1">{niche.listings!.length}</span>
+                                                            )}
+                                                        </button>
                                                         <button
                                                             onClick={() => void generateNicheContent(niche)}
                                                             disabled={nicheGeneratingId === niche._id}

@@ -150,6 +150,88 @@ export async function registerNicheRoutes(app: FastifyInstance) {
         }
     });
 
+    // POST /niches/:id/listings — generate (optionally via AI) + save a KDP listing to the niche
+    app.post("/niches/:id/listings", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { id } = request.params as { id: string };
+            const body = request.body as {
+                title?: string; subtitle?: string; description?: string; keywords?: string[];
+                generate?: boolean;
+            };
+
+            let listingData: { title: string; subtitle: string; description: string; keywords: string[] };
+
+            if (body.generate || (!body.title && !body.description)) {
+                // Auto-generate using AI from niche context
+                const niche = await Niche.findById(id).lean();
+                if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+
+                const { generateTextWithLLM } = await import("../lib/ai.js");
+
+                const KDP_SYSTEM = `Eres un especialista en SEO para Amazon KDP. Genera metadatos optimizados para un libro de colorear/actividades.
+Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": string, "description": string, "keywords": string[] }
+- title: 50-100 chars, empieza por keyword principal
+- subtitle: 60-90 chars, beneficios y audiencia
+- description: 300-450 chars texto plano, hook + contenido + audiencia
+- keywords: exactamente 7 frases de cola larga (2-5 palabras c/u), sin repetir palabras del título`;
+
+                const context = [
+                    `Nicho: ${niche.name}`,
+                    niche.productType === "coloring-book" ? "Tipo: Libro de colorear KDP" : `Tipo: ${niche.productType}`,
+                    (niche.tags as string[]).length > 0 ? `Tags: ${(niche.tags as string[]).join(", ")}` : "",
+                    niche.styleCategory && niche.styleCategory !== "generic" ? `Estilo: ${niche.styleCategory}` : "",
+                    niche.description ? `Descripción: ${niche.description}` : "",
+                ].filter(Boolean).join("\n");
+
+                const text = await generateTextWithLLM(KDP_SYSTEM, context);
+                const match = text.match(/\{[\s\S]*\}/);
+                if (!match) throw new Error("La IA no devolvió JSON válido");
+                const parsed = JSON.parse(match[0]);
+                listingData = {
+                    title: parsed.title ?? niche.name,
+                    subtitle: parsed.subtitle ?? "",
+                    description: parsed.description ?? "",
+                    keywords: Array.isArray(parsed.keywords) ? parsed.keywords.map((k: string) => k.trim()).filter(Boolean) : [],
+                };
+            } else {
+                listingData = {
+                    title: body.title?.trim() ?? "",
+                    subtitle: body.subtitle?.trim() ?? "",
+                    description: body.description?.trim() ?? "",
+                    keywords: Array.isArray(body.keywords) ? body.keywords.map((k: string) => k.trim()).filter(Boolean) : [],
+                };
+            }
+
+            const niche = await Niche.findByIdAndUpdate(
+                id,
+                { $push: { listings: { ...listingData, generatedAt: new Date() } } },
+                { new: true }
+            ).lean();
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+            return reply.send({ niche });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // DELETE /niches/:id/listings/:listingId — remove a saved KDP listing
+    app.delete("/niches/:id/listings/:listingId", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { id, listingId } = request.params as { id: string; listingId: string };
+            const niche = await Niche.findByIdAndUpdate(
+                id,
+                { $pull: { listings: { _id: listingId } } },
+                { new: true }
+            ).lean();
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+            return reply.send({ niche });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // POST /niches/suggest-description — AI-suggested description, tags and notes
     app.post("/niches/suggest-description", async (request: any, reply) => {
         const { nicheName, productType, style, etsyUrl } = request.body ?? {};

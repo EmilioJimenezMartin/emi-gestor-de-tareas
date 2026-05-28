@@ -6,6 +6,14 @@ export interface IRoyaltyEntry {
     revenue: number;
 }
 
+export interface IKDPListing {
+    title: string;
+    subtitle: string;
+    description: string;
+    keywords: string[];
+    generatedAt: Date;
+}
+
 export interface INiche extends Document {
     name: string;
     description: string;
@@ -26,6 +34,7 @@ export interface INiche extends Document {
     gumroadUrl?: string;
     sourceTitulo?: string;
     royalties?: IRoyaltyEntry[];
+    listings?: IKDPListing[];
     createdAt: Date;
     updatedAt: Date;
 }
@@ -54,6 +63,13 @@ const NicheSchema = new Schema<INiche>(
             month: { type: String, required: true },
             sales: { type: Number, default: 0 },
             revenue: { type: Number, default: 0 },
+        }],
+        listings: [{
+            title: { type: String, default: "" },
+            subtitle: { type: String, default: "" },
+            description: { type: String, default: "" },
+            keywords: [{ type: String }],
+            generatedAt: { type: Date, default: Date.now },
         }],
     },
     { timestamps: true }
