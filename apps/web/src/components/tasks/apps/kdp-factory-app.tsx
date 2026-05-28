@@ -823,6 +823,8 @@ export function KdpFactoryApp() {
     const [catalogNicheStatusFilter, setCatalogNicheStatusFilter] = useState<NicheFilterStatus>("all");
     const [isSuggestingPrompt, setIsSuggestingPrompt] = useState(false);
     const [isSuggestingNicheDesc, setIsSuggestingNicheDesc] = useState(false);
+    const [catalogFormNicheId, setCatalogFormNicheId] = useState<string | null>(null);
+    const [upscalingPublicId, setUpscalingPublicId] = useState<string | null>(null);
     const [loadedNicheForPrompt, setLoadedNicheForPrompt] = useState<NicheFE | null>(null);
     const [catalogNichePickerId, setCatalogNichePickerId] = useState<string | null>(null);
     const [kdpTemplateNicheFilter, setKdpTemplateNicheFilter] = useState<string | null>(null);
@@ -1006,31 +1008,16 @@ export function KdpFactoryApp() {
 
     const launchPipelineStep = async (niche: NicheFE) => {
         const phase = niche.phase ?? "niche";
-        if (phase === "niche") {
-            if (niche.productType === "coloring-book") {
-                const parts = buildColoringBookPromptParts(niche.name, niche.styleCategory, "");
-                setPromptTheme(parts.theme);
-                setPromptSpecs(parts.specs);
-                setPromptDetails(parts.details);
-                setPromptParticulars("");
-            } else {
-                setPromptTheme(niche.name);
-                setPromptSpecs(niche.tags.join(", "));
-                setPromptDetails(niche.description || "");
-                setPromptParticulars("");
-            }
-            if (NICHE_STYLE_MODEL[niche.styleCategory]) setSelectedModel(NICHE_STYLE_MODEL[niche.styleCategory]);
-            setLoadedNicheForPrompt(niche);
-            setActiveTab("creation");
-            toast.success(`Prompt cargado · sugeriendo variación con IA…`);
-            setTimeout(() => void suggestPromptForNiche(niche), 300);
+        if (phase === "niche" || phase === "catalog") {
+            await runNichePipeline(niche);
         } else if (phase === "pdf") {
             setNichePublishPanelId(niche._id);
+        } else if (phase === "published") {
+            toast.info("Nicho ya publicado. Puedes añadir royalties o crear una nueva edición.");
         }
     };
 
     const launchPipelineFromRow = async (row: { titulo_producto: string; sub_nicho_estimado: string; bestseller: boolean; total_reseñas: number; precio: string }) => {
-        // Find or create niche
         let niche = niches.find(n => n.sourceTitulo === row.titulo_producto);
         if (!niche) {
             const res = await fetch(`${API_BASE_URL}/niches`, {
@@ -1051,9 +1038,9 @@ export function KdpFactoryApp() {
             if (!res.ok) { const e = await res.json(); throw new Error(e.error ?? "Error creando nicho"); }
             const data = await res.json();
             niche = data.niche;
-            await fetchNiches();
+            setNiches(prev => [data.niche, ...prev]);
         }
-        if (niche) await launchPipelineStep(niche);
+        if (niche) await runNichePipeline(niche);
     };
 
     const createCatalogFromStudio = async () => {
@@ -1084,10 +1071,24 @@ export function KdpFactoryApp() {
                     width: dim?.width ?? 1024,
                     height: dim?.height ?? 1024,
                     totalImages: catalogFormCount,
+                    nicheIds: catalogFormNicheId ? [catalogFormNicheId] : [],
                 }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Error al crear catálogo");
+            // If linked to a niche, update its catalogIds
+            if (catalogFormNicheId && data.catalog?._id) {
+                const linkedNiche = niches.find(n => n._id === catalogFormNicheId);
+                if (linkedNiche) {
+                    const updatedCatalogIds = [...(linkedNiche.catalogIds ?? []), data.catalog._id];
+                    void fetch(`${API_BASE_URL}/niches/${catalogFormNicheId}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ catalogIds: updatedCatalogIds }),
+                    });
+                    setNiches(prev => prev.map(n => n._id === catalogFormNicheId ? { ...n, catalogIds: updatedCatalogIds } : n));
+                }
+            }
             setIaCatalogs((prev) => [data.catalog, ...prev]);
             setCatalogFormName("");
             setCatalogFormCount(5);
@@ -1183,7 +1184,6 @@ export function KdpFactoryApp() {
                             niche: niche.name,
                             extras: isAnime ? "anime cartoon style" : undefined,
                             language: "en",
-                            model: "gemini-2.5-flash",
                         }),
                     });
                     const partData = await partRes.json();
@@ -1215,7 +1215,6 @@ export function KdpFactoryApp() {
                             niche: niche.name,
                             productType: niche.productType === "printable-poster" ? "printable poster" : niche.name,
                             language: "en",
-                            model: "gemini-2.5-flash",
                         }),
                     });
                     const promptData = await promptRes.json();
@@ -1272,6 +1271,23 @@ export function KdpFactoryApp() {
 
     const saveNiche = async () => {
         if (!nicheFormName.trim()) { toast.error("El nombre es obligatorio"); return; }
+
+        // Duplicate detection — only for new niches
+        if (!nicheEditTarget) {
+            const newName = nicheFormName.trim().toLowerCase();
+            const newWords = new Set(newName.split(/\s+/).filter(w => w.length > 2));
+            const similar = niches.find(n => {
+                const existing = n.name.toLowerCase();
+                if (existing === newName) return true;
+                const existingWords = existing.split(/\s+/).filter(w => w.length > 2);
+                const overlap = existingWords.filter(w => newWords.has(w)).length;
+                return overlap >= 2 && overlap / Math.max(existingWords.length, newWords.size) >= 0.5;
+            });
+            if (similar) {
+                toast.warning(`Posible duplicado: ya existe "${similar.name}". Guardando igualmente…`, { duration: 4000 });
+            }
+        }
+
         setIsSavingNiche(true);
         try {
             const body = {
@@ -3043,6 +3059,169 @@ export function KdpFactoryApp() {
         }
     };
 
+    // ── Upscale image via HuggingFace SR ─────────────────────────────────────
+    const upscaleImage = async (url: string, publicId: string) => {
+        setUpscalingPublicId(publicId);
+        try {
+            const imgRes = await fetch(url);
+            const blob = await imgRes.blob();
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+            const res = await fetch(`${API_BASE_URL}/ai/upscale`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ dataUrl }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error upscaling");
+            const a = document.createElement("a");
+            a.href = data.dataUrl;
+            a.download = `upscaled-${publicId.replace(/\//g, "-")}.png`;
+            a.click();
+            toast.success("Imagen 4× upscalada y descargada");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error upscaling");
+        } finally {
+            setUpscalingPublicId(null);
+        }
+    };
+
+    // ── Pipeline automático: genera catálogos + KDP listing ──────────────────
+    const runNichePipeline = async (niche: NicheFE) => {
+        const IMAGES_PER_CATALOG = 5;
+        const IMAGES_TARGET = 20;
+        const MAX_CATALOGS = 10;
+
+        const nicheImageCount = iaCatalogs
+            .filter(c => c.nicheIds?.includes(niche._id))
+            .reduce((sum, c) => sum + (c.images?.length ?? 0), 0);
+
+        const toCreate = nicheImageCount < IMAGES_TARGET
+            ? Math.min(MAX_CATALOGS, Math.ceil((IMAGES_TARGET - nicheImageCount) / IMAGES_PER_CATALOG))
+            : 0;
+
+        setNicheGeneratingId(niche._id);
+        const allNewCatalogIds: string[] = [...(niche.catalogIds ?? [])];
+
+        try {
+            if (toCreate > 0) {
+                toast.info(`Pipeline iniciado · ${toCreate} catálogos de ${IMAGES_PER_CATALOG} imágenes…`);
+                const styles = niche.styleCategories?.length ? niche.styleCategories : [niche.styleCategory ?? "generic"];
+
+                for (let i = 0; i < toCreate; i++) {
+                    const style = styles[i % styles.length];
+                    let imagePrompt: string;
+                    let promptParts: { theme: string; specs: string; details: string; particulars: string };
+
+                    if (niche.productType === "coloring-book") {
+                        const partRes = await fetch(`${API_BASE_URL}/ai/generate-text`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ type: "niche-particulars", niche: niche.name, extras: ANIME_STYLES.includes(style) ? "anime cartoon style" : undefined, language: "en" }),
+                        });
+                        const partData = await partRes.json();
+                        if (!partRes.ok) throw new Error(partData.error ?? "Error generando detalles");
+                        const particulars: string = partData.result?.particulars ?? niche.name;
+                        const built = buildColoringBookPromptParts(niche.name, style, particulars);
+                        imagePrompt = built.fullPrompt;
+                        promptParts = { theme: built.theme, specs: built.specs, details: built.details, particulars };
+                    } else {
+                        const promptRes = await fetch(`${API_BASE_URL}/niches/suggest-prompt`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ nicheName: niche.name, productType: niche.productType, style, tags: niche.tags }),
+                        });
+                        const promptData = await promptRes.json();
+                        const theme = promptData.theme ?? niche.name;
+                        const particulars = promptData.particulars ?? "";
+                        imagePrompt = [theme, particulars].filter(Boolean).join(". ");
+                        promptParts = { theme, specs: "", details: "", particulars };
+                    }
+
+                    const modelId = NICHE_STYLE_MODEL[style] ?? NICHE_STYLE_MODEL[niche.styleCategory ?? "generic"] ?? "pollinations-flux";
+                    const model = AI_MODELS.find(m => m.id === modelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
+
+                    const catalogRes = await fetch(`${API_BASE_URL}/catalogs`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            name: `${niche.name} · ${i + 1}`,
+                            prompt: imagePrompt,
+                            promptParts,
+                            productType: niche.productType ?? "coloring-book",
+                            aiModel: { id: model.id, name: model.name, provider: model.provider, modelId: model.modelId },
+                            width: 1024,
+                            height: 1024,
+                            totalImages: IMAGES_PER_CATALOG,
+                            nicheIds: [niche._id],
+                        }),
+                    });
+                    const catalogData = await catalogRes.json();
+                    if (catalogRes.ok) {
+                        setIaCatalogs(prev => [catalogData.catalog, ...prev]);
+                        allNewCatalogIds.push(catalogData.catalog._id);
+                        toast.success(`Catálogo ${i + 1}/${toCreate} en cola`);
+                    }
+                }
+
+                await fetch(`${API_BASE_URL}/niches/${niche._id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ catalogIds: allNewCatalogIds, phase: "catalog" }),
+                });
+                setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, catalogIds: allNewCatalogIds, phase: "catalog" } : n));
+            }
+
+            // Generate KDP listing and save as product draft
+            toast.info("Generando listing KDP…");
+            try {
+                const listingRes = await fetch(`${API_BASE_URL}/ai/generate-text`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        type: "kdp-physical-book",
+                        niche: niche.name,
+                        productType: niche.productType === "coloring-book" ? "Libro de colorear KDP" : "Poster imprimible KDP",
+                        extras: [
+                            niche.tags.length > 0 ? `tags: ${niche.tags.join(", ")}` : "",
+                            niche.styleCategory ? `estilo: ${niche.styleCategory}` : "",
+                            niche.description ? `descripción: ${niche.description}` : "",
+                        ].filter(Boolean).join(" · "),
+                        language: "es",
+                    }),
+                });
+                const listingData = await listingRes.json();
+                if (listingRes.ok && listingData.result) {
+                    const r = listingData.result;
+                    const keywords = Array.isArray(r.keywords) ? r.keywords : [];
+                    const descText = typeof r.description === "string" ? r.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
+                    const fullDesc = [descText, keywords.length > 0 ? `Keywords: ${keywords.join(", ")}` : ""].filter(Boolean).join("\n\n");
+                    const productRes = await fetch(`${API_BASE_URL}/digital-products`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ type: "KDP Color Book", title: r.title ?? niche.name, description: fullDesc, status: "borrador", platforms: [], nicheId: niche._id }),
+                    });
+                    const productData = await productRes.json();
+                    if (productRes.ok) {
+                        setProducts(prev => [productData.product ?? productData, ...prev]);
+                        toast.success(`Listing guardado en borrador · "${r.title ?? niche.name}"`);
+                    }
+                }
+            } catch { /* listing failure is non-blocking */ }
+
+            changeTab("creation");
+
+        } catch (e: any) {
+            toast.error(e.message ?? "Error en el pipeline");
+        } finally {
+            setNicheGeneratingId(null);
+        }
+    };
+
     const monthlyEarningsData = useMemo(() => {
         const map = new Map<string, number>();
         products.forEach(p => {
@@ -4635,6 +4814,26 @@ export function KdpFactoryApp() {
                                             className="w-full accent-sky-500 h-1.5 rounded-full cursor-pointer" />
                                         <div className="flex justify-between text-[8px] text-neutral-700"><span>Idénticas</span><span>Diferentes</span></div>
                                     </div>
+                                    {/* Niche linker */}
+                                    {niches.filter(n => n.status !== "archived").length > 0 && (
+                                        <div className="space-y-1.5">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Vincular a nicho <span className="normal-case font-medium">(opcional)</span></p>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {niches.filter(n => n.status !== "archived").slice(0, 12).map(n => {
+                                                    const isSelected = catalogFormNicheId === n._id;
+                                                    return (
+                                                        <button key={n._id} type="button"
+                                                            onClick={() => setCatalogFormNicheId(isSelected ? null : n._id)}
+                                                            className={`flex items-center gap-1 h-6 px-2.5 rounded-lg border text-[9px] font-black transition-all ${isSelected ? "border-sky-500/50 bg-sky-500/15 text-sky-300" : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"}`}>
+                                                            <Target size={8} />
+                                                            {n.name}
+                                                            {isSelected && <Check size={8} />}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
                                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                                         <input value={catalogFormName} onChange={e => setCatalogFormName(e.target.value)}
                                             placeholder="Nombre del catálogo (opcional)"
@@ -5722,12 +5921,24 @@ export function KdpFactoryApp() {
                                                                 </div>
                                                             )}
                                                             {!isBulkMode && !isVaultSelectMode && (
-                                                                <button
-                                                                    onClick={e => { e.stopPropagation(); toggleFavorite(img.url, { label: `${catalog.name} #${imgIdx + 1}`, source: "catalog" }); }}
-                                                                    className={`absolute top-0.5 left-0.5 p-0.5 rounded-md backdrop-blur-sm transition-all ${favorites.has(img.url) ? "bg-rose-500/80 text-white opacity-100" : "bg-black/50 text-neutral-400 opacity-0 group-hover:opacity-100 hover:text-rose-400"}`}
-                                                                >
-                                                                    <Heart size={8} className={favorites.has(img.url) ? "fill-white" : ""} />
-                                                                </button>
+                                                                <>
+                                                                    <button
+                                                                        onClick={e => { e.stopPropagation(); toggleFavorite(img.url, { label: `${catalog.name} #${imgIdx + 1}`, source: "catalog" }); }}
+                                                                        className={`absolute top-0.5 left-0.5 p-0.5 rounded-md backdrop-blur-sm transition-all ${favorites.has(img.url) ? "bg-rose-500/80 text-white opacity-100" : "bg-black/50 text-neutral-400 opacity-0 group-hover:opacity-100 hover:text-rose-400"}`}
+                                                                    >
+                                                                        <Heart size={8} className={favorites.has(img.url) ? "fill-white" : ""} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={e => { e.stopPropagation(); void upscaleImage(img.url, img.publicId); }}
+                                                                        disabled={upscalingPublicId === img.publicId}
+                                                                        title="Upscale 4×"
+                                                                        className="absolute bottom-0.5 right-0.5 p-0.5 rounded-md bg-black/50 backdrop-blur-sm text-neutral-400 opacity-0 group-hover:opacity-100 hover:text-sky-400 transition-all disabled:opacity-100"
+                                                                    >
+                                                                        {upscalingPublicId === img.publicId
+                                                                            ? <Loader2 size={8} className="animate-spin text-sky-400" />
+                                                                            : <ArrowUpRight size={8} />}
+                                                                    </button>
+                                                                </>
                                                             )}
                                                             {isBulkSel && <div className="absolute inset-0 bg-red-500/10 pointer-events-none" />}
                                                         </div>
