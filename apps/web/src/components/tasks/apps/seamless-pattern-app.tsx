@@ -190,7 +190,7 @@ export function SeamlessPatternApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
         try {
             const saved = localStorage.getItem("seamless-tab") ?? "insights";
-            return (["insights", "galeria", "motor", "tendencias"].includes(saved) ? saved : "insights") as TabID;
+            return (["insights", "galeria", "motor", "tendencias"].includes(saved) ? saved : "tendencias") as TabID;
         } catch { return "insights"; }
     });
 
@@ -213,6 +213,9 @@ export function SeamlessPatternApp() {
     const [seed, setSeed] = useState(() => Math.floor(Math.random() * 999999));
     const [promptUsed, setPromptUsed] = useState("");
     const [isDraftLoaded, setIsDraftLoaded] = useState(false);
+    // Style/palette captured at generation time — used by savePattern() to avoid stale-closure bugs
+    const generatedStyleRef = useRef(PATTERN_STYLES[0]);
+    const generatedPaletteRef = useRef(COLOR_PALETTES[0]);
 
     // Tileable processing pipeline
     const [offsetUrl, setOffsetUrl] = useState<string | null>(null);
@@ -257,10 +260,10 @@ export function SeamlessPatternApp() {
     const modelsByProvider = groupModelsByProvider(AI_MODELS);
 
     const tabs: AppTab[] = [
-        { id: "insights",   name: "Insights",   icon: <BarChart2 size={15} /> },
-        { id: "galeria",    name: "Galería",    icon: <Grid size={15} />, badge: patterns.length || undefined },
-        { id: "motor",      name: "Motor",      icon: <Sparkles size={15} /> },
         { id: "tendencias", name: "Tendencias", icon: <TrendingUp size={15} /> },
+        { id: "motor",      name: "Motor",      icon: <Sparkles size={15} /> },
+        { id: "galeria",    name: "Galería",    icon: <Grid size={15} />, badge: patterns.length || undefined },
+        { id: "insights",   name: "Insights",   icon: <BarChart2 size={15} /> },
     ];
 
     const changeTab = (tab: string) => {
@@ -445,6 +448,18 @@ export function SeamlessPatternApp() {
                             setGeneratedUrl(d.dataUrl);
                             setPromptUsed(d.promptUsed ?? "");
                             setSeed(d.seed ?? 0);
+                            // Restore style/palette from draft so savePattern uses the correct association
+                            if (d.styleId) {
+                                const allStyles = [...PATTERN_STYLES, ...(patternSocketRef.current ? [] : [])];
+                                const found = allStyles.find(s => s.id === d.styleId);
+                                const restoredStyle = found ?? { id: d.styleId, label: d.styleLabel ?? d.styleId, prompt: "", neg: "", emoji: "🎨" };
+                                generatedStyleRef.current = restoredStyle;
+                            }
+                            if (d.paletteId) {
+                                const found = COLOR_PALETTES.find(p => p.id === d.paletteId);
+                                const restoredPalette = found ?? { id: d.paletteId, label: d.paletteLabel ?? d.paletteId, colors: [], prompt: "" };
+                                generatedPaletteRef.current = restoredPalette;
+                            }
                         }
                     }
                 })
@@ -500,6 +515,15 @@ export function SeamlessPatternApp() {
                         setPromptUsed(d.promptUsed ?? "");
                         setSeed(d.seed ?? seed);
                         setIsDraftLoaded(true);
+                        // Restore style/palette refs so savePattern uses the correct association
+                        if (d.styleId) {
+                            const found = PATTERN_STYLES.find(s => s.id === d.styleId);
+                            generatedStyleRef.current = found ?? { id: d.styleId, label: d.styleLabel ?? d.styleId, prompt: "", neg: "", emoji: "🎨" };
+                        }
+                        if (d.paletteId) {
+                            const found = COLOR_PALETTES.find(p => p.id === d.paletteId);
+                            generatedPaletteRef.current = found ?? { id: d.paletteId, label: d.paletteLabel ?? d.paletteId, colors: [], prompt: "" };
+                        }
                     }
                 }
             } catch {}
@@ -532,6 +556,9 @@ export function SeamlessPatternApp() {
         const { prompt, neg } = buildPrompt();
         if (!prompt.trim()) { toast.error("Define un estilo o escribe un prompt"); return; }
         const usedSeed = overrideSeed ?? seed;
+        // Capture style/palette at generation time so savePattern() always uses the correct values
+        generatedStyleRef.current = selectedStyle;
+        generatedPaletteRef.current = selectedPalette;
         setIsGenerating(true);
         setGeneratedUrl(null);
         setOffsetUrl(null);
@@ -572,16 +599,19 @@ export function SeamlessPatternApp() {
         setIsSaving(true);
         try {
             const dataUrl = generatedUrl.startsWith("data:") ? generatedUrl : await blobUrlToDataUrl(generatedUrl);
+            // Use refs (captured at generate time) not current selection, to avoid wrong associations
+            const saveStyle = generatedStyleRef.current;
+            const savePalette = generatedPaletteRef.current;
             const res = await fetch(`${API_BASE_URL}/patterns`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     dataUrl,
                     prompt: promptUsed,
-                    style: selectedStyle.id,
-                    styleLabel: selectedStyle.label,
-                    palette: selectedPalette.id,
-                    paletteLabel: selectedPalette.label,
+                    style: saveStyle.id,
+                    styleLabel: saveStyle.label,
+                    palette: savePalette.id,
+                    paletteLabel: savePalette.label,
                     modelName: currentModel.name,
                     seed,
                 }),
@@ -589,7 +619,7 @@ export function SeamlessPatternApp() {
             const data = await res.json();
             if (!res.ok) throw new Error(data.error ?? "Error guardando");
             setPatterns(prev => [data.pattern, ...prev]);
-            toast.success(`Patrón guardado en Galería · ${selectedStyle.label}`);
+            toast.success(`Patrón guardado en Galería · ${saveStyle.label}`);
             // Clear the draft since it's now saved to gallery
             fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "SEAMLESS_PATTERN_DRAFT", value: "null" }]) }).catch(() => {});
             setIsDraftLoaded(false);
@@ -1278,10 +1308,26 @@ export function SeamlessPatternApp() {
 
     const renderInsights = () => {
         const total = patterns.length;
-        const byStyle = PATTERN_STYLES.filter(s => s.id !== "custom").map(s => ({
+        // Include custom styles in counts
+        const allKnownStyles = [...PATTERN_STYLES.filter(s => s.id !== "custom"), ...customStyles.map(s => ({ ...s, emoji: s.emoji ?? "🎨" }))];
+        // Also catch any style stored in patterns that isn't in either list (label fallback)
+        const unknownStyleIds = [...new Set(patterns.map(p => p.style).filter(id => id && !allKnownStyles.some(s => s.id === id)))];
+        const unknownStyles = unknownStyleIds.map(id => {
+            const sample = patterns.find(p => p.style === id);
+            return { id, label: sample?.styleLabel ?? id, emoji: "🎨", prompt: "", neg: "" };
+        });
+        const byStyle = [...allKnownStyles, ...unknownStyles].map(s => ({
             ...s, count: patterns.filter(p => p.style === s.id).length,
         })).filter(s => s.count > 0).sort((a, b) => b.count - a.count);
-        const byPalette = COLOR_PALETTES.map(p => ({
+
+        // Include custom palettes in counts
+        const allKnownPalettes = [...COLOR_PALETTES, ...customPalettes];
+        const unknownPaletteIds = [...new Set(patterns.map(p => p.palette).filter(id => id && !allKnownPalettes.some(pl => pl.id === id)))];
+        const unknownPalettes = unknownPaletteIds.map(id => {
+            const sample = patterns.find(p => p.palette === id);
+            return { id, label: sample?.paletteLabel ?? id, colors: [] as string[], prompt: "" };
+        });
+        const byPalette = [...allKnownPalettes, ...unknownPalettes].map(p => ({
             ...p, count: patterns.filter(pt => pt.palette === p.id).length,
         })).filter(p => p.count > 0).sort((a, b) => b.count - a.count);
         const byModel = [...new Set(patterns.map(p => p.modelName))].map(m => ({

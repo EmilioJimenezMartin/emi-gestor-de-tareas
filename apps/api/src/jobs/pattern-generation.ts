@@ -69,10 +69,16 @@ export function definePatternGenJob(agenda: Agenda, io: any) {
 
             const dataUrl = `data:image/png;base64,${imageBuffer.toString("base64")}`;
 
-            // Save draft to Settings so it survives navigation
+            // Save draft to Settings so it survives navigation (includes style/palette for correct association)
             await Settings.findOneAndUpdate(
                 { key: "SEAMLESS_PATTERN_DRAFT" },
-                { key: "SEAMLESS_PATTERN_DRAFT", value: JSON.stringify({ dataUrl, promptUsed: prompt, seed }) },
+                { key: "SEAMLESS_PATTERN_DRAFT", value: JSON.stringify({
+                    dataUrl, promptUsed: prompt, seed,
+                    styleId: jobDoc.styleId ?? "",
+                    styleLabel: jobDoc.styleLabel ?? "",
+                    paletteId: jobDoc.paletteId ?? "",
+                    paletteLabel: jobDoc.paletteLabel ?? "",
+                }) },
                 { upsert: true }
             );
 

@@ -2742,10 +2742,8 @@ export function KdpFactoryApp() {
     // Fetch catalogs on mount (socket connects when entering creation tab)
     useEffect(() => { void fetchCatalogs(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Connect socket when entering the creation tab (catalog real-time updates)
+    // Always keep catalog socket connected so images appear in real-time on any tab
     useEffect(() => {
-        if (activeTab !== "creation") return;
-
         const socket = createApiSocket(API_BASE_URL);
         catalogSocketRef.current = socket;
 
@@ -2797,7 +2795,7 @@ export function KdpFactoryApp() {
             catalogSocketRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab]);
+    }, []);
 
     // Track catalog start times and update historical avg on completion
     useEffect(() => {
@@ -3936,7 +3934,8 @@ export function KdpFactoryApp() {
                 );
             })()}
 
-            {/* ── KDP Listing Generator ── */}
+            {/* ── KDP Listing Generator — removed from Finanzas ── */}
+            {false && (
             <Card variant="outline" className="overflow-hidden border-white/5 bg-white/[0.01]">
                 <button
                     onClick={() => setListingCardOpen(v => !v)}
@@ -4065,6 +4064,7 @@ export function KdpFactoryApp() {
                     </div>
                 )}
             </Card>
+            )}
 
             {/* ── Productos ── */}
             <section className="space-y-6">
@@ -7425,25 +7425,6 @@ export function KdpFactoryApp() {
                 </div>
             </div>
 
-            {/* ══ RADAR DE NICHOS — AMAZON KDP ══ */}
-            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
-                <div className="h-px w-full bg-gradient-to-r from-orange-500/60 via-amber-400/20 to-transparent" />
-                <div className="p-6">
-                    <NicheRadar apiUrl={API_BASE_URL} storageKey="RADAR_AMAZON_RESULT" defaultMode="amazon-niches" />
-                    <RadarResultsTable
-                        apiUrl={API_BASE_URL}
-                        storageKey="RADAR_AMAZON_RESULT"
-                        niches={niches}
-                        onNicheCreated={() => void fetchNiches()}
-                        pipelineAction={{
-                            label: "Pipeline",
-                            colorScheme: "amber",
-                            isCreated: (row) => niches.some(n => n.sourceTitulo === row.titulo_producto),
-                            onCreate: async (row) => { await launchPipelineFromRow(row); },
-                        }}
-                    />
-                </div>
-            </div>
         </div>
     );
 
