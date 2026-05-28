@@ -7620,39 +7620,48 @@ export function KdpFactoryApp() {
                                         </button>
                                     </div>
                                     {/* Listings */}
-                                    <div className="p-4 space-y-3">
-                                        {n.listings!.map((listing, i) => (
-                                            <div key={listing._id ?? i} className="rounded-2xl border border-white/[0.06] bg-black/20 p-4 space-y-2 group">
-                                                <div className="flex items-start gap-2">
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-black text-white leading-tight">{listing.title}</p>
-                                                        {listing.subtitle && <p className="text-sm text-neutral-500 mt-0.5 leading-snug">{listing.subtitle}</p>}
-                                                    </div>
-                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0">
-                                                        <button onClick={() => { navigator.clipboard.writeText([listing.title, listing.subtitle, listing.description.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim(), listing.keywords.join(", ")].filter(Boolean).join("\n\n")); toast.success("Copiado"); }}
-                                                            className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Copy size={12} /></button>
-                                                        <button onClick={() => listing._id && void deleteNicheListing(n._id, listing._id)}
-                                                            disabled={deletingListingId === listing._id}
-                                                            className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all disabled:opacity-40">
-                                                            {deletingListingId === listing._id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                                    <div className="divide-y divide-white/[0.04]">
+                                        {n.listings!.map((listing, i) => {
+                                            const lid = listing._id ?? `${n._id}-${i}`;
+                                            const isOpen = expandedListingId === lid;
+                                            return (
+                                                <div key={lid} className="group">
+                                                    {/* collapsed row — always visible */}
+                                                    <div className="flex items-center gap-2 px-4 py-3">
+                                                        <button
+                                                            onClick={() => setExpandedListingId(isOpen ? null : lid)}
+                                                            className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                                                        >
+                                                            <ChevronDown size={12} className={`shrink-0 text-neutral-600 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                                                            <span className="text-sm font-black text-white truncate leading-tight">{listing.title || "Sin título"}</span>
+                                                            <span className="text-xs text-neutral-700 shrink-0 ml-auto pl-2">
+                                                                {new Date(listing.generatedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
+                                                            </span>
                                                         </button>
+                                                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+                                                            <button onClick={() => { navigator.clipboard.writeText([listing.title, listing.subtitle, listing.description.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim(), listing.keywords.join(", ")].filter(Boolean).join("\n\n")); toast.success("Copiado"); }}
+                                                                className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Copy size={11} /></button>
+                                                            <button onClick={() => listing._id && void deleteNicheListing(n._id, listing._id)}
+                                                                disabled={deletingListingId === listing._id}
+                                                                className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all disabled:opacity-40">
+                                                                {deletingListingId === listing._id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                                                            </button>
+                                                        </div>
                                                     </div>
+                                                    {/* expanded content */}
+                                                    {isOpen && (
+                                                        <div className="px-4 pb-4 border-t border-white/[0.04] pt-3">
+                                                            <ListingCardFields
+                                                                listing={{ ...listing, _id: lid }}
+                                                                onCopy={copyText}
+                                                                onExpand={setExpandedListingId}
+                                                                expandedId={expandedListingId}
+                                                            />
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                {listing.description && (
-                                                    <div className="text-sm text-neutral-500 leading-relaxed line-clamp-3 [&_strong]:text-amber-400/70"
-                                                        dangerouslySetInnerHTML={{ __html: listing.description }} />
-                                                )}
-                                                {listing.keywords.length > 0 && (
-                                                    <div className="flex flex-wrap gap-1 pt-1">
-                                                        {listing.keywords.map((kw, j) => (
-                                                            <button key={j} onClick={() => copyText(kw)}
-                                                                className="text-sm px-1.5 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/15 text-indigo-400 hover:bg-indigo-500/20 transition-colors">{kw}</button>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                                <p className="text-sm text-neutral-700">{new Date(listing.generatedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}</p>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             ))}
