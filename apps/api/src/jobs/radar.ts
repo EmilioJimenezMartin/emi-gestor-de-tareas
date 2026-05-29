@@ -321,16 +321,18 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
             // Send Telegram summary on success
             try {
-                const { sendTelegram } = await import("../lib/telegram.js");
-                const count = (dataToEmit?.nichos_detectados ?? []).length;
-                const modeLabel = mode === "etsy-niches" ? "Etsy" : mode === "amazon-niches" ? "Amazon" : "General";
-                await sendTelegram(
-                    `✅ <b>Radar completado — ${modeLabel}</b>\n\n` +
-                    (count > 0
-                        ? `🔍 <b>${count} productos detectados</b>\n`
-                        : `📊 Análisis completado\n`) +
-                    `<b>URL:</b> ${url}`
-                );
+                const { sendTelegram, shouldNotify } = await import("../lib/telegram.js");
+                if (await shouldNotify("scraping.summary")) {
+                    const count = (dataToEmit?.nichos_detectados ?? []).length;
+                    const modeLabel = mode === "etsy-niches" ? "Etsy" : mode === "amazon-niches" ? "Amazon" : "General";
+                    await sendTelegram(
+                        `✅ <b>Radar completado — ${modeLabel}</b>\n\n` +
+                        (count > 0
+                            ? `🔍 <b>${count} productos detectados</b>\n`
+                            : `📊 Análisis completado\n`) +
+                        `<b>URL:</b> ${url}`
+                    );
+                }
             } catch { /* Telegram not configured — ignore */ }
 
             await page.close();
@@ -345,13 +347,15 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
             // Notify via Telegram if configured
             try {
-                const { sendTelegram } = await import("../lib/telegram.js");
-                await sendTelegram(
-                    `⚠️ <b>Radar — Todos los providers fallaron</b>\n\n` +
-                    `<b>URL:</b> ${url}\n` +
-                    `<b>Modo:</b> ${mode}\n` +
-                    `<b>Error:</b> ${err?.message ?? "Desconocido"}`
-                );
+                const { sendTelegram, shouldNotify } = await import("../lib/telegram.js");
+                if (await shouldNotify("api.error.quota")) {
+                    await sendTelegram(
+                        `⚠️ <b>Radar — Todos los providers fallaron</b>\n\n` +
+                        `<b>URL:</b> ${url}\n` +
+                        `<b>Modo:</b> ${mode}\n` +
+                        `<b>Error:</b> ${err?.message ?? "Desconocido"}`
+                    );
+                }
             } catch { /* Telegram not configured — ignore */ }
         } finally {
             if (browser) { try { await browser.close(); } catch { /* ignore */ } }

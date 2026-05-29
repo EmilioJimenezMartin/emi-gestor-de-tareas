@@ -3,6 +3,7 @@ import axios from "axios";
 import { Catalog } from "../models/catalog.js";
 import { getCloudinaryConfig, initCloudinary } from "../routes/cloudinary.js";
 import { activateNextQueued } from "../lib/catalog-queue.js";
+import { sendTelegram, shouldNotify } from "../lib/telegram.js";
 
 const JOB_NAME = "generate-catalog-image";
 const LOCK_LIFETIME_MS = 5 * 60 * 1000; // 5 min per job execution
@@ -35,6 +36,9 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             await catalog.save();
             io.emit("catalog:completed", { catalogId });
             void activateNextQueued(agenda, io);
+            shouldNotify("catalog.ready").then(ok => {
+                if (ok) sendTelegram(`🖼️ <b>Catálogo listo</b>\n"${catalog.name}" — ${catalog.images.length} imágenes generadas`).catch(() => {});
+            });
             return;
         }
 
@@ -213,6 +217,9 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             if (isComplete) {
                 io.emit("catalog:completed", { catalogId });
                 void activateNextQueued(agenda, io);
+                shouldNotify("catalog.ready").then(ok => {
+                    if (ok) sendTelegram(`🖼️ <b>Catálogo listo</b>\n"${freshCatalog.name}" — ${freshCatalog.images.length} imágenes generadas`).catch(() => {});
+                });
             } else {
                 console.log(`${tag} Scheduling next image in 90s`);
                 try {
@@ -239,6 +246,11 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
         } catch (e: any) {
             const errMsg = e?.message ?? String(e);
             console.error(`${tag} Image generation failed — skipping slot: ${errMsg}`);
+            if (/quota|rate.?limit|429|too many requests|exhausted/i.test(errMsg)) {
+                shouldNotify("api.error.quota").then(ok => {
+                    if (ok) sendTelegram(`⚠️ <b>Error de cuota</b>\nCatálogo: ${catalogId}\n${errMsg.slice(0, 120)}`).catch(() => {});
+                });
+            }
 
             const freshCatalog = await Catalog.findById(catalogId);
             if (!freshCatalog || freshCatalog.status === "cancelled") return;
@@ -266,6 +278,9 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             if (isComplete) {
                 io.emit("catalog:completed", { catalogId });
                 void activateNextQueued(agenda, io);
+                shouldNotify("catalog.ready").then(ok => {
+                    if (ok) sendTelegram(`🖼️ <b>Catálogo listo</b>\n"${freshCatalog.name}" — ${freshCatalog.images.length} imágenes (${freshCatalog.skippedImages ?? 0} omitidas)`).catch(() => {});
+                });
             } else {
                 // Wait 2 minutes before trying the next image slot
                 console.log(`${tag} Scheduling next slot in 2 minutes`);

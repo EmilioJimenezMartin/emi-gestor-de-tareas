@@ -1,5 +1,18 @@
 import { Settings } from "../models/settings.js";
 
+// Check if a notification event is enabled in NOTIFICATION_RULES (defaults to true if not set)
+export async function shouldNotify(eventId: string): Promise<boolean> {
+    try {
+        const row = await Settings.findOne({ key: "NOTIFICATION_RULES" }).lean();
+        if (!row?.value) return true;
+        const rules = JSON.parse(row.value as string) as Array<{ id: string; enabled: boolean }>;
+        const rule = rules.find(r => r.id === eventId);
+        return rule?.enabled ?? true;
+    } catch {
+        return true;
+    }
+}
+
 async function getTelegramConfig(): Promise<{ botToken: string; chatId: string } | null> {
     try {
         const rows = await Settings.find({ key: { $in: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"] } }).lean();

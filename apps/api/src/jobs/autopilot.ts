@@ -2,7 +2,7 @@ import type { Agenda, Job } from "agenda";
 import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
 import { TelegramAction } from "../models/telegram-action.js";
-import { sendTelegram, sendTelegramPhotoDiscovery, sendTelegramApproval } from "../lib/telegram.js";
+import { sendTelegram, sendTelegramPhotoDiscovery, sendTelegramApproval, shouldNotify } from "../lib/telegram.js";
 
 export const AUTOPILOT_JOB_NAME = "autopilot-run";
 
@@ -94,11 +94,13 @@ async function runDiscovery(
 
     // Send summary before starting
     try {
-        await sendTelegram(
-            `🔍 <b>Auto-Pilot — Descubrimiento</b>\n\n` +
-            `📋 <b>${totalPending}</b> nicho${totalPending !== 1 ? "s" : ""} pendiente${totalPending !== 1 ? "s" : ""} en cola\n` +
-            `⚡ Procesando <b>${candidates.length}</b> en este ciclo, uno por uno…`
-        );
+        if (await shouldNotify("autopilot.run")) {
+            await sendTelegram(
+                `🔍 <b>Auto-Pilot — Descubrimiento</b>\n\n` +
+                `📋 <b>${totalPending}</b> nicho${totalPending !== 1 ? "s" : ""} pendiente${totalPending !== 1 ? "s" : ""} en cola\n` +
+                `⚡ Procesando <b>${candidates.length}</b> en este ciclo, uno por uno…`
+            );
+        }
     } catch { /* non-critical */ }
 
     let count = 0;
@@ -250,7 +252,9 @@ async function runPipeline(
                 await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "catalog" } });
                 io?.emit("niches:updated");
                 io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ ${cfg.catalogsPerNiche} catálogos lanzados para "${niche.name}"` });
-                await sendTelegram(`🏭 <b>${niche.name}</b>\n🖼️ ${cfg.catalogsPerNiche} catálogos en generación · ${cfg.catalogsPerNiche * cfg.imagesPerCatalog} imágenes totales`);
+                if (await shouldNotify("pipeline.complete")) {
+                    await sendTelegram(`🏭 <b>${niche.name}</b>\n🖼️ ${cfg.catalogsPerNiche} catálogos en generación · ${cfg.catalogsPerNiche * cfg.imagesPerCatalog} imágenes totales`);
+                }
             } catch (e: any) {
                 io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error lanzando catálogos: ${e.message}` });
             }
@@ -296,8 +300,10 @@ async function runPipeline(
                 `<i>Auto-aprobación en 24h</i>`,
             ].join("\n");
 
-            const msgId = await sendTelegramApproval({ text, actionId: String(action._id) });
-            if (msgId) { action.messageId = msgId; await action.save(); }
+            if (await shouldNotify("pipeline.complete")) {
+                const msgId = await sendTelegramApproval({ text, actionId: String(action._id) });
+                if (msgId) { action.messageId = msgId; await action.save(); }
+            }
             processed++;
             continue;
         }
@@ -349,8 +355,10 @@ async function runPipeline(
                         `<i>Auto-aprobación en 24h</i>`,
                     ].filter(Boolean).join("\n");
 
-                    const msgId = await sendTelegramApproval({ text, actionId: String(action._id) });
-                    if (msgId) { action.messageId = msgId; await action.save(); }
+                    if (await shouldNotify("listing.generated")) {
+                        const msgId = await sendTelegramApproval({ text, actionId: String(action._id) });
+                        if (msgId) { action.messageId = msgId; await action.save(); }
+                    }
                 }
             } catch (e: any) {
                 io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error generando listing: ${e.message}` });
@@ -372,6 +380,10 @@ export function defineAutoPilotJob(agenda: Agenda, io: any) {
         console.log(`${tag} Run started at ${new Date().toISOString()}`);
         const cfg = await getConfig();
 
+        if (await shouldNotify("autopilot.run")) {
+            await sendTelegram(`🤖 <b>Auto-Pilot</b> — Ciclo iniciado`).catch(() => {});
+        }
+
         const discovered = await runDiscovery(cfg, base, io, tag);
         const processed = await runPipeline(cfg, base, io, tag);
 
@@ -379,12 +391,12 @@ export function defineAutoPilotJob(agenda: Agenda, io: any) {
         console.log(`${tag} Done — ${discovered} discovered, ${processed} pipeline steps`);
         io?.emit("autopilot:done", { processed: total, timestamp: new Date().toISOString() });
 
-        if (total > 0) {
+        if (await shouldNotify("autopilot.run")) {
             await sendTelegram(
                 `✅ <b>Auto-Pilot completado</b>\n` +
-                (discovered > 0 ? `🔍 ${discovered} nicho${discovered !== 1 ? "s" : ""} nuevo${discovered !== 1 ? "s" : ""} encontrado${discovered !== 1 ? "s" : ""}\n` : "") +
-                (processed > 0 ? `⚙️ ${processed} paso${processed !== 1 ? "s" : ""} de pipeline procesado${processed !== 1 ? "s" : ""}` : "")
-            );
+                (discovered > 0 ? `🔍 ${discovered} nicho${discovered !== 1 ? "s" : ""} nuevo${discovered !== 1 ? "s" : ""}\n` : "") +
+                (processed > 0 ? `⚙️ ${processed} paso${processed !== 1 ? "s" : ""} de pipeline procesado${processed !== 1 ? "s" : ""}` : `ℹ️ Sin cambios en este ciclo`)
+            ).catch(() => {});
         }
     });
 }
