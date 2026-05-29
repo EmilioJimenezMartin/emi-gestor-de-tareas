@@ -272,3 +272,119 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
 
     throw new Error("No hay proveedor de IA configurado. Configura Google, Groq, OpenRouter o HuggingFace en Ajustes → Núcleo de Inteligencia.");
 }
+
+function isQuotaError(err: any): boolean {
+    const msg: string = (err?.message ?? err?.toString() ?? "").toLowerCase();
+    return /quota|rate.?limit|429|too many requests|limit:\s*0|daily limit|exhausted|capacity|overloaded/i.test(msg);
+}
+
+/**
+ * Analyze scraped page text for radar/niche detection.
+ * Tries providers in priority order (configured default first), falling back
+ * automatically to the next available provider on quota/rate-limit errors.
+ *
+ * @param skipProviders  providers to skip entirely (e.g. already tried via llm-scraper)
+ * @param onLog          optional callback for progress messages logged to the radar UI
+ */
+export async function analyzePageForRadar(
+    pageText: string,
+    systemPrompt: string,
+    opts: {
+        skipProviders?: LLMProvider[];
+        onLog?: (msg: string) => void;
+    } = {}
+): Promise<any> {
+    const config = await getConfig();
+    const skip = new Set(opts.skipProviders ?? []);
+    const log = opts.onLog ?? (() => {});
+
+    const truncated = pageText.replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").trim().slice(0, 20000);
+    const userMsg = `Contenido de la página:\n\n${truncated}`;
+
+    const parseJson = (text: string): any => {
+        const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+        const match = clean.match(/(\{[\s\S]*\})/);
+        if (!match) throw new Error(`La respuesta no contiene JSON válido: ${text.slice(0, 200)}`);
+        return JSON.parse(match[1]);
+    };
+
+    // Build ordered list: configured provider first, then the rest
+    const ALL_PROVIDERS: LLMProvider[] = ["google", "openrouter", "groq", "huggingface"];
+    const ordered: LLMProvider[] = [
+        config.provider,
+        ...ALL_PROVIDERS.filter(p => p !== config.provider),
+    ];
+
+    const tryProvider = async (provider: LLMProvider): Promise<any> => {
+        if (provider === "google" && config.googleKey) {
+            const { GoogleGenerativeAI } = await import("@google/generative-ai");
+            const genAI = new GoogleGenerativeAI(config.googleKey);
+            const m = genAI.getGenerativeModel({ model: config.model || "gemini-2.5-flash", systemInstruction: systemPrompt });
+            const result = await m.generateContent(userMsg);
+            return parseJson(result.response.text().trim());
+        }
+        if (provider === "openrouter" && config.openrouterKey) {
+            const raw = await openrouterChat(config.openrouterKey, config.model, [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userMsg },
+            ], 4096, 0.1);
+            return parseJson(raw);
+        }
+        if (provider === "groq" && config.groqKey) {
+            const raw = await groqChat(config.groqKey, config.model, [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userMsg },
+            ], 4096, 0.1);
+            return parseJson(raw);
+        }
+        if (provider === "huggingface" && config.hfKey) {
+            const { HfInference } = await import("@huggingface/inference");
+            const hf = new HfInference(config.hfKey);
+            const response = await hf.chatCompletion({
+                model: config.model || "meta-llama/Llama-3.3-70B-Instruct",
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userMsg },
+                ],
+                max_tokens: 4096,
+                temperature: 0.1,
+            });
+            return parseJson((response.choices[0]?.message?.content ?? "").trim());
+        }
+        return null; // provider not configured
+    };
+
+    let lastErr: any;
+    for (const provider of ordered) {
+        if (skip.has(provider)) continue;
+        try {
+            const result = await tryProvider(provider);
+            if (result !== null) {
+                if (provider !== config.provider) {
+                    log(`[FALLBACK] ✓ Respondió ${provider} (${config.provider} agotado)`);
+                }
+                return result;
+            }
+        } catch (err: any) {
+            lastErr = err;
+            if (isQuotaError(err)) {
+                const remaining = ordered.filter(p => !skip.has(p) && p !== provider);
+                const next = remaining.find(p =>
+                    (p === "google" && config.googleKey) ||
+                    (p === "openrouter" && config.openrouterKey) ||
+                    (p === "groq" && config.groqKey) ||
+                    (p === "huggingface" && config.hfKey)
+                );
+                if (next) {
+                    log(`[FALLBACK] ${provider} límite diario alcanzado → intentando ${next}...`);
+                    skip.add(provider);
+                    continue;
+                }
+                log(`[FALLBACK] ${provider} límite alcanzado y no hay más providers configurados.`);
+            }
+            throw err;
+        }
+    }
+
+    throw lastErr ?? new Error("Ningún proveedor de IA disponible. Configura al menos uno en Ajustes.");
+}

@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(tail -50 /tmp/api-restart.log | grep -E \"error|Error|500|radar|amazon\" -i | head -30)",
+      "Read(//private/tmp/**)"
     ]
   }
 }

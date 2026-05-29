@@ -1,6 +1,7 @@
 import type { Agenda, Job } from "agenda";
 import { RadarJob } from "../models/radar-job.js";
-import { EtsyNicheResultSchema, NicheInsightSchema, ETSY_SYSTEM_PROMPT, AMAZON_SYSTEM_PROMPT, getHFKey } from "../routes/radar.js";
+import { EtsyNicheResultSchema, NicheInsightSchema, ETSY_SYSTEM_PROMPT, AMAZON_SYSTEM_PROMPT } from "../routes/radar.js";
+import { analyzePageForRadar } from "../lib/ai.js";
 
 export const RADAR_JOB_NAME = "run-radar-analysis";
 
@@ -41,6 +42,29 @@ async function runWithRetry<T>(fn: () => Promise<T>, onWait: (secs: number, atte
     throw lastErr;
 }
 
+function buildRadarSystemPrompt(mode: string, nicheName?: string, context?: string): string {
+    const isListingMode = mode === "etsy-niches" || mode === "amazon-niches";
+    const schemaHint = isListingMode
+        ? `{"nichos_detectados":[{"titulo_producto":"string","precio":"string","bestseller":true/false,"personas_carrito":number,"total_reseñas":number,"sub_nicho_estimado":"string","url_producto":"string|undefined"}]}`
+        : `{"niche":"string","competition":"low|medium|high","demand":"low|medium|high","trend":"rising|stable|declining","topKeywords":["string"],"priceRange":"string","topCompetitors":["string"],"entryOpportunity":"string","buyerProfile":"string","summary":"string"}`;
+
+    if (mode === "amazon-niches") return `${AMAZON_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "etsy-niches") return `${ETSY_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    return [
+        nicheName ? `Niche objetivo: "${nicheName}".` : "",
+        context ? `Contexto adicional: ${context}.` : "",
+        `Analiza la página de marketplace. Responde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`,
+    ].filter(Boolean).join(" ");
+}
+
+async function getActiveProvider(): Promise<string> {
+    try {
+        const { Settings } = await import("../models/settings.js");
+        const row = await Settings.findOne({ key: "DEFAULT_LLM_PROVIDER" }).lean();
+        return (row as any)?.value ?? "google";
+    } catch { return "google"; }
+}
+
 async function getGoogleKey(): Promise<string> {
     let key = process.env.GOOGLE_API_KEY ?? "";
     try {
@@ -49,40 +73,6 @@ async function getGoogleKey(): Promise<string> {
         if (row?.value) key = row.value as string;
     } catch { /* fallback to env */ }
     return key;
-}
-
-async function analyzeWithHF(pageText: string, mode: string, hfKey: string): Promise<any> {
-    const { HfInference } = await import("@huggingface/inference");
-    const hf = new HfInference(hfKey);
-
-    const isListingMode = mode === "etsy-niches" || mode === "amazon-niches";
-    const schemaHint = isListingMode
-        ? `{"nichos_detectados":[{"titulo_producto":"string — título completo del listado","precio":"string — precio visible ej: '4,99 €'","bestseller":true/false,"personas_carrito":number,"total_reseñas":number,"sub_nicho_estimado":"string — micronicho deducido del título","url_producto":"string|undefined — href del listado"}]}`
-        : `{"niche":"string","competition":"low|medium|high","demand":"low|medium|high","trend":"rising|stable|declining","topKeywords":["string"],"priceRange":"string","topCompetitors":["string"],"entryOpportunity":"string","buyerProfile":"string","summary":"string"}`;
-
-    const basePrompt = mode === "etsy-niches" ? ETSY_SYSTEM_PROMPT : mode === "amazon-niches" ? AMAZON_SYSTEM_PROMPT : "";
-    const systemContent = isListingMode
-        ? `${basePrompt}\n\nResponde ÚNICAMENTE con un objeto JSON válido sin markdown ni explicaciones, con esta estructura exacta:\n${schemaHint}`
-        : `Analiza la siguiente página de marketplace para investigar el nicho de mercado. Responde ÚNICAMENTE con un objeto JSON válido sin markdown ni explicaciones, con esta estructura exacta:\n${schemaHint}`;
-
-    // Clean up whitespace and truncate (~14k chars ≈ 3500 tokens, fits 8B context comfortably)
-    const truncated = pageText.replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").trim().slice(0, 14000);
-
-    const response = await hf.chatCompletion({
-        model: "meta-llama/Llama-3.3-70B-Instruct",
-        messages: [
-            { role: "system", content: systemContent },
-            { role: "user", content: `Contenido de la página:\n\n${truncated}` },
-        ],
-        max_tokens: 4096,
-        temperature: 0.1,
-    });
-
-    const text = (response.choices[0]?.message?.content ?? "").trim();
-    // Extract JSON block — handle markdown fences or raw JSON
-    const jsonMatch = text.match(/```json\s*([\s\S]*?)```/i) ?? text.match(/(\{[\s\S]*\})/);
-    if (!jsonMatch) throw new Error(`HuggingFace no devolvió JSON válido. Respuesta: ${text.slice(0, 200)}`);
-    return JSON.parse(jsonMatch[1] ?? jsonMatch[0]);
 }
 
 function pushLog(jobDoc: InstanceType<typeof RadarJob>, io: any, level: "info" | "success" | "error" | "warning", message: string) {
@@ -198,11 +188,14 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             pushLog(jobDoc, io, "success", `[FETCH] ✓ DOM podado — listo para análisis`);
             await jobDoc.save();
 
-            const googleKey = await getGoogleKey();
+            const activeProvider = await getActiveProvider();
             let data: any;
 
-            if (googleKey) {
-                pushLog(jobDoc, io, "info", `[AI] Analizando con Gemini · modo: ${mode}...`);
+            // Google provider → use llm-scraper (structured DOM extraction, most accurate)
+            if (activeProvider === "google") {
+                const googleKey = await getGoogleKey();
+                if (!googleKey) throw new Error("Google API key no configurada. Añádela en Ajustes.");
+                pushLog(jobDoc, io, "info", `[AI] Analizando con Gemini (${geminiModel}) · modo: ${mode}...`);
                 await jobDoc.save();
 
                 const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
@@ -219,56 +212,60 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                         const result = await runWithRetry(
                             () => scraper.run(page, output, { format: "markdown", system: systemPrompt }),
                             (secs, attempt) => {
-                                const msg = `[QUOTA] Límite RPM · esperando ${secs}s (intento ${attempt}/1)...`;
-                                pushLog(jobDoc, io, "warning", msg);
-                                jobDoc.save().catch(() => { });
+                                pushLog(jobDoc, io, "warning", `[QUOTA] Límite RPM · esperando ${secs}s (intento ${attempt}/1)...`);
+                                jobDoc.save().catch(() => {});
                             }
                         );
                         data = result.data;
-                        const count = (data?.nichos_detectados ?? []).length;
-                        pushLog(jobDoc, io, "success", `[AI] ✓ ${count} productos/nichos detectados`);
                     } else {
-                        const contextHint = [
-                            nicheName ? `Niche objetivo: "${nicheName}".` : "",
-                            context ? `Contexto adicional: ${context}.` : "",
-                            "Analiza esta página de marketplace para investigar el nicho de mercado.",
-                        ].filter(Boolean).join(" ");
                         const output = Output.object(NicheInsightSchema as any);
+                        const systemPrompt = buildRadarSystemPrompt(mode, nicheName, context);
                         const result = await runWithRetry(
-                            () => scraper.run(page, output, { format: "markdown", system: contextHint || undefined }),
+                            () => scraper.run(page, output, { format: "markdown", system: systemPrompt }),
                             (secs, attempt) => {
-                                const msg = `[QUOTA] Límite RPM · esperando ${secs}s (intento ${attempt}/1)...`;
-                                pushLog(jobDoc, io, "warning", msg);
-                                jobDoc.save().catch(() => { });
+                                pushLog(jobDoc, io, "warning", `[QUOTA] Límite RPM · esperando ${secs}s (intento ${attempt}/1)...`);
+                                jobDoc.save().catch(() => {});
                             }
                         );
                         data = result.data;
-                        pushLog(jobDoc, io, "success", `[AI] ✓ Análisis completado`);
                     }
+                    const count = (data?.nichos_detectados ?? []).length;
+                    pushLog(jobDoc, io, "success",
+                        (mode === "etsy-niches" || mode === "amazon-niches")
+                            ? `[AI] ✓ Gemini · ${count} productos detectados`
+                            : `[AI] ✓ Gemini · análisis completado`
+                    );
                 } catch (geminiErr: any) {
                     if (!isHardQuota(geminiErr)) throw geminiErr;
-                    // Hard quota — fall through to HF below
-                    pushLog(jobDoc, io, "warning", `[QUOTA] Cuota diaria de Gemini agotada · intentando HuggingFace como respaldo...`);
+                    pushLog(jobDoc, io, "warning", `[QUOTA] Cuota diaria de Gemini agotada → buscando siguiente provider...`);
                     await jobDoc.save();
-                    data = null; // signal to use HF
+                    // Fall through to text-based chain, skip google since it's exhausted
+                    const systemPrompt = buildRadarSystemPrompt(mode, nicheName, context);
+                    data = await analyzePageForRadar(pageText, systemPrompt, {
+                        skipProviders: ["google"],
+                        onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                    });
                 }
+            } else {
+                // Any other provider (openrouter, groq, huggingface) → text-based extraction with fallback
+                if (activeProvider === "huggingface") {
+                    pushLog(jobDoc, io, "warning", `[INFO] HuggingFace puede tardar entre 30-90s. Por favor, espera...`);
+                }
+                await jobDoc.save();
+                const systemPrompt = buildRadarSystemPrompt(mode, nicheName, context);
+                pushLog(jobDoc, io, "info", `[AI] Analizando con ${activeProvider} · modo: ${mode}...`);
+                data = await analyzePageForRadar(pageText, systemPrompt, {
+                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                });
             }
 
-            // HF fallback: used when no Google key, or Gemini hard-quota
-            if (!data) {
-                const hfKey = await getHFKey();
-                if (!hfKey) {
-                    throw new Error("Cuota de Gemini agotada y no hay HuggingFace API key configurada. Añade una en Ajustes.");
-                }
-                pushLog(jobDoc, io, "info", `[AI] Analizando con HuggingFace (Llama 3.3-70B) · modo: ${mode}...`);
-                pushLog(jobDoc, io, "warning", `[INFO] HuggingFace puede tardar entre 30-90s — el modelo 70B se carga bajo demanda. Por favor, espera...`);
-                await jobDoc.save();
-                data = await analyzeWithHF(pageText, mode, hfKey);
+            if (data) {
                 const count = (data?.nichos_detectados ?? []).length;
-                const msg = (mode === "etsy-niches" || mode === "amazon-niches")
-                    ? `[AI] ✓ HuggingFace · ${count} productos detectados`
-                    : `[AI] ✓ HuggingFace · análisis completado`;
-                pushLog(jobDoc, io, "success", msg);
+                if (mode === "etsy-niches" || mode === "amazon-niches") {
+                    pushLog(jobDoc, io, "success", `[AI] ✓ ${count} productos detectados`);
+                } else {
+                    pushLog(jobDoc, io, "success", `[AI] ✓ Análisis completado`);
+                }
             }
 
             // Stamp detection date on every listing
@@ -329,6 +326,17 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             await jobDoc.save();
 
             io?.emit("radar:error", { jobId, message: msg });
+
+            // Notify via Telegram if configured
+            try {
+                const { sendTelegram } = await import("../lib/telegram.js");
+                await sendTelegram(
+                    `⚠️ <b>Radar — Todos los providers fallaron</b>\n\n` +
+                    `<b>URL:</b> ${url}\n` +
+                    `<b>Modo:</b> ${mode}\n` +
+                    `<b>Error:</b> ${err?.message ?? "Desconocido"}`
+                );
+            } catch { /* Telegram not configured — ignore */ }
         } finally {
             if (browser) { try { await browser.close(); } catch { /* ignore */ } }
             io?.emit("radar:done", { jobId });
