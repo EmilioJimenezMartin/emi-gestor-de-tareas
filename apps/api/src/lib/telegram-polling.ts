@@ -3,6 +3,31 @@ import { TelegramAction } from "../models/telegram-action.js";
 import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
 
+// ── Command registry — add entries here to auto-include them in /ayuda ────────
+// Use &lt; &gt; instead of < > to avoid Telegram HTML parse errors
+const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
+    { section: "📚 Nichos" },
+    { cmd: "/crear <code>nombre</code>", desc: "Crea nicho y lanza discovery" },
+    { cmd: "/nichos",                    desc: "Resumen por estado y fase" },
+    { section: "⚙️ Pipeline" },
+    { cmd: "/run",                       desc: "Lanza Auto-Pilot ahora" },
+    { cmd: "/status",                    desc: "Acciones de Telegram pendientes" },
+    { section: "❓ Ayuda" },
+    { cmd: "/ayuda",                     desc: "Este mensaje (fijado al chat)" },
+];
+
+function buildHelpText(): string {
+    const lines: string[] = [`🤖 <b>Emi Gestor — Comandos</b>\n`];
+    for (const entry of COMMANDS) {
+        if (entry.section) {
+            lines.push(`\n${entry.section}`);
+        } else {
+            lines.push(`<code>${entry.cmd}</code> — ${entry.desc}`);
+        }
+    }
+    return lines.join("\n");
+}
+
 let offset = 0;
 let running = false;
 let pollTimer: NodeJS.Timeout | null = null;
@@ -197,25 +222,18 @@ async function processUpdate(update: any): Promise<void> {
     // Handle text commands
     if (update.message?.text) {
         const raw: string = update.message.text.trim();
-        const text = raw.toLowerCase();
+        // Strip @botname suffix from commands (e.g. /ayuda@MyBot → /ayuda) then lowercase for matching
+        const normalized = raw.replace(/@\w+/, "").trim();
+        const text = normalized.toLowerCase();
 
-        if (text === "/ayuda" || text === "/help") {
-            const helpMsgId = await sendTelegram(
-                `🤖 <b>Emi Gestor — Comandos</b>\n\n` +
-                `📌 <b>Nichos</b>\n` +
-                `/crear <b>nombre</b> — Crea nicho y lanza discovery\n` +
-                `/nichos — Resumen (total, activos, fases)\n\n` +
-                `⚙️ <b>Pipeline</b>\n` +
-                `/run — Lanza Auto-Pilot ahora\n` +
-                `/status — Acciones pendientes\n\n` +
-                `❓ /ayuda — Muestra este mensaje (fijado al chat)`
-            );
+        if (text === "/ayuda" || text === "/help" || text === "ayuda" || text === "help") {
+            const helpMsgId = await sendTelegram(buildHelpText());
             if (helpMsgId) await pinTelegramMessage(helpMsgId);
             return;
         }
 
-        if (raw.toLowerCase().startsWith("/crear ")) {
-            const nicheName = raw.slice(7).trim();
+        if (text.startsWith("/crear ")) {
+            const nicheName = normalized.slice(7).trim();
             if (!nicheName) {
                 await sendTelegram("❌ Indica el nombre: <code>/crear nombre del nicho</code>");
                 return;

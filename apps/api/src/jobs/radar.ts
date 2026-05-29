@@ -322,16 +322,74 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             // Send Telegram summary on success
             try {
                 const { sendTelegram, shouldNotify } = await import("../lib/telegram.js");
-                if (await shouldNotify("scraping.summary")) {
-                    const count = (dataToEmit?.nichos_detectados ?? []).length;
-                    const modeLabel = mode === "etsy-niches" ? "Etsy" : mode === "amazon-niches" ? "Amazon" : "General";
+                const newNiches = (data?.nichos_detectados ?? []).filter((n: any) => !n._nichoCreado);
+                const count = (dataToEmit?.nichos_detectados ?? []).length;
+                const modeLabel = mode === "etsy-niches" ? "Etsy" : mode === "amazon-niches" ? "Amazon" : "General";
+
+                if (await shouldNotify("scraping.summary") && count > 0) {
                     await sendTelegram(
-                        `✅ <b>Radar completado — ${modeLabel}</b>\n\n` +
-                        (count > 0
-                            ? `🔍 <b>${count} productos detectados</b>\n`
-                            : `📊 Análisis completado\n`) +
-                        `<b>URL:</b> ${url}`
+                        `🔍 <b>Radar completado — ${modeLabel}</b>\n\n` +
+                        `<b>${count}</b> producto${count !== 1 ? "s" : ""} en el listado` +
+                        (newNiches.length > 0 ? ` · <b>${newNiches.length} nuevo${newNiches.length !== 1 ? "s" : ""}</b>` : " · sin novedades") + `\n` +
+                        `<b>URL:</b> ${url}\n\n` +
+                        (newNiches.length > 0 ? `⏳ Generando imágenes de muestra…` : "")
                     );
+                }
+
+                // Queue: create niches + send Telegram photo sequentially for each new product
+                if (newNiches.length > 0) {
+                    const { Niche } = await import("../models/niche.js");
+                    const port = process.env.PORT || 3001;
+                    const base = `http://localhost:${port}`;
+
+                    // Run in background so the radar job can close the browser
+                    setImmediate(async () => {
+                        let createdCount = 0;
+
+                        for (let i = 0; i < newNiches.length; i++) {
+                            const product = newNiches[i];
+                            const nicheName = ((product.sub_nicho_estimado as string) || (product.titulo_producto as string) || "").trim();
+                            if (!nicheName) continue;
+
+                            try {
+                                // Skip if already exists by sourceTitulo
+                                const existing = await Niche.findOne({ sourceTitulo: product.titulo_producto }).lean();
+                                if (existing) continue;
+
+                                const niche = await Niche.create({
+                                    name: nicheName,
+                                    status: "found",
+                                    sourceTitulo: (product.titulo_producto as string) ?? "",
+                                    productType: "coloring-book",
+                                    styleCategory: "generic",
+                                    styleCategories: ["generic"],
+                                });
+                                io?.emit("niches:updated");
+                                createdCount++;
+
+                                // Trigger discover: generates image + sends Telegram photo with buttons
+                                await fetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
+
+                            } catch (e: any) {
+                                console.error("[radar-queue] Error creating niche:", e.message);
+                            }
+
+                            // Wait between niches so Pollinations doesn't receive parallel requests
+                            if (i < newNiches.length - 1) await new Promise(r => setTimeout(r, 15_000));
+                        }
+
+                        // Final message after all photos are sent
+                        if (createdCount > 0) {
+                            try {
+                                const { sendTelegram: tg } = await import("../lib/telegram.js");
+                                await tg(
+                                    `📬 <b>${createdCount} nicho${createdCount !== 1 ? "s" : ""} enviado${createdCount !== 1 ? "s" : ""} a Telegram</b>\n\n` +
+                                    `Responde a cada imagen para confirmar o descartar.\n` +
+                                    `Cuando hayas decidido, usa /run para lanzar el pipeline.`
+                                );
+                            } catch { /* non-critical */ }
+                        }
+                    });
                 }
             } catch { /* Telegram not configured — ignore */ }
 
