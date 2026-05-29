@@ -40,6 +40,7 @@ export interface INiche extends Document {
     scoreReason?: string;
     scoredAt?: Date;
     autoPilotEnabled?: boolean;
+    sampleImageUrl?: string;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -86,6 +87,7 @@ const NicheSchema = new Schema<INiche>(
         scoreReason: { type: String },
         scoredAt: { type: Date },
         autoPilotEnabled: { type: Boolean, default: false },
+        sampleImageUrl: { type: String },
     },
     { timestamps: true }
 );

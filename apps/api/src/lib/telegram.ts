@@ -33,12 +33,11 @@ export async function sendTelegram(message: string): Promise<number | null> {
     }
 }
 
-// Send a photo with caption and optional approval buttons
-export async function sendTelegramPhotoApproval(opts: {
+// Send a photo with 3 action buttons (niche discovery)
+export async function sendTelegramPhotoDiscovery(opts: {
     imageUrl: string;
     caption: string;
     actionId: string;
-    nicheId: string;
 }): Promise<number | null> {
     const cfg = await getTelegramConfig();
     if (!cfg) return null;
@@ -53,13 +52,15 @@ export async function sendTelegramPhotoApproval(opts: {
                 parse_mode: "HTML",
                 reply_markup: {
                     inline_keyboard: [[
-                        { text: "✅ Aprobar", callback_data: `approve:${opts.actionId}` },
-                        { text: "❌ Rechazar", callback_data: `reject:${opts.actionId}` },
+                        { text: "🚀 Continuar", callback_data: `continuar:${opts.actionId}` },
+                        { text: "⏭️ Omitir", callback_data: `omitir:${opts.actionId}` },
+                        { text: "🗑️ Descartar", callback_data: `descartar:${opts.actionId}` },
                     ]],
                 },
             }),
         });
         const data = await res.json() as any;
+        if (!data.ok) console.error("[Telegram] sendPhoto error:", data);
         return data?.result?.message_id ?? null;
     } catch (e) {
         console.error("[Telegram] sendPhoto failed:", e);
@@ -67,7 +68,7 @@ export async function sendTelegramPhotoApproval(opts: {
     }
 }
 
-// Send a text message with approval buttons (when no image available)
+// Send text with 2-button approval (pipeline phase transitions)
 export async function sendTelegramApproval(opts: {
     text: string;
     actionId: string;

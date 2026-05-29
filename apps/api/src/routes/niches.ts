@@ -63,6 +63,17 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                     }
                 } catch { /* silently ignore radar update failure */ }
             }
+            // Auto-trigger discovery if new niche is interesting (status "found")
+            if (niche.status === "found") {
+                const nicheId = String(niche._id);
+                setImmediate(async () => {
+                    try {
+                        const port = process.env.PORT || 3001;
+                        await fetch(`http://localhost:${port}/autopilot/discover/${nicheId}`, { method: "POST" });
+                    } catch { /* non-critical — discovery is best-effort */ }
+                });
+            }
+
             return reply.status(201).send({ niche });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });

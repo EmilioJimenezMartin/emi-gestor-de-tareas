@@ -1,53 +1,118 @@
 import { getUpdates, answerCallbackQuery, editTelegramMessage, sendTelegram } from "./telegram.js";
 import { TelegramAction } from "../models/telegram-action.js";
 import { Niche } from "../models/niche.js";
+import { Settings } from "../models/settings.js";
 
 let offset = 0;
 let running = false;
 let pollTimer: NodeJS.Timeout | null = null;
+
+async function getAutoPilotConfig() {
+    try {
+        const rows = await Settings.find({
+            key: { $in: ["AUTOPILOT_CATALOGS_PER_NICHE", "AUTOPILOT_IMAGES_PER_CATALOG"] },
+        }).lean();
+        const map = new Map((rows as any[]).map((r) => [r.key, r.value]));
+        return {
+            catalogsPerNiche: parseInt((map.get("AUTOPILOT_CATALOGS_PER_NICHE") as string) ?? "8") || 8,
+            imagesPerCatalog: parseInt((map.get("AUTOPILOT_IMAGES_PER_CATALOG") as string) ?? "5") || 5,
+        };
+    } catch {
+        return { catalogsPerNiche: 8, imagesPerCatalog: 5 };
+    }
+}
+
+async function handleNicheDiscovery(
+    tAction: InstanceType<typeof TelegramAction>,
+    decision: "continuar" | "omitir" | "descartar"
+): Promise<string> {
+    if (decision === "continuar") {
+        const cfg = await getAutoPilotConfig();
+        // Activate autopilot on the niche and set it to active status
+        await Niche.findByIdAndUpdate(tAction.nicheId, {
+            $set: { autoPilotEnabled: true, status: "active", phase: "niche" },
+        });
+        await sendTelegram(
+            `🚀 <b>Pipeline lanzado</b>\n` +
+            `📚 <b>${tAction.nicheName}</b>\n\n` +
+            `Se generarán <b>${cfg.catalogsPerNiche} catálogos</b> × <b>${cfg.imagesPerCatalog} imágenes</b>\n` +
+            `El proceso puede tardar varios minutos.`
+        );
+        return `✅ Lanzado — ${cfg.catalogsPerNiche} catálogos en producción`;
+    }
+
+    if (decision === "omitir") {
+        // Keep niche as-is, just remove sample so it won't be re-sent this cycle
+        // It will be picked up again on the next run (the sample will still exist, so it won't loop)
+        await sendTelegram(`⏭️ <b>Nicho omitido</b>\n<b>${tAction.nicheName}</b> — quedará para la próxima ejecución`);
+        return "⏭️ Omitido — volvemos en la próxima ejecución";
+    }
+
+    if (decision === "descartar") {
+        await Niche.findByIdAndUpdate(tAction.nicheId, { $set: { status: "archived", autoPilotEnabled: false } });
+        await sendTelegram(`🗑️ <b>Nicho descartado</b>\n<b>${tAction.nicheName}</b> — archivado`);
+        return "🗑️ Archivado";
+    }
+
+    return "";
+}
+
+async function handlePhaseApproval(
+    tAction: InstanceType<typeof TelegramAction>,
+    approved: boolean
+): Promise<string> {
+    if (approved) {
+        await Niche.findByIdAndUpdate(tAction.nicheId, { $set: { phase: tAction.targetPhase } });
+        await sendTelegram(`🚀 <b>Pipeline avanzado</b>\n<b>${tAction.nicheName}</b> → fase <b>${tAction.targetPhase}</b>`);
+        return `✅ Avanzando a ${tAction.targetPhase}`;
+    } else {
+        await Niche.findByIdAndUpdate(tAction.nicheId, { $set: { autoPilotEnabled: false } });
+        await sendTelegram(`⏸️ <b>Pipeline pausado</b>\n<b>${tAction.nicheName}</b> — Auto-Pilot desactivado`);
+        return "❌ Pipeline pausado";
+    }
+}
 
 async function processUpdate(update: any): Promise<void> {
     // Handle inline keyboard button presses
     if (update.callback_query) {
         const cq = update.callback_query;
         const data: string = cq.data ?? "";
-        const [action, actionId] = data.split(":");
+        const colonIdx = data.indexOf(":");
+        if (colonIdx === -1) return;
+        const action = data.slice(0, colonIdx);
+        const actionId = data.slice(colonIdx + 1);
 
-        if ((action === "approve" || action === "reject") && actionId) {
-            const tAction = await TelegramAction.findById(actionId);
-            if (!tAction || tAction.status !== "pending") {
-                await answerCallbackQuery(cq.id, "Esta acción ya fue procesada");
-                return;
-            }
+        const tAction = await TelegramAction.findById(actionId);
+        if (!tAction || tAction.status !== "pending") {
+            await answerCallbackQuery(cq.id, "Esta acción ya fue procesada");
+            return;
+        }
 
-            const approved = action === "approve";
-            tAction.status = approved ? "approved" : "rejected";
+        let resultText = "";
+
+        if (tAction.type === "niche-discovery" && ["continuar", "omitir", "descartar"].includes(action)) {
+            tAction.status = action as "continuar" | "omitir" | "descartar";
             tAction.resolvedAt = new Date();
             await tAction.save();
+            resultText = await handleNicheDiscovery(tAction, action as "continuar" | "omitir" | "descartar");
+        } else if (tAction.type === "phase-approve" && ["approve", "reject"].includes(action)) {
+            tAction.status = action === "approve" ? "approved" : "rejected";
+            tAction.resolvedAt = new Date();
+            await tAction.save();
+            resultText = await handlePhaseApproval(tAction, action === "approve");
+        } else {
+            await answerCallbackQuery(cq.id, "Acción desconocida");
+            return;
+        }
 
-            await answerCallbackQuery(cq.id, approved ? "✅ Aprobado" : "❌ Rechazado");
+        await answerCallbackQuery(cq.id, resultText);
 
-            if (tAction.messageId) {
-                const statusLine = approved
-                    ? `✅ <b>Aprobado por ti</b> — avanzando a fase <b>${tAction.targetPhase}</b>`
-                    : `❌ <b>Rechazado</b> — nicho pausado`;
-                await editTelegramMessage(
-                    tAction.messageId,
-                    `🏭 <b>${tAction.nicheName}</b>\n${statusLine}`
-                );
-            }
-
-            if (approved) {
-                // Advance niche to target phase
-                await Niche.findByIdAndUpdate(tAction.nicheId, { $set: { phase: tAction.targetPhase } });
-                await sendTelegram(`🚀 <b>Pipeline avanzado</b>\n<b>${tAction.nicheName}</b> → fase <b>${tAction.targetPhase}</b>`);
-                console.log(`[telegram-poll] Approved: ${tAction.nicheName} → ${tAction.targetPhase}`);
-            } else {
-                // Pause the niche
-                await Niche.findByIdAndUpdate(tAction.nicheId, { $set: { autoPilotEnabled: false } });
-                await sendTelegram(`⏸️ <b>Nicho pausado</b>\n<b>${tAction.nicheName}</b> — Auto-Pilot desactivado`);
-                console.log(`[telegram-poll] Rejected: ${tAction.nicheName} paused`);
-            }
+        // Update the original message to remove buttons and show result
+        if (tAction.messageId) {
+            await editTelegramMessage(
+                tAction.messageId,
+                `${tAction.type === "niche-discovery" ? "🔍" : "📦"} <b>${tAction.nicheName}</b>\n\n${resultText}`
+            );
         }
         return;
     }
@@ -55,13 +120,22 @@ async function processUpdate(update: any): Promise<void> {
     // Handle text commands
     if (update.message?.text) {
         const text: string = update.message.text.trim().toLowerCase();
+
         if (text === "/status") {
             const pending = await TelegramAction.find({ status: "pending" }).lean();
             if (pending.length === 0) {
-                await sendTelegram("✅ No hay acciones pendientes de aprobación");
+                await sendTelegram("✅ No hay acciones pendientes");
             } else {
-                const lines = pending.map(a => `• <b>${a.nicheName}</b> → ${a.targetPhase}`).join("\n");
-                await sendTelegram(`⏳ <b>Pendientes (${pending.length})</b>\n${lines}`);
+                const disc = pending.filter(a => a.type === "niche-discovery");
+                const pipe = pending.filter(a => a.type === "phase-approve");
+                const lines = [
+                    `⏳ <b>${pending.length} acciones pendientes</b>`,
+                    disc.length > 0 ? `\n🔍 <b>Descubrimiento (${disc.length}):</b>` : null,
+                    ...disc.map(a => `  • ${a.nicheName}`),
+                    pipe.length > 0 ? `\n📦 <b>Pipeline (${pipe.length}):</b>` : null,
+                    ...pipe.map(a => `  • ${a.nicheName} → ${a.targetPhase}`),
+                ].filter(Boolean).join("\n");
+                await sendTelegram(lines);
             }
         }
     }
@@ -83,19 +157,27 @@ async function poll(): Promise<void> {
         console.error("[telegram-poll] getUpdates failed:", e);
     }
 
-    // Auto-approve expired pending actions (24h timeout)
+    // Auto-discard expired discovery actions
     try {
         const expired = await TelegramAction.find({
             status: "pending",
             autoApproveAt: { $lte: new Date() },
         });
         for (const action of expired) {
-            action.status = "approved";
-            action.resolvedAt = new Date();
-            await action.save();
-            await Niche.findByIdAndUpdate(action.nicheId, { $set: { phase: action.targetPhase } });
-            await sendTelegram(`⏱️ <b>Auto-aprobado</b> (24h sin respuesta)\n<b>${action.nicheName}</b> → ${action.targetPhase}`);
-            console.log(`[telegram-poll] Auto-approved: ${action.nicheName} → ${action.targetPhase}`);
+            if (action.type === "niche-discovery") {
+                action.status = "descartar";
+                action.resolvedAt = new Date();
+                await action.save();
+                await Niche.findByIdAndUpdate(action.nicheId, { $set: { status: "archived" } });
+                await sendTelegram(`⏱️ <b>Auto-descartado</b> (48h sin respuesta)\n<b>${action.nicheName}</b> → archivado`);
+            } else if (action.type === "phase-approve") {
+                action.status = "approved";
+                action.resolvedAt = new Date();
+                await action.save();
+                await Niche.findByIdAndUpdate(action.nicheId, { $set: { phase: action.targetPhase } });
+                await sendTelegram(`⏱️ <b>Auto-aprobado</b> (24h sin respuesta)\n<b>${action.nicheName}</b> → ${action.targetPhase}`);
+            }
+            console.log(`[telegram-poll] Expired action handled: ${action.nicheName}`);
         }
     } catch { /* non-critical */ }
 

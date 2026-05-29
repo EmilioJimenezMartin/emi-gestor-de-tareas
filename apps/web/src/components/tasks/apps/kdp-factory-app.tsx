@@ -1193,7 +1193,16 @@ export function KdpFactoryApp() {
         }
     };
 
+    const triggerNicheDiscovery = async (nicheId: string): Promise<void> => {
+        const res = await fetch(`${API_BASE_URL}/autopilot/discover/${nicheId}`, { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Error lanzando discovery");
+        toast.success("📩 Imagen generada y enviada a Telegram — espera el mensaje");
+        void fetchNiches();
+    };
+
     const launchPipelineFromRow = async (row: { titulo_producto: string; sub_nicho_estimado: string; bestseller: boolean; total_reseñas: number; precio: string }) => {
+        // Create niche if it doesn't exist yet
         let niche = niches.find(n => n.sourceTitulo === row.titulo_producto);
         if (!niche) {
             const res = await fetch(`${API_BASE_URL}/niches`, {
@@ -1216,7 +1225,8 @@ export function KdpFactoryApp() {
             niche = data.niche;
             setNiches(prev => [data.niche, ...prev]);
         }
-        if (niche) await runNichePipeline(niche);
+        // Trigger discovery flow → Telegram with sample image + 3 buttons
+        if (niche) await triggerNicheDiscovery(niche._id);
     };
 
     const createCatalogFromStudio = async () => {
@@ -8044,6 +8054,13 @@ export function KdpFactoryApp() {
                                                                         ? <><ImageIcon size={11} /> Abrir Cover Factory</>
                                                                         : <><Play size={11} /> Lanzar pipeline</>}
                                                             </button>
+                                                            {/* Telegram discovery button */}
+                                                            <button
+                                                                onClick={() => void triggerNicheDiscovery(niche._id)}
+                                                                title="Generar imagen de muestra y enviar a Telegram para aprobación"
+                                                                className="w-10 h-10 flex items-center justify-center rounded-xl border border-sky-500/20 bg-sky-500/8 text-sky-400 hover:bg-sky-500/20 hover:border-sky-500/40 transition-all">
+                                                                <Send size={13} />
+                                                            </button>
                                                             <button
                                                                 onClick={() => setShowPipelineConfigId(showPipelineConfigId === niche._id ? null : niche._id)}
                                                                 title="Configurar pipeline"
@@ -8265,9 +8282,9 @@ export function KdpFactoryApp() {
                         niches={niches}
                         onNicheCreated={() => void fetchNiches()}
                         pipelineAction={{
-                            label: "Pipeline",
+                            label: "🚀 Lanzar",
                             colorScheme: "amber",
-                            isCreated: (row) => niches.some(n => n.sourceTitulo === row.titulo_producto),
+                            isCreated: (_row) => false,
                             onCreate: async (row) => { await launchPipelineFromRow(row); },
                         }}
                     />

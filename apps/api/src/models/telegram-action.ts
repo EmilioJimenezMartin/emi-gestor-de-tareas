@@ -1,14 +1,14 @@
 import mongoose, { Schema, model } from "mongoose";
 
 export interface ITelegramAction {
-    type: "phase-approve";
+    type: "niche-discovery" | "phase-approve";
     nicheId: string;
     nicheName: string;
-    targetPhase: string;       // phase to advance TO if approved
-    messageId?: number;        // Telegram message ID (for editing after response)
-    status: "pending" | "approved" | "rejected";
+    targetPhase?: string;
+    messageId?: number;
+    status: "pending" | "continuar" | "omitir" | "descartar" | "approved" | "rejected";
     imageUrl?: string;
-    autoApproveAt: Date;       // auto-approve if no response after 24h
+    autoApproveAt: Date;
     createdAt: Date;
     resolvedAt?: Date;
 }
@@ -17,7 +17,7 @@ const schema = new Schema<ITelegramAction>({
     type: { type: String, required: true },
     nicheId: { type: String, required: true },
     nicheName: { type: String, required: true },
-    targetPhase: { type: String, required: true },
+    targetPhase: String,
     messageId: Number,
     status: { type: String, default: "pending" },
     imageUrl: String,
