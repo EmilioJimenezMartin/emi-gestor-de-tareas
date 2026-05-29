@@ -904,7 +904,7 @@ export function KdpFactoryApp() {
     const [selectedModel, setSelectedModel] = useState(AI_MODELS[0].id);
     const [showModelPicker, setShowModelPicker] = useState(false);
     const [showDimPicker, setShowDimPicker] = useState(false);
-    const [selectedDim, setSelectedDim] = useState("p34");
+    const [selectedDim, setSelectedDim] = useState("sq");
     const modelPickerBtnRef = useRef<HTMLButtonElement>(null);
     const dimPickerBtnRef = useRef<HTMLButtonElement>(null);
     const modelPickerRectRef = useRef<DOMRect | null>(null);
@@ -4608,7 +4608,8 @@ export function KdpFactoryApp() {
                                 const prev7 = data.slice(-14, -7).reduce((a, b) => a + b, 0);
                                 const delta = prev7 > 0 ? Math.round(((last7 - prev7) / prev7) * 100) : null;
                                 return (
-                                    <Card key={s.key} variant="outline" className="p-5 bg-white/[0.02] border-white/5 space-y-3 overflow-hidden relative hover:border-violet-500/20 hover:shadow-[0_0_30px_rgba(139,92,246,0.08)] transition-all duration-500">
+                                    <Card key={s.key} variant="outline" className="p-5 bg-white/[0.02] border-white/5 space-y-3 overflow-hidden relative hover:border-violet-500/20 hover:shadow-[0_0_30px_rgba(139,92,246,0.08)] transition-all duration-500 group">
+                                        <div className="absolute -right-4 -top-4 w-14 h-14 blur-2xl rounded-full opacity-40 group-hover:scale-150 group-hover:opacity-70 transition-all duration-500" style={{ backgroundColor: s.gradFrom + "33" }} />
                                         <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
                                         <div className="flex items-center justify-between relative gap-2">
                                             <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{s.label}</span>
@@ -4673,6 +4674,7 @@ export function KdpFactoryApp() {
                             const isSelected = royaltiesNicheId === n._id;
                             return (
                                 <Card key={n._id} variant="glass" className="group p-5 pl-6 border-white/5 bg-white/[0.01] space-y-4 relative overflow-hidden hover:border-emerald-500/15 hover:shadow-[0_0_30px_rgba(16,185,129,0.08)] transition-all duration-500">
+                                    <div className="absolute -right-4 -top-4 w-14 h-14 bg-emerald-500/8 blur-2xl rounded-full opacity-50 group-hover:scale-[2] group-hover:opacity-80 transition-all duration-500" />
                                     <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-emerald-500 via-emerald-400 to-cyan-400 opacity-40 group-hover:opacity-100 transition-all duration-300" />
                                     <div className="flex items-start justify-between gap-2">
                                         <div className="space-y-0.5">
@@ -5852,7 +5854,8 @@ export function KdpFactoryApp() {
                 <div className="space-y-2">
                     <div className="flex items-center justify-between">
                         <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 flex items-center gap-1.5">
-                            <Clock size={10} /> Historial de ejecuciones
+                            <Clock size={10} /> Historial
+                            {apRuns.length > 0 && <span className="text-neutral-700">({apRuns.length})</span>}
                         </p>
                         <div className="flex items-center gap-1">
                             <button onClick={() => void fetchApRuns()} disabled={apRunsLoading} title="Refrescar" className="p-1.5 rounded-lg text-neutral-700 hover:text-neutral-400 hover:bg-white/5 transition-all disabled:opacity-40">
@@ -5869,77 +5872,77 @@ export function KdpFactoryApp() {
                     {apRuns.length === 0 && !apRunsLoading ? (
                         <p className="text-[11px] text-neutral-700 px-1">Sin ejecuciones registradas</p>
                     ) : (
-                        <>
-                            {/* Summary bar */}
-                            {apRuns.length > 0 && (() => {
-                                const total = apRuns.length;
-                                const succeeded = apRuns.filter(r => r.status === "completed").length;
-                                const totalDiscovered = apRuns.reduce((s, r) => s + (r.discovered ?? 0), 0);
-                                const totalCatalogs = apRuns.reduce((s, r) => s + (r.catalogsCreated ?? 0), 0);
-                                const totalPipeline = apRuns.reduce((s, r) => s + (r.pipelineProcessed ?? 0), 0);
+                        <div className="max-h-[280px] overflow-y-auto space-y-1 pr-0.5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                            {apRuns.map(run => {
+                                const duration = run.finishedAt
+                                    ? Math.round((new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()) / 60000)
+                                    : null;
+                                const isRunning = run.status === "running";
+                                const isOk = run.status === "completed";
+                                const isAborted = run.status === "aborted";
+                                const discovered = run.discovered ?? 0;
+                                const catalogsCreated = run.catalogsCreated ?? 0;
+                                const pipelineProcessed = run.pipelineProcessed ?? 0;
+                                const duplicatesSkipped = (run as any).duplicatesSkipped ?? 0;
+                                const idle = !isRunning && discovered === 0 && catalogsCreated === 0 && pipelineProcessed === 0;
                                 return (
-                                    <div className="grid grid-cols-4 gap-2 mb-1">
-                                        {[
-                                            { label: "Ciclos", value: total, color: "text-neutral-400" },
-                                            { label: "Éxito", value: `${total > 0 ? Math.round(succeeded/total*100) : 0}%`, color: "text-emerald-400" },
-                                            { label: "Nichos", value: totalDiscovered, color: "text-sky-400" },
-                                            { label: "Catálogos", value: totalCatalogs + totalPipeline, color: "text-violet-400" },
-                                        ].map(s => (
-                                            <div key={s.label} className="rounded-xl bg-white/[0.02] border border-white/[0.05] px-2.5 py-2 text-center">
-                                                <p className={`text-base font-black tabular-nums leading-none ${s.color}`}>{s.value}</p>
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-700 mt-1">{s.label}</p>
+                                    <div key={run._id} className={`rounded-xl border px-3 py-2 text-[11px] ${
+                                        isOk && !idle  ? "bg-emerald-500/[0.02] border-emerald-500/[0.08]"
+                                        : isAborted    ? "bg-rose-500/[0.02] border-rose-500/[0.08]"
+                                        : isRunning    ? "bg-amber-500/[0.03] border-amber-500/20"
+                                        : idle         ? "bg-white/[0.01] border-white/[0.03] opacity-50"
+                                        : "bg-white/[0.01] border-white/[0.04]"
+                                    }`}>
+                                        {/* Row 1: status + date + duration */}
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm leading-none shrink-0">
+                                                {isOk ? (idle ? "💤" : "✅") : isAborted ? "⛔" : isRunning ? "⏳" : "❌"}
+                                            </span>
+                                            <span className="font-mono text-neutral-500 text-[10px]">
+                                                {new Date(run.startedAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
+                                                {" "}{new Date(run.startedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                                            </span>
+                                            {duration !== null && (
+                                                <span className={`text-[10px] font-black tabular-nums px-1.5 py-0.5 rounded-md ${duration > 20 ? "text-orange-400 bg-orange-500/10" : "text-neutral-700 bg-white/[0.04]"}`}>
+                                                    {duration}m
+                                                </span>
+                                            )}
+                                            {isRunning && <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest animate-pulse ml-auto">en curso</span>}
+                                            {idle && !isRunning && <span className="text-[9px] text-neutral-700 ml-auto">sin cambios</span>}
+                                        </div>
+                                        {/* Row 2: stats chips — only if there's something to show */}
+                                        {!idle && (
+                                            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                                {discovered > 0 && (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[10px] font-black">
+                                                        🔍 <span>{discovered} nicho{discovered !== 1 ? "s" : ""}</span>
+                                                    </span>
+                                                )}
+                                                {duplicatesSkipped > 0 && (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-neutral-500/10 border border-neutral-500/20 text-neutral-500 text-[10px] font-black">
+                                                        ⏭ <span>{duplicatesSkipped} duplicado{duplicatesSkipped !== 1 ? "s" : ""}</span>
+                                                    </span>
+                                                )}
+                                                {catalogsCreated > 0 && (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[10px] font-black">
+                                                        🏭 <span>{catalogsCreated} catálogo{catalogsCreated !== 1 ? "s" : ""}</span>
+                                                    </span>
+                                                )}
+                                                {pipelineProcessed > 0 && (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black">
+                                                        ⚙️ <span>{pipelineProcessed} paso{pipelineProcessed !== 1 ? "s" : ""}</span>
+                                                    </span>
+                                                )}
                                             </div>
-                                        ))}
+                                        )}
+                                        {/* Row 3: abort reason */}
+                                        {run.abortReason && (
+                                            <p className="text-rose-400/70 text-[10px] mt-1 leading-snug">{run.abortReason}</p>
+                                        )}
                                     </div>
                                 );
-                            })()}
-
-                            <div className="space-y-1">
-                                {apRuns.slice(0, 12).map(run => {
-                                    const duration = run.finishedAt
-                                        ? Math.round((new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()) / 60000)
-                                        : null;
-                                    const isRunning = run.status === "running";
-                                    const isOk = run.status === "completed";
-                                    const isAborted = run.status === "aborted";
-                                    const hasWork = (run.discovered ?? 0) + (run.catalogsCreated ?? 0) + (run.pipelineProcessed ?? 0) > 0;
-                                    return (
-                                        <div key={run._id} className={`flex items-center gap-3 px-3 py-2 rounded-xl border text-[11px] ${
-                                            isOk ? "bg-emerald-500/[0.02] border-emerald-500/[0.08]"
-                                            : isAborted ? "bg-rose-500/[0.02] border-rose-500/[0.08]"
-                                            : isRunning ? "bg-amber-500/[0.03] border-amber-500/20"
-                                            : "bg-white/[0.01] border-white/[0.04]"
-                                        }`}>
-                                            <span className="text-sm leading-none shrink-0">
-                                                {isOk ? "✅" : isAborted ? "⛔" : isRunning ? "⏳" : "❌"}
-                                            </span>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-mono text-neutral-500 text-[10px] shrink-0">
-                                                        {new Date(run.startedAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
-                                                        {" "}{new Date(run.startedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
-                                                    </span>
-                                                    {duration !== null && (
-                                                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${duration > 20 ? "text-orange-400 bg-orange-500/10" : "text-neutral-600 bg-white/[0.04]"}`}>
-                                                            {duration}m
-                                                        </span>
-                                                    )}
-                                                    {isRunning && <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest animate-pulse">en curso</span>}
-                                                </div>
-                                                {run.abortReason && <p className="text-rose-400/70 text-[10px] truncate mt-0.5">{run.abortReason}</p>}
-                                            </div>
-                                            {hasWork && (
-                                                <div className="flex items-center gap-2 shrink-0 text-[10px] font-black">
-                                                    {(run.discovered ?? 0) > 0 && <span className="text-sky-400/70" title="Nichos descubiertos">🔍{run.discovered}</span>}
-                                                    {(run.catalogsCreated ?? 0) > 0 && <span className="text-violet-400/70" title="Catálogos creados">🏭{run.catalogsCreated}</span>}
-                                                    {(run.pipelineProcessed ?? 0) > 0 && <span className="text-emerald-400/70" title="Pasos de pipeline">⚙️{run.pipelineProcessed}</span>}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </>
+                            })}
+                        </div>
                     )}
                 </div>
 
@@ -6718,10 +6721,10 @@ export function KdpFactoryApp() {
                                                     return (
                                                         <button key={n._id} type="button"
                                                             onClick={() => setCatalogFormNicheId(isSelected ? null : n._id)}
-                                                            className={`flex items-center gap-1 h-6 px-2.5 rounded-lg border text-sm font-black transition-all ${isSelected ? "border-sky-500/50 bg-sky-500/15 text-sky-300" : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"}`}>
-                                                            <Target size={8} />
-                                                            {n.name}
-                                                            {isSelected && <Check size={8} />}
+                                                            className={`flex items-center gap-1 max-w-[220px] h-6 px-2.5 rounded-lg border text-sm font-black transition-all ${isSelected ? "border-sky-500/50 bg-sky-500/15 text-sky-300" : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"}`}>
+                                                            <Target size={8} className="shrink-0" />
+                                                            <span className="truncate">{n.name}</span>
+                                                            {isSelected && <Check size={8} className="shrink-0" />}
                                                         </button>
                                                     );
                                                 })}
@@ -7547,10 +7550,10 @@ export function KdpFactoryApp() {
                                 : imgHeatLevel === 2 ? "#f97316"
                                 : imgHeatLevel === 3 ? "#ef4444"
                                 : null;
-                            const providerColor = catalog.aiModel?.provider === "Google" ? { bar: "bg-blue-500/50", gradient: "from-blue-500 via-blue-400 to-cyan-400", border: "hover:border-blue-500/20", badge: "bg-blue-500/10 border-blue-500/20 text-blue-300", dot: "bg-blue-400" }
-                                : catalog.aiModel?.provider === "Leonardo" ? { bar: "bg-amber-500/50", gradient: "from-amber-500 via-orange-400 to-amber-300", border: "hover:border-amber-500/20", badge: "bg-amber-500/10 border-amber-500/20 text-amber-300", dot: "bg-amber-400" }
-                                    : catalog.aiModel?.provider === "Pollinations" ? { bar: "bg-emerald-500/50", gradient: "from-emerald-500 via-emerald-400 to-cyan-400", border: "hover:border-emerald-500/20", badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300", dot: "bg-emerald-400" }
-                                        : { bar: "bg-sky-500/50", gradient: "from-sky-500 via-sky-400 to-cyan-400", border: "hover:border-sky-500/20", badge: "bg-sky-500/10 border-sky-500/20 text-sky-300", dot: "bg-sky-400" };
+                            const providerColor = catalog.aiModel?.provider === "Google" ? { bar: "bg-blue-500/50", gradient: "from-blue-500 via-blue-400 to-cyan-400", border: "hover:border-blue-500/20", glow: "hover:shadow-[0_0_28px_rgba(59,130,246,0.10)]", blob: "bg-blue-500/8", badge: "bg-blue-500/10 border-blue-500/20 text-blue-300", dot: "bg-blue-400" }
+                                : catalog.aiModel?.provider === "Leonardo" ? { bar: "bg-amber-500/50", gradient: "from-amber-500 via-orange-400 to-amber-300", border: "hover:border-amber-500/20", glow: "hover:shadow-[0_0_28px_rgba(245,158,11,0.10)]", blob: "bg-amber-500/8", badge: "bg-amber-500/10 border-amber-500/20 text-amber-300", dot: "bg-amber-400" }
+                                    : catalog.aiModel?.provider === "Pollinations" ? { bar: "bg-emerald-500/50", gradient: "from-emerald-500 via-emerald-400 to-cyan-400", border: "hover:border-emerald-500/20", glow: "hover:shadow-[0_0_28px_rgba(16,185,129,0.10)]", blob: "bg-emerald-500/8", badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300", dot: "bg-emerald-400" }
+                                        : { bar: "bg-sky-500/50", gradient: "from-sky-500 via-sky-400 to-cyan-400", border: "hover:border-sky-500/20", glow: "hover:shadow-[0_0_28px_rgba(14,165,233,0.10)]", blob: "bg-sky-500/8", badge: "bg-sky-500/10 border-sky-500/20 text-sky-300", dot: "bg-sky-400" };
                             const isDraggable = catalog.status === "queued";
                             const isDragOver = dragOverId === catalog._id;
                             return (
@@ -7562,8 +7565,10 @@ export function KdpFactoryApp() {
                                     onDragEnd={() => { setDraggingId(null); setDragOverId(null); }}
                                     onDragOver={(e: React.DragEvent) => { if (isDraggable && draggingId) { e.preventDefault(); setDragOverId(catalog._id); } }}
                                     onDrop={(e: React.DragEvent) => { e.preventDefault(); if (draggingId && isDraggable) void handleQueueReorder(draggingId, catalog._id); setDraggingId(null); setDragOverId(null); }}
-                                    className={`group relative bg-white/[0.01] overflow-hidden transition-all duration-300 ${imgHeatLevel > 0 ? heatBorderCls : `border-white/5 ${providerColor.border}`} ${isDraggable ? "cursor-grab active:cursor-grabbing" : ""} ${isDragOver ? "ring-1 ring-orange-500/50 border-orange-500/30" : ""} ${draggingId === catalog._id ? "opacity-50" : ""}`}
+                                    className={`group relative bg-white/[0.01] overflow-hidden transition-all duration-300 ${imgHeatLevel > 0 ? heatBorderCls : `border-white/5 ${providerColor.border} ${providerColor.glow}`} ${isDraggable ? "cursor-grab active:cursor-grabbing" : ""} ${isDragOver ? "ring-1 ring-orange-500/50 border-orange-500/30" : ""} ${draggingId === catalog._id ? "opacity-50" : ""}`}
                                 >
+                                    {/* Blob halo */}
+                                    <div className={`absolute -right-4 -top-4 w-16 h-16 ${providerColor.blob} blur-2xl rounded-full opacity-50 transition-all duration-500 group-hover:scale-[2] group-hover:opacity-80`} />
                                     {/* Lateral provider border */}
                                     <div className={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${providerColor.gradient} opacity-40 group-hover:opacity-100 transition-all duration-300`} />
                                     {/* Top accent — heat-aware progress bar */}
@@ -8787,10 +8792,12 @@ export function KdpFactoryApp() {
                                                     const rev = totalRevenue(niche);
                                                     return (
                                                         <div key={niche._id}
-                                                            className="group rounded-xl border border-white/[0.07] bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/[0.12] transition-all cursor-pointer overflow-hidden"
+                                                            className={`group relative rounded-xl border border-white/[0.07] bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/[0.12] hover:shadow-[0_0_20px_var(--col-glow)] transition-all cursor-pointer overflow-hidden`}
+                                                            style={{ "--col-glow": col.glow } as React.CSSProperties}
                                                             onClick={() => openNicheForm(niche)}>
+                                                            <div className={`absolute -right-2 -top-2 w-10 h-10 ${col.blob} blur-xl rounded-full opacity-40 group-hover:scale-[2.5] group-hover:opacity-70 transition-all duration-500`} />
                                                             {/* Card body */}
-                                                            <div className="p-3 space-y-2.5">
+                                                            <div className="p-3 space-y-2.5 relative">
                                                                 <div className="flex items-start gap-1.5">
                                                                     <p className="text-[13px] font-black text-white leading-snug line-clamp-2 flex-1">{niche.name}</p>
                                                                     {niche.score != null && (
@@ -8921,8 +8928,11 @@ export function KdpFactoryApp() {
                                     const statusDotMap: Record<NicheStatus, string> = { found: "bg-sky-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
                                     const statusGradient: Record<NicheStatus, string> = { found: "from-sky-500 via-sky-400 to-cyan-400", research: "from-blue-500 via-blue-400 to-sky-400", active: "from-emerald-500 via-emerald-400 to-cyan-400", archived: "from-neutral-600 via-neutral-500 to-neutral-700" };
                                     const statusHoverBorder: Record<NicheStatus, string> = { found: "hover:border-sky-500/25", research: "hover:border-blue-500/25", active: "hover:border-emerald-500/25", archived: "hover:border-neutral-500/20" };
+                                    const statusHoverShadow: Record<NicheStatus, string> = { found: "hover:shadow-[0_0_30px_rgba(14,165,233,0.08)]", research: "hover:shadow-[0_0_30px_rgba(59,130,246,0.08)]", active: "hover:shadow-[0_0_30px_rgba(16,185,129,0.08)]", archived: "" };
+                                    const statusBlob: Record<NicheStatus, string> = { found: "bg-sky-500/8", research: "bg-blue-500/8", active: "bg-emerald-500/8", archived: "bg-neutral-500/5" };
                                     return (
-                                        <div key={niche._id} className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] ${statusHoverBorder[niche.status]} hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden`}>
+                                        <div key={niche._id} className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] ${statusHoverBorder[niche.status]} ${statusHoverShadow[niche.status]} hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden`}>
+                                            <div className={`absolute -right-4 -top-4 w-16 h-16 ${statusBlob[niche.status]} blur-2xl rounded-full transition-all duration-500 group-hover:scale-[2] group-hover:opacity-100 opacity-60`} />
                                             <div className={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${statusGradient[niche.status]} opacity-40 group-hover:opacity-100 transition-all duration-300`} />
                                             <div className="p-4 pl-5 sm:p-5 sm:pl-6 space-y-4 relative">
 
