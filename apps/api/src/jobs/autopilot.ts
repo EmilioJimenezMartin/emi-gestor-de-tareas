@@ -3,7 +3,7 @@ import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
 import { TelegramAction } from "../models/telegram-action.js";
 import { AutopilotRun } from "../models/autopilot-run.js";
-import { sendTelegram, sendTelegramPhotoDiscovery, sendTelegramApproval, shouldNotify } from "../lib/telegram.js";
+import { sendTelegram, sendTelegramPhotoDiscovery, shouldNotify } from "../lib/telegram.js";
 
 type RunStats = { discovered: number; pipelineProcessed: number; catalogsCreated: number };
 
@@ -254,7 +254,8 @@ async function runPipeline(
     io: any,
     tag: string,
     abort: AbortSignal,
-    stats: RunStats
+    stats: RunStats,
+    agenda: any
 ): Promise<number> {
     const candidates = await Niche.find({ autoPilotEnabled: true, status: "active" })
         .sort({ createdAt: 1 })
@@ -349,36 +350,21 @@ async function runPipeline(
                 continue;
             }
 
-            // All done — ask approval before PDF
+            // All done — advance directly to pdf phase (no approval gate)
             const totalImages = linkedCats.reduce((s: number, c: any) => s + (c.images?.length ?? 0), 0);
-            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✅ Catálogos completos: ${totalImages} imágenes generadas para "${niche.name}"` });
+            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✅ Catálogos completos: ${totalImages} imágenes → avanzando a SEO` });
 
-            // Pick a sample image from the catalogs
-            const sampleImg = linkedCats.flatMap((c: any) => c.images ?? []).find((img: any) => img?.url);
-
-            const action = await TelegramAction.create({
-                type: "phase-approve",
-                nicheId: String(niche._id),
-                nicheName: niche.name,
-                targetPhase: "pdf",
-                imageUrl: sampleImg?.url,
-                autoApproveAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-            });
-
-            const text = [
-                `📦 <b>Catálogos completados</b>`,
-                ``,
-                `📚 <b>${niche.name}</b>`,
-                `🖼️ ${totalImages} imágenes en ${total} catálogos`,
-                ``,
-                `¿Generar listing SEO y avanzar a PDF?`,
-                `<i>Auto-aprobación en 24h</i>`,
-            ].join("\n");
+            await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "pdf" } });
+            io?.emit("niches:updated");
 
             if (await shouldNotify("pipeline.complete")) {
-                const msgId = await sendTelegramApproval({ text, actionId: String(action._id) });
-                if (msgId) { action.messageId = msgId; await action.save(); }
+                await sendTelegram(
+                    `📦 <b>Catálogos listos</b>\n📚 <b>${niche.name}</b>\n🖼️ ${totalImages} imágenes en ${total} catálogos\n\n⚙️ Generando listing SEO automáticamente…`
+                ).catch(() => {});
             }
+
+            // Schedule a follow-up run to pick up the pdf phase
+            setTimeout(() => { agenda?.now("autopilot-run", {}).catch(() => {}); }, 8_000);
             processed++;
             continue;
         }
@@ -416,15 +402,11 @@ async function runPipeline(
                     io?.emit("niches:updated");
                     io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ Listing SEO listo para "${niche.name}"` });
 
-                    const action = await TelegramAction.create({
-                        type: "phase-approve",
-                        nicheId: String(niche._id),
-                        nicheName: niche.name,
-                        targetPhase: "published",
-                        autoApproveAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-                    });
+                    // Advance directly to published — no approval gate
+                    await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "published" } });
+                    io?.emit("niches:updated");
 
-                    const text = [
+                    const notifText = [
                         `📝 <b>Listing KDP listo</b>`,
                         ``,
                         `📚 <b>${niche.name}</b>`,
@@ -432,13 +414,11 @@ async function runPipeline(
                         `<b>Título:</b> ${listing.title}`,
                         listing.keywords.length > 0 ? `<b>Keywords:</b> ${listing.keywords.slice(0, 4).join(", ")}…` : null,
                         ``,
-                        `¿Marcar como <b>publicado</b>?`,
-                        `<i>Auto-aprobación en 24h</i>`,
+                        `✅ Nicho listo para publicar en KDP`,
                     ].filter(Boolean).join("\n");
 
                     if (await shouldNotify("listing.generated")) {
-                        const msgId = await sendTelegramApproval({ text, actionId: String(action._id) });
-                        if (msgId) { action.messageId = msgId; await action.save(); }
+                        await sendTelegram(notifText).catch(() => {});
                     }
                 }
             } catch (e: any) {
@@ -491,7 +471,7 @@ export function defineAutoPilotJob(agenda: Agenda, io: any) {
         }
 
         const discovered = await runDiscovery(cfg, base, io, tag, abort, stats);
-        const processed = abort.aborted ? 0 : await runPipeline(cfg, base, io, tag, abort, stats);
+        const processed = abort.aborted ? 0 : await runPipeline(cfg, base, io, tag, abort, stats, agenda);
 
         const total = discovered + processed;
         console.log(`${tag} Done — ${discovered} discovered, ${processed} pipeline steps, aborted=${abort.aborted}`);

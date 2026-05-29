@@ -1053,10 +1053,10 @@ export function KdpFactoryApp() {
     const [apFreqMode, setApFreqMode] = useState<"specific" | "interval">("specific");
     const [apIntervalHours, setApIntervalHours] = useState("6");
     // Rules
-    type APRule = { id: string; days: number[]; platform: string; query: string; url?: string; mode: string; enabled: boolean };
+    type APRule = { id: string; days: number[]; hour: number; platform: string; query: string; url?: string; mode: string; enabled: boolean };
     const [apRules, setApRules] = useState<APRule[]>([]);
     const [showRuleForm, setShowRuleForm] = useState(false);
-    const [ruleDraft, setRuleDraft] = useState<Partial<APRule>>({ days: [1], platform: "etsy", query: "", mode: "niche-search", enabled: true });
+    const [ruleDraft, setRuleDraft] = useState<Partial<APRule>>({ days: [1], hour: 9, platform: "etsy", query: "", mode: "niche-search", enabled: true });
     const [ruleSearchConfig, setRuleSearchConfig] = useState<SearchConfig>({ platform: "etsy", url: "" });
     // Notification events
     type NotifEvent = { id: string; label: string; desc: string; icon: string; enabled: boolean };
@@ -1727,6 +1727,7 @@ export function KdpFactoryApp() {
         const rule: APRule = {
             id: Date.now().toString(),
             days: ruleDraft.days ?? [1],
+            hour: ruleDraft.hour ?? 9,
             platform: ruleSearchConfig.platform,
             query: (query ?? ruleSearchConfig.url).trim(),
             url: ruleSearchConfig.url.trim(),
@@ -1734,7 +1735,7 @@ export function KdpFactoryApp() {
             enabled: true,
         };
         void saveApRules([...apRules, rule]);
-        setRuleDraft({ days: [1], platform: "etsy", query: "", mode: "niche-search", enabled: true });
+        setRuleDraft({ days: [1], hour: 9, platform: "etsy", query: "", mode: "niche-search", enabled: true });
         setRuleSearchConfig({ platform: "etsy", url: "" });
         setShowRuleForm(false);
     };
@@ -5892,6 +5893,23 @@ export function KdpFactoryApp() {
                                 </div>
                             </div>
 
+                            {/* Hour */}
+                            <div className="space-y-2">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Hora de ejecución</p>
+                                <div className="flex items-center gap-2">
+                                    <select
+                                        value={ruleDraft.hour ?? 9}
+                                        onChange={e => setRuleDraft(d => ({ ...d, hour: Number(e.target.value) }))}
+                                        className="h-8 px-2 rounded-lg bg-white/[0.04] border border-white/10 text-sm font-black text-white focus:outline-none focus:border-violet-500/40"
+                                    >
+                                        {Array.from({ length: 24 }, (_, i) => (
+                                            <option key={i} value={i}>{String(i).padStart(2, "0")}:00</option>
+                                        ))}
+                                    </select>
+                                    <span className="text-[10px] text-neutral-600">hora local del servidor</span>
+                                </div>
+                            </div>
+
                             {/* SearchQueryBuilder */}
                             <div className="space-y-1.5">
                                 <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Búsqueda</p>
@@ -5924,11 +5942,14 @@ export function KdpFactoryApp() {
                                 const plat = PLATFORM_OPTIONS.find(p => p.id === rule.platform);
                                 return (
                                     <div key={rule.id} className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-all ${rule.enabled ? "border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.04]" : "border-white/[0.04] bg-white/[0.01] opacity-50"}`}>
-                                        <div className="flex gap-0.5 shrink-0">
-                                            {DAY_LABELS.map((d, i) => {
-                                                const idx = i + 1 > 6 ? 0 : i + 1;
-                                                return <span key={i} className={`w-5 h-5 rounded-md text-[9px] font-black flex items-center justify-center ${rule.days.includes(idx) ? "bg-violet-500/20 text-violet-400" : "text-neutral-800"}`}>{d}</span>;
-                                            })}
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                            <div className="flex gap-0.5">
+                                                {DAY_LABELS.map((d, i) => {
+                                                    const idx = i + 1 > 6 ? 0 : i + 1;
+                                                    return <span key={i} className={`w-5 h-5 rounded-md text-[9px] font-black flex items-center justify-center ${rule.days.includes(idx) ? "bg-violet-500/20 text-violet-400" : "text-neutral-800"}`}>{d}</span>;
+                                                })}
+                                            </div>
+                                            <span className="text-[10px] font-black text-neutral-500 bg-white/[0.04] border border-white/8 rounded-md px-1.5 py-0.5">{String(rule.hour ?? 9).padStart(2, "0")}h</span>
                                         </div>
                                         <span className="text-base shrink-0">{plat?.icon ?? "🔍"}</span>
                                         <div className="flex-1 min-w-0">

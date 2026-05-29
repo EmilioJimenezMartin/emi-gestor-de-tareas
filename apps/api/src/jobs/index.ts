@@ -4,6 +4,7 @@ import { defineRadarJob } from "./radar.js";
 import { definePatternGenJob } from "./pattern-generation.js";
 import { defineAutoPilotJob, AUTOPILOT_JOB_NAME } from "./autopilot.js";
 import { defineCatalogWatchdog, scheduleWatchdog } from "./catalog-watchdog.js";
+import { defineRadarScheduleJob, RADAR_SCHEDULE_JOB_NAME } from "./radar-schedule.js";
 export { AUTOPILOT_JOB_NAME };
 
 export function defineJobs(agenda: Agenda, io?: any) {
@@ -27,7 +28,13 @@ export function defineJobs(agenda: Agenda, io?: any) {
         definePatternGenJob(agenda, io);
         defineAutoPilotJob(agenda, io);
         defineCatalogWatchdog(agenda, io);
+        defineRadarScheduleJob(agenda, io);
     }
+}
+
+export async function scheduleRadarRules(agenda: Agenda): Promise<void> {
+    // Fires at minute 0 of every hour — the job itself checks which rules match
+    await agenda.every("0 * * * *", RADAR_SCHEDULE_JOB_NAME);
 }
 
 export { scheduleWatchdog };

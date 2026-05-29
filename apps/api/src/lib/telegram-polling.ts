@@ -8,13 +8,14 @@ import { Settings } from "../models/settings.js";
 const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { section: "📚 Nichos" },
     { cmd: "/crear <code>nombre</code>",   desc: "Crea nicho y lanza discovery" },
-    { cmd: "/nichos",                      desc: "Resumen por estado y fase" },
-    { cmd: "/nicho <code>nombre</code>",   desc: "Info detallada de un nicho" },
-    { cmd: "/pdf <code>nombre</code>",     desc: "Abre el PDF de un nicho en la app" },
+    { cmd: "/nichos",                      desc: "Lista nichos activos con ID corto" },
+    { cmd: "/nicho <code>id</code>",       desc: "Detalle de un nicho por ID" },
+    { cmd: "/pdf <code>id</code>",         desc: "Abre el PDF de un nicho en la app" },
     { section: "🖼️ Catálogos" },
     { cmd: "/catalogo",                    desc: "Lista catálogos recientes con ID corto" },
     { cmd: "/catalogo <code>id</code>",    desc: "Detalle de un catálogo por ID" },
     { section: "⚙️ Pipeline" },
+    { cmd: "/pipeline",                    desc: "Estado detallado del pipeline activo" },
     { cmd: "/run",                         desc: "Lanza Auto-Pilot ahora" },
     { cmd: "/parar",                       desc: "Detiene el Auto-Pilot en curso" },
     { cmd: "/cola",                        desc: "Cola de generación de catálogos" },
@@ -294,32 +295,44 @@ async function processUpdate(update: any): Promise<void> {
 
         if (text === "/nichos") {
             try {
-                const [total, active, found, archived] = await Promise.all([
-                    Niche.countDocuments({}),
-                    Niche.countDocuments({ status: "active" }),
-                    Niche.countDocuments({ status: "found" }),
-                    Niche.countDocuments({ status: "archived" }),
-                ]);
-                const byPhase = await Niche.aggregate([
-                    { $match: { status: "active" } },
-                    { $group: { _id: "$phase", count: { $sum: 1 } } },
-                ]);
-                const phaseMap: Record<string, number> = {};
-                for (const p of byPhase) phaseMap[p._id] = p.count;
-                const phaseLines = [
-                    phaseMap["niche"] ? `  · niche: ${phaseMap["niche"]}` : null,
-                    phaseMap["catalog"] ? `  · catalog: ${phaseMap["catalog"]}` : null,
-                    phaseMap["pdf"] ? `  · pdf: ${phaseMap["pdf"]}` : null,
-                    phaseMap["published"] ? `  · publicado: ${phaseMap["published"]}` : null,
-                ].filter(Boolean).join("\n");
-                await sendTelegram(
-                    `📊 <b>Resumen de nichos</b>\n\n` +
-                    `📚 Total: <b>${total}</b>\n` +
-                    `✅ Activos: <b>${active}</b>\n` +
-                    (phaseLines ? `${phaseLines}\n` : "") +
-                    `🔍 En cola: <b>${found}</b>\n` +
-                    `🗄️ Archivados: <b>${archived}</b>`
-                );
+                const phaseIcon: Record<string, string> = {
+                    niche: "🏭", catalog: "🖼️", pdf: "📄", published: "✅",
+                };
+                const statusIcon: Record<string, string> = {
+                    active: "⚡", found: "🔍", archived: "🗄️", discarded: "🗑️",
+                };
+                // Active niches in pipeline (most relevant)
+                const active = await Niche.find({ status: "active" })
+                    .sort({ updatedAt: -1 })
+                    .limit(20)
+                    .select("name phase autoPilotEnabled")
+                    .lean();
+                // Found niches (in queue)
+                const foundCount = await Niche.countDocuments({ status: "found" });
+
+                if (active.length === 0 && foundCount === 0) {
+                    await sendTelegram("📭 No hay nichos activos ni en cola");
+                    return;
+                }
+
+                const lines: string[] = [`📚 <b>Nichos</b>`, ``];
+                if (active.length > 0) {
+                    lines.push(`⚡ <b>En pipeline (${active.length}):</b>`);
+                    for (const n of active as any[]) {
+                        const shortId = String(n._id).slice(-8);
+                        const phase = n.phase ?? "niche";
+                        const icon = phaseIcon[phase] ?? "❓";
+                        const ap = n.autoPilotEnabled ? " · AP" : "";
+                        lines.push(`${icon} <code>${shortId}</code> — ${(n.name as string).slice(0, 32)}${(n.name as string).length > 32 ? "…" : ""}${ap}`);
+                    }
+                }
+                if (foundCount > 0) {
+                    lines.push(``);
+                    lines.push(`🔍 <b>${foundCount}</b> en cola de discovery`);
+                }
+                lines.push(``);
+                lines.push(`<i>Usa /nicho &lt;id&gt; para más detalle</i>`);
+                await sendTelegram(lines.join("\n"));
             } catch (e: any) {
                 await sendTelegram(`❌ Error: ${e.message}`);
             }
@@ -347,39 +360,49 @@ async function processUpdate(update: any): Promise<void> {
         }
 
         if (text.startsWith("/nicho ")) {
-            const searchName = normalized.slice(7).trim();
+            const idArg = normalized.slice(7).trim();
             try {
-                const niche = await Niche.findOne({
-                    name: { $regex: new RegExp(searchName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") },
-                }).lean();
+                const allNiches = await Niche.find()
+                    .select("name status phase autoPilotEnabled productType listings tags description")
+                    .lean();
+                const niche = (allNiches as any[]).find(n =>
+                    String(n._id).endsWith(idArg.toLowerCase()) || String(n._id) === idArg
+                );
                 if (!niche) {
-                    await sendTelegram(`❌ No encontré ningún nicho con "<b>${searchName}</b>"`);
+                    await sendTelegram(`❌ No encontré ningún nicho con ID <code>${idArg}</code>\n<i>Usa /nichos para ver los IDs</i>`);
                     return;
                 }
                 const { Catalog } = await import("../models/catalog.js");
-                const catalogs = await Catalog.find({ nicheIds: String((niche as any)._id) }).lean();
+                const catalogs = await Catalog.find({ nicheIds: String(niche._id) }).lean();
                 const totalImages = catalogs.reduce((s: number, c: any) => s + (c.images?.length ?? 0), 0);
                 const completedCats = catalogs.filter((c: any) => c.status === "completed").length;
-                const listingCount = ((niche as any).listings ?? []).length;
+                const runningCats = catalogs.filter((c: any) => c.status === "running" || c.status === "pending").length;
+                const listingCount = (niche.listings ?? []).length;
+
                 const phaseLabel: Record<string, string> = {
-                    niche: "🏭 Generando catálogos", catalog: "📦 Catálogos en revisión",
-                    pdf: "📄 Listo para PDF", published: "✅ Publicado",
+                    niche: "🏭 Generando catálogos", catalog: "🖼️ Catálogos en proceso",
+                    pdf: "📄 SEO listo — pendiente de publicar", published: "✅ Publicado",
                 };
                 const statusLabel: Record<string, string> = {
                     found: "🔍 En cola de discovery", active: "⚡ Activo en pipeline",
                     archived: "🗄️ Archivado", discarded: "🗑️ Descartado",
                 };
+                const catStatusLines = catalogs.length > 0
+                    ? [`\n📦 Catálogos: <b>${completedCats}</b> listos · <b>${runningCats}</b> en progreso · <b>${catalogs.length}</b> total`]
+                    : [];
+
                 const lines = [
-                    `📚 <b>${(niche as any).name}</b>`,
+                    `📚 <b>${niche.name}</b>`,
+                    `🆔 <code>${String(niche._id).slice(-8)}</code>`,
                     ``,
-                    `${statusLabel[(niche as any).status] ?? (niche as any).status}${(niche as any).autoPilotEnabled ? " · AutoPilot ON" : ""}`,
-                    (niche as any).phase ? phaseLabel[(niche as any).phase] ?? `Fase: ${(niche as any).phase}` : null,
-                    ``,
-                    `🖼️ <b>${totalImages}</b> imágenes · <b>${completedCats}/${catalogs.length}</b> catálogos`,
-                    listingCount > 0 ? `📝 <b>${listingCount}</b> listing${listingCount > 1 ? "s" : ""} SEO generado${listingCount > 1 ? "s" : ""}` : `📝 Sin listing SEO`,
-                    (niche as any).tags?.length > 0 ? `🏷️ ${((niche as any).tags as string[]).slice(0, 5).join(", ")}` : null,
-                    (niche as any).productType ? `📦 ${(niche as any).productType}` : null,
-                    (niche as any).description ? `\n💬 ${((niche as any).description as string).slice(0, 120)}` : null,
+                    `${statusLabel[niche.status] ?? niche.status}${niche.autoPilotEnabled ? " · <b>AutoPilot ON</b>" : ""}`,
+                    niche.phase ? phaseLabel[niche.phase] ?? `Fase: ${niche.phase}` : null,
+                    ...catStatusLines,
+                    `🖼️ <b>${totalImages}</b> imágenes generadas`,
+                    listingCount > 0 ? `📝 <b>${listingCount}</b> listing${listingCount > 1 ? "s" : ""} SEO` : `📝 Sin listing SEO`,
+                    niche.productType ? `📦 ${niche.productType}` : null,
+                    niche.tags?.length > 0 ? `🏷️ ${(niche.tags as string[]).slice(0, 5).join(", ")}` : null,
+                    `🆔 Full: <code>${String(niche._id)}</code>`,
                 ].filter(Boolean).join("\n");
                 await sendTelegram(lines);
             } catch (e: any) {
@@ -389,13 +412,14 @@ async function processUpdate(update: any): Promise<void> {
         }
 
         if (text.startsWith("/pdf ")) {
-            const searchName = normalized.slice(5).trim();
+            const idArg = normalized.slice(5).trim();
             try {
-                const niche = await Niche.findOne({
-                    name: { $regex: new RegExp(searchName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") },
-                }).lean();
+                const allNiches = await Niche.find().select("name").lean();
+                const niche = (allNiches as any[]).find(n =>
+                    String(n._id).endsWith(idArg.toLowerCase()) || String(n._id) === idArg
+                );
                 if (!niche) {
-                    await sendTelegram(`❌ No encontré ningún nicho con "<b>${searchName}</b>"`);
+                    await sendTelegram(`❌ No encontré ningún nicho con ID <code>${idArg}</code>\n<i>Usa /nichos para ver los IDs</i>`);
                     return;
                 }
                 const { Catalog } = await import("../models/catalog.js");
@@ -593,6 +617,87 @@ async function processUpdate(update: any): Promise<void> {
                         `Ejemplo: <code>/config 8 5</code>`
                     );
                 }
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        if (text === "/pipeline") {
+            try {
+                const { Catalog } = await import("../models/catalog.js");
+
+                const phaseLabel: Record<string, string> = {
+                    niche: "🏭 Creando catálogos",
+                    catalog: "🖼️ Generando imágenes",
+                    pdf: "📄 Generando SEO / listo para PDF",
+                    published: "✅ Publicado",
+                };
+
+                // All active niches in pipeline
+                const niches = await Niche.find({ autoPilotEnabled: true, status: "active" })
+                    .sort({ updatedAt: -1 })
+                    .select("name phase listings")
+                    .lean();
+
+                if (niches.length === 0) {
+                    await sendTelegram("💤 <b>Pipeline vacío</b>\nNo hay nichos activos en el Auto-Pilot.\n\nUsa /run para lanzar un ciclo.");
+                    return;
+                }
+
+                const nowMs = Date.now();
+                // Threshold: catalog stuck if running but not updated in 12 min
+                const STUCK_MS = 12 * 60 * 1000;
+                const lines: string[] = [`⚙️ <b>Estado del pipeline</b> (${niches.length} nicho${niches.length !== 1 ? "s" : ""})`, ``];
+
+                for (const niche of niches as any[]) {
+                    const phase = niche.phase ?? "niche";
+                    lines.push(`📚 <b>${niche.name}</b>`);
+                    lines.push(phaseLabel[phase] ?? `Fase: ${phase}`);
+
+                    if (phase === "catalog") {
+                        const cats = await Catalog.find({ nicheIds: String(niche._id) })
+                            .select("name status images totalImages updatedAt skippedImages")
+                            .lean();
+
+                        const total = cats.length;
+                        const completed = cats.filter((c: any) => c.status === "completed").length;
+                        const running = cats.filter((c: any) => c.status === "running");
+                        const pending = cats.filter((c: any) => c.status === "pending" || c.status === "queued").length;
+                        const totalImgs = cats.reduce((s: number, c: any) => s + (c.images?.length ?? 0), 0);
+                        const totalSlots = cats.reduce((s: number, c: any) => s + (c.totalImages ?? 0), 0);
+
+                        lines.push(`  📦 Catálogos: <b>${completed}/${total}</b> listos · ${pending} pendientes`);
+                        lines.push(`  🖼️ Imágenes: <b>${totalImgs}/${totalSlots}</b>`);
+
+                        for (const cat of running as any[]) {
+                            const imgs = cat.images?.length ?? 0;
+                            const skipped = cat.skippedImages ?? 0;
+                            const attempted = imgs + skipped;
+                            const elapsedMs = nowMs - new Date(cat.updatedAt).getTime();
+                            const elapsedMin = Math.floor(elapsedMs / 60_000);
+                            const isStuck = elapsedMs > STUCK_MS;
+                            const healthIcon = isStuck ? "🔴" : elapsedMs > 6 * 60_000 ? "🟡" : "🟢";
+                            const stuckNote = isStuck ? ` ⚠️ sin actividad ${elapsedMin}min` : "";
+                            lines.push(`  ${healthIcon} ⚙️ ${cat.name.slice(0, 28)} — ${attempted}/${cat.totalImages} intentadas${stuckNote}`);
+                        }
+
+                    } else if (phase === "pdf") {
+                        const listingCount = (niche.listings ?? []).length;
+                        if (listingCount > 0) {
+                            lines.push(`  📝 Listing SEO generado — listo para publicar`);
+                        } else {
+                            lines.push(`  📝 Generando listing SEO…`);
+                        }
+                    }
+
+                    lines.push(``);
+                }
+
+                // Trim trailing blank line
+                while (lines[lines.length - 1] === ``) lines.pop();
+
+                await sendTelegram(lines.join("\n"));
             } catch (e: any) {
                 await sendTelegram(`❌ Error: ${e.message}`);
             }
