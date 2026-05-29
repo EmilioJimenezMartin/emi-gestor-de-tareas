@@ -6,6 +6,8 @@ import { Settings } from "../models/settings.js";
 let offset = 0;
 let running = false;
 let pollTimer: NodeJS.Timeout | null = null;
+let _io: any = null;
+let _agenda: any = null;
 
 async function getAutoPilotConfig() {
     try {
@@ -32,31 +34,30 @@ async function handleNicheDiscovery(
         await Niche.findByIdAndUpdate(tAction.nicheId, {
             $set: { autoPilotEnabled: true, status: "active", phase: "niche" },
         });
+        _io?.emit("niches:updated");
         await sendTelegram(
             `🚀 <b>Pipeline lanzado</b>\n` +
             `📚 <b>${tAction.nicheName}</b>\n\n` +
             `Se generarán <b>${cfg.catalogsPerNiche} catálogos</b> × <b>${cfg.imagesPerCatalog} imágenes</b>\n` +
             `El proceso puede tardar varios minutos.`
         );
-        // Trigger the autopilot pipeline immediately (fire-and-forget)
-        const port = process.env.PORT || 3001;
-        setImmediate(async () => {
-            try {
-                await fetch(`http://localhost:${port}/autopilot/run`, { method: "POST" });
-            } catch { /* non-critical — pipeline will run on next scheduled cycle if this fails */ }
-        });
+        // Trigger autopilot pipeline directly via agenda (avoids HTTP hop)
+        try {
+            if (_agenda) {
+                await _agenda.now("autopilot-run", {});
+            }
+        } catch { /* non-critical — pipeline will run on next scheduled cycle */ }
         return `✅ Lanzado — ${cfg.catalogsPerNiche} catálogos en producción`;
     }
 
     if (decision === "omitir") {
-        // Keep niche as-is, just remove sample so it won't be re-sent this cycle
-        // It will be picked up again on the next run (the sample will still exist, so it won't loop)
         await sendTelegram(`⏭️ <b>Nicho omitido</b>\n<b>${tAction.nicheName}</b> — quedará para la próxima ejecución`);
         return "⏭️ Omitido — volvemos en la próxima ejecución";
     }
 
     if (decision === "descartar") {
         await Niche.findByIdAndUpdate(tAction.nicheId, { $set: { status: "archived", autoPilotEnabled: false } });
+        _io?.emit("niches:updated");
         await sendTelegram(`🗑️ <b>Nicho descartado</b>\n<b>${tAction.nicheName}</b> — archivado`);
         return "🗑️ Archivado";
     }
@@ -70,10 +71,12 @@ async function handlePhaseApproval(
 ): Promise<string> {
     if (approved) {
         await Niche.findByIdAndUpdate(tAction.nicheId, { $set: { phase: tAction.targetPhase } });
+        _io?.emit("niches:updated");
         await sendTelegram(`🚀 <b>Pipeline avanzado</b>\n<b>${tAction.nicheName}</b> → fase <b>${tAction.targetPhase}</b>`);
         return `✅ Avanzando a ${tAction.targetPhase}`;
     } else {
         await Niche.findByIdAndUpdate(tAction.nicheId, { $set: { autoPilotEnabled: false } });
+        _io?.emit("niches:updated");
         await sendTelegram(`⏸️ <b>Pipeline pausado</b>\n<b>${tAction.nicheName}</b> — Auto-Pilot desactivado`);
         return "❌ Pipeline pausado";
     }
@@ -193,8 +196,10 @@ async function poll(): Promise<void> {
     }
 }
 
-export function startTelegramPolling(): void {
+export function startTelegramPolling(io?: any, agenda?: any): void {
     if (running) return;
+    _io = io ?? null;
+    _agenda = agenda ?? null;
     running = true;
     console.log("[telegram-poll] Started");
     void poll();

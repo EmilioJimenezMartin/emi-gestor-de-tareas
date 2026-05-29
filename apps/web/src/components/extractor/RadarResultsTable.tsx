@@ -20,6 +20,7 @@ export interface EtsyListing {
     sub_nicho_estimado: string;
     url_producto?: string;
     fecha_detectado?: string;
+    fuente?: string;
     _nichoCreado?: boolean;
 }
 
@@ -293,12 +294,25 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                             <td className="px-3 py-2.5 text-[9px] text-neutral-700 tabular-nums font-black">{i + 1}</td>
                                             <td className="px-3 py-2.5 max-w-[220px]">
                                                 <p className="text-[10px] text-white font-semibold line-clamp-2 leading-snug">{row.titulo_producto}</p>
-                                                {row.fecha_detectado && (
-                                                    <span className="inline-flex items-center gap-1 text-[7px] text-neutral-700 mt-0.5">
+                                                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                                    {row.fuente && (
+                                                        <span className={`inline-flex items-center gap-0.5 text-[7px] font-black px-1.5 py-0.5 rounded-md border ${
+                                                            row.fuente === "amazon"
+                                                                ? "bg-orange-500/10 border-orange-500/20 text-orange-400"
+                                                                : row.fuente === "etsy"
+                                                                ? "bg-rose-500/10 border-rose-500/20 text-rose-400"
+                                                                : "bg-neutral-500/10 border-neutral-500/20 text-neutral-500"
+                                                        }`}>
+                                                            {row.fuente === "amazon" ? "🛒" : row.fuente === "etsy" ? "🏪" : "🌐"} {row.fuente}
+                                                        </span>
+                                                    )}
+                                                    <span className="inline-flex items-center gap-1 text-[7px] text-neutral-500">
                                                         <Calendar size={7} />
-                                                        {new Date(row.fecha_detectado).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "2-digit" })}
+                                                        {row.fecha_detectado
+                                                            ? new Date(row.fecha_detectado).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "2-digit" })
+                                                            : "—"}
                                                     </span>
-                                                )}
+                                                </div>
                                             </td>
                                             <td className="px-3 py-2.5 text-right">
                                                 <span className="text-[10px] font-black text-emerald-400 tabular-nums">{row.precio}</span>
@@ -322,7 +336,7 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                                 }
                                             </td>
                                             <td className="px-3 py-2.5">
-                                                <span className="text-[8px] font-black px-1.5 py-0.5 rounded-md bg-sky-500/10 border border-sky-500/15 text-sky-400 whitespace-nowrap">{row.sub_nicho_estimado}</span>
+                                                <span className="text-[8px] font-black px-1.5 py-0.5 rounded-md bg-sky-500/10 border border-sky-500/15 text-sky-400 max-w-[180px] break-words whitespace-normal leading-tight inline-block">{row.sub_nicho_estimado}</span>
                                             </td>
                                             <td className="px-3 py-2.5 text-center">
                                                 <span className={`inline-flex items-center gap-1 text-[8px] font-black px-1.5 py-0.5 rounded-md border ${sig.cls}`}>

@@ -6,6 +6,8 @@ import { sendTelegram, sendTelegramPhotoDiscovery, sendTelegramApproval } from "
 
 export const AUTOPILOT_JOB_NAME = "autopilot-run";
 
+const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
 type AutoPilotConfig = {
     catalogsPerNiche: number;
     imagesPerCatalog: number;
@@ -72,6 +74,13 @@ async function runDiscovery(
     io: any,
     tag: string
 ): Promise<number> {
+    // Count total pending (all found, no sample yet)
+    const totalPending = await Niche.countDocuments({
+        status: "found",
+        sampleImageUrl: { $exists: false },
+        autoPilotEnabled: { $ne: true },
+    });
+
     const candidates = await Niche.find({
         status: "found",
         sampleImageUrl: { $exists: false },
@@ -81,9 +90,21 @@ async function runDiscovery(
         .limit(cfg.maxNichesPerRun)
         .lean();
 
+    if (candidates.length === 0) return 0;
+
+    // Send summary before starting
+    try {
+        await sendTelegram(
+            `🔍 <b>Auto-Pilot — Descubrimiento</b>\n\n` +
+            `📋 <b>${totalPending}</b> nicho${totalPending !== 1 ? "s" : ""} pendiente${totalPending !== 1 ? "s" : ""} en cola\n` +
+            `⚡ Procesando <b>${candidates.length}</b> en este ciclo, uno por uno…`
+        );
+    } catch { /* non-critical */ }
+
     let count = 0;
 
-    for (const niche of candidates) {
+    for (let idx = 0; idx < candidates.length; idx++) {
+        const niche = candidates[idx];
         if (await hasPendingAction(String(niche._id))) continue;
 
         io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🔍 Nuevo nicho detectado: "${niche.name}"` });
@@ -156,6 +177,28 @@ async function runDiscovery(
         if (msgId) { action.messageId = msgId; await action.save(); }
         io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📩 Esperando tu decisión en Telegram para "${niche.name}"` });
         count++;
+
+        // Upload to Cloudinary after 12s (gives Pollinations time to render)
+        const nicheId = String(niche._id);
+        setTimeout(async () => {
+            try {
+                const cldRes = await fetch(`${base}/cloudinary/upload-url`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url: sampleUrl, nicheId }),
+                });
+                if (cldRes.ok) {
+                    const cldData = await (cldRes as any).json();
+                    const cloudUrl = cldData.image?.url;
+                    if (cloudUrl) {
+                        await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: cloudUrl } });
+                    }
+                }
+            } catch { /* non-critical */ }
+        }, 12_000);
+
+        // Wait between niches so Pollinations doesn't receive parallel render requests
+        if (idx < candidates.length - 1) await delay(6_000);
     }
 
     return count;

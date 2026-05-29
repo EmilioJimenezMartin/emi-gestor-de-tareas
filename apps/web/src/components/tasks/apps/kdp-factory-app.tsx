@@ -1235,14 +1235,15 @@ export function KdpFactoryApp() {
 
     const launchPipelineFromRow = async (row: { titulo_producto: string; sub_nicho_estimado: string; bestseller: boolean; total_reseñas: number; precio: string }) => {
         // Create niche if it doesn't exist yet
-        let niche = niches.find(n => n.sourceTitulo === row.titulo_producto);
+        const existing = niches.find(n => n.sourceTitulo === row.titulo_producto);
+        let niche = existing;
         if (!niche) {
             const res = await fetch(`${API_BASE_URL}/niches`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     name: row.sub_nicho_estimado,
-                    description: `Detectado en Etsy: "${row.titulo_producto}"`,
+                    description: `Detectado en radar: "${row.titulo_producto}"`,
                     tags: [row.sub_nicho_estimado],
                     status: "found",
                     competition: "unknown",
@@ -1256,9 +1257,13 @@ export function KdpFactoryApp() {
             const data = await res.json();
             niche = data.niche;
             setNiches(prev => [data.niche, ...prev]);
+            // Auto-trigger from POST /niches already fires discover → Telegram will arrive shortly
+            toast.success("📩 Nicho creado — imagen generando, recibirás el mensaje en Telegram en breve");
+            void fetchNiches();
+            return;
         }
-        // Trigger discovery flow → Telegram with sample image + 3 buttons
-        if (niche) await triggerNicheDiscovery(niche._id);
+        // Niche already existed — trigger discovery manually
+        await triggerNicheDiscovery(niche._id);
     };
 
     const createCatalogFromStudio = async () => {
@@ -3136,6 +3141,11 @@ export function KdpFactoryApp() {
             const msg = `✅ Completado · ${data.processed} nicho${data.processed !== 1 ? "s" : ""} procesado${data.processed !== 1 ? "s" : ""}`;
             setApLogs(prev => [...prev.slice(-49), { nicheId: "", message: msg, ts: Date.now() }]);
             toast.success(msg);
+            void fetchNiches();
+        });
+
+        socket.on("niches:updated", () => {
+            void fetchNiches();
         });
 
         return () => {
@@ -3688,26 +3698,36 @@ export function KdpFactoryApp() {
                     let promptParts: { theme: string; specs: string; details: string; particulars: string };
 
                     if (niche.productType === "coloring-book") {
-                        const partRes = await fetch(`${API_BASE_URL}/ai/generate-text`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ type: "niche-particulars", niche: niche.name, extras: ANIME_STYLES.includes(style) ? "anime cartoon style" : undefined, language: "en" }),
-                        });
-                        const partData = await partRes.json();
-                        if (!partRes.ok) throw new Error(partData.error ?? "Error generando detalles");
-                        const particulars: string = partData.result?.particulars ?? niche.name;
+                        let particulars = niche.name;
+                        try {
+                            const partRes = await fetch(`${API_BASE_URL}/ai/generate-text`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ type: "niche-particulars", niche: niche.name, extras: ANIME_STYLES.includes(style) ? "anime cartoon style" : undefined, language: "en" }),
+                            });
+                            if (partRes.ok) {
+                                const partData = await partRes.json();
+                                particulars = partData.result?.particulars ?? niche.name;
+                            }
+                        } catch { /* fall back to niche name */ }
                         const built = buildColoringBookPromptParts(niche.name, style, particulars);
                         imagePrompt = built.fullPrompt;
                         promptParts = { theme: built.theme, specs: built.specs, details: built.details, particulars };
                     } else {
-                        const promptRes = await fetch(`${API_BASE_URL}/niches/suggest-prompt`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ nicheName: niche.name, productType: niche.productType, style, tags: niche.tags }),
-                        });
-                        const promptData = await promptRes.json();
-                        const theme = promptData.theme ?? niche.name;
-                        const particulars = promptData.particulars ?? "";
+                        let theme = niche.name;
+                        let particulars = "";
+                        try {
+                            const promptRes = await fetch(`${API_BASE_URL}/niches/suggest-prompt`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ nicheName: niche.name, productType: niche.productType, style, tags: niche.tags }),
+                            });
+                            if (promptRes.ok) {
+                                const promptData = await promptRes.json();
+                                theme = promptData.theme ?? niche.name;
+                                particulars = promptData.particulars ?? "";
+                            }
+                        } catch { /* fall back to niche name */ }
                         imagePrompt = [theme, particulars].filter(Boolean).join(". ");
                         promptParts = { theme, specs: "", details: "", particulars };
                     }
@@ -3735,6 +3755,9 @@ export function KdpFactoryApp() {
                         setIaCatalogs(prev => [catalogData.catalog, ...prev]);
                         allNewCatalogIds.push(catalogData.catalog._id);
                         toast.success(`Catálogo ${i + 1}/${toCreate} en cola`);
+                    } else {
+                        const errMsg = typeof catalogData.error === "string" ? catalogData.error : JSON.stringify(catalogData.error ?? catalogData);
+                        throw new Error(`Error creando catálogo ${i + 1}: ${errMsg}`);
                     }
                 }
 
@@ -8251,7 +8274,11 @@ export function KdpFactoryApp() {
                                                                     ? <><Loader2 size={11} className="animate-spin" />Ejecutando…</>
                                                                     : (niche.phase ?? "niche") === "cover"
                                                                         ? <><ImageIcon size={11} /> Abrir Cover Factory</>
-                                                                        : <><Play size={11} /> Lanzar pipeline</>}
+                                                                        : (niche.phase ?? "niche") === "pdf"
+                                                                            ? <><FileText size={11} /> Generar listing SEO</>
+                                                                            : (niche.phase ?? "niche") === "catalog"
+                                                                                ? <><ImageIcon size={11} /> Más catálogos</>
+                                                                                : <><ImageIcon size={11} /> Generar catálogos</>}
                                                             </button>
                                                             {/* Telegram discovery button */}
                                                             <button

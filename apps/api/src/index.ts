@@ -267,7 +267,7 @@ const onMongoConnected = async () => {
   }
   await startAgendaOnce();
   if (!pollingStarted) {
-    startTelegramPolling();
+    startTelegramPolling(io, deps.agenda);
     pollingStarted = true;
   }
 };

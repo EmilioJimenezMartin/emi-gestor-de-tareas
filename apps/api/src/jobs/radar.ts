@@ -268,10 +268,11 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 }
             }
 
-            // Stamp detection date on every listing
+            // Stamp detection date and source on every listing
             if (data?.nichos_detectados) {
                 const ts = new Date().toISOString();
-                data.nichos_detectados = (data.nichos_detectados as any[]).map(n => ({ ...n, fecha_detectado: ts }));
+                const fuente = mode === "amazon-niches" ? "amazon" : mode === "etsy-niches" ? "etsy" : "general";
+                data.nichos_detectados = (data.nichos_detectados as any[]).map(n => ({ ...n, fecha_detectado: ts, fuente: n.fuente ?? fuente }));
             }
 
             jobDoc.status = "completed";
@@ -317,6 +318,21 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             }
 
             io?.emit("radar:result", { jobId, mode, storageKey, data: dataToEmit });
+
+            // Send Telegram summary on success
+            try {
+                const { sendTelegram } = await import("../lib/telegram.js");
+                const count = (dataToEmit?.nichos_detectados ?? []).length;
+                const modeLabel = mode === "etsy-niches" ? "Etsy" : mode === "amazon-niches" ? "Amazon" : "General";
+                await sendTelegram(
+                    `✅ <b>Radar completado — ${modeLabel}</b>\n\n` +
+                    (count > 0
+                        ? `🔍 <b>${count} productos detectados</b>\n`
+                        : `📊 Análisis completado\n`) +
+                    `<b>URL:</b> ${url}`
+                );
+            } catch { /* Telegram not configured — ignore */ }
+
             await page.close();
         } catch (err: any) {
             const msg = `[ERROR] ${err?.message ?? "Error desconocido"}`;
