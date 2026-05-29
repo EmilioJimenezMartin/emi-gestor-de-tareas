@@ -564,7 +564,8 @@ async function checkUserAbort(abort: AbortSignal): Promise<void> {
 }
 
 export function defineAutoPilotJob(agenda: Agenda, io: any) {
-    agenda.define(AUTOPILOT_JOB_NAME, async (_job: Job) => {
+    // concurrency: 1 ensures only one autopilot run at a time — extra triggers queue automatically
+    agenda.define(AUTOPILOT_JOB_NAME, { concurrency: 1, lockLifetime: 40 * 60 * 1000 }, async (_job: Job) => {
         const port = process.env.PORT || 3001;
         const base = `http://localhost:${port}`;
         const tag = "[autopilot]";

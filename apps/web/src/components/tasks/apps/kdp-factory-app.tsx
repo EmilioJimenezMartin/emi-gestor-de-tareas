@@ -95,7 +95,7 @@ import { RadarResultsTable } from "@/components/extractor/RadarResultsTable";
 import { AppTabNav, type AppTab } from "@/components/tasks/apps/shared/app-tab-nav";
 import { NicheFilterBar, type NicheFilterStatus } from "@/components/tasks/apps/shared/niche-filter-bar";
 import { StatusGroupFilter, type StatusGroupOption } from "@/components/tasks/apps/shared/status-group-filter";
-import { SearchQueryBuilder, type SearchConfig } from "@/components/search/SearchQueryBuilder";
+import { SearchQueryBuilder, type SearchConfig, type SearchPlatform } from "@/components/search/SearchQueryBuilder";
 
 interface ProductPlatform {
     name: string;
@@ -1056,6 +1056,7 @@ export function KdpFactoryApp() {
     type APRule = { id: string; days: number[]; hour: number; platform: string; query: string; url?: string; mode: string; enabled: boolean };
     const [apRules, setApRules] = useState<APRule[]>([]);
     const [showRuleForm, setShowRuleForm] = useState(false);
+    const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
     const [ruleDraft, setRuleDraft] = useState<Partial<APRule>>({ days: [1], hour: 9, platform: "etsy", query: "", mode: "niche-search", enabled: true });
     const [ruleSearchConfig, setRuleSearchConfig] = useState<SearchConfig>({ platform: "etsy", url: "" });
     // Notification events
@@ -1198,6 +1199,13 @@ export function KdpFactoryApp() {
             const res = await fetch(`${API_BASE_URL}/autopilot/runs`);
             if (res.ok) { const d = await res.json(); setApRuns(d.runs ?? []); }
         } catch { /* ignore */ } finally { setApRunsLoading(false); }
+    };
+
+    const clearApRuns = async () => {
+        try {
+            await fetch(`${API_BASE_URL}/autopilot/runs`, { method: "DELETE" });
+            setApRuns([]);
+        } catch { /* ignore */ }
     };
 
     const cancelCatalog = async (id: string) => {
@@ -1738,6 +1746,30 @@ export function KdpFactoryApp() {
         setRuleDraft({ days: [1], hour: 9, platform: "etsy", query: "", mode: "niche-search", enabled: true });
         setRuleSearchConfig({ platform: "etsy", url: "" });
         setShowRuleForm(false);
+    };
+
+    const startEditRule = (rule: APRule) => {
+        setEditingRuleId(rule.id);
+        setRuleDraft({ days: rule.days, hour: rule.hour, platform: rule.platform, query: rule.query, mode: rule.mode, enabled: rule.enabled });
+        setRuleSearchConfig({ platform: rule.platform as SearchPlatform, url: rule.url ?? "" });
+        setShowRuleForm(false);
+    };
+
+    const saveEditRule = () => {
+        if (!editingRuleId) return;
+        const query = ruleSearchConfig.searchTerm ?? ruleSearchConfig.preset ?? ruleSearchConfig.url;
+        if (!ruleSearchConfig.url.trim()) { toast.error("Selecciona una búsqueda o URL"); return; }
+        void saveApRules(apRules.map(r => r.id === editingRuleId ? {
+            ...r,
+            days: ruleDraft.days ?? r.days,
+            hour: ruleDraft.hour ?? r.hour,
+            platform: ruleSearchConfig.platform,
+            query: (query ?? ruleSearchConfig.url).trim(),
+            url: ruleSearchConfig.url.trim(),
+        } : r));
+        setEditingRuleId(null);
+        setRuleDraft({ days: [1], hour: 9, platform: "etsy", query: "", mode: "niche-search", enabled: true });
+        setRuleSearchConfig({ platform: "etsy", url: "" });
     };
 
     const cancelAutoPilotSchedule = async () => {
@@ -5454,7 +5486,7 @@ export function KdpFactoryApp() {
             <section className="space-y-5">
                 <SectionHeader icon={<Zap size={15} />} title="Auto-Pilot" subtitle="Automatiza el pipeline completo de producción" color="amber" size="sm" />
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
                     {/* ─ Lanzar ahora ─ */}
                     <Card variant="outline" className={`p-5 flex flex-col gap-4 transition-all group relative overflow-hidden ${apRunning ? "bg-amber-500/[0.04] border-amber-500/25 shadow-[0_0_40px_rgba(245,158,11,0.1)]" : "bg-white/[0.02] border-white/5 hover:border-amber-500/20 hover:shadow-[0_0_30px_rgba(245,158,11,0.08)]"}`}>
@@ -5494,31 +5526,29 @@ export function KdpFactoryApp() {
                             })()}
                         </div>
 
-                        {/* What will happen */}
-                        <div className="relative rounded-xl bg-white/[0.02] border border-white/[0.05] px-3 py-2 space-y-1">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Este ciclo hará</p>
-                            <p className="text-[11px] text-neutral-400 leading-relaxed">
-                                Procesa hasta <span className="text-white font-black">{apMaxNiches}</span> nichos — discovery de los recién encontrados y avance de los aprobados (catálogos → listing → publicar)
-                            </p>
-                        </div>
-
-                        {/* Last run summary */}
-                        {apRuns[0] && (
-                            <div className="relative rounded-xl bg-white/[0.02] border border-white/[0.05] px-3 py-2 space-y-1">
-                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Última ejecución</p>
-                                <div className="flex items-center gap-3 text-[11px]">
-                                    <span className={apRuns[0].status === "completed" ? "text-emerald-400" : apRuns[0].status === "aborted" ? "text-rose-400" : "text-amber-400"}>
-                                        {apRuns[0].status === "completed" ? "✅ Completada" : apRuns[0].status === "aborted" ? "⛔ Abortada" : "⏳ En curso"}
-                                    </span>
-                                    {apRuns[0].discovered > 0 && <span className="text-neutral-500">🔍 {apRuns[0].discovered}</span>}
-                                    {apRuns[0].catalogsCreated > 0 && <span className="text-neutral-500">📦 {apRuns[0].catalogsCreated}</span>}
-                                    {apRuns[0].startedAt && <span className="text-neutral-700 ml-auto">{new Date(apRuns[0].startedAt).toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" })}</span>}
+                        {/* Last run quick summary */}
+                        {apRuns[0] && (() => {
+                            const r = apRuns[0];
+                            const isOk = r.status === "completed";
+                            const dur = r.finishedAt ? Math.round((new Date(r.finishedAt).getTime() - new Date(r.startedAt).getTime()) / 60000) : null;
+                            return (
+                                <div className="relative rounded-xl bg-white/[0.02] border border-white/[0.05] px-3 py-2 flex items-center gap-3">
+                                    <span className="text-sm leading-none">{isOk ? "✅" : r.status === "aborted" ? "⛔" : r.status === "running" ? "⏳" : "❌"}</span>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[10px] font-black text-neutral-500 tabular-nums">{new Date(r.startedAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })} · {dur !== null ? `${dur}m` : "en curso"}</p>
+                                        {r.abortReason && <p className="text-rose-400/60 text-[9px] truncate">{r.abortReason}</p>}
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[10px] font-black shrink-0">
+                                        {(r.discovered ?? 0) > 0 && <span className="text-sky-400/70">🔍{r.discovered}</span>}
+                                        {(r.catalogsCreated ?? 0) > 0 && <span className="text-violet-400/70">🏭{r.catalogsCreated}</span>}
+                                        {(r.pipelineProcessed ?? 0) > 0 && <span className="text-emerald-400/70">⚙️{r.pipelineProcessed}</span>}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            );
+                        })()}
 
                         {/* Action buttons */}
-                        <div className="relative flex gap-2 mt-auto">
+                        <div className="relative flex gap-2">
                             <button onClick={() => void runAutoPilotNow()} disabled={apRunning}
                                 className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black hover:border-amber-500 transition-all text-sm font-black uppercase tracking-widest disabled:opacity-50">
                                 {apRunning ? <span className="w-3 h-3 rounded-full border border-amber-400 border-t-transparent animate-spin" /> : <Zap size={12} />}
@@ -5527,7 +5557,7 @@ export function KdpFactoryApp() {
                         </div>
 
                         {/* Limits */}
-                        <div className="relative border-t border-white/[0.05] pt-3 grid grid-cols-3 gap-2">
+                        <div className="relative border-t border-white/[0.05] pt-3 grid grid-cols-3 gap-2 mt-1">
                             {[
                                 { label: "Cat./nicho", value: apCatalogsPer, set: setApCatalogsPer },
                                 { label: "Imgs/cat.", value: apImagesPerCatalog, set: setApImagesPerCatalog },
@@ -5546,7 +5576,7 @@ export function KdpFactoryApp() {
                     </Card>
 
                     {/* ─ Programación ─ */}
-                    <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 flex flex-col gap-4 hover:border-sky-500/20 hover:shadow-[0_0_30px_rgba(14,165,233,0.08)] transition-all group relative overflow-hidden lg:col-span-2">
+                    <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 flex flex-col gap-4 hover:border-sky-500/20 hover:shadow-[0_0_30px_rgba(14,165,233,0.08)] transition-all group relative overflow-hidden">
                         <div className="absolute -right-3 -top-3 w-14 h-14 bg-sky-500/8 blur-2xl rounded-full transition-all group-hover:scale-150" />
                         <div className="flex items-center gap-2 relative">
                             <Activity size={14} className="text-sky-400" />
@@ -5616,7 +5646,7 @@ export function KdpFactoryApp() {
                             <code className="text-[11px] font-mono text-sky-400 flex-1">{cronPreview}</code>
                         </div>
 
-                        <div className="flex gap-2 mt-auto">
+                        <div className="flex gap-2">
                             {apScheduled ? (
                                 <button onClick={() => void cancelAutoPilotSchedule()} className="flex-1 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 transition-all text-sm font-black uppercase tracking-widest">
                                     Cancelar programación
@@ -5818,68 +5848,119 @@ export function KdpFactoryApp() {
                 })()}
 
                 {/* ─ Historial de runs ─ */}
-                {(apRuns.length > 0 || apRunsLoading) && (
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 flex items-center gap-1.5">
-                                <Clock size={10} /> Historial de ejecuciones
-                            </p>
-                            <button onClick={() => void fetchApRuns()} disabled={apRunsLoading} className="p-1 rounded-lg text-neutral-700 hover:text-neutral-500 hover:bg-white/5 transition-all disabled:opacity-40">
+                {/* ─ Historial de ejecuciones ─ */}
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 flex items-center gap-1.5">
+                            <Clock size={10} /> Historial de ejecuciones
+                        </p>
+                        <div className="flex items-center gap-1">
+                            <button onClick={() => void fetchApRuns()} disabled={apRunsLoading} title="Refrescar" className="p-1.5 rounded-lg text-neutral-700 hover:text-neutral-400 hover:bg-white/5 transition-all disabled:opacity-40">
                                 <RefreshCw size={10} className={apRunsLoading ? "animate-spin" : ""} />
                             </button>
-                        </div>
-                        <div className="space-y-1.5">
-                            {apRuns.slice(0, 8).map(run => {
-                                const duration = run.finishedAt
-                                    ? Math.round((new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()) / 60000)
-                                    : null;
-                                return (
-                                    <div key={run._id} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border text-[11px] ${
-                                        run.status === "completed" ? "bg-emerald-500/[0.03] border-emerald-500/10"
-                                        : run.status === "aborted" ? "bg-rose-500/[0.03] border-rose-500/10"
-                                        : run.status === "running" ? "bg-amber-500/[0.03] border-amber-500/20"
-                                        : "bg-white/[0.01] border-white/5"
-                                    }`}>
-                                        <span className="text-base leading-none">
-                                            {run.status === "completed" ? "✅" : run.status === "aborted" ? "⛔" : run.status === "running" ? "⏳" : "❌"}
-                                        </span>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <span className="font-mono text-neutral-500 text-[10px]">
-                                                    {new Date(run.startedAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })} {new Date(run.startedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
-                                                </span>
-                                                {duration !== null && <span className="text-neutral-700 text-[10px]">{duration}m</span>}
-                                            </div>
-                                            {run.abortReason && <p className="text-rose-400/70 text-[10px] truncate mt-0.5">{run.abortReason}</p>}
-                                        </div>
-                                        <div className="flex items-center gap-3 shrink-0">
-                                            {run.discovered > 0 && (
-                                                <span className="text-sky-400/80 font-black tabular-nums" title="Nichos descubiertos">🔍 {run.discovered}</span>
-                                            )}
-                                            {run.catalogsCreated > 0 && (
-                                                <span className="text-violet-400/80 font-black tabular-nums" title="Catálogos creados">🏭 {run.catalogsCreated}</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                            {apRuns.length > 0 && (
+                                <button onClick={() => void clearApRuns()} title="Borrar historial" className="p-1.5 rounded-lg text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all">
+                                    <Trash2 size={10} />
+                                </button>
+                            )}
                         </div>
                     </div>
-                )}
+
+                    {apRuns.length === 0 && !apRunsLoading ? (
+                        <p className="text-[11px] text-neutral-700 px-1">Sin ejecuciones registradas</p>
+                    ) : (
+                        <>
+                            {/* Summary bar */}
+                            {apRuns.length > 0 && (() => {
+                                const total = apRuns.length;
+                                const succeeded = apRuns.filter(r => r.status === "completed").length;
+                                const totalDiscovered = apRuns.reduce((s, r) => s + (r.discovered ?? 0), 0);
+                                const totalCatalogs = apRuns.reduce((s, r) => s + (r.catalogsCreated ?? 0), 0);
+                                const totalPipeline = apRuns.reduce((s, r) => s + (r.pipelineProcessed ?? 0), 0);
+                                return (
+                                    <div className="grid grid-cols-4 gap-2 mb-1">
+                                        {[
+                                            { label: "Ciclos", value: total, color: "text-neutral-400" },
+                                            { label: "Éxito", value: `${total > 0 ? Math.round(succeeded/total*100) : 0}%`, color: "text-emerald-400" },
+                                            { label: "Nichos", value: totalDiscovered, color: "text-sky-400" },
+                                            { label: "Catálogos", value: totalCatalogs + totalPipeline, color: "text-violet-400" },
+                                        ].map(s => (
+                                            <div key={s.label} className="rounded-xl bg-white/[0.02] border border-white/[0.05] px-2.5 py-2 text-center">
+                                                <p className={`text-base font-black tabular-nums leading-none ${s.color}`}>{s.value}</p>
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-700 mt-1">{s.label}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
+
+                            <div className="space-y-1">
+                                {apRuns.slice(0, 12).map(run => {
+                                    const duration = run.finishedAt
+                                        ? Math.round((new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()) / 60000)
+                                        : null;
+                                    const isRunning = run.status === "running";
+                                    const isOk = run.status === "completed";
+                                    const isAborted = run.status === "aborted";
+                                    const hasWork = (run.discovered ?? 0) + (run.catalogsCreated ?? 0) + (run.pipelineProcessed ?? 0) > 0;
+                                    return (
+                                        <div key={run._id} className={`flex items-center gap-3 px-3 py-2 rounded-xl border text-[11px] ${
+                                            isOk ? "bg-emerald-500/[0.02] border-emerald-500/[0.08]"
+                                            : isAborted ? "bg-rose-500/[0.02] border-rose-500/[0.08]"
+                                            : isRunning ? "bg-amber-500/[0.03] border-amber-500/20"
+                                            : "bg-white/[0.01] border-white/[0.04]"
+                                        }`}>
+                                            <span className="text-sm leading-none shrink-0">
+                                                {isOk ? "✅" : isAborted ? "⛔" : isRunning ? "⏳" : "❌"}
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-mono text-neutral-500 text-[10px] shrink-0">
+                                                        {new Date(run.startedAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
+                                                        {" "}{new Date(run.startedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                                                    </span>
+                                                    {duration !== null && (
+                                                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${duration > 20 ? "text-orange-400 bg-orange-500/10" : "text-neutral-600 bg-white/[0.04]"}`}>
+                                                            {duration}m
+                                                        </span>
+                                                    )}
+                                                    {isRunning && <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest animate-pulse">en curso</span>}
+                                                </div>
+                                                {run.abortReason && <p className="text-rose-400/70 text-[10px] truncate mt-0.5">{run.abortReason}</p>}
+                                            </div>
+                                            {hasWork && (
+                                                <div className="flex items-center gap-2 shrink-0 text-[10px] font-black">
+                                                    {(run.discovered ?? 0) > 0 && <span className="text-sky-400/70" title="Nichos descubiertos">🔍{run.discovered}</span>}
+                                                    {(run.catalogsCreated ?? 0) > 0 && <span className="text-violet-400/70" title="Catálogos creados">🏭{run.catalogsCreated}</span>}
+                                                    {(run.pipelineProcessed ?? 0) > 0 && <span className="text-emerald-400/70" title="Pasos de pipeline">⚙️{run.pipelineProcessed}</span>}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </>
+                    )}
+                </div>
 
                 {/* ─ Reglas de búsqueda (cron scraper) ─ */}
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
                         <SectionHeader icon={<BookOpen size={13} />} title="Reglas de búsqueda" subtitle="Qué busca el scraper cada día y dónde" color="violet" size="sm" />
-                        <button onClick={() => setShowRuleForm(v => !v)}
-                            className="flex items-center gap-1.5 h-8 px-3.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 hover:bg-violet-500/20 transition-all text-[10px] font-black uppercase tracking-widest">
-                            <Plus size={10} /> Nueva regla
-                        </button>
+                        {!editingRuleId && (
+                            <button onClick={() => { setShowRuleForm(v => !v); setEditingRuleId(null); }}
+                                className="flex items-center gap-1.5 h-8 px-3.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 hover:bg-violet-500/20 transition-all text-[10px] font-black uppercase tracking-widest">
+                                <Plus size={10} /> Nueva regla
+                            </button>
+                        )}
                     </div>
 
-                    {showRuleForm && (
-                        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.04] p-4 space-y-4">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-violet-400">Nueva regla</p>
+                    {/* Add / Edit form */}
+                    {(showRuleForm || editingRuleId) && (
+                        <div className={`rounded-2xl border p-4 space-y-4 ${editingRuleId ? "border-sky-500/20 bg-sky-500/[0.03]" : "border-violet-500/20 bg-violet-500/[0.04]"}`}>
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${editingRuleId ? "text-sky-400" : "text-violet-400"}`}>
+                                {editingRuleId ? "✏️ Editando regla" : "Nueva regla"}
+                            </p>
 
                             {/* Days */}
                             <div className="space-y-2">
@@ -5925,12 +6006,26 @@ export function KdpFactoryApp() {
                             </div>
 
                             <div className="flex gap-2">
-                                <button onClick={addRule} className="h-8 px-4 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 hover:bg-violet-500/20 transition-all text-[10px] font-black uppercase tracking-widest">
-                                    Añadir
-                                </button>
-                                <button onClick={() => setShowRuleForm(false)} className="h-8 px-4 rounded-xl border border-white/10 text-neutral-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest">
-                                    Cancelar
-                                </button>
+                                {editingRuleId ? (
+                                    <>
+                                        <button onClick={saveEditRule} className="h-8 px-4 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 hover:bg-sky-500/20 transition-all text-[10px] font-black uppercase tracking-widest">
+                                            Guardar cambios
+                                        </button>
+                                        <button onClick={() => { setEditingRuleId(null); setRuleDraft({ days: [1], hour: 9, platform: "etsy", query: "", mode: "niche-search", enabled: true }); setRuleSearchConfig({ platform: "etsy", url: "" }); }}
+                                            className="h-8 px-4 rounded-xl border border-white/10 text-neutral-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest">
+                                            Cancelar
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <button onClick={addRule} className="h-8 px-4 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 hover:bg-violet-500/20 transition-all text-[10px] font-black uppercase tracking-widest">
+                                            Añadir
+                                        </button>
+                                        <button onClick={() => setShowRuleForm(false)} className="h-8 px-4 rounded-xl border border-white/10 text-neutral-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest">
+                                            Cancelar
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </div>
                     )}
@@ -5944,8 +6039,9 @@ export function KdpFactoryApp() {
                         <div className="space-y-2">
                             {apRules.map(rule => {
                                 const plat = PLATFORM_OPTIONS.find(p => p.id === rule.platform);
+                                const isEditing = editingRuleId === rule.id;
                                 return (
-                                    <div key={rule.id} className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-all ${rule.enabled ? "border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.04]" : "border-white/[0.04] bg-white/[0.01] opacity-50"}`}>
+                                    <div key={rule.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all ${isEditing ? "border-sky-500/30 bg-sky-500/[0.04]" : rule.enabled ? "border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.04]" : "border-white/[0.04] bg-white/[0.01] opacity-50"}`}>
                                         <div className="flex items-center gap-1.5 shrink-0">
                                             <div className="flex gap-0.5">
                                                 {DAY_LABELS.map((d, i) => {
@@ -5957,9 +6053,15 @@ export function KdpFactoryApp() {
                                         </div>
                                         <span className="text-base shrink-0">{plat?.icon ?? "🔍"}</span>
                                         <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-black text-white truncate">{rule.query}</p>
+                                            <p className="text-[11px] font-black text-white truncate">{rule.query}</p>
                                             <p className="text-[10px] text-neutral-600">{plat?.label}</p>
                                         </div>
+                                        {/* Edit */}
+                                        <button onClick={() => { startEditRule(rule); setShowRuleForm(false); }}
+                                            title="Editar"
+                                            className="p-1.5 rounded-lg text-neutral-700 hover:text-sky-400 hover:bg-sky-500/10 transition-all">
+                                            <Pencil size={11} />
+                                        </button>
                                         {/* Toggle enable/disable */}
                                         <button onClick={() => void saveApRules(apRules.map(r => r.id === rule.id ? { ...r, enabled: !r.enabled } : r))}
                                             title={rule.enabled ? "Desactivar" : "Activar"}

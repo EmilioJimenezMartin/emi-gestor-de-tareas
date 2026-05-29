@@ -202,8 +202,19 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
     app.get("/autopilot/runs", async (_req, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const runs = await AutopilotRun.find().sort({ startedAt: -1 }).limit(20).lean();
+            const runs = await AutopilotRun.find().sort({ startedAt: -1 }).limit(30).lean();
             return reply.send({ runs });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // ── Clear run history ────────────────────────────────────────────────────
+    app.delete("/autopilot/runs", async (_req, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { deletedCount } = await AutopilotRun.deleteMany({});
+            return reply.send({ ok: true, deleted: deletedCount });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
         }
