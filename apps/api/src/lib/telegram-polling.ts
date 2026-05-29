@@ -15,7 +15,8 @@ const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { cmd: "/catalogo",                    desc: "Lista catálogos recientes con ID corto" },
     { cmd: "/catalogo <code>id</code>",    desc: "Detalle de un catálogo por ID" },
     { section: "⚙️ Pipeline" },
-    { cmd: "/pipeline",                    desc: "Estado detallado del pipeline activo" },
+    { cmd: "/estado",                      desc: "Lista rápida: nicho + ID + fase actual" },
+    { cmd: "/pipeline",                    desc: "Estado detallado con progreso de imágenes" },
     { cmd: "/run",                         desc: "Lanza Auto-Pilot ahora" },
     { cmd: "/parar",                       desc: "Detiene todo el pipeline" },
     { cmd: "/parar <code>id</code>",       desc: "Detiene solo ese nicho" },
@@ -694,6 +695,64 @@ async function processUpdate(update: any): Promise<void> {
             return;
         }
 
+        if (text === "/estado") {
+            try {
+                const { Catalog } = await import("../models/catalog.js");
+
+                const phaseIcon: Record<string, string> = {
+                    niche: "🏭", catalog: "🖼️", pdf: "📄", published: "✅",
+                };
+                const phaseDesc: Record<string, string> = {
+                    niche: "creando catálogos",
+                    catalog: "generando imágenes",
+                    pdf: "SEO / PDF pendiente",
+                    published: "listo para publicar",
+                };
+
+                // Active autopilot niches
+                const apNiches = await Niche.find({ autoPilotEnabled: true, status: "active" })
+                    .sort({ updatedAt: -1 })
+                    .select("name phase listings")
+                    .lean();
+
+                // Niches with active catalog work (may not be autopilot)
+                const activeCats = await Catalog.find({ status: { $in: ["running", "pending", "queued"] } })
+                    .select("nicheIds").lean();
+                const activeNicheIds = [...new Set((activeCats as any[]).flatMap((c: any) => c.nicheIds ?? []))];
+                const manualNiches = activeNicheIds.length > 0
+                    ? await Niche.find({
+                        _id: { $in: activeNicheIds },
+                        $or: [{ autoPilotEnabled: false }, { autoPilotEnabled: { $exists: false } }],
+                    }).select("name phase").lean()
+                    : [];
+
+                const allNiches = [...(apNiches as any[]), ...(manualNiches as any[])];
+
+                if (allNiches.length === 0) {
+                    await sendTelegram("💤 <b>Pipeline vacío</b>\nNingún nicho activo.\n\nUsa /run para lanzar el Auto-Pilot.");
+                    return;
+                }
+
+                const lines: string[] = [`📋 <b>Estado del pipeline</b>\n`];
+                for (const n of allNiches) {
+                    const phase = n.phase ?? "niche";
+                    const shortId = String(n._id).slice(-8);
+                    const icon = phaseIcon[phase] ?? "❓";
+                    const desc = phaseDesc[phase] ?? phase;
+                    const manualTag = !n.autoPilotEnabled ? " <i>(manual)</i>" : "";
+                    lines.push(`${icon} <code>${shortId}</code> — ${(n.name as string).slice(0, 30)}${(n.name as string).length > 30 ? "…" : ""}`);
+                    lines.push(`   ${desc}${manualTag}`);
+                }
+                lines.push(``);
+                lines.push(`<i>/nicho &lt;id&gt; · /pipeline · /parar &lt;id&gt;</i>`);
+
+                await sendTelegram(lines.join("\n"));
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
         if (text === "/pipeline") {
             try {
                 const { Catalog } = await import("../models/catalog.js");
@@ -705,14 +764,29 @@ async function processUpdate(update: any): Promise<void> {
                     published: "✅ Publicado",
                 };
 
-                // All active niches in pipeline
-                const niches = await Niche.find({ autoPilotEnabled: true, status: "active" })
-                    .sort({ updatedAt: -1 })
-                    .select("name phase listings")
+                // Niches with active catalog work (manual or autopilot)
+                const activeCats = await Catalog.find({ status: { $in: ["running", "pending", "queued"] } })
+                    .select("nicheIds")
                     .lean();
+                const nicheIdsWithWork = [...new Set((activeCats as any[]).flatMap(c => c.nicheIds ?? []))];
+
+                // Also include autopilot-enabled niches in other phases (pdf, seo...)
+                const apNiches = await Niche.find({ autoPilotEnabled: true, status: "active" })
+                    .select("_id")
+                    .lean();
+                const apNicheIds = (apNiches as any[]).map(n => String(n._id));
+
+                const allIds = [...new Set([...nicheIdsWithWork, ...apNicheIds])];
+
+                const niches = allIds.length > 0
+                    ? await Niche.find({ _id: { $in: allIds } })
+                        .sort({ updatedAt: -1 })
+                        .select("name phase listings autoPilotEnabled")
+                        .lean()
+                    : [];
 
                 if (niches.length === 0) {
-                    await sendTelegram("💤 <b>Pipeline vacío</b>\nNo hay nichos activos en el Auto-Pilot.\n\nUsa /run para lanzar un ciclo.");
+                    await sendTelegram("💤 <b>Pipeline vacío</b>\nNo hay generación activa ni nichos en Auto-Pilot.\n\nUsa /run para lanzar un ciclo.");
                     return;
                 }
 
@@ -724,7 +798,8 @@ async function processUpdate(update: any): Promise<void> {
                 for (const niche of niches as any[]) {
                     const phase = niche.phase ?? "niche";
                     const shortId = String(niche._id).slice(-8);
-                    lines.push(`📚 <b>${niche.name}</b>  <code>${shortId}</code>`);
+                    const apTag = niche.autoPilotEnabled ? " · AP" : " · manual";
+                    lines.push(`📚 <b>${niche.name}</b>  <code>${shortId}</code>${apTag}`);
                     lines.push(phaseLabel[phase] ?? `Fase: ${phase}`);
 
                     if (phase === "catalog") {

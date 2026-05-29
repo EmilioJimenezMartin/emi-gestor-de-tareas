@@ -344,13 +344,25 @@ async function runPipeline(
             const linkedCats = await Catalog.find({ nicheIds: String(niche._id) }).lean();
             const total = linkedCats.length;
             const done = linkedCats.filter((c: any) => c.status === "completed").length;
+            // Terminal = completed + cancelled + failed (no longer progressing)
+            const terminal = linkedCats.filter((c: any) => ["completed", "cancelled", "failed"].includes(c.status)).length;
+            const stillActive = total - terminal; // running/pending/queued
 
-            if (total === 0 || done < total) {
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⏳ "${niche.name}": catálogos ${done}/${total} listos` });
+            if (total === 0 || stillActive > 0) {
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⏳ "${niche.name}": catálogos ${done}/${total} listos (${stillActive} activos)` });
                 continue;
             }
 
-            // All done — advance directly to pdf phase (no approval gate)
+            if (done === 0) {
+                // All failed/cancelled — nothing to show, skip this niche
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ "${niche.name}": todos los catálogos fallaron o fueron cancelados` });
+                await Niche.findByIdAndUpdate(niche._id, { $set: { autoPilotEnabled: false } });
+                io?.emit("niches:updated");
+                processed++;
+                continue;
+            }
+
+            // All terminal and at least some completed — advance to pdf
             const totalImages = linkedCats.reduce((s: number, c: any) => s + (c.images?.length ?? 0), 0);
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✅ Catálogos completos: ${totalImages} imágenes → avanzando a SEO` });
 
@@ -463,6 +475,10 @@ export function defineAutoPilotJob(agenda: Agenda, io: any) {
 
         // Clear any stale abort flag from a previous /parar
         await Settings.findOneAndUpdate({ key: "AUTOPILOT_ABORT" }, { value: "0" }).catch(() => {});
+
+        // Clear stale phase-approve actions — these were used before the pipeline became fully automatic.
+        // Any that remain would permanently block hasPendingAction() for their niche.
+        await TelegramAction.deleteMany({ type: "phase-approve", status: "pending" }).catch(() => {});
 
         const run = await AutopilotRun.create({ startedAt: new Date(), status: "running" });
 
