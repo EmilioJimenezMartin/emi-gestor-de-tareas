@@ -32,6 +32,7 @@ type ServerToClientEvents = {
   "pattern:done": (payload: { jobId: string }) => void;
   "autopilot:log": (payload: { nicheId: string; message: string }) => void;
   "autopilot:done": (payload: { processed: number; timestamp?: string }) => void;
+  "niches:updated": () => void;
 };
 
 type ClientToServerEvents = Record<string, never>;
