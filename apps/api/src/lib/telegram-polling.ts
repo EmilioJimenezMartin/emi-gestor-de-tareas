@@ -298,7 +298,7 @@ async function processUpdate(update: any): Promise<void> {
         if (text === "/nichos") {
             try {
                 const phaseIcon: Record<string, string> = {
-                    niche: "🏭", catalog: "🖼️", pdf: "📄", published: "✅",
+                    niche: "🏭", catalog: "🖼️", seo: "📝", pdf: "📝", cover: "🎨", published: "✅",
                 };
                 const statusIcon: Record<string, string> = {
                     active: "⚡", found: "🔍", archived: "🗄️", discarded: "🗑️",
@@ -383,7 +383,8 @@ async function processUpdate(update: any): Promise<void> {
 
                 const phaseLabel: Record<string, string> = {
                     niche: "🏭 Generando catálogos", catalog: "🖼️ Catálogos en proceso",
-                    pdf: "📄 SEO listo — pendiente de publicar", published: "✅ Publicado",
+                    seo: "📝 Generando SEO", pdf: "📝 Generando SEO",
+                    cover: "🎨 Generando portada", published: "✅ Publicado",
                 };
                 const statusLabel: Record<string, string> = {
                     found: "🔍 En cola de discovery", active: "⚡ Activo en pipeline",
@@ -700,12 +701,14 @@ async function processUpdate(update: any): Promise<void> {
                 const { Catalog } = await import("../models/catalog.js");
 
                 const phaseIcon: Record<string, string> = {
-                    niche: "🏭", catalog: "🖼️", pdf: "📄", published: "✅",
+                    niche: "🏭", catalog: "🖼️", seo: "📝", pdf: "📝", cover: "🎨", published: "✅",
                 };
                 const phaseDesc: Record<string, string> = {
                     niche: "creando catálogos",
                     catalog: "generando imágenes",
-                    pdf: "SEO / PDF pendiente",
+                    seo: "generando SEO",
+                    pdf: "generando SEO",
+                    cover: "generando portada",
                     published: "listo para publicar",
                 };
 
@@ -760,7 +763,9 @@ async function processUpdate(update: any): Promise<void> {
                 const phaseLabel: Record<string, string> = {
                     niche: "🏭 Creando catálogos",
                     catalog: "🖼️ Generando imágenes",
-                    pdf: "📄 Generando SEO / listo para PDF",
+                    seo: "📝 Generando SEO",
+                    pdf: "📝 Generando SEO",
+                    cover: "🎨 Generando portada",
                     published: "✅ Publicado",
                 };
 
@@ -770,7 +775,7 @@ async function processUpdate(update: any): Promise<void> {
                     .lean();
                 const nicheIdsWithWork = [...new Set((activeCats as any[]).flatMap(c => c.nicheIds ?? []))];
 
-                // Also include autopilot-enabled niches in other phases (pdf, seo...)
+                // Also include autopilot-enabled niches in other phases (seo, cover...)
                 const apNiches = await Niche.find({ autoPilotEnabled: true, status: "active" })
                     .select("_id")
                     .lean();
@@ -829,13 +834,15 @@ async function processUpdate(update: any): Promise<void> {
                             lines.push(`  ${healthIcon} ⚙️ ${cat.name.slice(0, 28)} — ${attempted}/${cat.totalImages} intentadas${stuckNote}`);
                         }
 
-                    } else if (phase === "pdf") {
+                    } else if (phase === "seo" || phase === "pdf") {
                         const listingCount = (niche.listings ?? []).length;
                         if (listingCount > 0) {
-                            lines.push(`  📝 Listing SEO generado — listo para publicar`);
+                            lines.push(`  📝 Listing SEO generado — generando portada…`);
                         } else {
                             lines.push(`  📝 Generando listing SEO…`);
                         }
+                    } else if (phase === "cover") {
+                        lines.push(`  🎨 Generando portada KDP…`);
                     }
 
                     lines.push(``);

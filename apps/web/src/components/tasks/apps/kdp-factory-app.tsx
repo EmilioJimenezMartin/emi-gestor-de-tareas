@@ -215,7 +215,7 @@ interface NicheFE {
     notes: string;
     generatedPrompt?: string;
     catalogIds?: string[];
-    phase?: "niche" | "catalog" | "pdf" | "cover" | "published";
+    phase?: "niche" | "catalog" | "seo" | "pdf" | "cover" | "published";
     publishedAt?: string;
     asin?: string;
     etsyUrl?: string;
@@ -4082,9 +4082,13 @@ export function KdpFactoryApp() {
         const topNicheDemand = topNiche?.demand;
 
         // ── Insights data ─────────────────────────────────────────────
-        const phaseCount = (p: NicheFE["phase"]) => niches.filter(n => (n.phase ?? "niche") === p).length;
+        const phaseMatch = (nPhase: NicheFE["phase"], colPhase: NicheFE["phase"]) => {
+            const p = nPhase ?? "niche";
+            return p === colPhase || (colPhase === "seo" && p === "pdf");
+        };
+        const phaseCount = (p: NicheFE["phase"]) => niches.filter(n => phaseMatch(n.phase, p)).length;
         const phaseImgs = (p: NicheFE["phase"]) => {
-            const phaseNiches = niches.filter(n => (n.phase ?? "niche") === p);
+            const phaseNiches = niches.filter(n => phaseMatch(n.phase, p));
             return iaCatalogs.filter(c => (c.nicheIds ?? []).some(id => phaseNiches.find(n => n._id === id))).reduce((s, c) => s + c.images.length, 0);
         };
         const totalImgsAll = iaCatalogs.reduce((s, c) => s + c.images.length, 0);
@@ -4100,13 +4104,13 @@ export function KdpFactoryApp() {
         const lastActivity = (n: NicheFE) => n.updatedAt ?? n.createdAt;
 
         // ── Pipeline rules ────────────────────────────────────────────────
-        // R1: Listos para publicar (phase=pdf|cover, listings≥1)
+        // R1: Listos para publicar (phase=cover, listings≥1)
         const readyToPublish = niches.filter(n =>
-            (n.phase === "pdf" || n.phase === "cover") && (n.listings?.length ?? 0) >= 1
+            n.phase === "cover" && (n.listings?.length ?? 0) >= 1
         );
-        // R2: PDF sin listing SEO >3d
+        // R2: SEO sin listing >3d
         const pdfNoListing = niches.filter(n =>
-            n.phase === "pdf" && (!n.listings || n.listings.length === 0) && lastActivity(n) < daysAgo(3)
+            (n.phase === "seo" || n.phase === "pdf") && (!n.listings || n.listings.length === 0) && lastActivity(n) < daysAgo(3)
         );
         // R3: Catálogos completados sin avanzar >1d
         const catalogDoneStuck = niches.filter(n => {
@@ -4353,9 +4357,9 @@ export function KdpFactoryApp() {
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                     {([
                         { phase: "niche" as const,     label: "Nicho",     color: "sky",     glow: "rgba(14,165,233,0.1)",   hoverBorder: "hover:border-sky-500/30",     blob: "bg-sky-500/10" },
-                        { phase: "catalog" as const,   label: "Catálogo",  color: "blue",    glow: "rgba(59,130,246,0.1)",   hoverBorder: "hover:border-blue-500/30",    blob: "bg-blue-500/10" },
-                        { phase: "pdf" as const,       label: "PDF",       color: "violet",  glow: "rgba(139,92,246,0.1)",   hoverBorder: "hover:border-violet-500/30",  blob: "bg-violet-500/10" },
-                        { phase: "cover" as const,     label: "Cover",     color: "fuchsia", glow: "rgba(217,70,239,0.1)",   hoverBorder: "hover:border-fuchsia-500/30", blob: "bg-fuchsia-500/10" },
+                        { phase: "catalog" as const,   label: "Catálogos", color: "blue",    glow: "rgba(59,130,246,0.1)",   hoverBorder: "hover:border-blue-500/30",    blob: "bg-blue-500/10" },
+                        { phase: "seo" as const,       label: "SEO",       color: "violet",  glow: "rgba(139,92,246,0.1)",   hoverBorder: "hover:border-violet-500/30",  blob: "bg-violet-500/10" },
+                        { phase: "cover" as const,     label: "Portada",   color: "fuchsia", glow: "rgba(217,70,239,0.1)",   hoverBorder: "hover:border-fuchsia-500/30", blob: "bg-fuchsia-500/10" },
                         { phase: "published" as const, label: "Publicado", color: "emerald", glow: "rgba(16,185,129,0.1)",   hoverBorder: "hover:border-emerald-500/30", blob: "bg-emerald-500/10" },
                     ] as const).map(col => {
                         const cnt = phaseCount(col.phase);
@@ -4461,7 +4465,7 @@ export function KdpFactoryApp() {
                                         {([
                                             { phase: "niche" as const, color: "bg-sky-500" },
                                             { phase: "catalog" as const, color: "bg-blue-500" },
-                                            { phase: "pdf" as const, color: "bg-violet-500" },
+                                            { phase: "seo" as const, color: "bg-violet-500" },
                                             { phase: "cover" as const, color: "bg-fuchsia-500" },
                                             { phase: "published" as const, color: "bg-emerald-500" },
                                         ] as const).map(p => phaseCount(p.phase) > 0 && (
@@ -8623,16 +8627,17 @@ export function KdpFactoryApp() {
                     {!isLoadingNiches && nicheViewMode === "kanban" && niches.length > 0 && (() => {
                         const PHASES: { id: NicheFE["phase"]; label: string; accent: string; headerBg: string; colBg: string; dot: string; emptyText: string }[] = [
                             { id: "niche",     label: "Nicho",     accent: "text-sky-400",     headerBg: "bg-sky-500/10",     colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-sky-400",     emptyText: "Añade nichos para empezar" },
-                            { id: "catalog",   label: "Catálogo",  accent: "text-blue-400",    headerBg: "bg-blue-500/10",    colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-blue-400",    emptyText: "Genera catálogos de imágenes" },
-                            { id: "pdf",       label: "PDF",       accent: "text-violet-400",  headerBg: "bg-violet-500/10",  colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-violet-400",  emptyText: "Monta el libro en PDF" },
-                            { id: "cover",     label: "Cover",     accent: "text-fuchsia-400", headerBg: "bg-fuchsia-500/10", colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-fuchsia-400", emptyText: "Diseña la portada final" },
+                            { id: "catalog",   label: "Catálogos", accent: "text-blue-400",    headerBg: "bg-blue-500/10",    colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-blue-400",    emptyText: "Genera catálogos de imágenes" },
+                            { id: "seo",       label: "SEO",       accent: "text-violet-400",  headerBg: "bg-violet-500/10",  colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-violet-400",  emptyText: "Genera el listing SEO" },
+                            { id: "cover",     label: "Portada",   accent: "text-fuchsia-400", headerBg: "bg-fuchsia-500/10", colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-fuchsia-400", emptyText: "Diseña la portada final" },
                             { id: "published", label: "Publicado", accent: "text-emerald-400", headerBg: "bg-emerald-500/10", colBg: "border-emerald-500/10 bg-emerald-500/[0.02]", dot: "bg-emerald-400", emptyText: "Aquí aparecen los publicados" },
                         ];
-                        const phaseOrder = ["niche", "catalog", "pdf", "cover", "published"] as const;
+                        const phaseOrder = ["niche", "catalog", "seo", "cover", "published"] as const;
                         const movePhase = async (nicheId: string, direction: 1 | -1) => {
                             const niche = niches.find(n => n._id === nicheId);
                             if (!niche) return;
-                            const cur = phaseOrder.indexOf(niche.phase ?? "niche");
+                            const normalizedPhase = (niche.phase === "pdf" ? "seo" : niche.phase) ?? "niche";
+                            const cur = phaseOrder.indexOf(normalizedPhase as typeof phaseOrder[number]);
                             const next = phaseOrder[Math.max(0, Math.min(phaseOrder.length - 1, cur + direction))];
                             if (next === niche.phase) return;
                             await fetch(`${API_BASE_URL}/niches/${nicheId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: next }) }).catch(() => {});
@@ -8644,7 +8649,11 @@ export function KdpFactoryApp() {
                         return (
                             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 items-start">
                                 {PHASES.map(col => {
-                                    const colNiches = niches.filter(n => (n.phase ?? "niche") === col.id);
+                                    // "pdf" is the legacy name for "seo" — show both in the seo column
+                                    const colNiches = niches.filter(n => {
+                                        const p = n.phase ?? "niche";
+                                        return p === col.id || (col.id === "seo" && p === "pdf");
+                                    });
                                     const colImgs = colNiches.reduce((sum, n) => sum + iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).reduce((s, c) => s + c.images.length, 0), 0);
                                     return (
                                         <div key={col.id} className={`rounded-2xl border ${col.colBg} flex flex-col`}>
@@ -8927,16 +8936,18 @@ export function KdpFactoryApp() {
                                                 {(() => {
                                                     const PHASE_META: Record<NonNullable<NicheFE["phase"]>, { label: string; dot: string; active: string }> = {
                                                         niche:     { label: "Nicho",     dot: "bg-sky-400",      active: "border-sky-500/40 bg-sky-500/10 text-sky-300" },
-                                                        catalog:   { label: "Catálogo",  dot: "bg-blue-400",     active: "border-blue-500/40 bg-blue-500/10 text-blue-300" },
-                                                        pdf:       { label: "PDF",       dot: "bg-violet-400",   active: "border-violet-500/40 bg-violet-500/10 text-violet-300" },
-                                                        cover:     { label: "Cover",     dot: "bg-fuchsia-400",  active: "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-300" },
+                                                        catalog:   { label: "Catálogos", dot: "bg-blue-400",     active: "border-blue-500/40 bg-blue-500/10 text-blue-300" },
+                                                        seo:       { label: "SEO",       dot: "bg-violet-400",   active: "border-violet-500/40 bg-violet-500/10 text-violet-300" },
+                                                        pdf:       { label: "SEO",       dot: "bg-violet-400",   active: "border-violet-500/40 bg-violet-500/10 text-violet-300" },
+                                                        cover:     { label: "Portada",   dot: "bg-fuchsia-400",  active: "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-300" },
                                                         published: { label: "Publicado", dot: "bg-emerald-400",  active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" },
                                                     };
-                                                    const phases = ["niche", "catalog", "pdf", "cover", "published"] as NonNullable<NicheFE["phase"]>[];
+                                                    const phases = ["niche", "catalog", "seo", "cover", "published"] as NonNullable<NicheFE["phase"]>[];
                                                     return (
                                                         <div className="flex items-center gap-1 pt-2 border-t border-white/[0.04] flex-wrap">
                                                             {phases.map((p, i) => {
-                                                                const isActive = (niche.phase ?? "niche") === p;
+                                                                const np = niche.phase === "pdf" ? "seo" : (niche.phase ?? "niche");
+                                                                const isActive = np === p;
                                                                 const meta = PHASE_META[p];
                                                                 return (
                                                                     <React.Fragment key={p}>

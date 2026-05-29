@@ -246,8 +246,29 @@ async function runDiscovery(
     return count;
 }
 
+function buildCoverPrompt(subject: string, style: string, productType: string): string {
+    if (productType === "printable-poster") {
+        return `Vibrant colorful wall art poster of ${subject}, decorative illustration, beautiful colors, portrait orientation, no text, no watermarks, clean design`;
+    }
+    const styleHints: Record<string, string> = {
+        anime: `anime illustration style, vibrant colors, detailed character art`,
+        children: `cute colorful children's book illustration, friendly characters, bright pastel colors`,
+        realistic: `photorealistic digital painting, rich vibrant colors, highly detailed`,
+        watercolor: `beautiful watercolor illustration, soft colors, artistic brushwork`,
+        abstract: `abstract colorful geometric art, vibrant shapes and patterns`,
+        "wall-art": `decorative wall art illustration, elegant vibrant colors`,
+        botanical: `detailed botanical illustration, lush vibrant plants and flowers`,
+        affirmation: `inspirational decorative illustration, warm vibrant colors, uplifting mood`,
+        geometric: `colorful geometric mandala art, intricate symmetrical patterns`,
+        celestial: `mystical celestial illustration, stars galaxies cosmic colors, magical atmosphere`,
+        retro: `retro vintage illustration, warm earthy tones, nostalgic style`,
+    };
+    const hint = styleHints[style] ?? "colorful digital illustration, vibrant colors";
+    return `Book cover art for ${subject} coloring book, ${hint}, no text, no words, no letters, no watermarks, portrait orientation, professional book cover quality, highly detailed`;
+}
+
 // ── PHASE 2: Pipeline ─────────────────────────────────────────────────────────
-// Process niches that were approved (autoPilotEnabled = true, phase = catalog/pdf)
+// Process niches that were approved (autoPilotEnabled = true, phase = catalog/seo/cover)
 async function runPipeline(
     cfg: AutoPilotConfig,
     base: string,
@@ -362,11 +383,11 @@ async function runPipeline(
                 continue;
             }
 
-            // All terminal and at least some completed — advance to pdf
+            // All terminal and at least some completed — advance to seo
             const totalImages = linkedCats.reduce((s: number, c: any) => s + (c.images?.length ?? 0), 0);
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✅ Catálogos completos: ${totalImages} imágenes → avanzando a SEO` });
 
-            await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "pdf" } });
+            await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "seo" } });
             io?.emit("niches:updated");
 
             if (await shouldNotify("pipeline.complete")) {
@@ -375,14 +396,14 @@ async function runPipeline(
                 ).catch(() => {});
             }
 
-            // Schedule a follow-up run to pick up the pdf phase
+            // Schedule a follow-up run to pick up the seo phase
             setTimeout(() => { agenda?.now("autopilot-run", {}).catch(() => {}); }, 8_000);
             processed++;
             continue;
         }
 
-        // ── pdf → generate SEO listing ────────────────────────────────────────
-        if (phase === "pdf" && (!niche.listings || niche.listings.length === 0)) {
+        // ── seo (or legacy pdf) → generate SEO listing ───────────────────────
+        if ((phase === "seo" || (phase as string) === "pdf") && (!niche.listings || niche.listings.length === 0)) {
             emitStage(io, "listing", String(niche._id), niche.name);
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📝 Generando listing KDP para "${niche.name}"…` });
             try {
@@ -412,10 +433,10 @@ async function runPipeline(
                     };
                     await Niche.findByIdAndUpdate(niche._id, { $push: { listings: listing } });
                     io?.emit("niches:updated");
-                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ Listing SEO listo para "${niche.name}"` });
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ Listing SEO listo para "${niche.name}" → generando portada…` });
 
-                    // Advance directly to published — no approval gate
-                    await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "published" } });
+                    // Advance to cover phase
+                    await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "cover" } });
                     io?.emit("niches:updated");
 
                     const notifText = [
@@ -426,12 +447,15 @@ async function runPipeline(
                         `<b>Título:</b> ${listing.title}`,
                         listing.keywords.length > 0 ? `<b>Keywords:</b> ${listing.keywords.slice(0, 4).join(", ")}…` : null,
                         ``,
-                        `✅ Nicho listo para publicar en KDP`,
+                        `🎨 Generando portada automáticamente…`,
                     ].filter(Boolean).join("\n");
 
                     if (await shouldNotify("listing.generated")) {
                         await sendTelegram(notifText).catch(() => {});
                     }
+
+                    // Schedule a follow-up run to pick up the cover phase
+                    setTimeout(() => { agenda?.now("autopilot-run", {}).catch(() => {}); }, 8_000);
                 }
             } catch (e: any) {
                 io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error generando listing: ${e.message}` });
@@ -439,6 +463,83 @@ async function runPipeline(
                 if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
                     abort.aborted = true;
                     abort.reason = `${MAX_CONSECUTIVE_ERRORS} errores consecutivos en generación de listings`;
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⛔ ${abort.reason}. Deteniendo ciclo.` });
+                }
+            }
+            if (!abort.aborted) { processed++; stats.pipelineProcessed++; }
+            continue;
+        }
+
+        // ── cover → generate KDP cover image ─────────────────────────────────
+        if (phase === "cover" && !niche.coverUrl) {
+            emitStage(io, "cover", String(niche._id), niche.name);
+            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🎨 Generando portada para "${niche.name}"…` });
+
+            try {
+                const style = niche.styleCategory ?? "generic";
+                const listing = (niche.listings ?? [])[0];
+                const coverSubject = listing?.title
+                    ? listing.title.replace(/coloring book|coloring pages?/gi, "").trim()
+                    : niche.name;
+
+                const coverPrompt = buildCoverPrompt(coverSubject, style, niche.productType ?? "coloring-book");
+                const model = style === "anime" ? "flux-anime"
+                    : ["realistic", "wall-art", "affirmation", "geometric", "celestial"].includes(style) ? "flux-realism"
+                    : "flux";
+
+                const seed = Math.floor(Math.random() * 99999);
+                const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(coverPrompt)}?model=${model}&width=768&height=1024&nologo=true&seed=${seed}`;
+
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🖼️ Descargando portada desde Pollinations…` });
+
+                // Fetch the image buffer
+                const imgRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(90_000) });
+                if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
+                const arrayBuf = await imgRes.arrayBuffer();
+                const imageBuffer = Buffer.from(arrayBuf);
+
+                // Upload to Cloudinary in covers/ folder
+                const port = process.env.PORT || 3001;
+                const base = `http://localhost:${port}`;
+                const formData = new FormData();
+                formData.append("buffer", new Blob([imageBuffer], { type: "image/png" }), "cover.png");
+                formData.append("folder", "covers");
+                formData.append("nicheId", String(niche._id));
+
+                // Use the existing upload-buffer endpoint or fall back to storing the Pollinations URL directly
+                let coverUrl = pollinationsUrl;
+                try {
+                    const cldRes = await fetch(`${base}/cloudinary/upload-url`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ url: pollinationsUrl, nicheId: String(niche._id), folder: "covers" }),
+                    });
+                    if (cldRes.ok) {
+                        const cldData = await (cldRes as any).json();
+                        coverUrl = cldData.image?.url ?? pollinationsUrl;
+                    }
+                } catch { /* use Pollinations URL as fallback */ }
+
+                await Niche.findByIdAndUpdate(niche._id, {
+                    $set: { coverUrl, phase: "published" },
+                });
+                io?.emit("niches:updated");
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✅ Portada lista → "${niche.name}" PUBLICADO` });
+
+                if (await shouldNotify("pipeline.complete")) {
+                    await sendTelegram(
+                        `🎨 <b>Portada generada</b>\n\n` +
+                        `📚 <b>${niche.name}</b>\n\n` +
+                        `✅ <b>Pipeline completo</b> — listo para subir a KDP`
+                    ).catch(() => {});
+                }
+
+            } catch (e: any) {
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error generando portada: ${e.message}` });
+                consecutiveErrors++;
+                if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                    abort.aborted = true;
+                    abort.reason = `${MAX_CONSECUTIVE_ERRORS} errores consecutivos en generación de portada`;
                     io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⛔ ${abort.reason}. Deteniendo ciclo.` });
                 }
             }

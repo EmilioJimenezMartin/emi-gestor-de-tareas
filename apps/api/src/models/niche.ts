@@ -27,7 +27,8 @@ export interface INiche extends Document {
     notes: string;
     generatedPrompt: string;
     catalogIds: string[];
-    phase: "niche" | "catalog" | "pdf" | "published";
+    phase: "niche" | "catalog" | "seo" | "cover" | "published";
+    coverUrl?: string;
     publishedAt?: Date;
     asin?: string;
     etsyUrl?: string;
@@ -59,7 +60,8 @@ const NicheSchema = new Schema<INiche>(
         notes: { type: String, default: "" },
         generatedPrompt: { type: String, default: "" },
         catalogIds: [{ type: String }],
-        phase: { type: String, enum: ["niche", "catalog", "pdf", "published"], default: "niche" },
+        phase: { type: String, enum: ["niche", "catalog", "seo", "cover", "published"], default: "niche" },
+        coverUrl: { type: String },
         publishedAt: { type: Date },
         asin: { type: String, default: "" },
         etsyUrl: { type: String, default: "" },

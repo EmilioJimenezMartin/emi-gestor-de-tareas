@@ -4,11 +4,97 @@ import { Catalog } from "../models/catalog.js";
 import { getCloudinaryConfig, initCloudinary } from "../routes/cloudinary.js";
 import { activateNextQueued } from "../lib/catalog-queue.js";
 import { sendTelegram, shouldNotify } from "../lib/telegram.js";
+import sharp from "sharp";
 
 const JOB_NAME = "generate-catalog-image";
 const LOCK_LIFETIME_MS = 12 * 60 * 1000; // 12 min per job execution
 const AXIOS_TIMEOUT_MS = 120_000; // 2 min — per-request axios timeout
 const HARD_ABORT_MS = 8 * 60 * 1000; // 8 min — auto-skip if image hangs this long
+
+type QualityResult = { ok: boolean; score: number; reason?: string };
+
+async function analyzeImageQuality(buffer: Buffer, productType: string): Promise<QualityResult> {
+    try {
+        const image = sharp(buffer);
+        const { width = 0, height = 0, channels = 3 } = await image.metadata();
+        const totalPixels = width * height;
+        if (totalPixels === 0) return { ok: false, score: 0, reason: "Imagen sin dimensiones válidas" };
+
+        // Get raw pixel data (RGB, no alpha)
+        const raw = await image.removeAlpha().raw().toBuffer();
+        const pixelCount = raw.length / (channels > 3 ? 3 : channels);
+
+        if (productType === "coloring-book") {
+            // Expected: mostly white background with black lines
+            // Count pixels by brightness and color saturation
+            let whitePixels = 0;   // R,G,B all > 220
+            let blackPixels = 0;   // R,G,B all < 60
+            let colorPixels = 0;   // high saturation — sign of non-line-art
+            let blankSuspect = 0;  // nearly solid white/gray (no lines)
+
+            const step = channels > 3 ? 4 : 3;
+            for (let i = 0; i < raw.length; i += step) {
+                const r = raw[i], g = raw[i + 1], b = raw[i + 2];
+                const brightness = (r + g + b) / 3;
+                const maxC = Math.max(r, g, b);
+                const minC = Math.min(r, g, b);
+                const saturation = maxC > 0 ? (maxC - minC) / maxC : 0;
+
+                if (r > 220 && g > 220 && b > 220) whitePixels++;
+                else if (r < 60 && g < 60 && b < 60) blackPixels++;
+                else if (saturation > 0.3 && brightness < 220) colorPixels++;
+
+                if (brightness > 240) blankSuspect++;
+            }
+
+            const whitePct = whitePixels / pixelCount;
+            const blackPct = blackPixels / pixelCount;
+            const colorPct = colorPixels / pixelCount;
+            const blankPct = blankSuspect / pixelCount;
+
+            // Blank image: >98% near-white → failed generation
+            if (blankPct > 0.98) {
+                return { ok: false, score: 0, reason: `Imagen en blanco (${(blankPct * 100).toFixed(0)}% píxeles blancos)` };
+            }
+
+            // No black lines at all → wrong style
+            if (blackPct < 0.005) {
+                return { ok: false, score: 10, reason: `Sin líneas negras (${(blackPct * 100).toFixed(2)}%) — no es libro de colorear` };
+            }
+
+            // Too many color pixels → full color illustration, not line art
+            if (colorPct > 0.25) {
+                return { ok: false, score: 20, reason: `Imagen a color (${(colorPct * 100).toFixed(0)}% píxeles coloreados) — se esperaba línea B&W` };
+            }
+
+            // Score: higher is better. Ideal: lots of white + enough black + minimal color
+            const score = Math.round(
+                Math.min(whitePct * 60, 60) +          // up to 60 pts for white background
+                Math.min(blackPct * 1000, 30) +         // up to 30 pts for black lines
+                Math.max(10 - colorPct * 100, 0)        // up to 10 pts penalized by color
+            );
+
+            return { ok: true, score };
+        } else {
+            // Printable poster: just check it's not blank
+            let blankPixels = 0;
+            const step = channels > 3 ? 4 : 3;
+            for (let i = 0; i < raw.length; i += step) {
+                const r = raw[i], g = raw[i + 1], b = raw[i + 2];
+                if (r > 240 && g > 240 && b > 240) blankPixels++;
+            }
+            const blankPct = blankPixels / pixelCount;
+            if (blankPct > 0.97) {
+                return { ok: false, score: 0, reason: `Imagen en blanco (${(blankPct * 100).toFixed(0)}%)` };
+            }
+            return { ok: true, score: 80 };
+        }
+    } catch (e: any) {
+        // Quality check failed — don't block upload, just log
+        console.warn(`[quality-check] Error analizando imagen: ${e.message}`);
+        return { ok: true, score: 50, reason: "quality-check-skipped" };
+    }
+}
 
 async function checkAutoPilotContinue(tag: string, catalogId: string, nicheIds: string[], agenda: Agenda): Promise<void> {
     if (!nicheIds.length) return;
@@ -215,8 +301,15 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 }
             }
 
+            // Quality gate — analyze pixels before uploading
+            const quality = await analyzeImageQuality(imageBuffer, catalog.productType ?? "coloring-book");
+            console.log(`${tag} Quality: score=${quality.score} ok=${quality.ok}${quality.reason ? ` reason="${quality.reason}"` : ""}`);
+            if (!quality.ok) {
+                throw new Error(`Calidad insuficiente (score ${quality.score}): ${quality.reason}`);
+            }
+
             // Upload to Cloudinary
-            console.log(`${tag} Uploading to Cloudinary...`);
+            console.log(`${tag} Uploading to Cloudinary (quality score=${quality.score})...`);
             const config = await getCloudinaryConfig();
             if (!config) throw new Error("Cloudinary no configurado");
 
