@@ -981,6 +981,9 @@ export function KdpFactoryApp() {
     const [nicheDeleteId, setNicheDeleteId] = useState<string | null>(null);
     const [nicheStatusFilter, setNicheStatusFilter] = useState<"all" | NicheStatus>("all");
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban">("list");
+    const [studioSubTab, setStudioSubTab] = useState<"niches" | "radar">(() =>
+        (typeof window !== "undefined" && localStorage.getItem("kdp-studio-subtab") as "niches" | "radar") || "niches"
+    );
     const [nicheGeneratingId, setNicheGeneratingId] = useState<string | null>(null);
     const [nicheFormProductType, setNicheFormProductType] = useState<NicheProductType>("coloring-book");
     const [nicheFormStyles, setNicheFormStyles] = useState<NicheStyle[]>(["generic"]);
@@ -1004,7 +1007,7 @@ export function KdpFactoryApp() {
     const [kdpTemplateVaultSel, setKdpTemplateVaultSel] = useState<Set<number>>(new Set());
     const [kdpTemplateCatalogSel, setKdpTemplateCatalogSel] = useState<Set<string>>(new Set());
     const [kdpTemplateCloudSel, setKdpTemplateCloudSel] = useState<Set<number>>(new Set());
-    const [kdpTemplateRandom, setKdpTemplateRandom] = useState(false);
+    const [kdpTemplateRandom, setKdpTemplateRandom] = useState(true);
     // Feature: retry failed slots
     const [retryingCatalogId, setRetryingCatalogId] = useState<string | null>(null);
     // Feature: compare catalogs
@@ -3219,6 +3222,13 @@ export function KdpFactoryApp() {
 
         socket.on("catalogs:updated", () => {
             void fetchCatalogs();
+        });
+
+        socket.on("telegram:open-pdf", (data: { nicheId: string; nicheName: string; catalogIds: string[] }) => {
+            setKdpTemplateCatalogSel(new Set(data.catalogIds));
+            setKdpTemplateOpen(true);
+            changeTab("creation");
+            toast.success(`📄 PDF de "${data.nicheName}" — ${data.catalogIds.length} catálogo${data.catalogIds.length > 1 ? "s" : ""} pre-seleccionado${data.catalogIds.length > 1 ? "s" : ""}`, { duration: 6000 });
         });
 
         socket.on("telegram:notification", (data) => {
@@ -8018,10 +8028,29 @@ export function KdpFactoryApp() {
         );
     };
 
-    const renderStudio = () => (
+    const renderStudio = () => {
+        const switchStudioTab = (t: "niches" | "radar") => {
+            setStudioSubTab(t);
+            localStorage.setItem("kdp-studio-subtab", t);
+        };
+        return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6">
 
+            {/* ── Subnav ── */}
+            <div className="flex items-center gap-1.5 p-1 bg-white/[0.03] border border-white/8 rounded-2xl w-fit">
+                {([["niches", "Nichos", <Target size={12} key="t" />], ["radar", "Radar", <Search size={12} key="s" />]] as const).map(([id, label, icon]) => (
+                    <button
+                        key={id}
+                        onClick={() => switchStudioTab(id)}
+                        className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${studioSubTab === id ? "bg-white text-black shadow" : "text-neutral-500 hover:text-white"}`}
+                    >
+                        {icon}{label}
+                    </button>
+                ))}
+            </div>
+
             {/* ══ MIS NICHOS ══ */}
+            {studioSubTab === "niches" && <>
             <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
                 <div className="h-px w-full bg-gradient-to-r from-sky-500/80 via-cyan-400/40 to-transparent" />
                 <div className="p-6 space-y-6">
@@ -8710,8 +8739,10 @@ export function KdpFactoryApp() {
                 </div>
             </div>
 
+            </>}
+
             {/* ══ RADAR DE NICHOS — ETSY ══ */}
-            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+            {studioSubTab === "radar" && <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
                 <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent" />
                 <div className="p-6">
                     <NicheRadar apiUrl={API_BASE_URL} storageKey="RADAR_ETSY_RESULT" />
@@ -8728,10 +8759,11 @@ export function KdpFactoryApp() {
                         }}
                     />
                 </div>
-            </div>
+            </div>}
 
         </div>
-    );
+        );
+    };
 
     // ══ CONTENIDO TAB ══════════════════════════════════════════════════════════
     const renderContenido = () => {

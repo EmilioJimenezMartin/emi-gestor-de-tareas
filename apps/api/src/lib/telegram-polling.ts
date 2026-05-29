@@ -9,6 +9,8 @@ const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { section: "📚 Nichos" },
     { cmd: "/crear <code>nombre</code>", desc: "Crea nicho y lanza discovery" },
     { cmd: "/nichos",                    desc: "Resumen por estado y fase" },
+    { cmd: "/nicho <code>nombre</code>", desc: "Info detallada de un nicho" },
+    { cmd: "/pdf <code>nombre</code>",   desc: "Abre el PDF de un nicho en la app" },
     { section: "⚙️ Pipeline" },
     { cmd: "/run",                       desc: "Lanza Auto-Pilot ahora" },
     { cmd: "/status",                    desc: "Acciones de Telegram pendientes" },
@@ -312,6 +314,85 @@ async function processUpdate(update: any): Promise<void> {
                         await sendTelegram("❌ No se pudo lanzar el Auto-Pilot — agenda no disponible");
                     }
                 }
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        if (text.startsWith("/nicho ")) {
+            const searchName = normalized.slice(7).trim();
+            try {
+                const niche = await Niche.findOne({
+                    name: { $regex: new RegExp(searchName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") },
+                }).lean();
+                if (!niche) {
+                    await sendTelegram(`❌ No encontré ningún nicho con "<b>${searchName}</b>"`);
+                    return;
+                }
+                const { Catalog } = await import("../models/catalog.js");
+                const catalogs = await Catalog.find({ nicheIds: String((niche as any)._id) }).lean();
+                const totalImages = catalogs.reduce((s: number, c: any) => s + (c.images?.length ?? 0), 0);
+                const completedCats = catalogs.filter((c: any) => c.status === "completed").length;
+                const listingCount = ((niche as any).listings ?? []).length;
+                const phaseLabel: Record<string, string> = {
+                    niche: "🏭 Generando catálogos", catalog: "📦 Catálogos en revisión",
+                    pdf: "📄 Listo para PDF", published: "✅ Publicado",
+                };
+                const statusLabel: Record<string, string> = {
+                    found: "🔍 En cola de discovery", active: "⚡ Activo en pipeline",
+                    archived: "🗄️ Archivado", discarded: "🗑️ Descartado",
+                };
+                const lines = [
+                    `📚 <b>${(niche as any).name}</b>`,
+                    ``,
+                    `${statusLabel[(niche as any).status] ?? (niche as any).status}${(niche as any).autoPilotEnabled ? " · AutoPilot ON" : ""}`,
+                    (niche as any).phase ? phaseLabel[(niche as any).phase] ?? `Fase: ${(niche as any).phase}` : null,
+                    ``,
+                    `🖼️ <b>${totalImages}</b> imágenes · <b>${completedCats}/${catalogs.length}</b> catálogos`,
+                    listingCount > 0 ? `📝 <b>${listingCount}</b> listing${listingCount > 1 ? "s" : ""} SEO generado${listingCount > 1 ? "s" : ""}` : `📝 Sin listing SEO`,
+                    (niche as any).tags?.length > 0 ? `🏷️ ${((niche as any).tags as string[]).slice(0, 5).join(", ")}` : null,
+                    (niche as any).productType ? `📦 ${(niche as any).productType}` : null,
+                    (niche as any).description ? `\n💬 ${((niche as any).description as string).slice(0, 120)}` : null,
+                ].filter(Boolean).join("\n");
+                await sendTelegram(lines);
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        if (text.startsWith("/pdf ")) {
+            const searchName = normalized.slice(5).trim();
+            try {
+                const niche = await Niche.findOne({
+                    name: { $regex: new RegExp(searchName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") },
+                }).lean();
+                if (!niche) {
+                    await sendTelegram(`❌ No encontré ningún nicho con "<b>${searchName}</b>"`);
+                    return;
+                }
+                const { Catalog } = await import("../models/catalog.js");
+                const catalogs = await Catalog.find({
+                    nicheIds: String((niche as any)._id),
+                    status: "completed",
+                }).lean();
+                if (catalogs.length === 0) {
+                    await sendTelegram(`⚠️ <b>${(niche as any).name}</b> no tiene catálogos completados todavía`);
+                    return;
+                }
+                const totalImages = catalogs.reduce((s: number, c: any) => s + (c.images?.length ?? 0), 0);
+                _io?.emit("telegram:open-pdf", {
+                    nicheId: String((niche as any)._id),
+                    nicheName: (niche as any).name,
+                    catalogIds: catalogs.map((c: any) => String(c._id)),
+                });
+                await sendTelegram(
+                    `📄 <b>Generando PDF</b>\n` +
+                    `📚 <b>${(niche as any).name}</b>\n` +
+                    `🖼️ ${totalImages} imágenes de ${catalogs.length} catálogo${catalogs.length > 1 ? "s" : ""}\n\n` +
+                    `<i>Abre la app para continuar con el editor de PDF</i>`
+                );
             } catch (e: any) {
                 await sendTelegram(`❌ Error: ${e.message}`);
             }

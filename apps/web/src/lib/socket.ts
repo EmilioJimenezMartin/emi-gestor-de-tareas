@@ -36,6 +36,7 @@ type ServerToClientEvents = {
   "autopilot:stage": (payload: { stage: "discovery" | "prompt" | "sample" | "catalog" | "listing"; nicheId: string; nicheName: string }) => void;
   "niches:updated": () => void;
   "telegram:notification": (payload: { message: string; type?: "success" | "info" | "warning" | "error" }) => void;
+  "telegram:open-pdf": (payload: { nicheId: string; nicheName: string; catalogIds: string[] }) => void;
   "catalogs:updated": () => void;
 };
 
