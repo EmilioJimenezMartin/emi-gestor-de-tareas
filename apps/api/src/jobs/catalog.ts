@@ -6,7 +6,9 @@ import { activateNextQueued } from "../lib/catalog-queue.js";
 import { sendTelegram, shouldNotify } from "../lib/telegram.js";
 
 const JOB_NAME = "generate-catalog-image";
-const LOCK_LIFETIME_MS = 5 * 60 * 1000; // 5 min per job execution
+const LOCK_LIFETIME_MS = 12 * 60 * 1000; // 12 min per job execution
+const AXIOS_TIMEOUT_MS = 120_000; // 2 min — original per-request timeout
+const HARD_ABORT_MS = 10 * 60 * 1000; // 10 min — nuclear abort for truly hung connections
 
 export function defineCatalogJob(agenda: Agenda, io: any) {
     const handler = async (job: Job) => {
@@ -119,49 +121,72 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 const negParam = finalNegativePrompt ? `&negative=${encodeURIComponent(finalNegativePrompt)}` : "";
                 const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=${catalog.width}&height=${catalog.height}&seed=${seed}&model=${encodeURIComponent(modelParam)}&nologo=true&enhance=false${negParam}`;
                 console.log(`${tag} Calling Pollinations model=${modelParam}`);
-                const response = await axios.get(pollinationsUrl, {
-                    responseType: "arraybuffer",
-                    timeout: 120000,
-                    validateStatus: (s) => s < 500,
-                });
-                if (response.status !== 200) {
-                    throw new Error(`Pollinations HTTP ${response.status}`);
+                const abortCtrl = new AbortController();
+                const hardTimeout = setTimeout(() => abortCtrl.abort(), HARD_ABORT_MS);
+                try {
+                    const response = await axios.get(pollinationsUrl, {
+                        responseType: "arraybuffer",
+                        timeout: AXIOS_TIMEOUT_MS,
+                        signal: abortCtrl.signal,
+                        validateStatus: (s) => s < 500,
+                    });
+                    clearTimeout(hardTimeout);
+                    if (response.status !== 200) {
+                        throw new Error(`Pollinations HTTP ${response.status}`);
+                    }
+                    const contentType = (response.headers["content-type"] ?? "") as string;
+                    if (!contentType.startsWith("image/")) {
+                        const preview = Buffer.from(response.data).toString("utf8").slice(0, 300);
+                        throw new Error(`Pollinations devolvió ${contentType} en lugar de imagen: ${preview}`);
+                    }
+                    imageBuffer = Buffer.from(response.data);
+                    console.log(`${tag} Pollinations OK — ${imageBuffer.length} bytes`);
+                } catch (e: any) {
+                    clearTimeout(hardTimeout);
+                    if (e?.code === "ERR_CANCELED" || abortCtrl.signal.aborted) {
+                        throw new Error(`Pollinations hung (${HARD_ABORT_MS / 60000} min) — slot omitido`);
+                    }
+                    throw e;
                 }
-                const contentType = (response.headers["content-type"] ?? "") as string;
-                if (!contentType.startsWith("image/")) {
-                    const preview = Buffer.from(response.data).toString("utf8").slice(0, 300);
-                    throw new Error(`Pollinations devolvió ${contentType} en lugar de imagen: ${preview}`);
-                }
-                imageBuffer = Buffer.from(response.data);
-                console.log(`${tag} Pollinations OK — ${imageBuffer.length} bytes`);
             } else {
                 const port = process.env.PORT || 3001;
                 console.log(`${tag} Calling proxy: provider=${catalog.aiModel.provider} model=${catalog.aiModel.modelId}`);
-                const response = await axios.post(
-                    `http://localhost:${port}/ai/generate-image`,
-                    {
-                        prompt: finalPrompt,
-                        modelId: catalog.aiModel.modelId,
-                        provider: catalog.aiModel.provider,
-                        width: catalog.width,
-                        height: catalog.height,
-                        advancedParams: {
-                            ...(finalNegativePrompt ? { negativePrompt: finalNegativePrompt } : {}),
-                            ...(catalog.aiModel.provider === "Ideogram" ? { style: "ILLUSTRATION" } : {}),
+                const abortCtrl = new AbortController();
+                const hardTimeout = setTimeout(() => abortCtrl.abort(), HARD_ABORT_MS);
+                try {
+                    const response = await axios.post(
+                        `http://localhost:${port}/ai/generate-image`,
+                        {
+                            prompt: finalPrompt,
+                            modelId: catalog.aiModel.modelId,
+                            provider: catalog.aiModel.provider,
+                            width: catalog.width,
+                            height: catalog.height,
+                            advancedParams: {
+                                ...(finalNegativePrompt ? { negativePrompt: finalNegativePrompt } : {}),
+                                ...(catalog.aiModel.provider === "Ideogram" ? { style: "ILLUSTRATION" } : {}),
+                            },
                         },
-                    },
-                    { responseType: "arraybuffer", timeout: 120000 }
-                );
-                if (response.status !== 200) {
-                    throw new Error(`Proxy HTTP ${response.status}`);
+                        { responseType: "arraybuffer", timeout: AXIOS_TIMEOUT_MS, signal: abortCtrl.signal }
+                    );
+                    clearTimeout(hardTimeout);
+                    if (response.status !== 200) {
+                        throw new Error(`Proxy HTTP ${response.status}`);
+                    }
+                    const contentType = (response.headers["content-type"] ?? "") as string;
+                    if (!contentType.startsWith("image/")) {
+                        const preview = Buffer.from(response.data).toString("utf8").slice(0, 300);
+                        throw new Error(`Proxy devolvió ${contentType} en lugar de imagen: ${preview}`);
+                    }
+                    imageBuffer = Buffer.from(response.data);
+                    console.log(`${tag} Proxy OK — ${imageBuffer.length} bytes`);
+                } catch (e: any) {
+                    clearTimeout(hardTimeout);
+                    if (e?.code === "ERR_CANCELED" || abortCtrl.signal.aborted) {
+                        throw new Error(`Proxy hung (${HARD_ABORT_MS / 60000} min) — slot omitido`);
+                    }
+                    throw e;
                 }
-                const contentType = (response.headers["content-type"] ?? "") as string;
-                if (!contentType.startsWith("image/")) {
-                    const preview = Buffer.from(response.data).toString("utf8").slice(0, 300);
-                    throw new Error(`Proxy devolvió ${contentType} en lugar de imagen: ${preview}`);
-                }
-                imageBuffer = Buffer.from(response.data);
-                console.log(`${tag} Proxy OK — ${imageBuffer.length} bytes`);
             }
 
             // Upload to Cloudinary

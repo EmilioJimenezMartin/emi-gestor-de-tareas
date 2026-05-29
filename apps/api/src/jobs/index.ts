@@ -3,6 +3,7 @@ import { defineCatalogJob } from "./catalog.js";
 import { defineRadarJob } from "./radar.js";
 import { definePatternGenJob } from "./pattern-generation.js";
 import { defineAutoPilotJob, AUTOPILOT_JOB_NAME } from "./autopilot.js";
+import { defineCatalogWatchdog, scheduleWatchdog } from "./catalog-watchdog.js";
 export { AUTOPILOT_JOB_NAME };
 
 export function defineJobs(agenda: Agenda, io?: any) {
@@ -25,5 +26,8 @@ export function defineJobs(agenda: Agenda, io?: any) {
         defineRadarJob(agenda, io);
         definePatternGenJob(agenda, io);
         defineAutoPilotJob(agenda, io);
+        defineCatalogWatchdog(agenda, io);
     }
 }
+
+export { scheduleWatchdog };

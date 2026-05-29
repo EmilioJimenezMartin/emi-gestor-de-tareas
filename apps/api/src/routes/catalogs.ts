@@ -253,6 +253,76 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
         }
     });
 
+    // POST /catalogs/:id/skip-image — force-skip the current generating slot and immediately schedule the next
+    app.post("/catalogs/:id/skip-image", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const catalog = await Catalog.findById(request.params.id);
+            if (!catalog) return reply.status(404).send({ error: "Catálogo no encontrado" });
+            if (catalog.status === "cancelled" || catalog.status === "completed") {
+                return reply.status(400).send({ error: "El catálogo ya está finalizado" });
+            }
+            catalog.skippedImages = (catalog.skippedImages ?? 0) + 1;
+            const attempted = catalog.images.length + catalog.skippedImages;
+            const isComplete = attempted >= catalog.totalImages;
+            catalog.status = isComplete ? "completed" : "running";
+            catalog.lastError = "Slot omitido manualmente";
+            await catalog.save();
+
+            io?.emit("catalog:progress", {
+                catalogId: String(catalog._id),
+                status: catalog.status,
+                current: catalog.images.length,
+                total: catalog.totalImages,
+                skipped: catalog.skippedImages,
+                lastError: "Slot omitido manualmente",
+            });
+
+            if (isComplete) {
+                io?.emit("catalog:completed", { catalogId: String(catalog._id) });
+                try { const agenda = getAgenda(); void activateNextQueued(agenda, io); } catch { /* ok */ }
+            } else {
+                // Schedule next slot immediately
+                try {
+                    const agenda = getAgenda();
+                    await agenda.schedule("in 3 seconds", "generate-catalog-image", { catalogId: String(catalog._id) });
+                } catch { /* ok */ }
+            }
+            return reply.send({ ok: true, skippedImages: catalog.skippedImages, status: catalog.status });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // POST /catalogs/:id/force-complete — mark catalog complete with current images (give up on remaining)
+    app.post("/catalogs/:id/force-complete", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const catalog = await Catalog.findById(request.params.id);
+            if (!catalog) return reply.status(404).send({ error: "Catálogo no encontrado" });
+            if (catalog.status === "cancelled") return reply.status(400).send({ error: "El catálogo está cancelado" });
+            const remaining = catalog.totalImages - catalog.images.length - (catalog.skippedImages ?? 0);
+            catalog.skippedImages = (catalog.skippedImages ?? 0) + Math.max(0, remaining);
+            catalog.totalImages = catalog.images.length + (catalog.skippedImages ?? 0);
+            catalog.status = "completed";
+            catalog.lastError = remaining > 0 ? `Forzado a completar (${remaining} imgs omitidas)` : "";
+            await catalog.save();
+
+            io?.emit("catalog:completed", { catalogId: String(catalog._id) });
+            io?.emit("catalog:progress", {
+                catalogId: String(catalog._id),
+                status: "completed",
+                current: catalog.images.length,
+                total: catalog.totalImages,
+                skipped: catalog.skippedImages,
+            });
+            try { const agenda = getAgenda(); void activateNextQueued(agenda, io); } catch { /* ok */ }
+            return reply.send({ ok: true, images: catalog.images.length, skipped: catalog.skippedImages });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // POST /catalogs/:id/retry-failed — reset skipped slots and reschedule
     app.post("/catalogs/:id/retry-failed", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;

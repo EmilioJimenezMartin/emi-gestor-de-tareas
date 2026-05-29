@@ -77,6 +77,8 @@ import {
     Grid3x3,
     Library,
     Bell,
+    SkipForward,
+    CheckCheck,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -926,6 +928,8 @@ export function KdpFactoryApp() {
     const [deletingCatalogId, setDeletingCatalogId] = useState<string | null>(null);
     const [confirmDeleteCatalogId, setConfirmDeleteCatalogId] = useState<string | null>(null);
     const [confirmStopCatalogId, setConfirmStopCatalogId] = useState<string | null>(null);
+    const [skippingImageCatalogId, setSkippingImageCatalogId] = useState<string | null>(null);
+    const [forceCompletingCatalogId, setForceCompletingCatalogId] = useState<string | null>(null);
     const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
     const [confirmDeleteImageInfo, setConfirmDeleteImageInfo] = useState<{ catalogId: string; publicId: string } | null>(null);
     const [bulkDeleteCatalogId, setBulkDeleteCatalogId] = useState<string | null>(null);
@@ -1184,6 +1188,32 @@ export function KdpFactoryApp() {
             toast.info("Generación cancelada");
         } catch {
             toast.error("Error al cancelar");
+        }
+    };
+
+    const skipCatalogImage = async (id: string) => {
+        setSkippingImageCatalogId(id);
+        try {
+            const res = await fetch(`${API_BASE_URL}/catalogs/${id}/skip-image`, { method: "POST" });
+            if (!res.ok) throw new Error();
+            toast.info("Slot omitido — continuando con el siguiente");
+        } catch {
+            toast.error("Error al omitir imagen");
+        } finally {
+            setSkippingImageCatalogId(null);
+        }
+    };
+
+    const forceCompleteCatalog = async (id: string) => {
+        setForceCompletingCatalogId(id);
+        try {
+            const res = await fetch(`${API_BASE_URL}/catalogs/${id}/force-complete`, { method: "POST" });
+            if (!res.ok) throw new Error();
+            toast.success("Catálogo marcado como completado");
+        } catch {
+            toast.error("Error al forzar finalización");
+        } finally {
+            setForceCompletingCatalogId(null);
         }
     };
 
@@ -7108,6 +7138,32 @@ export function KdpFactoryApp() {
                                             </div>
                                             {/* Right: destructive actions */}
                                             <div className="flex items-center gap-1.5 shrink-0 pl-2 border-l border-white/[0.06]">
+                                                {catalog.status === "running" && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => skipCatalogImage(catalog._id)}
+                                                            disabled={skippingImageCatalogId === catalog._id}
+                                                            title="Saltar imagen actual y continuar con la siguiente"
+                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-all text-sm font-black uppercase tracking-widest disabled:opacity-50"
+                                                        >
+                                                            {skippingImageCatalogId === catalog._id
+                                                                ? <Loader2 size={11} className="animate-spin" />
+                                                                : <SkipForward size={11} />}
+                                                            Saltar
+                                                        </button>
+                                                        <button
+                                                            onClick={() => forceCompleteCatalog(catalog._id)}
+                                                            disabled={forceCompletingCatalogId === catalog._id}
+                                                            title="Marcar como completado con las imágenes generadas hasta ahora"
+                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-violet-500/10 text-violet-400 border border-violet-500/20 hover:bg-violet-500/20 transition-all text-sm font-black uppercase tracking-widest disabled:opacity-50"
+                                                        >
+                                                            {forceCompletingCatalogId === catalog._id
+                                                                ? <Loader2 size={11} className="animate-spin" />
+                                                                : <CheckCheck size={11} />}
+                                                            Forzar fin
+                                                        </button>
+                                                    </>
+                                                )}
                                                 {isActive && (
                                                     <button
                                                         onClick={() => setConfirmStopCatalogId(catalog._id)}
@@ -8829,7 +8885,7 @@ export function KdpFactoryApp() {
                 activeTab={activeTab}
                 onChange={(id) => changeTab(id as TabID)}
                 storageKey="kdp-active-tab"
-                glowing={apRunning}
+                glowing={apRunning || iaCatalogs.some(c => c.status === "running" || c.status === "pending")}
             />
 
             {/* Content Area Rendering Based on Active Tab */}

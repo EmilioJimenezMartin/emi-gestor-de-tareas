@@ -7,6 +7,7 @@ import type { Agenda } from "agenda";
 import { loadEnv } from "./lib/env.js";
 import { getMongoStatus, startMongo } from "./lib/mongo.js";
 import { initAgenda, startAgenda } from "./lib/agenda.js";
+import { scheduleWatchdog } from "./jobs/index.js";
 import { registerSocket } from "./lib/socket.js";
 import { registerItemRoutes } from "./routes/items.js";
 import { registerTaskRoutes } from "./routes/tasks.js";
@@ -253,6 +254,7 @@ const startAgendaOnce = async () => {
 
     agendaStarted = true;
     app.log.info("Agenda started.");
+    scheduleWatchdog(agenda).catch(e => app.log.error(e, "Failed to schedule catalog watchdog"));
   } catch (e) {
     app.log.error(e, "Agenda failed to start");
   }
