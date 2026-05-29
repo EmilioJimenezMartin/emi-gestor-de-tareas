@@ -22,6 +22,8 @@ import {
     Package,
     ShoppingBag,
     Store,
+    Send,
+    MessageCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { createApiSocket } from "@/lib/socket";
@@ -70,6 +72,12 @@ export default function AjustesPage() {
     const [etsyRedirectUri, setEtsyRedirectUri] = useState("");
     const [showEtsySecret, setShowEtsySecret] = useState(false);
 
+    // Telegram
+    const [telegramToken, setTelegramToken] = useState("");
+    const [telegramChatId, setTelegramChatId] = useState("");
+    const [showTelegramToken, setShowTelegramToken] = useState(false);
+    const [testingTelegram, setTestingTelegram] = useState(false);
+
     const apiUrl = useMemo(() => (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, ""), []);
 
     useEffect(() => {
@@ -103,6 +111,8 @@ export default function AjustesPage() {
                 if (map.has("ETSY_REDIRECT_URI")) setEtsyRedirectUri(map.get("ETSY_REDIRECT_URI"));
                 if (map.has("HUGGINGFACE_WRITE_TOKEN")) setHfWriteToken(map.get("HUGGINGFACE_WRITE_TOKEN"));
                 if (map.has("HUGGINGFACE_USERNAME")) setHfUsername(map.get("HUGGINGFACE_USERNAME"));
+                if (map.has("TELEGRAM_BOT_TOKEN")) setTelegramToken(map.get("TELEGRAM_BOT_TOKEN"));
+                if (map.has("TELEGRAM_CHAT_ID")) setTelegramChatId(map.get("TELEGRAM_CHAT_ID"));
             } catch (err) {
                 console.error(err);
                 toast.error("Error de red conectando con la API");
@@ -145,6 +155,8 @@ export default function AjustesPage() {
                 { key: "ETSY_REDIRECT_URI", value: etsyRedirectUri },
                 { key: "HUGGINGFACE_WRITE_TOKEN", value: hfWriteToken },
                 { key: "HUGGINGFACE_USERNAME", value: hfUsername },
+                { key: "TELEGRAM_BOT_TOKEN", value: telegramToken },
+                { key: "TELEGRAM_CHAT_ID", value: telegramChatId },
             ];
             const res = await fetch(`${apiUrl}/settings`, {
                 method: "PATCH",
@@ -166,6 +178,20 @@ export default function AjustesPage() {
     const handleProviderChange = (provider: string, model: string) => {
         setDefaultProvider(provider);
         setDefaultModel(model);
+    };
+
+    const testTelegram = async () => {
+        setTestingTelegram(true);
+        try {
+            await handleSave();
+            const res = await fetch(`${apiUrl}/autopilot/test-telegram`, { method: "POST" });
+            if (res.ok) toast.success("Mensaje de prueba enviado ✓");
+            else toast.error("Error — revisa el token y el Chat ID");
+        } catch {
+            toast.error("Error de conexión");
+        } finally {
+            setTestingTelegram(false);
+        }
     };
 
     return (
@@ -982,6 +1008,92 @@ export default function AjustesPage() {
                                 <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
                                     {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
                                 </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* Telegram Notifications */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Notificaciones</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-sky-500/10 text-sky-400 border-sky-500/20">TELEGRAM</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/20">
+                                    <MessageCircle size={22} />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Telegram Bot</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Avisos de pipeline · errores de API · resumen de scraping</p>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-sky-500/20 bg-sky-500/[0.04] p-4 space-y-3">
+                                <p className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Cómo configurarlo</p>
+                                <div className="space-y-2">
+                                    {[
+                                        { step: "1", title: "Crea el bot", desc: "Abre Telegram, busca @BotFather y escribe /newbot. Te dará el token." },
+                                        { step: "2", title: "Obtén tu Chat ID", desc: "Envía un mensaje al bot. Luego abre api.telegram.org/bot<TOKEN>/getUpdates y busca «chat»→«id»." },
+                                        { step: "3", title: "Pega y prueba", desc: "Guarda el token y el chat ID. Pulsa «Probar envío» para verificar." },
+                                    ].map(s => (
+                                        <div key={s.step} className="flex gap-3">
+                                            <span className="w-5 h-5 rounded-full bg-sky-500/15 border border-sky-500/25 text-sky-400 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">{s.step}</span>
+                                            <div>
+                                                <p className="text-xs font-black text-white">{s.title}</p>
+                                                <p className="text-[11px] text-neutral-500 mt-0.5 leading-relaxed">{s.desc}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">TELEGRAM_BOT_TOKEN</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showTelegramToken ? "text" : "password"}
+                                            value={telegramToken}
+                                            onChange={e => setTelegramToken(e.target.value)}
+                                            className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-sky-500/40 transition-all"
+                                            placeholder="123456789:ABCDefGhIJKlmNoPQRsTUVwxyZ"
+                                        />
+                                        <button type="button" onClick={() => setShowTelegramToken(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                            {showTelegramToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">TELEGRAM_CHAT_ID</label>
+                                    <input
+                                        type="text"
+                                        value={telegramChatId}
+                                        onChange={e => setTelegramChatId(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-mono text-white outline-none focus:border-sky-500/40 transition-all"
+                                        placeholder="-1001234567890"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row items-center gap-3 border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="w-full sm:w-fit font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                                <button
+                                    onClick={() => void testTelegram()}
+                                    disabled={testingTelegram || !telegramToken || !telegramChatId}
+                                    className="w-full sm:w-fit h-10 px-6 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 hover:bg-sky-500/20 transition-all text-[10px] font-black uppercase tracking-widest disabled:opacity-40 flex items-center justify-center gap-2"
+                                >
+                                    {testingTelegram ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                                    Probar envío
+                                </button>
+                                <a href="https://core.telegram.org/bots#how-do-i-create-a-bot" target="_blank" rel="noopener noreferrer"
+                                    className="text-[10px] font-black text-sky-500/60 hover:text-sky-400 transition-colors ml-auto">
+                                    Documentación oficial →
+                                </a>
                             </div>
                         </div>
                     </Card>

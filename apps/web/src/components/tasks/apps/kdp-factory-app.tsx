@@ -76,6 +76,7 @@ import {
     Eye,
     Grid3x3,
     Library,
+    Bell,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -993,9 +994,8 @@ export function KdpFactoryApp() {
     const [apMaxNiches, setApMaxNiches] = useState("3");
     const [apScheduled, setApScheduled] = useState(false);
     const [apRunning, setApRunning] = useState(false);
-    const [telegramToken, setTelegramToken] = useState("");
-    const [telegramChatId, setTelegramChatId] = useState("");
-    const [testingTelegram, setTestingTelegram] = useState(false);
+    const [apCurrentNiche, setApCurrentNiche] = useState<string | null>(null);
+    const [apLogs, setApLogs] = useState<{ nicheId: string; message: string; ts: number }[]>([]);
     // Scheduler UI state
     const [apDays, setApDays] = useState<Set<number>>(new Set([1, 3, 5])); // Mon Wed Fri
     const [apHour, setApHour] = useState(9);
@@ -1007,6 +1007,16 @@ export function KdpFactoryApp() {
     const [apRules, setApRules] = useState<APRule[]>([]);
     const [showRuleForm, setShowRuleForm] = useState(false);
     const [ruleDraft, setRuleDraft] = useState<Partial<APRule>>({ days: [1], platform: "amazon-kdp", query: "", mode: "niche-search", enabled: true });
+    // Notification events
+    type NotifEvent = { id: string; label: string; desc: string; icon: string; enabled: boolean };
+    const [notifEvents, setNotifEvents] = useState<NotifEvent[]>([
+        { id: "pipeline.complete",   label: "Pipeline completado",      desc: "Un nicho avanza de fase: catálogos → PDF → publicado",          icon: "✅", enabled: true  },
+        { id: "scraping.summary",    label: "Resumen de scraping",      desc: "Resultado de cada búsqueda del radar de nichos",                 icon: "🔍", enabled: true  },
+        { id: "api.error.quota",     label: "Error API / cuota",        desc: "Límite excedido en Google, HF, Groq u OpenRouter",              icon: "⚠️", enabled: true  },
+        { id: "catalog.ready",       label: "Catálogo listo",           desc: "Todas las imágenes de un catálogo generadas con éxito",         icon: "🖼️", enabled: true  },
+        { id: "listing.generated",   label: "Listing SEO generado",     desc: "Título, keywords y descripción KDP listos para publicar",       icon: "📝", enabled: false },
+        { id: "autopilot.run",       label: "Ciclo Auto-Pilot",         desc: "Inicio y fin de cada ejecución programada del Auto-Pilot",      icon: "🤖", enabled: false },
+    ]);
     const catalogSocketRef = useRef<ReturnType<typeof createApiSocket> | null>(null);
     const catalogsListRef = useRef<HTMLDivElement>(null);
     const [collapsedCompleted, setCollapsedCompleted] = useState(true);
@@ -1565,16 +1575,17 @@ export function KdpFactoryApp() {
 
     const runAutoPilotNow = async () => {
         setApRunning(true);
+        setApLogs([]);
         try {
             const res = await fetch(`${API_BASE_URL}/autopilot/run`, { method: "POST" });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error ?? "Error");
-            toast.success("Auto-Pilot lanzado");
+            toast.success("Auto-Pilot lanzado — esperando logs…");
         } catch (e: any) {
-            toast.error(e.message ?? "Error al lanzar Auto-Pilot");
-        } finally {
             setApRunning(false);
+            toast.error(e.message ?? "Error al lanzar Auto-Pilot");
         }
+        // apRunning is cleared by the autopilot:done socket event
     };
 
     const buildCron = (): string => {
@@ -1586,11 +1597,18 @@ export function KdpFactoryApp() {
     const scheduleAutoPilot = async () => {
         try {
             const cron = buildCron();
+            // Save limits alongside schedule
+            const limitPairs = [
+                { key: "AUTOPILOT_CATALOGS_PER_NICHE", value: apCatalogsPer },
+                { key: "AUTOPILOT_IMAGES_PER_CATALOG", value: apImagesPerCatalog },
+                { key: "AUTOPILOT_MAX_NICHES", value: apMaxNiches },
+            ];
+            await Promise.all(limitPairs.map(p => fetch(`${API_BASE_URL}/settings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
             const res = await fetch(`${API_BASE_URL}/autopilot/schedule`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cron }) });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error ?? "Error");
             setApScheduled(true);
-            toast.success(`Auto-Pilot programado`);
+            toast.success(`Auto-Pilot programado · ${cron}`);
         } catch (e: any) {
             toast.error(e.message ?? "Error al programar");
         }
@@ -1598,7 +1616,9 @@ export function KdpFactoryApp() {
 
     const saveApRules = async (rules: APRule[]) => {
         setApRules(rules);
-        await fetch(`${API_BASE_URL}/settings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: "AUTOPILOT_RULES", value: JSON.stringify(rules) }) }).catch(() => {});
+        await fetch(`${API_BASE_URL}/settings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: "AUTOPILOT_RULES", value: JSON.stringify(rules) }) })
+            .then(r => { if (!r.ok) throw new Error("Error al guardar reglas"); })
+            .catch(e => toast.error(e.message));
     };
 
     const addRule = () => {
@@ -1635,8 +1655,6 @@ export function KdpFactoryApp() {
                 { key: "AUTOPILOT_CATALOGS_PER_NICHE", value: apCatalogsPer },
                 { key: "AUTOPILOT_IMAGES_PER_CATALOG", value: apImagesPerCatalog },
                 { key: "AUTOPILOT_MAX_NICHES", value: apMaxNiches },
-                { key: "TELEGRAM_BOT_TOKEN", value: telegramToken },
-                { key: "TELEGRAM_CHAT_ID", value: telegramChatId },
             ];
             await Promise.all(pairs.map(p => fetch(`${API_BASE_URL}/settings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
             toast.success("Configuración guardada");
@@ -1645,19 +1663,11 @@ export function KdpFactoryApp() {
         }
     };
 
-    const testTelegram = async () => {
-        setTestingTelegram(true);
-        try {
-            await saveAutoPilotSettings();
-            const res = await fetch(`${API_BASE_URL}/autopilot/test-telegram`, { method: "POST" });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error ?? "Error");
-            toast.success("Mensaje de prueba enviado a Telegram ✓");
-        } catch (e: any) {
-            toast.error(e.message ?? "Error — revisa el token y chat ID");
-        } finally {
-            setTestingTelegram(false);
-        }
+    const saveNotifEvents = async (events: NotifEvent[]) => {
+        setNotifEvents(events);
+        await fetch(`${API_BASE_URL}/settings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: "NOTIFICATION_RULES", value: JSON.stringify(events) }) })
+            .then(r => { if (!r.ok) throw new Error("Error al guardar reglas"); })
+            .catch(e => toast.error(e.message));
     };
 
     const retryFailedSlots = async (catalogId: string) => {
@@ -2895,6 +2905,43 @@ export function KdpFactoryApp() {
                     setFavorites(map);
                 }
 
+                // Autopilot rules + notification rules
+                const apRulesFound = (data.settings ?? []).find((s: any) => s.key === "AUTOPILOT_RULES");
+                if (apRulesFound?.value) { try { const r = JSON.parse(apRulesFound.value); if (Array.isArray(r)) setApRules(r); } catch { } }
+                const notifFound = (data.settings ?? []).find((s: any) => s.key === "NOTIFICATION_RULES");
+                if (notifFound?.value) { try { const n = JSON.parse(notifFound.value); if (Array.isArray(n) && n.length > 0) setNotifEvents(n); } catch { } }
+
+                // Autopilot numeric limits
+                const settingsMap = new Map<string, string>((data.settings ?? []).map((s: any) => [s.key, s.value]));
+                if (settingsMap.has("AUTOPILOT_CATALOGS_PER_NICHE")) setApCatalogsPer(settingsMap.get("AUTOPILOT_CATALOGS_PER_NICHE")!);
+                if (settingsMap.has("AUTOPILOT_IMAGES_PER_CATALOG")) setApImagesPerCatalog(settingsMap.get("AUTOPILOT_IMAGES_PER_CATALOG")!);
+                if (settingsMap.has("AUTOPILOT_MAX_NICHES")) setApMaxNiches(settingsMap.get("AUTOPILOT_MAX_NICHES")!);
+
+                // Autopilot schedule — restore cron UI state
+                const savedCron = settingsMap.get("AUTOPILOT_CRON") ?? "";
+                if (savedCron.trim()) {
+                    setApScheduled(true);
+                    const parts = savedCron.trim().split(/\s+/);
+                    if (parts.length >= 5) {
+                        const [cronMin, cronHour, , , cronDays] = parts;
+                        if (cronHour.startsWith("*/")) {
+                            setApFreqMode("interval");
+                            setApIntervalHours(cronHour.slice(2));
+                            setApMinute(cronMin);
+                        } else {
+                            setApFreqMode("specific");
+                            setApHour(parseInt(cronHour) || 9);
+                            setApMinute(cronMin);
+                            if (cronDays && cronDays !== "*") {
+                                const days = cronDays.split(",").map(d => { const n = parseInt(d); return n === 7 ? 0 : n; }).filter(n => !isNaN(n));
+                                setApDays(new Set(days));
+                            }
+                        }
+                    }
+                } else {
+                    setApScheduled(false);
+                }
+
                 // Book drafts (multi-draft)
                 const draftsFound = (data.settings ?? []).find((s: any) => s.key === "kdp-book-drafts");
                 if (draftsFound?.value && Array.isArray(draftsFound.value) && draftsFound.value.length > 0) {
@@ -3013,6 +3060,20 @@ export function KdpFactoryApp() {
                 prev.map((c) => (c._id === data.catalogId ? { ...c, status: "failed", lastError: data.error } : c))
             );
             toast.error(`Error en catálogo: ${data.error}`);
+        });
+
+        socket.on("autopilot:log", (data: { nicheId: string; message: string }) => {
+            setApRunning(true);
+            setApCurrentNiche(data.nicheId);
+            setApLogs(prev => [...prev.slice(-49), { nicheId: data.nicheId, message: data.message, ts: Date.now() }]);
+        });
+
+        socket.on("autopilot:done", (data: { processed: number; timestamp?: string }) => {
+            setApRunning(false);
+            setApCurrentNiche(null);
+            const msg = `✅ Completado · ${data.processed} nicho${data.processed !== 1 ? "s" : ""} procesado${data.processed !== 1 ? "s" : ""}`;
+            setApLogs(prev => [...prev.slice(-49), { nicheId: "", message: msg, ts: Date.now() }]);
+            toast.success(msg);
         });
 
         return () => {
@@ -5103,7 +5164,48 @@ export function KdpFactoryApp() {
                     </Card>
                 </div>
 
-                {/* ─ Reglas ─ */}
+                {/* ─ Live status panel ─ */}
+                {(apRunning || apLogs.length > 0) && (
+                    <Card variant="outline" className={`p-4 overflow-hidden relative transition-all ${apRunning ? "border-amber-500/25 bg-amber-500/[0.03]" : "border-white/5 bg-white/[0.02]"}`}>
+                        <div className={`absolute -right-3 -top-3 w-16 h-16 blur-2xl rounded-full transition-all ${apRunning ? "bg-amber-500/12" : "bg-white/[0.02]"}`} />
+                        <div className="flex items-center gap-2 mb-3 relative">
+                            {apRunning ? (
+                                <>
+                                    <span className="relative flex h-2 w-2 shrink-0">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
+                                    </span>
+                                    <span className="text-[11px] font-black uppercase tracking-widest text-amber-400">Ejecutando</span>
+                                    {apCurrentNiche && (
+                                        <span className="text-[11px] text-neutral-500 truncate">
+                                            · {niches.find(n => n._id === apCurrentNiche)?.name ?? apCurrentNiche}
+                                        </span>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    <span className="w-2 h-2 rounded-full bg-neutral-700 shrink-0" />
+                                    <span className="text-[11px] font-black uppercase tracking-widest text-neutral-600">Última ejecución</span>
+                                </>
+                            )}
+                            <button onClick={() => setApLogs([])} className="ml-auto p-1 rounded-lg text-neutral-700 hover:text-neutral-500 hover:bg-white/5 transition-all" title="Limpiar log">
+                                <X size={10} />
+                            </button>
+                        </div>
+                        <div className="space-y-1 max-h-36 overflow-y-auto">
+                            {[...apLogs].reverse().map((log, i) => (
+                                <div key={i} className="flex items-start gap-2">
+                                    <span className="text-[10px] font-mono text-neutral-700 shrink-0 mt-0.5 tabular-nums">
+                                        {new Date(log.ts).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                    </span>
+                                    <span className="text-[11px] text-neutral-400 leading-snug">{log.message}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+                )}
+
+                {/* ─ Reglas de búsqueda (cron scraper) ─ */}
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
                         <SectionHeader icon={<BookOpen size={13} />} title="Reglas de búsqueda" subtitle="Qué busca el scraper cada día y dónde" color="violet" size="sm" />
@@ -5113,7 +5215,6 @@ export function KdpFactoryApp() {
                         </button>
                     </div>
 
-                    {/* Rule form */}
                     {showRuleForm && (
                         <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.04] p-4 space-y-4">
                             <p className="text-[10px] font-black uppercase tracking-widest text-violet-400">Nueva regla</p>
@@ -5152,7 +5253,7 @@ export function KdpFactoryApp() {
                             </div>
                             <div className="flex gap-2">
                                 <button onClick={addRule} className="h-8 px-4 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 hover:bg-violet-500/20 transition-all text-[10px] font-black uppercase tracking-widest">
-                                    Añadir regla
+                                    Añadir
                                 </button>
                                 <button onClick={() => setShowRuleForm(false)} className="h-8 px-4 rounded-xl border border-white/10 text-neutral-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest">
                                     Cancelar
@@ -5161,24 +5262,21 @@ export function KdpFactoryApp() {
                         </div>
                     )}
 
-                    {/* Rules list */}
                     {apRules.length === 0 ? (
-                        <div className="rounded-2xl border border-dashed border-white/8 bg-white/[0.01] p-8 text-center">
-                            <p className="text-sm text-neutral-600">Sin reglas — el scraper no sabrá qué buscar ni cuándo</p>
-                            <p className="text-[11px] text-neutral-700 mt-1">Añade al menos una regla para que el Auto-Pilot funcione</p>
+                        <div className="rounded-2xl border border-dashed border-white/8 bg-white/[0.01] p-6 text-center">
+                            <p className="text-sm text-neutral-600">Sin reglas de búsqueda</p>
+                            <p className="text-[11px] text-neutral-700 mt-1">Añade una para que el Auto-Pilot sepa qué buscar y cuándo</p>
                         </div>
                     ) : (
                         <div className="space-y-2">
                             {apRules.map(rule => {
                                 const plat = PLATFORM_OPTIONS.find(p => p.id === rule.platform);
                                 return (
-                                    <div key={rule.id} className="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 hover:bg-white/[0.04] transition-all">
+                                    <div key={rule.id} className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition-all ${rule.enabled ? "border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.04]" : "border-white/[0.04] bg-white/[0.01] opacity-50"}`}>
                                         <div className="flex gap-0.5 shrink-0">
                                             {DAY_LABELS.map((d, i) => {
                                                 const idx = i + 1 > 6 ? 0 : i + 1;
-                                                return (
-                                                    <span key={i} className={`w-5 h-5 rounded-md text-[9px] font-black flex items-center justify-center ${rule.days.includes(idx) ? "bg-violet-500/20 text-violet-400" : "text-neutral-800"}`}>{d}</span>
-                                                );
+                                                return <span key={i} className={`w-5 h-5 rounded-md text-[9px] font-black flex items-center justify-center ${rule.days.includes(idx) ? "bg-violet-500/20 text-violet-400" : "text-neutral-800"}`}>{d}</span>;
                                             })}
                                         </div>
                                         <span className="text-base shrink-0">{plat?.icon ?? "🔍"}</span>
@@ -5186,6 +5284,13 @@ export function KdpFactoryApp() {
                                             <p className="text-sm font-black text-white truncate">{rule.query}</p>
                                             <p className="text-[10px] text-neutral-600">{plat?.label}</p>
                                         </div>
+                                        {/* Toggle enable/disable */}
+                                        <button onClick={() => void saveApRules(apRules.map(r => r.id === rule.id ? { ...r, enabled: !r.enabled } : r))}
+                                            title={rule.enabled ? "Desactivar" : "Activar"}
+                                            className={`p-1.5 rounded-lg transition-all ${rule.enabled ? "text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10" : "text-neutral-700 hover:text-emerald-500 hover:bg-emerald-500/10"}`}>
+                                            <CheckCircle2 size={13} />
+                                        </button>
+                                        {/* Delete */}
                                         <button onClick={() => void saveApRules(apRules.filter(r => r.id !== rule.id))}
                                             className="p-1.5 rounded-lg text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all">
                                             <Trash2 size={12} />
@@ -5198,59 +5303,44 @@ export function KdpFactoryApp() {
                 </div>
             </section>
 
-            {/* ── TELEGRAM ────────────────────────────────────────────────── */}
+            {/* ══ REGLAS DE NOTIFICACIÓN ══════════════════════════════════ */}
             <section className="space-y-4">
-                <SectionHeader icon={<Activity size={15} />} title="Notificaciones Telegram" subtitle="Recibe avisos de cada paso del pipeline en tu móvil" color="sky" size="sm" />
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 flex flex-col gap-4">
-                        <div className="space-y-3">
-                            <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-1.5">Bot Token</p>
-                                <input value={telegramToken} onChange={e => setTelegramToken(e.target.value)}
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-sky-500/40 transition-all"
-                                    placeholder="123456789:ABCDefGhIJKlmNoPQRsTUVwxyZ" />
-                            </div>
-                            <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-1.5">Chat ID</p>
-                                <input value={telegramChatId} onChange={e => setTelegramChatId(e.target.value)}
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-sky-500/40 transition-all"
-                                    placeholder="-1001234567890" />
-                            </div>
-                        </div>
-                        <div className="flex gap-2">
-                            <button onClick={() => void saveAutoPilotSettings()} className="flex-1 h-9 rounded-xl bg-white/[0.03] border border-white/8 text-[10px] font-black uppercase tracking-widest text-neutral-500 hover:text-white hover:bg-white/8 transition-all">
-                                Guardar
-                            </button>
-                            <button onClick={() => void testTelegram()} disabled={testingTelegram}
-                                className="flex-1 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 hover:bg-sky-500/20 transition-all text-[10px] font-black uppercase tracking-widest disabled:opacity-50 flex items-center justify-center gap-1.5">
-                                {testingTelegram ? <span className="w-3 h-3 rounded-full border border-sky-400 border-t-transparent animate-spin" /> : null}
-                                Probar envío
-                            </button>
-                        </div>
-                    </Card>
-                    {/* Instructions */}
-                    <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 flex flex-col gap-3">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Cómo configurarlo</p>
-                        <div className="space-y-3">
-                            {[
-                                { step: "1", title: "Crea el bot", desc: "Abre Telegram y busca @BotFather. Escribe /newbot y sigue los pasos. Te dará el token." },
-                                { step: "2", title: "Obtén tu Chat ID", desc: "Envía un mensaje a tu bot. Luego abre: api.telegram.org/bot<TOKEN>/getUpdates y busca «chat»→«id»." },
-                                { step: "3", title: "Pega y prueba", desc: "Copia el token y el chat ID aquí y pulsa «Probar envío». Deberías recibir un mensaje." },
-                            ].map(s => (
-                                <div key={s.step} className="flex gap-3">
-                                    <span className="w-5 h-5 rounded-full bg-sky-500/15 border border-sky-500/20 text-sky-400 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">{s.step}</span>
-                                    <div>
-                                        <p className="text-sm font-black text-white">{s.title}</p>
-                                        <p className="text-[11px] text-neutral-500 mt-0.5 leading-relaxed">{s.desc}</p>
-                                    </div>
+                <div className="flex items-center justify-between gap-2">
+                    <SectionHeader icon={<Bell size={13} />} title="Reglas de notificación" subtitle="Qué eventos disparan un aviso en Telegram · configura el canal en Ajustes" color="sky" size="sm" />
+                </div>
+
+                {/* System event rules */}
+                <Card variant="outline" className="border-white/5 bg-white/[0.01] overflow-hidden">
+                    <div className="px-5 py-3 border-b border-white/[0.05]">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Eventos del sistema</p>
+                    </div>
+                    <div className="divide-y divide-white/[0.04]">
+                        {notifEvents.map(ev => (
+                            <div key={ev.id} className={`flex items-center gap-4 px-5 py-3.5 transition-all ${ev.enabled ? "opacity-100" : "opacity-40"}`}>
+                                <span className="text-base shrink-0">{ev.icon}</span>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-black text-white">{ev.label}</p>
+                                    <p className="text-[11px] text-neutral-500 mt-0.5">{ev.desc}</p>
                                 </div>
-                            ))}
-                        </div>
-                        <a href="https://core.telegram.org/bots#how-do-i-create-a-bot" target="_blank" rel="noopener noreferrer"
-                            className="mt-auto flex items-center gap-1 text-[10px] font-black text-sky-500 hover:text-sky-400 transition-colors">
-                            <ExternalLink size={9} /> Documentación oficial de Telegram Bots
-                        </a>
-                    </Card>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {ev.enabled && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">activo</span>}
+                                    <button
+                                        onClick={() => void saveNotifEvents(notifEvents.map(e => e.id === ev.id ? { ...e, enabled: !e.enabled } : e))}
+                                        className={`relative w-9 h-5 rounded-full border transition-all duration-200 ${ev.enabled ? "bg-emerald-500/20 border-emerald-500/40" : "bg-white/[0.04] border-white/10"}`}>
+                                        <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-all duration-200 ${ev.enabled ? "left-4 bg-emerald-400" : "left-0.5 bg-neutral-600"}`} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+
+                <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-sky-500/[0.04] border border-sky-500/15">
+                    <Bell size={12} className="text-sky-500 shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-neutral-500 leading-relaxed">
+                        Para recibir notificaciones configura el <span className="text-sky-400 font-black">Bot Token</span> y el <span className="text-sky-400 font-black">Chat ID</span> de Telegram en{" "}
+                        <span className="text-white font-black">Ajustes → Notificaciones</span>.
+                    </p>
                 </div>
             </section>
 
@@ -7248,14 +7338,14 @@ export function KdpFactoryApp() {
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-8">
 
                 {/* Header */}
-                <div className="flex items-start justify-between gap-4">
-                    <div>
-                        <h2 className="text-3xl font-black text-white tracking-tight">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                             <span className="bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">Factory</span>
                         </h2>
                         <p className="text-sm text-neutral-500 mt-1">Herramientas de producción · libros, zips, contenido y print-on-demand</p>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 flex-wrap">
                         <a
                             href="https://dashboard.gelato.com/price-navigator/prices"
                             target="_blank"
@@ -7268,9 +7358,9 @@ export function KdpFactoryApp() {
                             href="https://dashboard.gelato.com/price-navigator/prices"
                             target="_blank"
                             rel="noreferrer"
-                            className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-orange-500/20 to-amber-500/20 hover:from-orange-500/30 hover:to-amber-500/30 border border-orange-500/30 text-orange-300 font-bold text-sm transition-all shadow-lg shadow-orange-500/10"
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-orange-500/20 to-amber-500/20 hover:from-orange-500/30 hover:to-amber-500/30 border border-orange-500/30 text-orange-300 font-bold text-sm transition-all shadow-lg shadow-orange-500/10"
                         >
-                            <ExternalLink size={15} /> Gelato Dashboard
+                            <ExternalLink size={14} /> Gelato Dashboard
                         </a>
                     </div>
                 </div>
@@ -8196,7 +8286,7 @@ export function KdpFactoryApp() {
         const nichesWithListings = niches.filter(n => (n.listings?.length ?? 0) > 0);
 
         return (
-            <div className="grid lg:grid-cols-[420px_1fr] gap-6 items-start mt-12 pt-8 border-t border-white/[0.06]">
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] gap-6 items-start mt-12 pt-8 border-t border-white/[0.06]">
                 {/* ─ LEFT: Inline content generator ─ */}
                 <div className="lg:sticky lg:top-6 rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
                     <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent" />

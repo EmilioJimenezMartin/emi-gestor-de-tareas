@@ -16,6 +16,22 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         }
     });
 
+    // POST /settings — upsert a single { key, value } pair
+    app.post("/settings", async (request: any, reply) => {
+        if (mongoose.connection.readyState !== 1) {
+            return reply.status(503).send({ error: "MongoDB not connected" });
+        }
+        try {
+            const { key, value } = request.body as { key: string; value: unknown };
+            if (!key) return reply.status(400).send({ error: "key required" });
+            await Settings.findOneAndUpdate({ key }, { key, value }, { upsert: true, new: true });
+            return reply.send({ success: true });
+        } catch (error) {
+            app.log.error(error);
+            return reply.status(500).send({ error: "Failed to save setting" });
+        }
+    });
+
     app.patch("/settings", async (request: any, reply) => {
         if (mongoose.connection.readyState !== 1) {
             return reply.status(503).send({ error: "MongoDB not connected" });

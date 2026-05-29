@@ -4,12 +4,16 @@ async function getTelegramConfig(): Promise<{ botToken: string; chatId: string }
     try {
         const rows = await Settings.find({ key: { $in: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"] } }).lean();
         const map = new Map((rows as any[]).map((r) => [r.key, r.value]));
-        const botToken = (map.get("TELEGRAM_BOT_TOKEN") as string | undefined)?.trim() ?? "";
-        const chatId = (map.get("TELEGRAM_CHAT_ID") as string | undefined)?.trim() ?? "";
+        const botToken = ((map.get("TELEGRAM_BOT_TOKEN") as string | undefined)?.trim() || process.env.TELEGRAM_BOT_TOKEN?.trim()) ?? "";
+        const chatId = ((map.get("TELEGRAM_CHAT_ID") as string | undefined)?.trim() || process.env.TELEGRAM_CHAT_ID?.trim()) ?? "";
         if (!botToken || !chatId) return null;
         return { botToken, chatId };
     } catch {
-        return null;
+        // Fallback to env vars if DB is unavailable
+        const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim() ?? "";
+        const chatId = process.env.TELEGRAM_CHAT_ID?.trim() ?? "";
+        if (!botToken || !chatId) return null;
+        return { botToken, chatId };
     }
 }
 

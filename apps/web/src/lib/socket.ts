@@ -30,6 +30,8 @@ type ServerToClientEvents = {
   "pattern:complete": (payload: { jobId: string; prompt: string; seed: number }) => void;
   "pattern:error": (payload: { jobId: string; message: string }) => void;
   "pattern:done": (payload: { jobId: string }) => void;
+  "autopilot:log": (payload: { nicheId: string; message: string }) => void;
+  "autopilot:done": (payload: { processed: number; timestamp?: string }) => void;
 };
 
 type ClientToServerEvents = Record<string, never>;
