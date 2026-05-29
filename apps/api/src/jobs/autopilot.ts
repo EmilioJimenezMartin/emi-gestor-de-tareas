@@ -270,6 +270,7 @@ async function runPipeline(
                 }
                 await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "catalog" } });
                 io?.emit("niches:updated");
+                io?.emit("catalogs:updated");
                 io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ ${cfg.catalogsPerNiche} catálogos lanzados para "${niche.name}"` });
                 if (await shouldNotify("pipeline.complete")) {
                     await sendTelegram(`🏭 <b>${niche.name}</b>\n🖼️ ${cfg.catalogsPerNiche} catálogos en generación · ${cfg.catalogsPerNiche * cfg.imagesPerCatalog} imágenes totales`);

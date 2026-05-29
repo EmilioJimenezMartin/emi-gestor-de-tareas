@@ -13,7 +13,7 @@ function ensureMongo(reply: any): boolean {
     return true;
 }
 
-export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agenda?: any }) {
+export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agenda?: any; io?: any }) {
     // ── Run autopilot now ────────────────────────────────────────────────────
     app.post("/autopilot/run", async (_req, reply) => {
         if (!ensureMongo(reply)) return;
@@ -132,6 +132,7 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             const seed = Math.floor(Math.random() * 99999);
             const sampleUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(samplePrompt)}?model=${sampleModel}&width=1024&height=1024&nologo=true&seed=${seed}`;
             await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: sampleUrl } });
+            deps.io?.emit("niches:updated");
 
             // Upload sample image to Cloudinary (fire-and-forget, ~10s delay for Pollinations to render)
             const port = process.env.PORT || 3001;
@@ -148,6 +149,7 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                         const cloudUrl = cldData.image?.url;
                         if (cloudUrl) {
                             await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: cloudUrl } });
+                            deps.io?.emit("niches:updated");
                         }
                     }
                 } catch { /* non-critical */ }

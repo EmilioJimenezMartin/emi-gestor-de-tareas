@@ -34,6 +34,7 @@ type ServerToClientEvents = {
   "autopilot:done": (payload: { processed: number; timestamp?: string }) => void;
   "niches:updated": () => void;
   "telegram:notification": (payload: { message: string; type?: "success" | "info" | "warning" | "error" }) => void;
+  "catalogs:updated": () => void;
 };
 
 type ClientToServerEvents = Record<string, never>;
