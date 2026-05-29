@@ -9,7 +9,6 @@ async function getTelegramConfig(): Promise<{ botToken: string; chatId: string }
         if (!botToken || !chatId) return null;
         return { botToken, chatId };
     } catch {
-        // Fallback to env vars if DB is unavailable
         const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim() ?? "";
         const chatId = process.env.TELEGRAM_CHAT_ID?.trim() ?? "";
         if (!botToken || !chatId) return null;
@@ -17,16 +16,130 @@ async function getTelegramConfig(): Promise<{ botToken: string; chatId: string }
     }
 }
 
-export async function sendTelegram(message: string): Promise<void> {
+export async function sendTelegram(message: string): Promise<number | null> {
     const cfg = await getTelegramConfig();
-    if (!cfg) return;
+    if (!cfg) return null;
     try {
-        await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendMessage`, {
+        const res = await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendMessage`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ chat_id: cfg.chatId, text: message, parse_mode: "HTML" }),
         });
+        const data = await res.json() as any;
+        return data?.result?.message_id ?? null;
     } catch (e) {
         console.error("[Telegram] send failed:", e);
+        return null;
+    }
+}
+
+// Send a photo with caption and optional approval buttons
+export async function sendTelegramPhotoApproval(opts: {
+    imageUrl: string;
+    caption: string;
+    actionId: string;
+    nicheId: string;
+}): Promise<number | null> {
+    const cfg = await getTelegramConfig();
+    if (!cfg) return null;
+    try {
+        const res = await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendPhoto`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                chat_id: cfg.chatId,
+                photo: opts.imageUrl,
+                caption: opts.caption,
+                parse_mode: "HTML",
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: "✅ Aprobar", callback_data: `approve:${opts.actionId}` },
+                        { text: "❌ Rechazar", callback_data: `reject:${opts.actionId}` },
+                    ]],
+                },
+            }),
+        });
+        const data = await res.json() as any;
+        return data?.result?.message_id ?? null;
+    } catch (e) {
+        console.error("[Telegram] sendPhoto failed:", e);
+        return null;
+    }
+}
+
+// Send a text message with approval buttons (when no image available)
+export async function sendTelegramApproval(opts: {
+    text: string;
+    actionId: string;
+}): Promise<number | null> {
+    const cfg = await getTelegramConfig();
+    if (!cfg) return null;
+    try {
+        const res = await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                chat_id: cfg.chatId,
+                text: opts.text,
+                parse_mode: "HTML",
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: "✅ Aprobar", callback_data: `approve:${opts.actionId}` },
+                        { text: "❌ Rechazar", callback_data: `reject:${opts.actionId}` },
+                    ]],
+                },
+            }),
+        });
+        const data = await res.json() as any;
+        return data?.result?.message_id ?? null;
+    } catch (e) {
+        console.error("[Telegram] sendApproval failed:", e);
+        return null;
+    }
+}
+
+// Edit an existing message (to update after user responds)
+export async function editTelegramMessage(messageId: number, text: string): Promise<void> {
+    const cfg = await getTelegramConfig();
+    if (!cfg) return;
+    try {
+        await fetch(`https://api.telegram.org/bot${cfg.botToken}/editMessageText`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                chat_id: cfg.chatId,
+                message_id: messageId,
+                text,
+                parse_mode: "HTML",
+            }),
+        });
+    } catch { /* best-effort */ }
+}
+
+// Answer a callback query (removes loading state from button)
+export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
+    const cfg = await getTelegramConfig();
+    if (!cfg) return;
+    try {
+        await fetch(`https://api.telegram.org/bot${cfg.botToken}/answerCallbackQuery`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ callback_query_id: callbackQueryId, text: text ?? "" }),
+        });
+    } catch { /* best-effort */ }
+}
+
+// Get pending updates (used by the polling loop)
+export async function getUpdates(offset: number): Promise<any[]> {
+    const cfg = await getTelegramConfig();
+    if (!cfg) return [];
+    try {
+        const res = await fetch(
+            `https://api.telegram.org/bot${cfg.botToken}/getUpdates?offset=${offset}&timeout=10&allowed_updates=["callback_query","message"]`
+        );
+        const data = await res.json() as any;
+        return data?.result ?? [];
+    } catch {
+        return [];
     }
 }

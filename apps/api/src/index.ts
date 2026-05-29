@@ -28,6 +28,7 @@ import { registerIntegrationRoutes } from "./routes/integrations.js";
 import { registerPatternRoutes } from "./routes/patterns.js";
 import { registerDatasetRoutes } from "./routes/datasets.js";
 import { registerAutoPilotRoutes } from "./routes/autopilot.js";
+import { startTelegramPolling } from "./lib/telegram-polling.js";
 import { Settings } from "./models/settings.js";
 
 const env = loadEnv(process.env);
@@ -257,12 +258,18 @@ const startAgendaOnce = async () => {
   }
 };
 
+let pollingStarted = false;
+
 const onMongoConnected = async () => {
   if (!seeded) {
     await seedSettings();
     seeded = true;
   }
   await startAgendaOnce();
+  if (!pollingStarted) {
+    startTelegramPolling();
+    pollingStarted = true;
+  }
 };
 
 mongoose.connection.on("connected", () => {
