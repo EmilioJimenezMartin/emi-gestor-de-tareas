@@ -218,4 +218,72 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             return reply.status(500).send({ error: e.message });
         }
     });
+
+    // ── Insights timeseries ───────────────────────────────────────────────────
+    app.get("/insights/timeseries", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const days = Math.min(parseInt(request.query?.days ?? "30") || 30, 90);
+            const since = new Date(Date.now() - days * 86400000);
+
+            const { Catalog } = await import("../models/catalog.js");
+
+            // Daily niches created
+            const nichesSeries = await Niche.aggregate([
+                { $match: { createdAt: { $gte: since } } },
+                { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } },
+                { $sort: { _id: 1 } },
+            ]);
+
+            // Daily catalogs created
+            const catalogsSeries = await Catalog.aggregate([
+                { $match: { createdAt: { $gte: since } } },
+                { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } },
+                { $sort: { _id: 1 } },
+            ]);
+
+            // Daily images generated — unwind catalog images, parse createdAt string to date
+            const imagesSeries = await Catalog.aggregate([
+                { $unwind: "$images" },
+                { $addFields: { imgDate: { $toDate: "$images.createdAt" } } },
+                { $match: { imgDate: { $gte: since } } },
+                { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$imgDate" } }, count: { $sum: 1 } } },
+                { $sort: { _id: 1 } },
+            ]);
+
+            // Autopilot runs per day
+            const runsSeries = await AutopilotRun.aggregate([
+                { $match: { startedAt: { $gte: since }, status: { $in: ["completed", "aborted"] } } },
+                { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$startedAt" } }, count: { $sum: 1 } } },
+                { $sort: { _id: 1 } },
+            ]);
+
+            // Build a full date index
+            const dateMap = (series: { _id: string; count: number }[]) => {
+                const m: Record<string, number> = {};
+                for (const s of series) m[s._id] = s.count;
+                return m;
+            };
+            const nichesMap = dateMap(nichesSeries);
+            const catalogsMap = dateMap(catalogsSeries);
+            const imagesMap = dateMap(imagesSeries);
+            const runsMap = dateMap(runsSeries);
+
+            const dates: string[] = [];
+            for (let i = 0; i < days; i++) {
+                const d = new Date(since.getTime() + i * 86400000);
+                dates.push(d.toISOString().slice(0, 10));
+            }
+
+            return reply.send({
+                dates,
+                niches: dates.map(d => nichesMap[d] ?? 0),
+                catalogs: dates.map(d => catalogsMap[d] ?? 0),
+                images: dates.map(d => imagesMap[d] ?? 0),
+                runs: dates.map(d => runsMap[d] ?? 0),
+            });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
 }

@@ -372,6 +372,7 @@ interface IACatalogFE {
     nicheIds?: string[];
     currentPrompt?: string;
     createdAt: string;
+    imageStartedAt?: number; // ms timestamp when current image slot started generating
 }
 
 interface SavedPromptFE {
@@ -1035,10 +1036,16 @@ export function KdpFactoryApp() {
     const [apScheduled, setApScheduled] = useState(false);
     const [apRunning, setApRunning] = useState(false);
     const [apCurrentNicheName, setApCurrentNicheName] = useState<string | null>(null);
+    const [apCurrentNicheId, setApCurrentNicheId] = useState<string | null>(null);
+    // elapsed time ticker for image generation timing (ticks every second while catalogs are running)
+    const [imageElapsedTick, setImageElapsedTick] = useState(0);
     const [apStage, setApStage] = useState<"discovery" | "prompt" | "sample" | "catalog" | "listing" | null>(null);
     const [apLogs, setApLogs] = useState<{ nicheId: string; message: string; ts: number }[]>([]);
     const [apRuns, setApRuns] = useState<{ _id: string; startedAt: string; finishedAt?: string; status: string; discovered: number; pipelineProcessed: number; catalogsCreated: number; abortReason?: string }[]>([]);
     const [apRunsLoading, setApRunsLoading] = useState(false);
+    type TimeseriesData = { dates: string[]; niches: number[]; catalogs: number[]; images: number[]; runs: number[] };
+    const [timeseries, setTimeseries] = useState<TimeseriesData | null>(null);
+    const [timeseriesDays, setTimeseriesDays] = useState<30 | 60 | 90>(30);
     // Scheduler UI state
     const [apDays, setApDays] = useState<Set<number>>(new Set([1, 3, 5])); // Mon Wed Fri
     const [apHour, setApHour] = useState(9);
@@ -3134,15 +3141,24 @@ export function KdpFactoryApp() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, generatedImage, isGenerating]);
 
+    const fetchTimeseries = async (days: 30 | 60 | 90 = 30) => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/insights/timeseries?days=${days}`);
+            if (res.ok) { const d = await res.json(); setTimeseries(d); }
+        } catch { /* ignore */ }
+    };
+
     // Fetch catalogs on mount (socket connects when entering creation tab)
     useEffect(() => { void fetchCatalogs(); void fetchApRuns(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => { if (activeTab === "insights") void fetchTimeseries(timeseriesDays); }, [activeTab, timeseriesDays]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Always keep catalog socket connected so images appear in real-time on any tab
     useEffect(() => {
         const socket = createApiSocket(API_BASE_URL);
         catalogSocketRef.current = socket;
 
-        socket.on("catalog:progress", (data: { catalogId: string; status: string; current: number; total: number; image?: CatalogImageFE; lastError?: string; skipped?: number; promptSnippet?: string }) => {
+        socket.on("catalog:progress", (data: { catalogId: string; status: string; current: number; total: number; image?: CatalogImageFE; lastError?: string; skipped?: number; promptSnippet?: string; imageStartedAt?: number }) => {
             setIaCatalogs((prev) =>
                 prev.map((c) => {
                     if (c._id !== data.catalogId) return c;
@@ -3152,6 +3168,8 @@ export function KdpFactoryApp() {
                         lastError: data.lastError !== undefined ? data.lastError : c.lastError,
                         skippedImages: data.skipped !== undefined ? data.skipped : c.skippedImages,
                         currentPrompt: data.promptSnippet !== undefined ? data.promptSnippet : c.currentPrompt,
+                        // Track when the current image started (reset when a new slot begins, clear when image arrives)
+                        imageStartedAt: data.imageStartedAt !== undefined ? data.imageStartedAt : (data.image ? undefined : c.imageStartedAt),
                     };
                     if (data.image) {
                         const alreadyExists = updated.images.some((img) => img.publicId === data.image!.publicId);
@@ -3193,11 +3211,13 @@ export function KdpFactoryApp() {
         socket.on("autopilot:stage", (data: { stage: "discovery" | "prompt" | "sample" | "catalog" | "listing"; nicheId: string; nicheName: string }) => {
             setApStage(data.stage);
             setApCurrentNicheName(data.nicheName);
+            setApCurrentNicheId(data.nicheId);
         });
 
         socket.on("autopilot:done", (data: { processed: number; timestamp?: string }) => {
             setApRunning(false);
             setApCurrentNicheName(null);
+            setApCurrentNicheId(null);
             setApStage(null);
             const msg = `✅ Completado · ${data.processed} nicho${data.processed !== 1 ? "s" : ""} procesado${data.processed !== 1 ? "s" : ""}`;
             setApLogs(prev => [...prev.slice(-49), { nicheId: "", message: msg, ts: Date.now() }]);
@@ -3209,6 +3229,7 @@ export function KdpFactoryApp() {
         socket.on("autopilot:error", (data: { message: string }) => {
             setApRunning(false);
             setApCurrentNicheName(null);
+            setApCurrentNicheId(null);
             setApStage(null);
             const msg = `⛔ Detenido: ${data.message}`;
             setApLogs(prev => [...prev.slice(-49), { nicheId: "", message: msg, ts: Date.now() }]);
@@ -3286,6 +3307,14 @@ export function KdpFactoryApp() {
             }
             setQueueEstimateMs(Math.max(0, totalMs));
         }, 1000);
+        return () => clearInterval(interval);
+    }, [iaCatalogs]);
+
+    // Tick every second while any catalog is running (drives image elapsed-time color coding)
+    useEffect(() => {
+        const hasRunning = iaCatalogs.some(c => c.status === "running" && c.imageStartedAt);
+        if (!hasRunning) return;
+        const interval = setInterval(() => setImageElapsedTick(t => t + 1), 1000);
         return () => clearInterval(interval);
     }, [iaCatalogs]);
 
@@ -4485,6 +4514,111 @@ export function KdpFactoryApp() {
             </section>
 
 
+            {/* ══ SECCIÓN: EVOLUCIÓN TEMPORAL ═══════════════════════════════ */}
+            <section className="space-y-5">
+                <div className="flex items-center justify-between gap-4">
+                    <SectionHeader icon={<TrendingUp size={16} />} title="Evolución Temporal" subtitle="Actividad de producción día a día" color="violet" size="md" />
+                    <div className="flex gap-1 p-1 bg-white/[0.03] border border-white/8 rounded-xl shrink-0">
+                        {([30, 60, 90] as const).map(d => (
+                            <button key={d} onClick={() => setTimeseriesDays(d)}
+                                className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${timeseriesDays === d ? "bg-violet-500/20 text-violet-400 border border-violet-500/30" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                {d}d
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {timeseries ? (() => {
+                    type ChartSeries = { key: "images" | "catalogs" | "niches" | "runs"; label: string; color: string; gradFrom: string; gradTo: string };
+                    const series: ChartSeries[] = [
+                        { key: "images",   label: "Imágenes generadas",  color: "#8b5cf6", gradFrom: "rgba(139,92,246,0.4)",  gradTo: "rgba(139,92,246,0)" },
+                        { key: "catalogs", label: "Catálogos creados",    color: "#3b82f6", gradFrom: "rgba(59,130,246,0.35)", gradTo: "rgba(59,130,246,0)" },
+                        { key: "niches",   label: "Nichos añadidos",      color: "#10b981", gradFrom: "rgba(16,185,129,0.35)", gradTo: "rgba(16,185,129,0)" },
+                    ];
+
+                    const buildPath = (data: number[], w: number, h: number): string => {
+                        if (data.length < 2) return "";
+                        const maxV = Math.max(...data, 1);
+                        const pts = data.map((v, i) => {
+                            const x = (i / (data.length - 1)) * w;
+                            const y = h - (v / maxV) * (h * 0.85);
+                            return [x, y] as [number, number];
+                        });
+                        // Smooth bezier via control points
+                        let d = `M ${pts[0][0]},${pts[0][1]}`;
+                        for (let i = 1; i < pts.length; i++) {
+                            const cpx = (pts[i - 1][0] + pts[i][0]) / 2;
+                            d += ` C ${cpx},${pts[i - 1][1]} ${cpx},${pts[i][1]} ${pts[i][0]},${pts[i][1]}`;
+                        }
+                        return d;
+                    };
+
+                    // Build sparse x-axis labels (show every ~7 days)
+                    const labelStep = timeseriesDays <= 30 ? 7 : timeseriesDays <= 60 ? 14 : 21;
+                    const xLabels = timeseries.dates.filter((_, i) => i % labelStep === 0 || i === timeseries.dates.length - 1);
+
+                    return (
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                            {series.map(s => {
+                                const data = timeseries[s.key];
+                                const total = data.reduce((a, b) => a + b, 0);
+                                const maxVal = Math.max(...data, 1);
+                                const W = 200; const H = 60;
+                                const linePath = buildPath(data, W, H);
+                                const areaPath = linePath ? linePath + ` L ${W},${H} L 0,${H} Z` : "";
+                                const gradId = `grad-${s.key}`;
+                                const last7 = data.slice(-7).reduce((a, b) => a + b, 0);
+                                const prev7 = data.slice(-14, -7).reduce((a, b) => a + b, 0);
+                                const delta = prev7 > 0 ? Math.round(((last7 - prev7) / prev7) * 100) : null;
+                                return (
+                                    <Card key={s.key} variant="outline" className="p-5 bg-white/[0.02] border-white/5 space-y-3 overflow-hidden relative hover:border-violet-500/20 hover:shadow-[0_0_30px_rgba(139,92,246,0.08)] transition-all duration-500">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-white/[0.01] to-transparent pointer-events-none" />
+                                        <div className="flex items-center justify-between relative gap-2">
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{s.label}</span>
+                                            {delta !== null && (
+                                                <span className={`text-[10px] font-black flex items-center gap-0.5 ${delta >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                                                    {delta >= 0 ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
+                                                    {delta >= 0 ? "+" : ""}{delta}%
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-2xl font-black tabular-nums relative" style={{ color: s.color }}>{total.toLocaleString()}</p>
+                                        <div className="relative h-14 w-full">
+                                            <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="none">
+                                                <defs>
+                                                    <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="0%" stopColor={s.gradFrom} />
+                                                        <stop offset="100%" stopColor={s.gradTo} />
+                                                    </linearGradient>
+                                                </defs>
+                                                {areaPath && <path d={areaPath} fill={`url(#${gradId})`} />}
+                                                {linePath && <path d={linePath} fill="none" stroke={s.color} strokeWidth="1.5" strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
+                                                {/* Highlight peak */}
+                                                {data.map((v, i) => v === maxVal && maxVal > 0 ? (
+                                                    <circle key={i} cx={(i / (data.length - 1)) * W} cy={H - (v / maxVal) * H * 0.85}
+                                                        r="2" fill={s.color} vectorEffect="non-scaling-stroke" />
+                                                ) : null)}
+                                            </svg>
+                                        </div>
+                                        <div className="flex justify-between text-[9px] font-mono text-neutral-700">
+                                            {xLabels.map((d, i) => (
+                                                <span key={i}>{d.slice(5)}</span>
+                                            ))}
+                                        </div>
+                                    </Card>
+                                );
+                            })}
+                        </div>
+                    );
+                })() : (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        {[1, 2, 3].map(i => (
+                            <div key={i} className="h-40 rounded-2xl bg-white/[0.03] animate-pulse border border-white/5" />
+                        ))}
+                    </div>
+                )}
+            </section>
+
             {/* ── ROYALTIES TRACKER ── */}
             {niches.some(n => n.phase === "published" || (n.royalties?.length ?? 0) > 0) && (
                 <section className="space-y-5">
@@ -5318,22 +5452,80 @@ export function KdpFactoryApp() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
                     {/* ─ Lanzar ahora ─ */}
-                    <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 flex flex-col gap-4 hover:border-amber-500/20 hover:shadow-[0_0_30px_rgba(245,158,11,0.08)] transition-all group relative overflow-hidden">
-                        <div className="absolute -right-3 -top-3 w-14 h-14 bg-amber-500/8 blur-2xl rounded-full transition-all group-hover:scale-150" />
+                    <Card variant="outline" className={`p-5 flex flex-col gap-4 transition-all group relative overflow-hidden ${apRunning ? "bg-amber-500/[0.04] border-amber-500/25 shadow-[0_0_40px_rgba(245,158,11,0.1)]" : "bg-white/[0.02] border-white/5 hover:border-amber-500/20 hover:shadow-[0_0_30px_rgba(245,158,11,0.08)]"}`}>
+                        <div className={`absolute -right-3 -top-3 w-14 h-14 blur-2xl rounded-full transition-all group-hover:scale-150 ${apRunning ? "bg-amber-500/20" : "bg-amber-500/8"}`} />
+
+                        {/* Header */}
                         <div className="flex items-center gap-2 relative">
-                            <Zap size={14} className="text-amber-400" />
+                            {apRunning ? (
+                                <span className="relative flex h-3 w-3 shrink-0">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-400" />
+                                </span>
+                            ) : <Zap size={14} className="text-amber-400" />}
                             <span className="text-sm font-black text-white">Ejecución manual</span>
+                            {apRunning && apCurrentNicheName && (
+                                <span className="ml-auto text-[10px] text-amber-400/70 truncate max-w-[100px]">{apCurrentNicheName}</span>
+                            )}
                         </div>
-                        <p className="text-[11px] text-neutral-500 -mt-2">Procesa hasta {apMaxNiches} nichos con las reglas activas ahora mismo.</p>
-                        <button onClick={() => void runAutoPilotNow()} disabled={apRunning}
-                            className="mt-auto flex items-center justify-center gap-2 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black hover:border-amber-500 transition-all text-sm font-black uppercase tracking-widest disabled:opacity-50">
-                            {apRunning ? <span className="w-3 h-3 rounded-full border border-amber-400 border-t-transparent animate-spin" /> : <Zap size={12} />}
-                            Ejecutar ahora
-                        </button>
-                        <div className="border-t border-white/[0.05] pt-3 grid grid-cols-3 gap-2">
+
+                        {/* Queue preview */}
+                        <div className="relative grid grid-cols-2 gap-2">
+                            {(() => {
+                                const inDiscovery = niches.filter(n => n.status === "found" && !n.sampleImageUrl).length;
+                                const inPipeline = niches.filter(n => n.autoPilotEnabled && n.status === "active").length;
+                                return (
+                                    <>
+                                        <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 space-y-0.5">
+                                            <p className="text-xl font-black text-amber-400 tabular-nums">{inDiscovery}</p>
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">En discovery</p>
+                                        </div>
+                                        <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3 space-y-0.5">
+                                            <p className="text-xl font-black text-sky-400 tabular-nums">{inPipeline}</p>
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">En pipeline</p>
+                                        </div>
+                                    </>
+                                );
+                            })()}
+                        </div>
+
+                        {/* What will happen */}
+                        <div className="relative rounded-xl bg-white/[0.02] border border-white/[0.05] px-3 py-2 space-y-1">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Este ciclo hará</p>
+                            <p className="text-[11px] text-neutral-400 leading-relaxed">
+                                Procesa hasta <span className="text-white font-black">{apMaxNiches}</span> nichos — discovery de los recién encontrados y avance de los aprobados (catálogos → listing → publicar)
+                            </p>
+                        </div>
+
+                        {/* Last run summary */}
+                        {apRuns[0] && (
+                            <div className="relative rounded-xl bg-white/[0.02] border border-white/[0.05] px-3 py-2 space-y-1">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Última ejecución</p>
+                                <div className="flex items-center gap-3 text-[11px]">
+                                    <span className={apRuns[0].status === "completed" ? "text-emerald-400" : apRuns[0].status === "aborted" ? "text-rose-400" : "text-amber-400"}>
+                                        {apRuns[0].status === "completed" ? "✅ Completada" : apRuns[0].status === "aborted" ? "⛔ Abortada" : "⏳ En curso"}
+                                    </span>
+                                    {apRuns[0].discovered > 0 && <span className="text-neutral-500">🔍 {apRuns[0].discovered}</span>}
+                                    {apRuns[0].catalogsCreated > 0 && <span className="text-neutral-500">📦 {apRuns[0].catalogsCreated}</span>}
+                                    {apRuns[0].startedAt && <span className="text-neutral-700 ml-auto">{new Date(apRuns[0].startedAt).toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit" })}</span>}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Action buttons */}
+                        <div className="relative flex gap-2 mt-auto">
+                            <button onClick={() => void runAutoPilotNow()} disabled={apRunning}
+                                className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black hover:border-amber-500 transition-all text-sm font-black uppercase tracking-widest disabled:opacity-50">
+                                {apRunning ? <span className="w-3 h-3 rounded-full border border-amber-400 border-t-transparent animate-spin" /> : <Zap size={12} />}
+                                {apRunning ? "Ejecutando…" : "Ejecutar ahora"}
+                            </button>
+                        </div>
+
+                        {/* Limits */}
+                        <div className="relative border-t border-white/[0.05] pt-3 grid grid-cols-3 gap-2">
                             {[
-                                { label: "Catálogos/nicho", value: apCatalogsPer, set: setApCatalogsPer },
-                                { label: "Imgs/catálogo", value: apImagesPerCatalog, set: setApImagesPerCatalog },
+                                { label: "Cat./nicho", value: apCatalogsPer, set: setApCatalogsPer },
+                                { label: "Imgs/cat.", value: apImagesPerCatalog, set: setApImagesPerCatalog },
                                 { label: "Nichos/run", value: apMaxNiches, set: setApMaxNiches },
                             ].map(f => (
                                 <div key={f.label}>
@@ -5343,7 +5535,7 @@ export function KdpFactoryApp() {
                                 </div>
                             ))}
                         </div>
-                        <button onClick={() => void saveAutoPilotSettings()} className="w-full h-8 rounded-xl bg-white/[0.03] border border-white/8 text-[10px] font-black uppercase tracking-widest text-neutral-500 hover:text-white hover:bg-white/8 transition-all">
+                        <button onClick={() => void saveAutoPilotSettings()} className="relative w-full h-8 rounded-xl bg-white/[0.03] border border-white/8 text-[10px] font-black uppercase tracking-widest text-neutral-500 hover:text-white hover:bg-white/8 transition-all">
                             Guardar límites
                         </button>
                     </Card>
@@ -5432,6 +5624,123 @@ export function KdpFactoryApp() {
                         </div>
                     </Card>
                 </div>
+
+                {/* ─ Visual pipeline overview ─ */}
+                {(() => {
+                    const runningCatalogs = iaCatalogs.filter(c => c.status === "running" || c.status === "pending" || c.status === "queued");
+                    if (runningCatalogs.length === 0 && !apRunning) return null;
+
+                    // Group by niche — prefer current autopilot niche, then all active niches
+                    const activeNicheIds = apCurrentNicheId
+                        ? [apCurrentNicheId]
+                        : [...new Set(runningCatalogs.flatMap(c => c.nicheIds ?? []))];
+
+                    return (
+                        <div className="space-y-3">
+                            {activeNicheIds.map(nicheId => {
+                                const niche = niches.find(n => n._id === nicheId);
+                                const nicheCatalogs = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(nicheId));
+                                const doneCats = nicheCatalogs.filter(c => c.status === "completed").length;
+                                const totalCats = nicheCatalogs.length;
+                                const activeCat = nicheCatalogs.find(c => c.status === "running") ?? nicheCatalogs.find(c => c.status === "pending");
+                                const totalNicheImages = nicheCatalogs.reduce((s, c) => s + c.totalImages, 0);
+                                const doneNicheImages = nicheCatalogs.reduce((s, c) => s + c.images.length, 0);
+                                const overallPct = totalNicheImages > 0 ? Math.round((doneNicheImages / totalNicheImages) * 100) : 0;
+
+                                // Active image timing
+                                const imgMs = activeCat?.status === "running" && activeCat?.imageStartedAt
+                                    ? Date.now() - activeCat.imageStartedAt : 0;
+                                void imageElapsedTick;
+                                const imgSec = Math.floor(imgMs / 1000);
+                                const imgHeat = imgMs <= 0 ? "text-neutral-500" : imgMs < 2 * 60_000 ? "text-emerald-400" : imgMs < 4 * 60_000 ? "text-yellow-400" : imgMs < 6 * 60_000 ? "text-orange-400" : "text-red-400";
+
+                                const productLabel = niche?.productType === "printable-poster" ? "póster" : "libro";
+
+                                return (
+                                    <Card key={nicheId} variant="outline" className="p-4 bg-amber-500/[0.02] border-amber-500/20 space-y-3 overflow-hidden relative">
+                                        <div className="absolute -right-4 -top-4 w-20 h-20 bg-amber-500/[0.06] blur-2xl rounded-full pointer-events-none" />
+
+                                        {/* Niche header */}
+                                        <div className="flex items-center gap-2 relative">
+                                            <span className="relative flex h-2 w-2 shrink-0">
+                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
+                                            </span>
+                                            <p className="text-sm font-black text-white truncate flex-1">{niche?.name ?? apCurrentNicheName ?? "—"}</p>
+                                            <span className="text-[9px] font-black uppercase tracking-widest text-amber-500/60 shrink-0">
+                                                {productLabel}
+                                            </span>
+                                        </div>
+
+                                        {/* Overall progress bar */}
+                                        <div className="space-y-1 relative">
+                                            <div className="flex justify-between items-center text-[10px]">
+                                                <span className="font-black text-neutral-500">
+                                                    {doneNicheImages}/{totalNicheImages} imgs · {doneCats}/{totalCats} catálogos
+                                                </span>
+                                                <span className="font-black text-amber-400">{overallPct}%</span>
+                                            </div>
+                                            <div className="h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
+                                                <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 transition-all duration-700"
+                                                    style={{ width: `${overallPct}%` }} />
+                                            </div>
+                                        </div>
+
+                                        {/* Per-catalog pills */}
+                                        {totalCats > 0 && (
+                                            <div className="flex flex-wrap gap-1.5 relative">
+                                                {nicheCatalogs.map((cat, i) => {
+                                                    const pct = cat.totalImages > 0 ? Math.round((cat.images.length / cat.totalImages) * 100) : 0;
+                                                    const isRunning = cat.status === "running";
+                                                    const isDone = cat.status === "completed";
+                                                    return (
+                                                        <div key={cat._id} className={`relative flex flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 border transition-all min-w-[52px] ${
+                                                            isRunning ? "bg-amber-500/10 border-amber-500/30" :
+                                                            isDone ? "bg-emerald-500/10 border-emerald-500/20" :
+                                                            cat.status === "pending" ? "bg-white/[0.03] border-white/10" :
+                                                            "bg-white/[0.02] border-white/5"
+                                                        }`}>
+                                                            <span className={`text-[9px] font-black uppercase tracking-widest ${isRunning ? "text-amber-400" : isDone ? "text-emerald-400" : "text-neutral-700"}`}>
+                                                                {isDone ? "✓" : isRunning ? "⚙" : `#${i + 1}`}
+                                                            </span>
+                                                            <span className={`text-[10px] font-black tabular-nums ${isRunning ? "text-white" : isDone ? "text-emerald-400/70" : "text-neutral-600"}`}>
+                                                                {cat.images.length}/{cat.totalImages}
+                                                            </span>
+                                                            {/* mini progress bar */}
+                                                            <div className="w-full h-0.5 bg-white/[0.05] rounded-full overflow-hidden">
+                                                                <div className={`h-full rounded-full transition-all duration-500 ${isDone ? "bg-emerald-400" : isRunning ? "bg-amber-400" : "bg-white/20"}`}
+                                                                    style={{ width: `${pct}%` }} />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        {/* Active catalog image detail */}
+                                        {activeCat && (
+                                            <div className="relative flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                                                <Loader2 size={12} className="text-amber-400 animate-spin shrink-0" />
+                                                <div className="flex-1 min-w-0 space-y-0.5">
+                                                    <p className="text-[10px] font-black text-white truncate">{activeCat.name}</p>
+                                                    <p className="text-[9px] text-neutral-600 truncate">{activeCat.currentPrompt ?? activeCat.prompt.slice(0, 60)}</p>
+                                                </div>
+                                                <div className="shrink-0 text-right">
+                                                    <p className="text-[11px] font-black text-white tabular-nums">{activeCat.images.length}/{activeCat.totalImages}</p>
+                                                    {imgMs > 0 && (
+                                                        <p className={`text-[10px] font-black tabular-nums ${imgHeat}`}>
+                                                            {Math.floor(imgSec / 60)}:{String(imgSec % 60).padStart(2, "0")}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </Card>
+                                );
+                            })}
+                        </div>
+                    );
+                })()}
 
                 {/* ─ Live status panel ─ */}
                 {(apRunning || apLogs.length > 0) && (() => {
@@ -7087,6 +7396,30 @@ export function KdpFactoryApp() {
                             const remainingImages = Math.max(0, catalog.totalImages - catalog.images.length - (catalog.skippedImages ?? 0));
                             const estMin = Math.round(remainingImages * 1.5);
                             const timeStr = estMin > 60 ? `~${Math.floor(estMin / 60)}h ${estMin % 60}m` : estMin > 0 ? `~${estMin}m` : "";
+
+                            // Image elapsed time color coding
+                            const imgElapsedMs = catalog.status === "running" && catalog.imageStartedAt
+                                ? Date.now() - catalog.imageStartedAt
+                                : 0;
+                            void imageElapsedTick; // trigger re-render each tick
+                            const imgElapsedSec = Math.floor(imgElapsedMs / 1000);
+                            const imgElapsedStr = imgElapsedMs > 0
+                                ? `${Math.floor(imgElapsedSec / 60)}:${String(imgElapsedSec % 60).padStart(2, "0")}`
+                                : null;
+                            // 0-2min: neutral, 2-4min: yellow, 4-6min: orange, 6-8min: red
+                            const imgHeatLevel = imgElapsedMs <= 0 ? 0
+                                : imgElapsedMs < 2 * 60_000 ? 0
+                                : imgElapsedMs < 4 * 60_000 ? 1
+                                : imgElapsedMs < 6 * 60_000 ? 2
+                                : 3;
+                            const heatBorderCls = imgHeatLevel === 1 ? "border-yellow-500/40"
+                                : imgHeatLevel === 2 ? "border-orange-500/50"
+                                : imgHeatLevel === 3 ? "border-red-500/60 animate-pulse"
+                                : "";
+                            const heatBarColor = imgHeatLevel === 1 ? "#eab308"
+                                : imgHeatLevel === 2 ? "#f97316"
+                                : imgHeatLevel === 3 ? "#ef4444"
+                                : null;
                             const providerColor = catalog.aiModel?.provider === "Google" ? { bar: "bg-blue-500/50", gradient: "from-blue-500 via-blue-400 to-cyan-400", border: "hover:border-blue-500/20", badge: "bg-blue-500/10 border-blue-500/20 text-blue-300", dot: "bg-blue-400" }
                                 : catalog.aiModel?.provider === "Leonardo" ? { bar: "bg-amber-500/50", gradient: "from-amber-500 via-orange-400 to-amber-300", border: "hover:border-amber-500/20", badge: "bg-amber-500/10 border-amber-500/20 text-amber-300", dot: "bg-amber-400" }
                                     : catalog.aiModel?.provider === "Pollinations" ? { bar: "bg-emerald-500/50", gradient: "from-emerald-500 via-emerald-400 to-cyan-400", border: "hover:border-emerald-500/20", badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300", dot: "bg-emerald-400" }
@@ -7102,12 +7435,19 @@ export function KdpFactoryApp() {
                                     onDragEnd={() => { setDraggingId(null); setDragOverId(null); }}
                                     onDragOver={(e: React.DragEvent) => { if (isDraggable && draggingId) { e.preventDefault(); setDragOverId(catalog._id); } }}
                                     onDrop={(e: React.DragEvent) => { e.preventDefault(); if (draggingId && isDraggable) void handleQueueReorder(draggingId, catalog._id); setDraggingId(null); setDragOverId(null); }}
-                                    className={`group relative border-white/5 bg-white/[0.01] overflow-hidden transition-all duration-300 ${providerColor.border} ${isDraggable ? "cursor-grab active:cursor-grabbing" : ""} ${isDragOver ? "ring-1 ring-orange-500/50 border-orange-500/30" : ""} ${draggingId === catalog._id ? "opacity-50" : ""}`}
+                                    className={`group relative bg-white/[0.01] overflow-hidden transition-all duration-300 ${imgHeatLevel > 0 ? heatBorderCls : `border-white/5 ${providerColor.border}`} ${isDraggable ? "cursor-grab active:cursor-grabbing" : ""} ${isDragOver ? "ring-1 ring-orange-500/50 border-orange-500/30" : ""} ${draggingId === catalog._id ? "opacity-50" : ""}`}
                                 >
                                     {/* Lateral provider border */}
                                     <div className={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${providerColor.gradient} opacity-40 group-hover:opacity-100 transition-all duration-300`} />
-                                    {/* Top accent */}
-                                    <div className={`h-px w-full ${providerColor.bar} opacity-60`} />
+                                    {/* Top accent — heat-aware progress bar */}
+                                    {heatBarColor && imgElapsedMs > 0 ? (
+                                        <div className="h-[3px] w-full bg-white/5 relative overflow-hidden">
+                                            <div className="absolute inset-y-0 left-0 transition-all duration-1000"
+                                                style={{ width: `${Math.min(100, (imgElapsedMs / (8 * 60_000)) * 100)}%`, background: heatBarColor, boxShadow: `0 0 6px ${heatBarColor}` }} />
+                                        </div>
+                                    ) : (
+                                        <div className={`h-px w-full ${providerColor.bar} opacity-60`} />
+                                    )}
                                     <div className="p-4 pl-5 space-y-3">
                                         {/* Header */}
                                         <div className="flex items-start justify-between gap-4">
@@ -7131,13 +7471,23 @@ export function KdpFactoryApp() {
                                                 <span className="text-neutral-700 text-sm">·</span>
                                                 <span className="text-sm font-mono text-neutral-400 truncate max-w-[160px]">{catalog.aiModel?.name.split(" ").slice(0, 3).join(" ")}</span>
                                             </div>
-                                            <div className="flex items-center gap-1.5 text-sm font-mono text-neutral-600">
+                                            <div className="flex items-center gap-1.5 text-sm font-mono text-neutral-600 flex-wrap">
                                                 <span>{catalog.width}×{catalog.height}</span>
                                                 <span className="text-neutral-700">·</span>
                                                 <span className="font-black text-neutral-400">{catalog.images.length}/{catalog.totalImages}</span>
                                                 {isActive && catalog.status !== "queued" && <Loader2 size={9} className="text-blue-400 animate-spin" />}
                                                 {(catalog.skippedImages ?? 0) > 0 && <span className="text-amber-500/70 not-mono">· {catalog.skippedImages} omit.</span>}
                                                 {isActive && catalog.status === "running" && timeStr && <span className="text-sky-400/70 not-mono">· {timeStr}</span>}
+                                                {imgElapsedStr && (
+                                                    <span className={`not-mono font-black px-1.5 py-0.5 rounded-md text-[10px] ${
+                                                        imgHeatLevel === 0 ? "text-neutral-600" :
+                                                        imgHeatLevel === 1 ? "text-yellow-400 bg-yellow-500/10" :
+                                                        imgHeatLevel === 2 ? "text-orange-400 bg-orange-500/10" :
+                                                        "text-red-400 bg-red-500/10"
+                                                    }`}>
+                                                        {imgHeatLevel === 3 ? "⚠ " : imgHeatLevel === 2 ? "● " : ""}{imgElapsedStr}
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                         {/* Niche tags */}
@@ -7587,6 +7937,94 @@ export function KdpFactoryApp() {
                                                     </div>
                                                 </div>
                                             </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* ── Autopilot visual niche overview ── */}
+                                {activeCatalogs.length > 0 && (() => {
+                                    // Group active catalogs by niche
+                                    const nicheGroups: { nicheId: string; niche?: typeof niches[0]; catalogs: typeof iaCatalogs }[] = [];
+                                    const seen = new Set<string>();
+                                    for (const cat of activeCatalogs) {
+                                        for (const nid of (cat.nicheIds ?? [])) {
+                                            if (!seen.has(nid)) {
+                                                seen.add(nid);
+                                                nicheGroups.push({
+                                                    nicheId: nid,
+                                                    niche: niches.find(n => n._id === nid),
+                                                    catalogs: activeCatalogs.filter(c => (c.nicheIds ?? []).includes(nid)),
+                                                });
+                                            }
+                                        }
+                                    }
+                                    if (nicheGroups.length === 0) return null;
+                                    return (
+                                        <div className="space-y-2">
+                                            {nicheGroups.map(({ nicheId, niche, catalogs: nicheCats }) => {
+                                                const totalCat = nicheCats.length;
+                                                const doneCat = nicheCats.filter(c => c.status === "completed").length;
+                                                const activeCat = nicheCats.find(c => c.status === "running") ?? nicheCats.find(c => c.status === "pending");
+                                                const totalImgs = nicheCats.reduce((s, c) => s + c.totalImages, 0);
+                                                const doneImgs = nicheCats.reduce((s, c) => s + c.images.length, 0);
+                                                const pct = totalImgs > 0 ? Math.round((doneImgs / totalImgs) * 100) : 0;
+                                                const imgMs = activeCat?.status === "running" && activeCat?.imageStartedAt ? Date.now() - activeCat.imageStartedAt : 0;
+                                                void imageElapsedTick;
+                                                const imgSec = Math.floor(imgMs / 1000);
+                                                const imgHeatColor = imgMs <= 0 ? "#6b7280" : imgMs < 2*60000 ? "#22c55e" : imgMs < 4*60000 ? "#eab308" : imgMs < 6*60000 ? "#f97316" : "#ef4444";
+                                                const productLabel = niche?.productType === "printable-poster" ? "Póster" : "Libro";
+                                                return (
+                                                    <div key={nicheId} className="rounded-2xl border border-amber-500/15 bg-amber-500/[0.02] px-4 py-3 space-y-2.5">
+                                                        {/* Header: Niche name → product type */}
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="relative flex h-2 w-2 shrink-0">
+                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-60" />
+                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
+                                                            </span>
+                                                            <span className="text-sm font-black text-white truncate flex-1">{niche?.name ?? "Nicho"}</span>
+                                                            <span className="text-[9px] font-black uppercase tracking-widest text-amber-500/50 shrink-0">{productLabel}</span>
+                                                        </div>
+
+                                                        {/* Catalog pills row */}
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {nicheCats.map((cat, idx) => {
+                                                                const p = cat.totalImages > 0 ? Math.round((cat.images.length / cat.totalImages) * 100) : 0;
+                                                                const isR = cat.status === "running";
+                                                                const isDone = cat.status === "completed";
+                                                                return (
+                                                                    <div key={cat._id} title={cat.name} className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl border min-w-[44px] transition-all ${isR ? "bg-amber-500/10 border-amber-500/30" : isDone ? "bg-emerald-500/8 border-emerald-500/15" : "bg-white/[0.02] border-white/8"}`}>
+                                                                        <span className={`text-[9px] font-black ${isR ? "text-amber-400" : isDone ? "text-emerald-400" : "text-neutral-700"}`}>
+                                                                            {isDone ? "✓" : isR ? "⚙" : `#${idx + 1}`}
+                                                                        </span>
+                                                                        <span className={`text-[10px] font-black tabular-nums ${isR ? "text-white" : isDone ? "text-emerald-400/60" : "text-neutral-600"}`}>
+                                                                            {cat.images.length}/{cat.totalImages}
+                                                                        </span>
+                                                                        <div className="w-full h-[3px] bg-white/[0.05] rounded-full overflow-hidden mt-0.5">
+                                                                            <div className={`h-full rounded-full transition-all duration-500 ${isDone ? "bg-emerald-400" : isR ? "bg-amber-400" : "bg-white/20"}`}
+                                                                                style={{ width: `${p}%` }} />
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+
+                                                        {/* Overall bar + active image timing */}
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="flex-1 h-1 bg-white/[0.05] rounded-full overflow-hidden">
+                                                                <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 transition-all duration-700"
+                                                                    style={{ width: `${pct}%` }} />
+                                                            </div>
+                                                            <span className="text-[10px] font-black text-amber-400 tabular-nums shrink-0">{pct}%</span>
+                                                            <span className="text-[10px] font-mono text-neutral-600 shrink-0">{doneImgs}/{totalImgs}</span>
+                                                            {imgMs > 0 && (
+                                                                <span className="text-[10px] font-black tabular-nums shrink-0" style={{ color: imgHeatColor }}>
+                                                                    {Math.floor(imgSec / 60)}:{String(imgSec % 60).padStart(2, "0")}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     );
                                 })()}

@@ -7,15 +7,20 @@ import { Settings } from "../models/settings.js";
 // Use &lt; &gt; instead of < > to avoid Telegram HTML parse errors
 const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { section: "📚 Nichos" },
-    { cmd: "/crear <code>nombre</code>", desc: "Crea nicho y lanza discovery" },
-    { cmd: "/nichos",                    desc: "Resumen por estado y fase" },
-    { cmd: "/nicho <code>nombre</code>", desc: "Info detallada de un nicho" },
-    { cmd: "/pdf <code>nombre</code>",   desc: "Abre el PDF de un nicho en la app" },
+    { cmd: "/crear <code>nombre</code>",   desc: "Crea nicho y lanza discovery" },
+    { cmd: "/nichos",                      desc: "Resumen por estado y fase" },
+    { cmd: "/nicho <code>nombre</code>",   desc: "Info detallada de un nicho" },
+    { cmd: "/pdf <code>nombre</code>",     desc: "Abre el PDF de un nicho en la app" },
+    { section: "🖼️ Catálogos" },
+    { cmd: "/catalogo",                    desc: "Lista catálogos recientes con ID corto" },
+    { cmd: "/catalogo <code>id</code>",    desc: "Detalle de un catálogo por ID" },
     { section: "⚙️ Pipeline" },
-    { cmd: "/run",                       desc: "Lanza Auto-Pilot ahora" },
-    { cmd: "/status",                    desc: "Acciones de Telegram pendientes" },
+    { cmd: "/run",                         desc: "Lanza Auto-Pilot ahora" },
+    { cmd: "/parar",                       desc: "Detiene el Auto-Pilot en curso" },
+    { cmd: "/cola",                        desc: "Cola de generación de catálogos" },
+    { cmd: "/status",                      desc: "Acciones de Telegram pendientes" },
     { section: "❓ Ayuda" },
-    { cmd: "/ayuda",                     desc: "Este mensaje (fijado al chat)" },
+    { cmd: "/ayuda",                       desc: "Este mensaje (fijado al chat)" },
 ];
 
 function buildHelpText(): string {
@@ -176,7 +181,26 @@ async function handlePhaseApproval(
     }
 }
 
+// Returns true if the sender is whitelisted (or no whitelist is configured)
+async function isAllowedUser(update: any): Promise<boolean> {
+    try {
+        const row = await Settings.findOne({ key: "ALLOWED_TELEGRAM_USER_IDS" }).lean();
+        const raw = (row as any)?.value as string | undefined;
+        if (!raw?.trim()) return true; // no whitelist — allow all
+        const allowed = raw.split(",").map(s => s.trim()).filter(Boolean);
+        const userId = String(
+            update.message?.from?.id ?? update.callback_query?.from?.id ?? ""
+        );
+        return allowed.includes(userId);
+    } catch {
+        return true; // fail open
+    }
+}
+
 async function processUpdate(update: any): Promise<void> {
+    // Privacy guard
+    if (!(await isAllowedUser(update))) return;
+
     // Handle inline keyboard button presses
     if (update.callback_query) {
         const cq = update.callback_query;
@@ -393,6 +417,131 @@ async function processUpdate(update: any): Promise<void> {
                     `🖼️ ${totalImages} imágenes de ${catalogs.length} catálogo${catalogs.length > 1 ? "s" : ""}\n\n` +
                     `<i>Abre la app para continuar con el editor de PDF</i>`
                 );
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        if (text === "/catalogo" || text.startsWith("/catalogo ")) {
+            const idArg = text.startsWith("/catalogo ") ? normalized.slice(10).trim() : "";
+            try {
+                const { Catalog } = await import("../models/catalog.js");
+                if (!idArg) {
+                    // List recent catalogs
+                    const catalogs = await Catalog.find()
+                        .sort({ createdAt: -1 })
+                        .limit(15)
+                        .select("name status images skippedImages totalImages nicheIds createdAt")
+                        .lean();
+                    if (catalogs.length === 0) {
+                        await sendTelegram("📭 No hay catálogos todavía");
+                        return;
+                    }
+                    const statusIcons: Record<string, string> = {
+                        completed: "✅", running: "⚙️", pending: "⏳", queued: "🔲", failed: "❌", cancelled: "🚫",
+                    };
+                    const lines = [
+                        `🖼️ <b>Catálogos recientes</b>`,
+                        ``,
+                        ...catalogs.map((c: any) => {
+                            const shortId = String(c._id).slice(-8);
+                            const icon = statusIcons[c.status] ?? "❓";
+                            const imgs = c.images?.length ?? 0;
+                            return `${icon} <code>${shortId}</code> — ${c.name.slice(0, 30)}${c.name.length > 30 ? "…" : ""} <i>(${imgs}/${c.totalImages} imgs)</i>`;
+                        }),
+                        ``,
+                        `<i>Usa /catalogo &lt;id&gt; para más detalle</i>`,
+                    ];
+                    await sendTelegram(lines.join("\n"));
+                } else {
+                    // Detail by partial ID (last 8 chars match)
+                    const allCatalogs = await Catalog.find()
+                        .select("name status images skippedImages totalImages nicheIds prompt createdAt updatedAt lastError")
+                        .lean();
+                    const catalog = (allCatalogs as any[]).find(c =>
+                        String(c._id).endsWith(idArg.toLowerCase()) || String(c._id) === idArg
+                    );
+                    if (!catalog) {
+                        await sendTelegram(`❌ No encontré catálogo con ID <code>${idArg}</code>`);
+                        return;
+                    }
+                    const imgs = catalog.images?.length ?? 0;
+                    const statusIcons: Record<string, string> = { completed: "✅", running: "⚙️", pending: "⏳", queued: "🔲", failed: "❌", cancelled: "🚫" };
+                    const icon = statusIcons[catalog.status] ?? "❓";
+                    // Fetch linked niche names
+                    const nicheNames: string[] = [];
+                    if (catalog.nicheIds?.length > 0) {
+                        const niches = await Niche.find({ _id: { $in: catalog.nicheIds } }).select("name").lean();
+                        for (const n of niches as any[]) nicheNames.push(n.name);
+                    }
+                    const lines = [
+                        `🖼️ <b>${catalog.name}</b>`,
+                        ``,
+                        `${icon} Estado: <b>${catalog.status}</b>`,
+                        `📊 Imágenes: <b>${imgs}/${catalog.totalImages}</b>`,
+                        catalog.skippedImages > 0 ? `⏭️ Saltadas: <b>${catalog.skippedImages}</b>` : null,
+                        nicheNames.length > 0 ? `📚 Nicho: <b>${nicheNames.join(", ")}</b>` : null,
+                        catalog.lastError ? `❌ Último error: <i>${catalog.lastError.slice(0, 120)}</i>` : null,
+                        `🆔 ID completo: <code>${String(catalog._id)}</code>`,
+                    ].filter(Boolean).join("\n");
+                    await sendTelegram(lines);
+                }
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        if (text === "/parar") {
+            try {
+                await Settings.findOneAndUpdate(
+                    { key: "AUTOPILOT_ABORT" },
+                    { key: "AUTOPILOT_ABORT", value: "1" },
+                    { upsert: true }
+                );
+                _io?.emit("autopilot:error", { message: "⛔ Parada solicitada desde Telegram" });
+                await sendTelegram(
+                    `🛑 <b>Señal de parada enviada</b>\n\n` +
+                    `El Auto-Pilot terminará el paso actual y se detendrá.\n` +
+                    `Usa /run para reanudar cuando quieras.`
+                );
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        if (text === "/cola") {
+            try {
+                const { Catalog } = await import("../models/catalog.js");
+                const [running, pending, queued] = await Promise.all([
+                    Catalog.find({ status: "running" }).sort({ queueOrder: 1 }).select("name images totalImages nicheIds").lean(),
+                    Catalog.find({ status: "pending" }).sort({ queueOrder: 1 }).limit(10).select("name totalImages").lean(),
+                    Catalog.find({ status: "queued" }).sort({ queueOrder: 1 }).limit(10).select("name totalImages").lean(),
+                ]);
+                const total = running.length + pending.length + queued.length;
+                if (total === 0) {
+                    await sendTelegram("✅ Cola vacía — no hay catálogos en generación ni pendientes");
+                    return;
+                }
+                const lines = [`🏭 <b>Cola de catálogos</b> (${total})`, ``];
+                if (running.length > 0) {
+                    lines.push(`⚙️ <b>Generando (${running.length}):</b>`);
+                    for (const c of running as any[]) {
+                        const imgs = c.images?.length ?? 0;
+                        lines.push(`  · ${c.name.slice(0, 30)} — ${imgs}/${c.totalImages} imgs`);
+                    }
+                }
+                if (pending.length > 0) {
+                    lines.push(`\n⏳ <b>Pendientes (${pending.length}):</b>`);
+                    for (const c of pending as any[]) lines.push(`  · ${c.name.slice(0, 35)}`);
+                }
+                if (queued.length > 0) {
+                    lines.push(`\n🔲 <b>En cola (${queued.length}):</b>`);
+                    for (const c of queued as any[]) lines.push(`  · ${c.name.slice(0, 35)}`);
+                }
+                await sendTelegram(lines.join("\n"));
             } catch (e: any) {
                 await sendTelegram(`❌ Error: ${e.message}`);
             }

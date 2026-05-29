@@ -7,8 +7,8 @@ import { sendTelegram, shouldNotify } from "../lib/telegram.js";
 
 const JOB_NAME = "generate-catalog-image";
 const LOCK_LIFETIME_MS = 12 * 60 * 1000; // 12 min per job execution
-const AXIOS_TIMEOUT_MS = 120_000; // 2 min — original per-request timeout
-const HARD_ABORT_MS = 10 * 60 * 1000; // 10 min — nuclear abort for truly hung connections
+const AXIOS_TIMEOUT_MS = 120_000; // 2 min — per-request axios timeout
+const HARD_ABORT_MS = 8 * 60 * 1000; // 8 min — auto-skip if image hangs this long
 
 export function defineCatalogJob(agenda: Agenda, io: any) {
     const handler = async (job: Job) => {
@@ -56,6 +56,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             current: catalog.images.length,
             total: catalog.totalImages,
             skipped: catalog.skippedImages ?? 0,
+            imageStartedAt: Date.now(),
         });
         // promptSnippet emitted after prompt is built (below)
 
@@ -144,7 +145,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 } catch (e: any) {
                     clearTimeout(hardTimeout);
                     if (e?.code === "ERR_CANCELED" || abortCtrl.signal.aborted) {
-                        throw new Error(`Pollinations hung (${HARD_ABORT_MS / 60000} min) — slot omitido`);
+                        throw new Error(`Imagen colgada tras ${HARD_ABORT_MS / 60000} min — slot omitido automáticamente`);
                     }
                     throw e;
                 }
@@ -183,7 +184,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 } catch (e: any) {
                     clearTimeout(hardTimeout);
                     if (e?.code === "ERR_CANCELED" || abortCtrl.signal.aborted) {
-                        throw new Error(`Proxy hung (${HARD_ABORT_MS / 60000} min) — slot omitido`);
+                        throw new Error(`Imagen colgada tras ${HARD_ABORT_MS / 60000} min — slot omitido automáticamente`);
                     }
                     throw e;
                 }

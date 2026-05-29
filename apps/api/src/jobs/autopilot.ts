@@ -131,6 +131,9 @@ async function runDiscovery(
     let count = 0;
 
     for (let idx = 0; idx < candidates.length; idx++) {
+        if (abort.aborted) break;
+        await checkUserAbort(abort);
+        if (abort.aborted) break;
         const niche = candidates[idx];
         if (await hasPendingAction(String(niche._id))) continue;
 
@@ -263,6 +266,8 @@ async function runPipeline(
     const MAX_CONSECUTIVE_ERRORS = 3;
 
     for (const niche of candidates) {
+        if (abort.aborted) break;
+        await checkUserAbort(abort);
         if (abort.aborted) break;
         if (processed >= cfg.maxNichesPerRun) break;
         if (await hasPendingAction(String(niche._id))) {
@@ -453,6 +458,18 @@ async function runPipeline(
     return processed;
 }
 
+async function checkUserAbort(abort: AbortSignal): Promise<void> {
+    try {
+        const row = await Settings.findOne({ key: "AUTOPILOT_ABORT" }).lean();
+        if ((row as any)?.value === "1") {
+            abort.aborted = true;
+            abort.reason = "Detenido manualmente desde Telegram (/parar)";
+            // Clear the flag so next run is not blocked
+            await Settings.findOneAndUpdate({ key: "AUTOPILOT_ABORT" }, { value: "0" });
+        }
+    } catch { /* non-critical */ }
+}
+
 export function defineAutoPilotJob(agenda: Agenda, io: any) {
     agenda.define(AUTOPILOT_JOB_NAME, async (_job: Job) => {
         const port = process.env.PORT || 3001;
@@ -463,6 +480,9 @@ export function defineAutoPilotJob(agenda: Agenda, io: any) {
         const cfg = await getConfig();
         const abort: AbortSignal = { aborted: false, reason: "" };
         const stats: RunStats = { discovered: 0, pipelineProcessed: 0, catalogsCreated: 0 };
+
+        // Clear any stale abort flag from a previous /parar
+        await Settings.findOneAndUpdate({ key: "AUTOPILOT_ABORT" }, { value: "0" }).catch(() => {});
 
         const run = await AutopilotRun.create({ startedAt: new Date(), status: "running" });
 
