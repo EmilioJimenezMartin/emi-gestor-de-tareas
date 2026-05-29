@@ -14,9 +14,10 @@ interface AppTabNavProps {
     activeTab: string;
     onChange: (id: string) => void;
     storageKey?: string;
+    glowing?: boolean;
 }
 
-export function AppTabNav({ tabs, activeTab, onChange, storageKey }: AppTabNavProps) {
+export function AppTabNav({ tabs, activeTab, onChange, storageKey, glowing }: AppTabNavProps) {
     const handleChange = (id: string) => {
         if (storageKey) localStorage.setItem(storageKey, id);
         onChange(id);
@@ -24,7 +25,29 @@ export function AppTabNav({ tabs, activeTab, onChange, storageKey }: AppTabNavPr
 
     return (
         <div className="sticky top-[90px] z-[50] w-full flex justify-center pointer-events-none px-4">
-            <div className="pointer-events-auto flex p-1.5 bg-[#111111]/90 backdrop-blur-xl border border-white/10 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.6)] max-w-full overflow-x-auto no-scrollbar">
+            <div className="relative pointer-events-auto">
+                {glowing && (
+                    <>
+                        <div
+                            className="absolute inset-[-3px] rounded-[36px] pointer-events-none"
+                            style={{
+                                animation: "spin 3s linear infinite",
+                                background: "conic-gradient(from 0deg, transparent 0%, transparent 52%, #f59e0b 68%, #fbbf24 78%, #f97316 86%, transparent 100%)",
+                                opacity: 0.85,
+                            }}
+                        />
+                        <div
+                            className="absolute inset-[-6px] rounded-[38px] pointer-events-none"
+                            style={{
+                                animation: "spin 3s linear infinite",
+                                background: "conic-gradient(from 0deg, transparent 0%, transparent 52%, #f59e0b 68%, #fbbf24 78%, #f97316 86%, transparent 100%)",
+                                opacity: 0.45,
+                                filter: "blur(8px)",
+                            }}
+                        />
+                    </>
+                )}
+            <div className="flex p-1.5 bg-[#111111]/90 backdrop-blur-xl border border-white/10 rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.6)] max-w-full overflow-x-auto no-scrollbar relative">
                 {tabs.map(tab => (
                     <button
                         key={tab.id}
@@ -46,6 +69,7 @@ export function AppTabNav({ tabs, activeTab, onChange, storageKey }: AppTabNavPr
                         )}
                     </button>
                 ))}
+            </div>
             </div>
         </div>
     );

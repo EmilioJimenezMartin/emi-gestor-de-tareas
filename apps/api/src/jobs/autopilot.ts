@@ -28,6 +28,8 @@ type AutoPilotConfig = {
     maxNichesPerRun: number;
 };
 
+type AbortSignal = { aborted: boolean; reason: string };
+
 async function getConfig(): Promise<AutoPilotConfig> {
     try {
         const rows = await Settings.find({
@@ -86,7 +88,8 @@ async function runDiscovery(
     cfg: AutoPilotConfig,
     base: string,
     io: any,
-    tag: string
+    tag: string,
+    abort: AbortSignal
 ): Promise<number> {
     // Count total pending (all found, no sample yet)
     const totalPending = await Niche.countDocuments({
@@ -125,6 +128,8 @@ async function runDiscovery(
 
         io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🔍 Nuevo nicho detectado: "${niche.name}"` });
 
+        if (abort.aborted) break;
+
         // Generate prompt if missing
         let prompt = niche.generatedPrompt;
         if (!prompt) {
@@ -137,6 +142,12 @@ async function runDiscovery(
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ type: aiType, niche: niche.name, productType, extras: style }),
                 });
+                if (res.status === 429) {
+                    abort.aborted = true;
+                    abort.reason = "Cuota de IA agotada (429) durante descubrimiento";
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⛔ Límite de cuota alcanzado. Deteniendo ciclo.` });
+                    break;
+                }
                 if (res.ok) {
                     const data = await res.json() as any;
                     prompt = [data.result?.theme, data.result?.specs, data.result?.details, data.result?.particulars]
@@ -226,7 +237,8 @@ async function runPipeline(
     cfg: AutoPilotConfig,
     base: string,
     io: any,
-    tag: string
+    tag: string,
+    abort: AbortSignal
 ): Promise<number> {
     const candidates = await Niche.find({ autoPilotEnabled: true, status: "active" })
         .sort({ createdAt: 1 })
@@ -234,8 +246,11 @@ async function runPipeline(
         .lean();
 
     let processed = 0;
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 3;
 
     for (const niche of candidates) {
+        if (abort.aborted) break;
         if (processed >= cfg.maxNichesPerRun) break;
         if (await hasPendingAction(String(niche._id))) {
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⏳ "${niche.name}" esperando aprobación en Telegram` });
@@ -265,18 +280,38 @@ async function runPipeline(
                     if (!res.ok) {
                         const err = await res.json().catch(() => ({})) as any;
                         io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error creando catálogo ${i + 1}: ${err?.error ?? res.status}` });
+                        consecutiveErrors++;
+                        if (res.status === 429 || consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                            abort.aborted = true;
+                            abort.reason = res.status === 429
+                                ? "Cuota de IA agotada (429) durante generación de catálogos"
+                                : `${MAX_CONSECUTIVE_ERRORS} errores consecutivos en catálogos`;
+                            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⛔ ${abort.reason}. Deteniendo ciclo.` });
+                            break;
+                        }
+                    } else {
+                        consecutiveErrors = 0;
                     }
+                    if (abort.aborted) break;
                     await new Promise(r => setTimeout(r, 400));
                 }
-                await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "catalog" } });
-                io?.emit("niches:updated");
-                io?.emit("catalogs:updated");
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ ${cfg.catalogsPerNiche} catálogos lanzados para "${niche.name}"` });
-                if (await shouldNotify("pipeline.complete")) {
-                    await sendTelegram(`🏭 <b>${niche.name}</b>\n🖼️ ${cfg.catalogsPerNiche} catálogos en generación · ${cfg.catalogsPerNiche * cfg.imagesPerCatalog} imágenes totales`);
+                if (!abort.aborted) {
+                    await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "catalog" } });
+                    io?.emit("niches:updated");
+                    io?.emit("catalogs:updated");
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ ${cfg.catalogsPerNiche} catálogos lanzados para "${niche.name}"` });
+                    if (await shouldNotify("pipeline.complete")) {
+                        await sendTelegram(`🏭 <b>${niche.name}</b>\n🖼️ ${cfg.catalogsPerNiche} catálogos en generación · ${cfg.catalogsPerNiche * cfg.imagesPerCatalog} imágenes totales`);
+                    }
                 }
             } catch (e: any) {
                 io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error lanzando catálogos: ${e.message}` });
+                consecutiveErrors++;
+                if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                    abort.aborted = true;
+                    abort.reason = `${MAX_CONSECUTIVE_ERRORS} errores consecutivos críticos en pipeline`;
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⛔ ${abort.reason}. Deteniendo ciclo.` });
+                }
             }
             processed++;
             continue;
@@ -342,7 +377,12 @@ async function runPipeline(
                         language: "en",
                     }),
                 });
-                if (res.ok) {
+                if (res.status === 429) {
+                    abort.aborted = true;
+                    abort.reason = "Cuota de IA agotada (429) durante generación de listing SEO";
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⛔ Límite de cuota alcanzado al generar listing. Deteniendo ciclo.` });
+                } else if (res.ok) {
+                    consecutiveErrors = 0;
                     const data = await res.json() as any;
                     const listing = {
                         title: data.result?.title ?? "",
@@ -382,8 +422,14 @@ async function runPipeline(
                 }
             } catch (e: any) {
                 io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error generando listing: ${e.message}` });
+                consecutiveErrors++;
+                if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+                    abort.aborted = true;
+                    abort.reason = `${MAX_CONSECUTIVE_ERRORS} errores consecutivos en generación de listings`;
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⛔ ${abort.reason}. Deteniendo ciclo.` });
+                }
             }
-            processed++;
+            if (!abort.aborted) processed++;
             continue;
         }
     }
@@ -399,16 +445,30 @@ export function defineAutoPilotJob(agenda: Agenda, io: any) {
 
         console.log(`${tag} Run started at ${new Date().toISOString()}`);
         const cfg = await getConfig();
+        const abort: AbortSignal = { aborted: false, reason: "" };
 
         if (await shouldNotify("autopilot.run")) {
             await sendTelegram(`🤖 <b>Auto-Pilot</b> — Ciclo iniciado`).catch(() => {});
         }
 
-        const discovered = await runDiscovery(cfg, base, io, tag);
-        const processed = await runPipeline(cfg, base, io, tag);
+        const discovered = await runDiscovery(cfg, base, io, tag, abort);
+        const processed = abort.aborted ? 0 : await runPipeline(cfg, base, io, tag, abort);
 
         const total = discovered + processed;
-        console.log(`${tag} Done — ${discovered} discovered, ${processed} pipeline steps`);
+        console.log(`${tag} Done — ${discovered} discovered, ${processed} pipeline steps, aborted=${abort.aborted}`);
+
+        if (abort.aborted) {
+            io?.emit("autopilot:error", { message: abort.reason });
+            if (await shouldNotify("api.error.quota")) {
+                await sendTelegram(
+                    `⛔ <b>Auto-Pilot detenido</b>\n\n` +
+                    `${abort.reason}\n\n` +
+                    `Los ciclos programados se reanudarán automáticamente. Comprueba tu cuota de IA.`
+                ).catch(() => {});
+            }
+            return;
+        }
+
         io?.emit("autopilot:done", { processed: total, timestamp: new Date().toISOString() });
 
         if (await shouldNotify("autopilot.run")) {

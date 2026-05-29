@@ -1144,4 +1144,60 @@ Generate exactly 15 diverse, actionable trends. Focus on currently profitable an
             return reply.status(500).send({ error: err?.message ?? "Error generating palette" });
         }
     });
+
+    // ── SEARCH QUERY SUGGESTION ───────────────────────────────────────────────
+    app.post("/ai/suggest-search", async (request: any, reply) => {
+        const { idea, platform = "etsy" } = request.body as {
+            idea: string;
+            platform?: "etsy" | "amazon" | "general";
+        };
+        if (!idea?.trim()) return reply.status(400).send({ error: "idea required" });
+
+        let googleKey = process.env.GOOGLE_API_KEY ?? "";
+        try {
+            const row = await Settings.findOne({ key: "GOOGLE_API_KEY" }).lean();
+            if ((row as any)?.value) googleKey = (row as any).value as string;
+        } catch {}
+        if (!googleKey) return reply.status(503).send({ error: "Google API key no configurada" });
+
+        const platformDescriptions: Record<string, string> = {
+            etsy: "Etsy (handmade marketplace, focus on digital downloads, printables, wall art, coloring pages)",
+            amazon: "Amazon KDP / Books (self-published books, coloring books, journals, activity books)",
+            general: "any marketplace (Amazon, Etsy, or general web search)",
+        };
+
+        const promptText = `You are an expert at finding profitable niches on ${platformDescriptions[platform] ?? "Etsy"}.
+The user has this idea: "${idea.trim()}"
+
+Generate the BEST search URL for ${platform === "etsy" ? "Etsy" : platform === "amazon" ? "Amazon" : "the web"} to research this idea as a passive-income product niche.
+
+Rules:
+- For Etsy: use https://www.etsy.com/search?q=<search+term> (URL-encode the query)
+- For Amazon: use https://www.amazon.com/s?k=<search+term> (URL-encode the query)
+- For general: pick the best platform (Amazon or Etsy) for this type of idea
+- The search term should be 2-5 words, specific but not overly narrow
+- Focus on what BUYERS search for, not sellers
+
+Return ONLY a JSON object:
+{
+  "url": "complete URL",
+  "searchTerm": "the search term used",
+  "reasoning": "1 sentence in Spanish explaining why this search term is optimal"
+}`;
+
+        try {
+            const { GoogleGenAI } = await import("@google/genai");
+            const ai = new GoogleGenAI({ apiKey: googleKey });
+            const response = await ai.models.generateContent({
+                model: "gemini-2.0-flash",
+                contents: promptText,
+                config: { responseMimeType: "application/json" },
+            });
+            const raw = (response.text ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+            const parsed = JSON.parse(raw) as { url: string; searchTerm: string; reasoning?: string };
+            return reply.send(parsed);
+        } catch (e: any) {
+            return reply.status(500).send({ error: e?.message ?? "AI error" });
+        }
+    });
 }

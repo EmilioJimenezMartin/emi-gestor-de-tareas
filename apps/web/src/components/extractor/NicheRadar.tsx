@@ -5,13 +5,14 @@ import {
     TrendingUp, Globe, Play, X, Activity, ChevronRight,
     Loader2, RefreshCw, Target, BarChart3, ShoppingBag,
     Users, DollarSign, Tag, Zap, Search,
-    ShoppingCart, ArrowRight, BookOpen, Plus, Flame,
-    HelpCircle, Star,
+    ShoppingCart, BookOpen, Flame,
+    HelpCircle,
 } from "lucide-react";
 import { createApiSocket } from "@/lib/socket";
 import { Modal } from "@/components/ui/modal";
 import { SectionHeader } from "@/components/ui/section-header";
 import { toast } from "sonner";
+import { SearchQueryBuilder, type SearchConfig } from "@/components/search/SearchQueryBuilder";
 
 // Re-export shared types so consumers can import from one place
 export type { EtsyListing, EtsyNicheResult, RowAction } from "./RadarResultsTable";
@@ -51,24 +52,6 @@ interface NicheRadarProps {
     storageKey: string;
 }
 
-const GENERAL_PRESET_URLS = [
-    { label: "Amazon", url: "https://www.amazon.com/s?k=coloring+book+adults" },
-    { label: "Etsy", url: "https://www.etsy.com/search?q=coloring+book" },
-    { label: "Google Trends", url: "https://trends.google.com/trends/explore?q=coloring+book" },
-];
-
-const ETSY_PRESET_URLS = [
-    { label: "Bold & Easy", url: "https://www.etsy.com/es/search?q=bold+and+easy+coloring+book&page=1" },
-    { label: "Coloring PDF Adults", url: "https://www.etsy.com/es/search?q=coloring+pages+pdf+adults&page=1" },
-    { label: "Kawaii Digital", url: "https://www.etsy.com/es/search?q=kawaii+coloring+book+digital&page=1" },
-];
-
-const AMAZON_PRESET_URLS = [
-    { label: "Coloring Adults", url: "https://www.amazon.com/s?k=coloring+book+adults&rh=n%3A283155" },
-    { label: "Mandala Books", url: "https://www.amazon.com/s?k=mandala+coloring+book" },
-    { label: "Animal Patterns", url: "https://www.amazon.com/s?k=animal+coloring+book+adults" },
-    { label: "KDP Bestsellers", url: "https://www.amazon.com/Best-Sellers-Books-Coloring/zgbs/books/4291/ref=zg_bs_nav_books_3_4" },
-];
 
 const LEVEL_COLOR: Record<string, any> = {
     competition: {
@@ -102,7 +85,9 @@ export function NicheRadar({
     storageKey,
 }: NicheRadarProps) {
     const [mode, setMode] = useState<Mode>(defaultMode);
-    const [url, setUrl] = useState("");
+    const [searchConfig, setSearchConfig] = useState<SearchConfig>({ platform: defaultMode === "amazon-niches" ? "amazon" : defaultMode === "etsy-niches" ? "etsy" : "general", url: "" });
+    const url = searchConfig.url;
+    const setUrl = (u: string) => setSearchConfig(c => ({ ...c, url: u }));
     const [nicheName, setNicheName] = useState("");
     const [context, setContext] = useState("");
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -310,15 +295,15 @@ export function NicheRadar({
             {/* Mode tabs */}
             <div className="flex gap-1 p-1 bg-white/[0.03] border border-white/8 rounded-2xl w-fit">
                 {([
-                    { id: "etsy-niches" as Mode, label: modeLabels?.etsy ?? "Nichos Etsy", icon: ShoppingCart, active: "bg-sky-500/15 border border-sky-500/25 text-sky-300" },
-                    { id: "amazon-niches" as Mode, label: "Amazon KDP", icon: ShoppingBag, active: "bg-orange-500/15 border border-orange-500/25 text-orange-300" },
-                    { id: "general" as Mode, label: modeLabels?.general ?? "Análisis General", icon: BarChart3, active: "bg-amber-500/15 border border-amber-500/25 text-amber-300" },
+                    { id: "etsy-niches" as Mode, platform: "etsy" as const, label: modeLabels?.etsy ?? "Nichos Etsy", icon: ShoppingCart, active: "bg-sky-500/15 border border-sky-500/25 text-sky-300" },
+                    { id: "amazon-niches" as Mode, platform: "amazon" as const, label: "Amazon KDP", icon: ShoppingBag, active: "bg-orange-500/15 border border-orange-500/25 text-orange-300" },
+                    { id: "general" as Mode, platform: "general" as const, label: modeLabels?.general ?? "Análisis General", icon: BarChart3, active: "bg-amber-500/15 border border-amber-500/25 text-amber-300" },
                 ] as const).map(tab => {
                     const Icon = tab.icon;
                     const isActive = mode === tab.id;
                     return (
                         <button key={tab.id}
-                            onClick={() => { setMode(tab.id); setUrl(""); }}
+                            onClick={() => { setMode(tab.id); setSearchConfig({ platform: tab.platform, url: "" }); }}
                             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isActive ? tab.active : "text-neutral-600 hover:text-neutral-400"}`}>
                             <Icon size={12} />
                             {tab.label}
@@ -331,87 +316,14 @@ export function NicheRadar({
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 {/* Left: Config */}
                 <div className="lg:col-span-4 space-y-4">
-                    <div className="space-y-2.5">
-                        <div className="flex items-center gap-2">
-                            <Globe size={13} className="text-amber-400/70" />
-                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">URL a analizar</span>
-                        </div>
-                        <div className="flex items-center gap-2 bg-white/[0.025] border border-white/8 rounded-2xl px-4 h-11 focus-within:border-amber-500/40 transition-all">
-                            <ChevronRight size={13} className="text-neutral-700 shrink-0" />
-                            <input
-                                type="url"
-                                value={url}
-                                onChange={e => setUrl(e.target.value)}
-                                onKeyDown={e => e.key === "Enter" && void analyze()}
-                                placeholder={mode === "etsy-niches" ? "https://www.etsy.com/es/search?q=..." : mode === "amazon-niches" ? "https://www.amazon.com/s?k=..." : "https://www.amazon.com/s?k=..."}
-                                className="flex-1 bg-transparent text-[11px] text-white placeholder:text-neutral-700 focus:outline-none font-mono"
-                            />
-                            {url && <button onClick={() => setUrl("")} className="text-neutral-700 hover:text-white transition-colors"><X size={11} /></button>}
-                        </div>
-
-                        {mode === "etsy-niches" ? (
-                            <div className="space-y-1.5">
-                                <span className="text-[8px] font-black uppercase tracking-widest text-neutral-700">Búsquedas predefinidas</span>
-                                <div className="flex flex-col gap-1">
-                                    {(etsyPresets ?? ETSY_PRESET_URLS).map(p => (
-                                        <button key={p.label}
-                                            onClick={() => setUrl(p.url)}
-                                            className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all text-[9px] font-black uppercase ${url === p.url
-                                                ? "bg-sky-500/15 border-sky-500/25 text-sky-300"
-                                                : "bg-white/[0.02] border-white/8 text-neutral-600 hover:text-sky-400 hover:border-sky-500/20"
-                                                }`}>
-                                            <ShoppingCart size={9} />
-                                            {p.label} ↗
-                                            <span className="font-normal text-neutral-700 normal-case truncate flex-1 text-[8px]">{p.url.split("?q=")[1]?.replace(/\+/g, " ").replace("&page=1", "")}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        ) : mode === "amazon-niches" ? (
-                            <div className="space-y-1.5">
-                                <span className="text-[8px] font-black uppercase tracking-widest text-neutral-700">Búsquedas predefinidas</span>
-                                <div className="flex flex-col gap-1">
-                                    {AMAZON_PRESET_URLS.map(p => (
-                                        <button key={p.label}
-                                            onClick={() => setUrl(p.url)}
-                                            className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all text-[9px] font-black uppercase ${url === p.url
-                                                ? "bg-orange-500/15 border-orange-500/25 text-orange-300"
-                                                : "bg-white/[0.02] border-white/8 text-neutral-600 hover:text-orange-400 hover:border-orange-500/20"
-                                                }`}>
-                                            <ShoppingBag size={9} />
-                                            {p.label} ↗
-                                            <span className="font-normal text-neutral-700 normal-case truncate flex-1 text-[8px]">{p.url.split("?k=")[1]?.replace(/\+/g, " ").split("&")[0]}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                                <div className="rounded-xl bg-orange-500/[0.05] border border-orange-500/15 p-3 space-y-2">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-orange-400/80">Señales detectadas</p>
-                                    <div className="space-y-1">
-                                        {[
-                                            { icon: Star, label: "Rating + número de reseñas" },
-                                            { icon: Tag, label: "Sub-nicho / patrón estimado" },
-                                            { icon: Flame, label: "Best Seller / Amazon's Choice" },
-                                        ].map(({ icon: Icon, label }) => (
-                                            <div key={label} className="flex items-center gap-2 text-[9px] text-neutral-500">
-                                                <Icon size={9} className="text-orange-400/60 shrink-0" />
-                                                {label}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="flex gap-1.5 flex-wrap">
-                                {(generalPresets ?? GENERAL_PRESET_URLS).map(p => (
-                                    <button key={p.label}
-                                        onClick={() => setUrl(p.url)}
-                                        className="text-[8px] font-black uppercase px-2 py-1 rounded-lg bg-white/[0.03] border border-white/8 text-neutral-600 hover:text-amber-400 hover:border-amber-500/20 transition-all">
-                                        {p.label} ↗
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                    <SearchQueryBuilder
+                        apiUrl={apiUrl}
+                        lockPlatform={mode === "etsy-niches" ? "etsy" : mode === "amazon-niches" ? "amazon" : "general"}
+                        value={searchConfig}
+                        onChange={cfg => setSearchConfig(cfg)}
+                        extraEtsyPresets={etsyPresets}
+                        extraGeneralPresets={generalPresets}
+                    />
 
                     {mode === "general" && (
                         <>

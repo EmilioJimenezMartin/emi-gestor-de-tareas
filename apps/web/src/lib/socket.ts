@@ -32,6 +32,7 @@ type ServerToClientEvents = {
   "pattern:done": (payload: { jobId: string }) => void;
   "autopilot:log": (payload: { nicheId: string; message: string }) => void;
   "autopilot:done": (payload: { processed: number; timestamp?: string }) => void;
+  "autopilot:error": (payload: { message: string }) => void;
   "niches:updated": () => void;
   "telegram:notification": (payload: { message: string; type?: "success" | "info" | "warning" | "error" }) => void;
   "catalogs:updated": () => void;

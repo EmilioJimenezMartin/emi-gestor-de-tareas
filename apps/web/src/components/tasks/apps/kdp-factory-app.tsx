@@ -93,6 +93,7 @@ import { RadarResultsTable } from "@/components/extractor/RadarResultsTable";
 import { AppTabNav, type AppTab } from "@/components/tasks/apps/shared/app-tab-nav";
 import { NicheFilterBar, type NicheFilterStatus } from "@/components/tasks/apps/shared/niche-filter-bar";
 import { StatusGroupFilter, type StatusGroupOption } from "@/components/tasks/apps/shared/status-group-filter";
+import { SearchQueryBuilder, type SearchConfig } from "@/components/search/SearchQueryBuilder";
 
 interface ProductPlatform {
     name: string;
@@ -1035,10 +1036,11 @@ export function KdpFactoryApp() {
     const [apFreqMode, setApFreqMode] = useState<"specific" | "interval">("specific");
     const [apIntervalHours, setApIntervalHours] = useState("6");
     // Rules
-    type APRule = { id: string; days: number[]; platform: string; query: string; mode: string; enabled: boolean };
+    type APRule = { id: string; days: number[]; platform: string; query: string; url?: string; mode: string; enabled: boolean };
     const [apRules, setApRules] = useState<APRule[]>([]);
     const [showRuleForm, setShowRuleForm] = useState(false);
-    const [ruleDraft, setRuleDraft] = useState<Partial<APRule>>({ days: [1], platform: "amazon-kdp", query: "", mode: "niche-search", enabled: true });
+    const [ruleDraft, setRuleDraft] = useState<Partial<APRule>>({ days: [1], platform: "etsy", query: "", mode: "niche-search", enabled: true });
+    const [ruleSearchConfig, setRuleSearchConfig] = useState<SearchConfig>({ platform: "etsy", url: "" });
     // Notification events
     type NotifEvent = { id: string; label: string; desc: string; icon: string; enabled: boolean };
     const [notifEvents, setNotifEvents] = useState<NotifEvent[]>([
@@ -1669,10 +1671,20 @@ export function KdpFactoryApp() {
     };
 
     const addRule = () => {
-        if (!ruleDraft.query?.trim()) { toast.error("Escribe una búsqueda"); return; }
-        const rule: APRule = { id: Date.now().toString(), days: ruleDraft.days ?? [1], platform: ruleDraft.platform ?? "amazon-kdp", query: ruleDraft.query.trim(), mode: ruleDraft.mode ?? "niche-search", enabled: true };
+        const query = ruleSearchConfig.searchTerm ?? ruleSearchConfig.preset ?? ruleSearchConfig.url;
+        if (!ruleSearchConfig.url.trim()) { toast.error("Selecciona una búsqueda o URL"); return; }
+        const rule: APRule = {
+            id: Date.now().toString(),
+            days: ruleDraft.days ?? [1],
+            platform: ruleSearchConfig.platform,
+            query: (query ?? ruleSearchConfig.url).trim(),
+            url: ruleSearchConfig.url.trim(),
+            mode: "niche-search",
+            enabled: true,
+        };
         void saveApRules([...apRules, rule]);
-        setRuleDraft({ days: [1], platform: "amazon-kdp", query: "", mode: "niche-search", enabled: true });
+        setRuleDraft({ days: [1], platform: "etsy", query: "", mode: "niche-search", enabled: true });
+        setRuleSearchConfig({ platform: "etsy", url: "" });
         setShowRuleForm(false);
     };
 
@@ -3142,6 +3154,14 @@ export function KdpFactoryApp() {
             setApLogs(prev => [...prev.slice(-49), { nicheId: "", message: msg, ts: Date.now() }]);
             toast.success(msg);
             void fetchNiches();
+        });
+
+        socket.on("autopilot:error", (data: { message: string }) => {
+            setApRunning(false);
+            setApCurrentNiche(null);
+            const msg = `⛔ Detenido: ${data.message}`;
+            setApLogs(prev => [...prev.slice(-49), { nicheId: "", message: msg, ts: Date.now() }]);
+            toast.error(`Auto-Pilot detenido — ${data.message}`, { duration: 8000 });
         });
 
         socket.on("niches:updated", () => {
@@ -5408,39 +5428,33 @@ export function KdpFactoryApp() {
                     {showRuleForm && (
                         <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.04] p-4 space-y-4">
                             <p className="text-[10px] font-black uppercase tracking-widest text-violet-400">Nueva regla</p>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Días</p>
-                                    <div className="flex gap-1">
-                                        {DAY_LABELS.map((d, i) => {
-                                            const idx = i + 1 > 6 ? 0 : i + 1;
-                                            return (
-                                                <button key={i} onClick={() => toggleRuleDay(idx)}
-                                                    className={`w-8 h-8 rounded-lg text-[10px] font-black border transition-all ${(ruleDraft.days ?? []).includes(idx) ? "bg-violet-500/20 border-violet-500/40 text-violet-400" : "bg-white/[0.03] border-white/8 text-neutral-600 hover:text-neutral-400"}`}>
-                                                    {d}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Plataforma</p>
-                                    <div className="flex gap-1 flex-wrap">
-                                        {PLATFORM_OPTIONS.map(p => (
-                                            <button key={p.id} onClick={() => setRuleDraft(d => ({ ...d, platform: p.id }))}
-                                                className={`h-8 px-2.5 rounded-lg text-[10px] font-black border transition-all flex items-center gap-1 ${ruleDraft.platform === p.id ? "bg-violet-500/20 border-violet-500/40 text-violet-400" : "bg-white/[0.03] border-white/8 text-neutral-600 hover:text-neutral-400"}`}>
-                                                {p.icon} {p.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
+
+                            {/* Days */}
                             <div className="space-y-2">
-                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Búsqueda</p>
-                                <input value={ruleDraft.query ?? ""} onChange={e => setRuleDraft(d => ({ ...d, query: e.target.value }))}
-                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500/40 transition-all"
-                                    placeholder="Ej: coloring books animals, kawaii cats, botanical art…" />
+                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Días</p>
+                                <div className="flex gap-1">
+                                    {DAY_LABELS.map((d, i) => {
+                                        const idx = i + 1 > 6 ? 0 : i + 1;
+                                        return (
+                                            <button key={i} onClick={() => toggleRuleDay(idx)}
+                                                className={`w-8 h-8 rounded-lg text-[10px] font-black border transition-all ${(ruleDraft.days ?? []).includes(idx) ? "bg-violet-500/20 border-violet-500/40 text-violet-400" : "bg-white/[0.03] border-white/8 text-neutral-600 hover:text-neutral-400"}`}>
+                                                {d}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
+
+                            {/* SearchQueryBuilder */}
+                            <div className="space-y-1.5">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Búsqueda</p>
+                                <SearchQueryBuilder
+                                    apiUrl={API_BASE_URL}
+                                    value={ruleSearchConfig}
+                                    onChange={cfg => setRuleSearchConfig(cfg)}
+                                />
+                            </div>
+
                             <div className="flex gap-2">
                                 <button onClick={addRule} className="h-8 px-4 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 hover:bg-violet-500/20 transition-all text-[10px] font-black uppercase tracking-widest">
                                     Añadir
@@ -8815,6 +8829,7 @@ export function KdpFactoryApp() {
                 activeTab={activeTab}
                 onChange={(id) => changeTab(id as TabID)}
                 storageKey="kdp-active-tab"
+                glowing={apRunning}
             />
 
             {/* Content Area Rendering Based on Active Tab */}
