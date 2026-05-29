@@ -8,6 +8,20 @@ export const AUTOPILOT_JOB_NAME = "autopilot-run";
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
+// Map niche style to a Pollinations model (mirrors NICHE_STYLE_MODEL in the frontend)
+function styleToAiModel(styleCategory: string) {
+    const modelIds: Record<string, string> = {
+        anime: "flux-anime",
+        realistic: "flux-realism",
+        "wall-art": "flux-realism",
+        affirmation: "flux-realism",
+        geometric: "flux-realism",
+        celestial: "flux-realism",
+    };
+    const modelId = modelIds[styleCategory] ?? "flux";
+    return { id: `pollinations-${modelId}`, name: "FLUX (Pollinations)", provider: "Pollinations", modelId };
+}
+
 type AutoPilotConfig = {
     catalogsPerNiche: number;
     imagesPerCatalog: number;
@@ -234,19 +248,24 @@ async function runPipeline(
         if (phase === "niche") {
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🖼️ Lanzando ${cfg.catalogsPerNiche} catálogos para "${niche.name}"…` });
             try {
+                const aiModel = styleToAiModel(niche.styleCategory ?? "generic");
                 for (let i = 0; i < cfg.catalogsPerNiche; i++) {
-                    await fetch(`${base}/catalogs`, {
+                    const res = await fetch(`${base}/catalogs`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             name: `${niche.name} — v${i + 1}`,
                             prompt: niche.generatedPrompt || niche.name,
-                            imageCount: cfg.imagesPerCatalog,
-                            style: niche.styleCategory ?? "generic",
+                            totalImages: cfg.imagesPerCatalog,
+                            aiModel,
                             nicheIds: [String(niche._id)],
                             productType: niche.productType ?? "coloring-book",
                         }),
                     });
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({})) as any;
+                        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error creando catálogo ${i + 1}: ${err?.error ?? res.status}` });
+                    }
                     await new Promise(r => setTimeout(r, 400));
                 }
                 await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "catalog" } });
