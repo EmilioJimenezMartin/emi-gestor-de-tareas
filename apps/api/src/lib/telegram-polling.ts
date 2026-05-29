@@ -18,6 +18,8 @@ const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { cmd: "/run",                         desc: "Lanza Auto-Pilot ahora" },
     { cmd: "/parar",                       desc: "Detiene el Auto-Pilot en curso" },
     { cmd: "/cola",                        desc: "Cola de generación de catálogos" },
+    { cmd: "/config",                      desc: "Ver configuración del Auto-Pilot" },
+    { cmd: "/config <code>cats imgs</code>", desc: "Ej: /config 8 5 → 8 catálogos × 5 imgs" },
     { cmd: "/status",                      desc: "Acciones de Telegram pendientes" },
     { section: "❓ Ayuda" },
     { cmd: "/ayuda",                       desc: "Este mensaje (fijado al chat)" },
@@ -542,6 +544,55 @@ async function processUpdate(update: any): Promise<void> {
                     for (const c of queued as any[]) lines.push(`  · ${c.name.slice(0, 35)}`);
                 }
                 await sendTelegram(lines.join("\n"));
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        if (text === "/config" || text.startsWith("/config ")) {
+            try {
+                const args = normalized.slice(7).trim().split(/\s+/).filter(Boolean);
+                if (args.length >= 2) {
+                    const cats = parseInt(args[0]);
+                    const imgs = parseInt(args[1]);
+                    if (isNaN(cats) || cats < 1 || isNaN(imgs) || imgs < 1) {
+                        await sendTelegram("❌ Valores inválidos. Ejemplo: <code>/config 8 5</code>");
+                        return;
+                    }
+                    await Promise.all([
+                        Settings.findOneAndUpdate(
+                            { key: "AUTOPILOT_CATALOGS_PER_NICHE" },
+                            { key: "AUTOPILOT_CATALOGS_PER_NICHE", value: String(cats) },
+                            { upsert: true }
+                        ),
+                        Settings.findOneAndUpdate(
+                            { key: "AUTOPILOT_IMAGES_PER_CATALOG" },
+                            { key: "AUTOPILOT_IMAGES_PER_CATALOG", value: String(imgs) },
+                            { upsert: true }
+                        ),
+                    ]);
+                    _io?.emit("telegram:notification", {
+                        message: `⚙️ Config actualizada: ${cats} catálogos × ${imgs} imágenes`,
+                        type: "info",
+                    });
+                    await sendTelegram(
+                        `✅ <b>Configuración guardada</b>\n\n` +
+                        `📦 Catálogos por nicho: <b>${cats}</b>\n` +
+                        `🖼️ Imágenes por catálogo: <b>${imgs}</b>\n\n` +
+                        `<i>Aplicado en la próxima ejecución de Auto-Pilot</i>`
+                    );
+                } else {
+                    // Show current config
+                    const cfg = await getAutoPilotConfig();
+                    await sendTelegram(
+                        `⚙️ <b>Configuración Auto-Pilot</b>\n\n` +
+                        `📦 Catálogos por nicho: <b>${cfg.catalogsPerNiche}</b>\n` +
+                        `🖼️ Imágenes por catálogo: <b>${cfg.imagesPerCatalog}</b>\n\n` +
+                        `Para cambiar: <code>/config &lt;catálogos&gt; &lt;imágenes&gt;</code>\n` +
+                        `Ejemplo: <code>/config 8 5</code>`
+                    );
+                }
             } catch (e: any) {
                 await sendTelegram(`❌ Error: ${e.message}`);
             }

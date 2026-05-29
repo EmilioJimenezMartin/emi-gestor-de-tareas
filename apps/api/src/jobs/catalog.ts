@@ -10,6 +10,31 @@ const LOCK_LIFETIME_MS = 12 * 60 * 1000; // 12 min per job execution
 const AXIOS_TIMEOUT_MS = 120_000; // 2 min — per-request axios timeout
 const HARD_ABORT_MS = 8 * 60 * 1000; // 8 min — auto-skip if image hangs this long
 
+async function checkAutoPilotContinue(tag: string, catalogId: string, nicheIds: string[], agenda: Agenda): Promise<void> {
+    if (!nicheIds.length) return;
+    try {
+        const { Niche } = await import("../models/niche.js");
+        for (const nicheId of nicheIds) {
+            const niche = await Niche.findById(nicheId).lean();
+            if (!(niche as any)?.autoPilotEnabled) continue;
+            // Only continue autopilot if niche is in "catalog" phase (waiting for catalogs to finish)
+            if ((niche as any).phase !== "catalog") continue;
+            const allCats = await Catalog.find({ nicheIds: nicheId }).lean();
+            if (!allCats.length) continue;
+            const allDone = allCats.every(
+                (c: any) => c.status === "completed" || c.status === "cancelled" || c.status === "failed"
+            );
+            if (allDone) {
+                console.log(`${tag} All catalogs done for niche ${nicheId} — auto-triggering autopilot-run`);
+                await agenda.now("autopilot-run", {});
+                break;
+            }
+        }
+    } catch (e) {
+        console.error(`${tag} checkAutoPilotContinue failed:`, e);
+    }
+}
+
 export function defineCatalogJob(agenda: Agenda, io: any) {
     const handler = async (job: Job) => {
         const { catalogId } = (job.attrs.data ?? {}) as { catalogId: string };
@@ -246,6 +271,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 shouldNotify("catalog.ready").then(ok => {
                     if (ok) sendTelegram(`🖼️ <b>Catálogo listo</b>\n"${freshCatalog.name}" — ${freshCatalog.images.length} imágenes generadas`).catch(() => {});
                 });
+                void checkAutoPilotContinue(tag, catalogId, freshCatalog.nicheIds ?? [], agenda);
             } else {
                 console.log(`${tag} Scheduling next image in 90s`);
                 try {
@@ -307,6 +333,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 shouldNotify("catalog.ready").then(ok => {
                     if (ok) sendTelegram(`🖼️ <b>Catálogo listo</b>\n"${freshCatalog.name}" — ${freshCatalog.images.length} imágenes (${freshCatalog.skippedImages ?? 0} omitidas)`).catch(() => {});
                 });
+                void checkAutoPilotContinue(tag, catalogId, freshCatalog.nicheIds ?? [], agenda);
             } else {
                 // Wait 2 minutes before trying the next image slot
                 console.log(`${tag} Scheduling next slot in 2 minutes`);

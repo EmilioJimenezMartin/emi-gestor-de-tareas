@@ -6274,8 +6274,8 @@ export function KdpFactoryApp() {
                                                     : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"
                                                 }`}
                                             >
-                                                <Target size={8} />
-                                                {niche.name}
+                                                <Target size={8} className="shrink-0" />
+                                                <span className="max-w-[150px] truncate">{niche.name}</span>
                                             </button>
                                         ))}
                                     </div>
