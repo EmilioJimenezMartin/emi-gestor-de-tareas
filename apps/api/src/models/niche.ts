@@ -35,6 +35,11 @@ export interface INiche extends Document {
     sourceTitulo?: string;
     royalties?: IRoyaltyEntry[];
     listings?: IKDPListing[];
+    score?: number;
+    scoreBreakdown?: { demand: number; competition: number; uniqueness: number; potential: number };
+    scoreReason?: string;
+    scoredAt?: Date;
+    autoPilotEnabled?: boolean;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -71,6 +76,16 @@ const NicheSchema = new Schema<INiche>(
             keywords: [{ type: String }],
             generatedAt: { type: Date, default: Date.now },
         }],
+        score: { type: Number },
+        scoreBreakdown: {
+            demand: { type: Number },
+            competition: { type: Number },
+            uniqueness: { type: Number },
+            potential: { type: Number },
+        },
+        scoreReason: { type: String },
+        scoredAt: { type: Date },
+        autoPilotEnabled: { type: Boolean, default: false },
     },
     { timestamps: true }
 );

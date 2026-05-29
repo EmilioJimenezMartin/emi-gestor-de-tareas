@@ -27,6 +27,7 @@ import { registerDigitalProductRoutes } from "./routes/digitalProducts.js";
 import { registerIntegrationRoutes } from "./routes/integrations.js";
 import { registerPatternRoutes } from "./routes/patterns.js";
 import { registerDatasetRoutes } from "./routes/datasets.js";
+import { registerAutoPilotRoutes } from "./routes/autopilot.js";
 import { Settings } from "./models/settings.js";
 
 const env = loadEnv(process.env);
@@ -63,6 +64,7 @@ await registerDigitalProductRoutes(app);
 await registerIntegrationRoutes(app);
 await registerPatternRoutes(app);
 await registerDatasetRoutes(app);
+await registerAutoPilotRoutes(app, deps);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {

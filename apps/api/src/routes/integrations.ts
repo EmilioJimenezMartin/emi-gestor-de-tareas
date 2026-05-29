@@ -10,6 +10,8 @@ const DEFAULT_INTEGRATIONS = [
     { name: "Lemon Squeezy", icon: "🍋", status: "study",  statusLabel: "En estudio",     desc: "Alternativa moderna a Gumroad con API REST" },
     { name: "Printify",      icon: "👕", status: "study",  statusLabel: "En estudio",     desc: "Print on demand, API gratuita" },
     { name: "Ko-fi",         icon: "☕", status: "study",  statusLabel: "En estudio",     desc: "Shop con webhooks gratuitos" },
+    { name: "Printful",      icon: "👔", status: "study",  statusLabel: "En estudio",     desc: "Print on demand premium con fulfillment global" },
+    { name: "Redbubble",     icon: "🫧", status: "study",  statusLabel: "En estudio",     desc: "Marketplace de arte independiente, sin stock" },
 ];
 
 function ensureMongo(reply: any): boolean {

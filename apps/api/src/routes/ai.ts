@@ -855,6 +855,95 @@ Return ONLY a JSON object:
         }
     });
 
+    // ── NICHE SCORING ────────────────────────────────────────────────────────
+    app.post("/ai/score-niche", async (request: any, reply) => {
+        const { nicheId, name, tags = [], competition = "unknown", demand = "unknown", productType = "coloring-book", styleCategory = "generic", description = "" } = request.body as {
+            nicheId?: string; name: string; tags?: string[]; competition?: string; demand?: string; productType?: string; styleCategory?: string; description?: string;
+        };
+        if (!name?.trim()) return reply.status(400).send({ error: "name required" });
+
+        const config = await (async () => {
+            const { Settings: S } = await import("../models/settings.js");
+            let provider = "google"; let model = "gemini-2.5-flash"; let googleKey = process.env.GOOGLE_API_KEY ?? "";
+            let openrouterKey = process.env.OPENROUTER_API_KEY ?? "";
+            try {
+                const rows = await S.find({ key: { $in: ["DEFAULT_LLM_PROVIDER", "DEFAULT_LLM_MODEL", "GOOGLE_API_KEY", "OPENROUTER_API_KEY"] } });
+                const map = new Map(rows.map((r: any) => [r.key, r.value]));
+                if (map.has("DEFAULT_LLM_PROVIDER")) provider = map.get("DEFAULT_LLM_PROVIDER") as string;
+                if (map.has("DEFAULT_LLM_MODEL")) model = map.get("DEFAULT_LLM_MODEL") as string;
+                if (map.has("GOOGLE_API_KEY") && map.get("GOOGLE_API_KEY")) googleKey = map.get("GOOGLE_API_KEY") as string;
+                if (map.has("OPENROUTER_API_KEY") && map.get("OPENROUTER_API_KEY")) openrouterKey = map.get("OPENROUTER_API_KEY") as string;
+            } catch {}
+            return { provider, model, googleKey, openrouterKey };
+        })();
+
+        const prompt = `You are an expert analyst of self-publishing passive income businesses (Amazon KDP, Etsy, print-on-demand).
+
+Score this niche for passive income potential on a scale of 0-100.
+
+Niche: "${name}"
+Description: "${description}"
+Tags: ${tags.join(", ") || "none"}
+Product type: ${productType}
+Style: ${styleCategory}
+Known demand: ${demand}
+Known competition: ${competition}
+
+Return ONLY a JSON object with this exact structure:
+{
+  "score": <integer 0-100>,
+  "breakdown": {
+    "demand": <integer 0-25, demand/search volume score>,
+    "competition": <integer 0-25, inverse of competition - low competition = high score>,
+    "uniqueness": <integer 0-25, how differentiated and specific the niche is>,
+    "potential": <integer 0-25, revenue ceiling and scalability>
+  },
+  "reason": "<2-3 sentence explanation in Spanish of the score and main opportunity or risk>",
+  "suggestion": "<1 concrete improvement suggestion in Spanish>"
+}`;
+
+        try {
+            let result: any = null;
+
+            if ((config.provider === "openrouter" || !config.googleKey) && config.openrouterKey) {
+                const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${config.openrouterKey}`, "HTTP-Referer": "https://emi-gestor-de-tareas.local", "X-Title": "Emi Gestor de Tareas" },
+                    body: JSON.stringify({ model: config.model || "google/gemini-2.5-flash", messages: [{ role: "user", content: prompt }], max_tokens: 512, temperature: 0.3 }),
+                });
+                const data = await res.json() as any;
+                const raw = (data.choices?.[0]?.message?.content ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+                result = JSON.parse(raw);
+            } else if (config.googleKey) {
+                const { GoogleGenAI } = await import("@google/genai");
+                const ai = new GoogleGenAI({ apiKey: config.googleKey });
+                const response = await ai.models.generateContent({
+                    model: config.model || "gemini-2.5-flash",
+                    contents: prompt,
+                    config: { responseMimeType: "application/json" },
+                });
+                const raw = (response.text ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+                result = JSON.parse(raw);
+            } else {
+                return reply.status(503).send({ error: "No hay proveedor de IA configurado." });
+            }
+
+            const score = Math.min(100, Math.max(0, Math.round(result.score ?? 0)));
+            const breakdown = { demand: result.breakdown?.demand ?? 0, competition: result.breakdown?.competition ?? 0, uniqueness: result.breakdown?.uniqueness ?? 0, potential: result.breakdown?.potential ?? 0 };
+            const reason = result.reason ?? "";
+            const suggestion = result.suggestion ?? "";
+
+            if (nicheId) {
+                const { Niche } = await import("../models/niche.js");
+                await Niche.findByIdAndUpdate(nicheId, { $set: { score, scoreBreakdown: breakdown, scoreReason: reason, scoredAt: new Date() } });
+            }
+
+            return reply.send({ score, breakdown, reason, suggestion });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e?.message ?? "Score error" });
+        }
+    });
+
     // ── TRENDS ───────────────────────────────────────────────────────────────
     // In-memory cache: avoids redundant LLM calls and survives rate-limit windows.
     const trendsCache = new Map<string, { data: any; expiresAt: number }>();

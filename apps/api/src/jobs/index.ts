@@ -2,6 +2,8 @@ import type { Agenda, Job } from "agenda";
 import { defineCatalogJob } from "./catalog.js";
 import { defineRadarJob } from "./radar.js";
 import { definePatternGenJob } from "./pattern-generation.js";
+import { defineAutoPilotJob, AUTOPILOT_JOB_NAME } from "./autopilot.js";
+export { AUTOPILOT_JOB_NAME };
 
 export function defineJobs(agenda: Agenda, io?: any) {
     agenda.define("dummy-task", async (job: Job) => {
@@ -22,5 +24,6 @@ export function defineJobs(agenda: Agenda, io?: any) {
         defineCatalogJob(agenda, io);
         defineRadarJob(agenda, io);
         definePatternGenJob(agenda, io);
+        defineAutoPilotJob(agenda, io);
     }
 }

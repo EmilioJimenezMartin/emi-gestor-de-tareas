@@ -174,7 +174,7 @@ const AI_DIMENSIONS = [
 
 const PLATFORMS = ["Amazon KDP", "Etsy", "Printify", "Creative Fabrica"];
 
-type TabID = "insights" | "creation" | "studio" | "niches" | "gelato";
+type TabID = "insights" | "creation" | "studio" | "niches" | "gelato" | "config";
 type PeriodID = "month" | "6months" | "year" | "all";
 
 type NicheStatus = "found" | "active" | "research" | "archived";
@@ -219,6 +219,11 @@ interface NicheFE {
     sourceTitulo?: string;
     royalties?: NicheRoyaltyEntry[];
     listings?: NicheKDPListing[];
+    score?: number;
+    scoreBreakdown?: { demand: number; competition: number; uniqueness: number; potential: number };
+    scoreReason?: string;
+    scoredAt?: string;
+    autoPilotEnabled?: boolean;
     createdAt: string;
 }
 
@@ -979,8 +984,29 @@ export function KdpFactoryApp() {
     const [showCustomCatalogModal, setShowCustomCatalogModal] = useState(false);
     const [customCatalogName, setCustomCatalogName] = useState("");
     const [isCreatingCustomCatalog, setIsCreatingCustomCatalog] = useState(false);
-    // Feature: niche sort
+    // Feature: niche sort + AI score
     const [nicheSortBy, setNicheSortBy] = useState<"score" | "date">("score");
+    const [scoringNicheId, setScoringNicheId] = useState<string | null>(null);
+    // Auto-Pilot config
+    const [apCatalogsPer, setApCatalogsPer] = useState("5");
+    const [apImagesPerCatalog, setApImagesPerCatalog] = useState("5");
+    const [apMaxNiches, setApMaxNiches] = useState("3");
+    const [apScheduled, setApScheduled] = useState(false);
+    const [apRunning, setApRunning] = useState(false);
+    const [telegramToken, setTelegramToken] = useState("");
+    const [telegramChatId, setTelegramChatId] = useState("");
+    const [testingTelegram, setTestingTelegram] = useState(false);
+    // Scheduler UI state
+    const [apDays, setApDays] = useState<Set<number>>(new Set([1, 3, 5])); // Mon Wed Fri
+    const [apHour, setApHour] = useState(9);
+    const [apMinute, setApMinute] = useState("00");
+    const [apFreqMode, setApFreqMode] = useState<"specific" | "interval">("specific");
+    const [apIntervalHours, setApIntervalHours] = useState("6");
+    // Rules
+    type APRule = { id: string; days: number[]; platform: string; query: string; mode: string; enabled: boolean };
+    const [apRules, setApRules] = useState<APRule[]>([]);
+    const [showRuleForm, setShowRuleForm] = useState(false);
+    const [ruleDraft, setRuleDraft] = useState<Partial<APRule>>({ days: [1], platform: "amazon-kdp", query: "", mode: "niche-search", enabled: true });
     const catalogSocketRef = useRef<ReturnType<typeof createApiSocket> | null>(null);
     const catalogsListRef = useRef<HTMLDivElement>(null);
     const [collapsedCompleted, setCollapsedCompleted] = useState(true);
@@ -1510,11 +1536,128 @@ export function KdpFactoryApp() {
     };
 
     const nicheScore = (n: NicheFE): number => {
+        if (n.score != null) return n.score;
         const demandPts = { unknown: 0, low: 10, medium: 25, high: 40 }[n.demand] ?? 0;
         const compPts = { unknown: 0, high: 5, medium: 20, low: 35 }[n.competition] ?? 0;
         const catalogPts = (n.catalogIds?.length ?? 0) > 0 ? 10 : 0;
         const statusPts = n.status === "active" ? 5 : n.status === "research" ? 3 : 0;
         return demandPts + compPts + catalogPts + statusPts;
+    };
+
+    const scoreNicheWithAI = async (niche: NicheFE) => {
+        setScoringNicheId(niche._id);
+        try {
+            const res = await fetch(`${API_BASE_URL}/ai/score-niche`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ nicheId: niche._id, name: niche.name, tags: niche.tags, competition: niche.competition, demand: niche.demand, productType: niche.productType, styleCategory: niche.styleCategory, description: niche.description }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            setNiches(ns => ns.map(n => n._id === niche._id ? { ...n, score: data.score, scoreBreakdown: data.breakdown, scoreReason: data.reason, scoredAt: new Date().toISOString() } : n));
+            toast.success(`Score: ${data.score}/100`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al puntuar nicho");
+        } finally {
+            setScoringNicheId(null);
+        }
+    };
+
+    const runAutoPilotNow = async () => {
+        setApRunning(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/autopilot/run`, { method: "POST" });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            toast.success("Auto-Pilot lanzado");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al lanzar Auto-Pilot");
+        } finally {
+            setApRunning(false);
+        }
+    };
+
+    const buildCron = (): string => {
+        if (apFreqMode === "interval") return `${apMinute} */${apIntervalHours} * * *`;
+        const days = [...apDays].sort().map(d => d === 0 ? 7 : d).join(",");
+        return `${apMinute} ${apHour} * * ${days || "*"}`;
+    };
+
+    const scheduleAutoPilot = async () => {
+        try {
+            const cron = buildCron();
+            const res = await fetch(`${API_BASE_URL}/autopilot/schedule`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cron }) });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            setApScheduled(true);
+            toast.success(`Auto-Pilot programado`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al programar");
+        }
+    };
+
+    const saveApRules = async (rules: APRule[]) => {
+        setApRules(rules);
+        await fetch(`${API_BASE_URL}/settings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: "AUTOPILOT_RULES", value: JSON.stringify(rules) }) }).catch(() => {});
+    };
+
+    const addRule = () => {
+        if (!ruleDraft.query?.trim()) { toast.error("Escribe una búsqueda"); return; }
+        const rule: APRule = { id: Date.now().toString(), days: ruleDraft.days ?? [1], platform: ruleDraft.platform ?? "amazon-kdp", query: ruleDraft.query.trim(), mode: ruleDraft.mode ?? "niche-search", enabled: true };
+        void saveApRules([...apRules, rule]);
+        setRuleDraft({ days: [1], platform: "amazon-kdp", query: "", mode: "niche-search", enabled: true });
+        setShowRuleForm(false);
+    };
+
+    const cancelAutoPilotSchedule = async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/autopilot/schedule`, { method: "DELETE" });
+            if (!res.ok) throw new Error("Error");
+            setApScheduled(false);
+            toast.success("Programación cancelada");
+        } catch {
+            toast.error("Error al cancelar");
+        }
+    };
+
+    const toggleNicheAutoPilot = async (niche: NicheFE, enabled: boolean) => {
+        try {
+            await fetch(`${API_BASE_URL}/autopilot/niche/${niche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled }) });
+            setNiches(ns => ns.map(n => n._id === niche._id ? { ...n, autoPilotEnabled: enabled } : n));
+        } catch {
+            toast.error("Error al actualizar Auto-Pilot");
+        }
+    };
+
+    const saveAutoPilotSettings = async () => {
+        try {
+            const pairs = [
+                { key: "AUTOPILOT_CATALOGS_PER_NICHE", value: apCatalogsPer },
+                { key: "AUTOPILOT_IMAGES_PER_CATALOG", value: apImagesPerCatalog },
+                { key: "AUTOPILOT_MAX_NICHES", value: apMaxNiches },
+                { key: "TELEGRAM_BOT_TOKEN", value: telegramToken },
+                { key: "TELEGRAM_CHAT_ID", value: telegramChatId },
+            ];
+            await Promise.all(pairs.map(p => fetch(`${API_BASE_URL}/settings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
+            toast.success("Configuración guardada");
+        } catch {
+            toast.error("Error al guardar");
+        }
+    };
+
+    const testTelegram = async () => {
+        setTestingTelegram(true);
+        try {
+            await saveAutoPilotSettings();
+            const res = await fetch(`${API_BASE_URL}/autopilot/test-telegram`, { method: "POST" });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            toast.success("Mensaje de prueba enviado a Telegram ✓");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error — revisa el token y chat ID");
+        } finally {
+            setTestingTelegram(false);
+        }
     };
 
     const retryFailedSlots = async (catalogId: string) => {
@@ -3671,213 +3814,344 @@ export function KdpFactoryApp() {
         const topNicheImages = topNiche ? nicheImageCount(topNiche) : 0;
         const topNicheDemand = topNiche?.demand;
 
+        // ── Insights data ─────────────────────────────────────────────
+        const phaseCount = (p: NicheFE["phase"]) => niches.filter(n => (n.phase ?? "niche") === p).length;
+        const phaseImgs = (p: NicheFE["phase"]) => {
+            const phaseNiches = niches.filter(n => (n.phase ?? "niche") === p);
+            return iaCatalogs.filter(c => (c.nicheIds ?? []).some(id => phaseNiches.find(n => n._id === id))).reduce((s, c) => s + c.images.length, 0);
+        };
+        const totalImgsAll = iaCatalogs.reduce((s, c) => s + c.images.length, 0);
+        const publishedNiches = niches.filter(n => n.phase === "published");
+        const totalRoyalties = publishedNiches.reduce((s, n) => s + (n.royalties ?? []).reduce((r, e) => r + e.revenue, 0), 0);
+        const conversionRate = niches.length > 0 ? Math.round((publishedNiches.length / niches.length) * 100) : 0;
+        const scoredNiches = niches.filter(n => n.score != null);
+        const avgScore = scoredNiches.length > 0 ? Math.round(scoredNiches.reduce((s, n) => s + (n.score ?? 0), 0) / scoredNiches.length) : null;
+        const totalListings = niches.reduce((s, n) => s + (n.listings?.length ?? 0), 0);
+        const staleDays = 7;
+        const staleCutoff = new Date(Date.now() - staleDays * 24 * 60 * 60 * 1000).toISOString();
+        const stalled = niches.filter(n => n.phase !== "published" && n.createdAt < staleCutoff && (n.phase ?? "niche") === "niche" && !n.generatedPrompt);
+        const readyToPublish = niches.filter(n => n.phase === "pdf" || n.phase === "cover");
+        const topScoredNiches = [...niches].filter(n => n.score != null).sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 3);
+        const topRoyaltyNiche = [...publishedNiches].sort((a, b) => (b.royalties ?? []).reduce((s, r) => s + r.revenue, 0) - (a.royalties ?? []).reduce((s, r) => s + r.revenue, 0))[0] ?? null;
+        const topRoyalty = topRoyaltyNiche ? (topRoyaltyNiche.royalties ?? []).reduce((s, r) => s + r.revenue, 0) : 0;
+
         return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 flex flex-col gap-8">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {isLoadingProducts ? [1,2,3,4].map(i => (
-                    <div key={i} className="h-28 rounded-2xl bg-white/[0.03] animate-pulse border border-white/5" />
-                )) : <>
-                    <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-indigo-500/30 hover:shadow-[0_0_30px_rgba(99,102,241,0.12)] transition-all duration-500 group relative overflow-hidden">
-                        <div className="absolute -right-4 -top-4 w-16 h-16 bg-indigo-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
-                        <div className="flex items-center justify-between relative">
-                            <span className="text-sm font-black uppercase tracking-widest text-neutral-500">Ganancias Totales</span>
-                            <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400"><TrendingUp size={16} /></div>
-                        </div>
-                        <div className="space-y-1 relative">
-                            <p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.total.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p>
-                            {monthTrend !== null ? (
-                                <div className={`flex items-center gap-1.5 text-sm font-bold ${monthTrend >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                                    {monthTrend >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                                    <span>{monthTrend >= 0 ? "+" : ""}{monthTrend.toFixed(1)}% vs mes anterior</span>
+        <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+
+            {/* ══ SECCIÓN: GANANCIAS ═══════════════════════════════════════ */}
+            <section className="space-y-5">
+                <SectionHeader icon={<TrendingUp size={16} />} title="Ganancias" subtitle="Ingresos y rendimiento de activos digitales" color="emerald" size="md" />
+
+                {/* ── KPI cards ── */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {isLoadingProducts ? [1,2,3,4].map(i => (
+                        <div key={i} className="h-28 rounded-2xl bg-white/[0.03] animate-pulse border border-white/5" />
+                    )) : <>
+                        <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-indigo-500/30 hover:shadow-[0_0_30px_rgba(99,102,241,0.12)] transition-all duration-500 group relative overflow-hidden">
+                            <div className="absolute -right-4 -top-4 w-16 h-16 bg-indigo-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
+                            <div className="flex items-center justify-between relative">
+                                <span className="text-sm font-black uppercase tracking-widest text-neutral-500">Ganancias Totales</span>
+                                <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400"><TrendingUp size={16} /></div>
+                            </div>
+                            <div className="space-y-1 relative">
+                                <p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.total.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p>
+                                {monthTrend !== null ? (
+                                    <div className={`flex items-center gap-1.5 text-sm font-bold ${monthTrend >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                                        {monthTrend >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+                                        <span>{monthTrend >= 0 ? "+" : ""}{monthTrend.toFixed(1)}% vs mes anterior</span>
+                                    </div>
+                                ) : (
+                                    <div className="text-sm font-bold text-neutral-600 italic">Sin datos comparativos</div>
+                                )}
+                            </div>
+                        </Card>
+                        <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.12)] transition-all duration-500 group relative overflow-hidden">
+                            <div className="absolute -right-4 -top-4 w-16 h-16 bg-blue-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
+                            <div className="flex items-center justify-between relative">
+                                <span className="text-sm font-black uppercase tracking-widest text-neutral-500">Promedio / Asset</span>
+                                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400"><BarChart size={16} /></div>
+                            </div>
+                            <div className="space-y-1 relative">
+                                <p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.avg.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p>
+                                <div className="text-sm font-bold text-blue-400 italic">{stats.avg >= 5 ? "Rendimiento Saludable" : stats.avg > 0 ? "En crecimiento" : "Sin ventas aún"}</div>
+                            </div>
+                        </Card>
+                        <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.12)] transition-all duration-500 group relative overflow-hidden">
+                            <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
+                            <div className="flex items-center justify-between relative">
+                                <span className="text-sm font-black uppercase tracking-widest text-neutral-500">Market Reach</span>
+                                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400"><Globe size={16} /></div>
+                            </div>
+                            <div className="space-y-1 relative">
+                                <div className="text-3xl font-black italic tracking-tighter text-white">
+                                    {activePlatforms.size}<span className="text-sm font-bold text-neutral-500 not-italic">/{totalPlatforms.size}</span>
+                                    <span className="text-sm uppercase text-neutral-500 tracking-widest not-italic ml-2">Platforms</span>
                                 </div>
-                            ) : (
-                                <div className="text-sm font-bold text-neutral-600 italic">Sin datos comparativos</div>
+                                {totalPlatforms.size > 0 && (
+                                    <div className="text-sm font-bold text-emerald-400 italic">{[...activePlatforms].slice(0, 2).join(" · ")}{activePlatforms.size > 2 ? ` +${activePlatforms.size - 2}` : ""}</div>
+                                )}
+                            </div>
+                        </Card>
+                        <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-sky-500/30 hover:shadow-[0_0_30px_rgba(14,165,233,0.12)] transition-all duration-500 group relative overflow-hidden">
+                            <div className="absolute -right-4 -top-4 w-16 h-16 bg-sky-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
+                            <div className="flex items-center justify-between relative">
+                                <span className="text-sm font-black uppercase tracking-widest text-neutral-500">Top Nicho</span>
+                                <div className="p-2 rounded-xl bg-sky-500/10 text-sky-400"><Activity size={16} /></div>
+                            </div>
+                            <div className="relative">
+                                {topNiche ? (
+                                    <div className="space-y-1">
+                                        <p className="text-xl font-black italic tracking-tighter text-white truncate">{topNiche.name}</p>
+                                        <p className="text-sm font-bold text-sky-400 uppercase tracking-widest">
+                                            {topNicheImages > 0 ? `${topNicheImages} imágenes` : "Sin imágenes aún"}
+                                        </p>
+                                        {topNicheDemand && <p className="text-sm text-neutral-600 italic capitalize">{topNicheDemand} demanda</p>}
+                                    </div>
+                                ) : (
+                                    <div className="text-sm text-neutral-700 italic">Sin nichos aún</div>
+                                )}
+                            </div>
+                        </Card>
+                    </>}
+                </div>
+
+                {/* ── Monthly earnings area chart ── */}
+                {monthlyEarningsData.length > 1 && (() => {
+                    const maxVal = Math.max(...monthlyEarningsData.map(d => d.earnings), 1);
+                    const totalMo = monthlyEarningsData.reduce((s, d) => s + d.earnings, 0);
+                    const lastMoV = monthlyEarningsData.at(-1)?.earnings ?? 0;
+                    const prevMoV = monthlyEarningsData.at(-2)?.earnings ?? 0;
+                    const trend = prevMoV > 0 ? ((lastMoV - prevMoV) / prevMoV * 100).toFixed(1) : null;
+                    const pts = monthlyEarningsData.map((d, i) => {
+                        const x = (i / (monthlyEarningsData.length - 1)) * 100;
+                        const y = 100 - (d.earnings / maxVal) * 85;
+                        return `${x},${y}`;
+                    }).join(" ");
+                    return (
+                        <Card variant="outline" className="p-5 border-white/5 bg-white/[0.01] space-y-4 overflow-hidden relative">
+                            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/[0.03] to-transparent pointer-events-none" />
+                            <div className="flex items-center justify-between gap-4 relative">
+                                <SectionHeader icon={<TrendingUp size={15} />} title="Ingresos Mensuales" subtitle="Evolución real · últimos 12 meses" color="emerald" size="sm" />
+                                <div className="flex items-center gap-4 shrink-0">
+                                    {trend !== null && (
+                                        <span className={`text-sm font-black tabular-nums flex items-center gap-1 ${Number(trend) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                                            {Number(trend) >= 0 ? <ArrowUpRight size={12} /> : <ArrowUpRight size={12} className="rotate-90" />}
+                                            {Number(trend) >= 0 ? "+" : ""}{trend}% vs mes ant.
+                                        </span>
+                                    )}
+                                    <span className="text-sm font-black text-white tabular-nums">{totalMo.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€ total</span>
+                                </div>
+                            </div>
+                            <div className="relative h-32">
+                                <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
+                                    <defs>
+                                        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="0%" stopColor="#10b981" stopOpacity="0.5" />
+                                            <stop offset="60%" stopColor="#10b981" stopOpacity="0.1" />
+                                            <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+                                        </linearGradient>
+                                    </defs>
+                                    <polygon points={`0,100 ${pts} 100,100`} fill="url(#areaGrad)" />
+                                    <polyline points={pts} fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                                    {monthlyEarningsData.map((d, i) => {
+                                        const x = (i / (monthlyEarningsData.length - 1)) * 100;
+                                        const y = 100 - (d.earnings / maxVal) * 85;
+                                        return <circle key={i} cx={x} cy={y} r="1.8" fill="#10b981" vectorEffect="non-scaling-stroke" />;
+                                    })}
+                                </svg>
+                            </div>
+                            <div className="flex justify-between gap-1 overflow-x-auto">
+                                {monthlyEarningsData.map((d, i) => (
+                                    <div key={i} className="flex flex-col items-center gap-0.5 shrink-0">
+                                        <span className="text-sm font-black text-white tabular-nums">{d.earnings > 0 ? `${d.earnings.toFixed(0)}€` : ""}</span>
+                                        <span className="text-sm text-neutral-700 font-mono">{d.month.slice(5)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </Card>
+                    );
+                })()}
+
+                {/* ── Top 3 productos ── */}
+                {products.length > 0 && (() => {
+                    const top3 = [...products]
+                        .filter(p => p.totalEarnings > 0)
+                        .sort((a, b) => b.totalEarnings - a.totalEarnings)
+                        .slice(0, 3);
+                    if (top3.length === 0) return null;
+                    const medals = ["🥇", "🥈", "🥉"];
+                    const colors = [
+                        "from-amber-500/20 to-amber-500/5 border-amber-500/20",
+                        "from-neutral-400/15 to-neutral-400/5 border-neutral-400/15",
+                        "from-orange-700/15 to-orange-700/5 border-orange-700/15",
+                    ];
+                    const textColors = ["text-amber-400", "text-neutral-300", "text-orange-500"];
+                    return (
+                        <Card variant="outline" className="p-5 border-white/5 bg-white/[0.01] space-y-4">
+                            <div className="flex items-center justify-between gap-4">
+                                <SectionHeader icon={<Star size={15} />} title="Top Productos" subtitle="Ranking por ingresos acumulados" color="amber" size="sm" />
+                                <span className="text-sm font-mono text-neutral-700">{products.filter(p => p.totalEarnings > 0).length} con ingresos</span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                {top3.map((p, i) => (
+                                    <div key={p.id} className={`rounded-2xl bg-gradient-to-br ${colors[i]} border p-4 space-y-2 relative overflow-hidden`}>
+                                        <div className="flex items-start justify-between gap-2">
+                                            <span className="text-xl leading-none">{medals[i]}</span>
+                                            <span className={`text-sm font-black uppercase px-2 py-0.5 rounded-full bg-black/30 ${textColors[i]}`}>{p.type?.split(" ")[0] ?? "KDP"}</span>
+                                        </div>
+                                        <p className="text-sm font-black text-white leading-snug line-clamp-2">{p.title}</p>
+                                        <p className={`text-lg font-black tabular-nums ${textColors[i]}`}>{p.totalEarnings.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p>
+                                        <div className="flex flex-wrap gap-1">
+                                            {p.platforms?.map((pl: any) => (
+                                                <span key={pl.name} className="text-sm text-neutral-600 bg-white/5 border border-white/8 px-1.5 py-0.5 rounded-full">{pl.name}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </Card>
+                    );
+                })()}
+            </section>
+
+            {/* ══ SECCIÓN: PIPELINE · NICHOS ═══════════════════════════════ */}
+            <section className="space-y-5">
+                <SectionHeader icon={<Target size={16} />} title="Pipeline · Nichos" subtitle="Estado de producción y puntuaciones IA" color="blue" size="md" />
+
+                {/* ── Production KPI cards (same glass style) ── */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {[
+                        { label: "Imágenes IA", value: totalImgsAll.toString(), sub: `${iaCatalogs.length} catálogos activos`, color: "blue", blob: "bg-blue-500/10", icon: <ImageIcon size={16} />, hoverCls: "hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.12)]" },
+                        { label: "Nichos totales", value: niches.length.toString(), sub: `${niches.filter(n=>n.status==="active").length} activos`, color: "sky", blob: "bg-sky-500/10", icon: <Target size={16} />, hoverCls: "hover:border-sky-500/30 hover:shadow-[0_0_30px_rgba(14,165,233,0.12)]" },
+                        { label: "Publicados", value: publishedNiches.length.toString(), sub: `${conversionRate}% conversión`, color: "emerald", blob: "bg-emerald-500/10", icon: <CheckCircle2 size={16} />, hoverCls: "hover:border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.12)]" },
+                        { label: "Royalties KDP", value: `$${totalRoyalties.toFixed(0)}`, sub: topRoyaltyNiche ? `Top: ${topRoyaltyNiche.name.split(" ").slice(0,2).join(" ")}` : "Sin publicados aún", color: "amber", blob: "bg-amber-500/10", icon: <DollarSign size={16} />, hoverCls: "hover:border-amber-500/30 hover:shadow-[0_0_30px_rgba(245,158,11,0.12)]" },
+                        { label: "Score medio IA", value: avgScore != null ? `${avgScore}` : "—", sub: avgScore != null ? `${scoredNiches.length} nichos puntuados` : "Puntúa nichos con IA", color: avgScore != null && avgScore >= 70 ? "emerald" : avgScore != null && avgScore >= 40 ? "amber" : "violet", blob: "bg-violet-500/10", icon: <Sparkles size={16} />, hoverCls: "hover:border-violet-500/30 hover:shadow-[0_0_30px_rgba(139,92,246,0.12)]" },
+                        { label: "Listings SEO", value: totalListings.toString(), sub: `${niches.filter(n=>n.listings&&n.listings.length>0).length} nichos con listing`, color: "indigo", blob: "bg-indigo-500/10", icon: <FileText size={16} />, hoverCls: "hover:border-indigo-500/30 hover:shadow-[0_0_30px_rgba(99,102,241,0.12)]" },
+                    ].map(s => (
+                        <Card key={s.label} variant="outline" className={`p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 ${s.hoverCls} transition-all duration-500 group relative overflow-hidden`}>
+                            <div className={`absolute -right-4 -top-4 w-16 h-16 ${s.blob} blur-2xl rounded-full transition-all group-hover:scale-150`} />
+                            <div className="flex items-center justify-between relative">
+                                <span className="text-sm font-black uppercase tracking-widest text-neutral-500">{s.label}</span>
+                                <div className={`p-2 rounded-xl ${s.blob} text-${s.color}-400`}>{s.icon}</div>
+                            </div>
+                            <p className={`text-3xl font-black italic tracking-tighter text-${s.color}-400 tabular-nums relative leading-none`}>{s.value}</p>
+                            <p className="text-sm font-bold text-neutral-600 leading-snug relative">{s.sub}</p>
+                        </Card>
+                    ))}
+                </div>
+
+                {/* ── Pipeline funnel ── */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    {([
+                        { phase: "niche" as const,     label: "Nicho",     color: "sky",     glow: "rgba(14,165,233,0.1)",   hoverBorder: "hover:border-sky-500/30",     blob: "bg-sky-500/10" },
+                        { phase: "catalog" as const,   label: "Catálogo",  color: "blue",    glow: "rgba(59,130,246,0.1)",   hoverBorder: "hover:border-blue-500/30",    blob: "bg-blue-500/10" },
+                        { phase: "pdf" as const,       label: "PDF",       color: "violet",  glow: "rgba(139,92,246,0.1)",   hoverBorder: "hover:border-violet-500/30",  blob: "bg-violet-500/10" },
+                        { phase: "cover" as const,     label: "Cover",     color: "fuchsia", glow: "rgba(217,70,239,0.1)",   hoverBorder: "hover:border-fuchsia-500/30", blob: "bg-fuchsia-500/10" },
+                        { phase: "published" as const, label: "Publicado", color: "emerald", glow: "rgba(16,185,129,0.1)",   hoverBorder: "hover:border-emerald-500/30", blob: "bg-emerald-500/10" },
+                    ] as const).map(col => {
+                        const cnt = phaseCount(col.phase);
+                        const imgs = phaseImgs(col.phase);
+                        return (
+                            <button key={col.phase} onClick={() => { setNicheViewMode("kanban"); changeTab("niches"); }}
+                                className={`group relative rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 text-left overflow-hidden transition-all ${col.hoverBorder} hover:shadow-[0_0_24px_${col.glow}] hover:bg-white/[0.04]`}>
+                                <div className={`absolute -right-3 -top-3 w-12 h-12 ${col.blob} blur-2xl rounded-full transition-all group-hover:scale-150`} />
+                                <p className={`text-3xl font-black text-${col.color}-400 tabular-nums relative`}>{cnt}</p>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mt-1.5 relative">{col.label}</p>
+                                {imgs > 0 && <p className={`text-[10px] text-${col.color}-500/60 mt-0.5 relative`}>{imgs} imgs</p>}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                {/* ── Pipeline alerts + Top scores ── */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 flex flex-col gap-3">
+                        <div className="flex items-center gap-2">
+                            <Activity size={13} className="text-neutral-600" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Estado del pipeline</span>
+                            {stalled.length === 0 && readyToPublish.length === 0 && (
+                                <span className="ml-auto text-[10px] font-black text-emerald-500 flex items-center gap-1"><CheckCircle2 size={10} /> Al día</span>
                             )}
                         </div>
-                    </Card>
-                    <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.12)] transition-all duration-500 group relative overflow-hidden">
-                        <div className="absolute -right-4 -top-4 w-16 h-16 bg-blue-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
-                        <div className="flex items-center justify-between"><span className="text-sm font-black uppercase tracking-widest text-neutral-500">Promedio / Asset</span><div className="p-2 rounded-xl bg-blue-500/10 text-blue-400"><BarChart size={16} /></div></div>
-                        <div className="space-y-1"><p className="text-3xl font-black italic tracking-tighter text-white tabular-nums">{stats.avg.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p><div className="text-sm font-bold text-blue-400 italic">{stats.avg >= 5 ? "Rendimiento Saludable" : stats.avg > 0 ? "En crecimiento" : "Sin ventas aún"}</div></div>
-                    </Card>
-                    <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.12)] transition-all duration-500 group relative overflow-hidden">
-                        <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
-                        <div className="flex items-center justify-between"><span className="text-sm font-black uppercase tracking-widest text-neutral-500">Market Reach</span><div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400"><Globe size={16} /></div></div>
-                        <div className="space-y-1">
-                            <div className="text-3xl font-black italic tracking-tighter text-white">
-                                {activePlatforms.size}<span className="text-sm font-bold text-neutral-500 not-italic">/{totalPlatforms.size}</span>
-                                <span className="text-sm uppercase text-neutral-500 tracking-widest not-italic ml-2">Platforms</span>
-                            </div>
-                            {totalPlatforms.size > 0 && (
-                                <div className="text-sm font-bold text-emerald-400 italic">{[...activePlatforms].slice(0, 2).join(" · ")}{activePlatforms.size > 2 ? ` +${activePlatforms.size - 2}` : ""}</div>
-                            )}
-                        </div>
-                    </Card>
-                    <Card variant="outline" className="p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.12)] transition-all duration-500 group relative overflow-hidden">
-                        <div className="absolute -right-4 -top-4 w-16 h-16 bg-blue-500/10 blur-2xl rounded-full transition-all group-hover:scale-150" />
-                        <div className="flex items-center justify-between"><span className="text-sm font-black uppercase tracking-widest text-neutral-500">Top Nicho</span><div className="p-2 rounded-xl bg-blue-500/10 text-blue-400"><Activity size={16} /></div></div>
-                        {topNiche ? (
-                            <div className="space-y-1 text-xl font-black italic tracking-tighter text-white flex flex-col">
-                                <span className="truncate">{topNiche.name}</span>
-                                <span className="text-sm uppercase font-black tracking-widest text-blue-400">
-                                    {topNicheImages > 0 ? `${topNicheImages} imágenes` : "Sin imágenes aún"}
-                                </span>
-                            </div>
+                        {stalled.length === 0 && readyToPublish.length === 0 ? (
+                            <p className="text-sm text-neutral-600">No hay bloqueos ni libros pendientes de publicar.</p>
                         ) : (
-                            <div className="text-sm text-neutral-700 italic">Sin nichos aún</div>
+                            <div className="space-y-2">
+                                {stalled.length > 0 && (
+                                    <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/20">
+                                        <span className="text-amber-400 shrink-0 mt-0.5 text-sm">⚠</span>
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-black text-amber-400">{stalled.length} nicho{stalled.length > 1 ? "s" : ""} sin contenido +{staleDays}d</p>
+                                            <p className="text-[11px] text-neutral-500 mt-0.5 truncate">{stalled.slice(0, 2).map(n => n.name).join(", ")}{stalled.length > 2 ? ` +${stalled.length - 2}` : ""}</p>
+                                        </div>
+                                    </div>
+                                )}
+                                {readyToPublish.length > 0 && (
+                                    <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/20">
+                                        <span className="text-emerald-400 shrink-0 mt-0.5 text-sm">✓</span>
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-black text-emerald-400">{readyToPublish.length} libro{readyToPublish.length > 1 ? "s" : ""} listo{readyToPublish.length > 1 ? "s" : ""} para publicar</p>
+                                            <p className="text-[11px] text-neutral-500 mt-0.5 truncate">{readyToPublish.slice(0, 2).map(n => n.name).join(", ")}{readyToPublish.length > 2 ? ` +${readyToPublish.length - 2}` : ""}</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        {niches.length > 0 && (
+                            <div className="mt-auto pt-3 border-t border-white/[0.05]">
+                                <div className="flex rounded-full overflow-hidden h-1.5 gap-0.5">
+                                    {([
+                                        { phase: "niche" as const, color: "bg-sky-500" },
+                                        { phase: "catalog" as const, color: "bg-blue-500" },
+                                        { phase: "pdf" as const, color: "bg-violet-500" },
+                                        { phase: "cover" as const, color: "bg-fuchsia-500" },
+                                        { phase: "published" as const, color: "bg-emerald-500" },
+                                    ] as const).map(p => phaseCount(p.phase) > 0 && (
+                                        <div key={p.phase} className={`${p.color} rounded-full transition-all`} style={{ flex: phaseCount(p.phase) }} />
+                                    ))}
+                                </div>
+                                <div className="flex justify-between mt-1">
+                                    <span className="text-[9px] text-neutral-700">Nicho</span>
+                                    <span className="text-[9px] text-neutral-700">Publicado</span>
+                                </div>
+                            </div>
                         )}
                     </Card>
-                </>}
-            </div>
-
-            {/* ── Monthly earnings line chart ── */}
-            {monthlyEarningsData.length > 1 && (() => {
-                const maxVal = Math.max(...monthlyEarningsData.map(d => d.earnings), 1);
-                const totalMo = monthlyEarningsData.reduce((s, d) => s + d.earnings, 0);
-                const lastMo = monthlyEarningsData.at(-1)?.earnings ?? 0;
-                const prevMo = monthlyEarningsData.at(-2)?.earnings ?? 0;
-                const trend = prevMo > 0 ? ((lastMo - prevMo) / prevMo * 100).toFixed(1) : null;
-                const pts = monthlyEarningsData.map((d, i) => {
-                    const x = (i / (monthlyEarningsData.length - 1)) * 100;
-                    const y = 100 - (d.earnings / maxVal) * 85;
-                    return `${x},${y}`;
-                }).join(" ");
-                return (
-                    <Card variant="outline" className="p-5 border-white/5 bg-white/[0.01] space-y-4 overflow-hidden relative">
-                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/[0.03] to-transparent pointer-events-none" />
-                        <div className="flex items-center justify-between gap-4 relative">
-                            <SectionHeader icon={<TrendingUp size={15} />} title="Ingresos Mensuales" subtitle="Evolución real por plataforma · últimos 12 meses" color="emerald" size="sm" />
-                            <div className="flex items-center gap-4 shrink-0">
-                                {trend !== null && (
-                                    <span className={`text-sm font-black tabular-nums flex items-center gap-1 ${Number(trend) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                                        {Number(trend) >= 0 ? <ArrowUpRight size={12} /> : <ArrowUpRight size={12} className="rotate-90" />}
-                                        {Number(trend) >= 0 ? "+" : ""}{trend}% vs mes ant.
-                                    </span>
-                                )}
-                                <span className="text-sm font-black text-white tabular-nums">{totalMo.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€ total</span>
-                            </div>
+                    <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 flex flex-col gap-3">
+                        <div className="flex items-center gap-2">
+                            <Sparkles size={13} className="text-neutral-600" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Top Score IA</span>
+                            {topScoredNiches.length === 0 && <span className="ml-auto text-[10px] text-neutral-600">Puntúa nichos con IA</span>}
                         </div>
-                        <div className="relative h-28">
-                            <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
-                                <defs>
-                                    <linearGradient id="meLine" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#10b981" stopOpacity="0.6" />
-                                        <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
-                                    </linearGradient>
-                                </defs>
-                                <polyline points={pts} fill="none" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-                                <polygon points={`0,100 ${pts} 100,100`} fill="url(#meLine)" opacity="0.25" />
-                                {monthlyEarningsData.map((d, i) => {
-                                    const x = (i / (monthlyEarningsData.length - 1)) * 100;
-                                    const y = 100 - (d.earnings / maxVal) * 85;
-                                    return <circle key={i} cx={x} cy={y} r="1.8" fill="#10b981" vectorEffect="non-scaling-stroke" />;
-                                })}
-                            </svg>
-                        </div>
-                        <div className="flex justify-between gap-1 overflow-x-auto">
-                            {monthlyEarningsData.map((d, i) => (
-                                <div key={i} className="flex flex-col items-center gap-0.5 shrink-0">
-                                    <span className="text-sm font-black text-white tabular-nums">{d.earnings > 0 ? `${d.earnings.toFixed(0)}€` : ""}</span>
-                                    <span className="text-sm text-neutral-700 font-mono">{d.month.slice(5)}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </Card>
-                );
-            })()}
-
-            {/* ── Top 3 productos ── */}
-            {products.length > 0 && (() => {
-                const top3 = [...products]
-                    .filter(p => p.totalEarnings > 0)
-                    .sort((a, b) => b.totalEarnings - a.totalEarnings)
-                    .slice(0, 3);
-                if (top3.length === 0) return null;
-                const medals = ["🥇", "🥈", "🥉"];
-                const colors = [
-                    "from-amber-500/20 to-amber-500/5 border-amber-500/20",
-                    "from-neutral-400/15 to-neutral-400/5 border-neutral-400/15",
-                    "from-orange-700/15 to-orange-700/5 border-orange-700/15",
-                ];
-                const textColors = ["text-amber-400", "text-neutral-300", "text-orange-500"];
-                return (
-                    <Card variant="outline" className="p-5 border-white/5 bg-white/[0.01] space-y-4">
-                        <div className="flex items-center justify-between gap-4">
-                            <SectionHeader icon={<Star size={15} />} title="Top Productos" subtitle="Ranking por ingresos acumulados" color="amber" size="sm" />
-                            <span className="text-sm font-mono text-neutral-700">{products.filter(p => p.totalEarnings > 0).length} con ingresos</span>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            {top3.map((p, i) => (
-                                <div key={p.id} className={`rounded-2xl bg-gradient-to-br ${colors[i]} border p-4 space-y-2 relative overflow-hidden`}>
-                                    <div className="flex items-start justify-between gap-2">
-                                        <span className="text-xl leading-none">{medals[i]}</span>
-                                        <span className={`text-sm font-black uppercase px-2 py-0.5 rounded-full bg-black/30 ${textColors[i]}`}>{p.type?.split(" ")[0] ?? "KDP"}</span>
+                        {topScoredNiches.length === 0 ? (
+                            <p className="text-sm text-neutral-600">Sin puntuaciones aún. Abre un nicho y pulsa «Score IA».</p>
+                        ) : (
+                            <div className="space-y-3 flex-1">
+                                {topScoredNiches.map((n, i) => (
+                                    <div key={n._id} className="flex items-center gap-3">
+                                        <span className="text-[11px] font-black text-neutral-700 w-4 shrink-0 tabular-nums">#{i + 1}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-black text-white truncate">{n.name}</p>
+                                            <div className="w-full bg-white/[0.05] rounded-full h-1 mt-1">
+                                                <div className={`h-1 rounded-full ${(n.score ?? 0) >= 70 ? "bg-emerald-400" : (n.score ?? 0) >= 40 ? "bg-amber-400" : "bg-rose-400"}`} style={{ width: `${n.score ?? 0}%` }} />
+                                            </div>
+                                        </div>
+                                        <span className={`text-base font-black shrink-0 tabular-nums ${(n.score ?? 0) >= 70 ? "text-emerald-400" : (n.score ?? 0) >= 40 ? "text-amber-400" : "text-rose-400"}`}>{n.score}</span>
                                     </div>
-                                    <p className="text-sm font-black text-white leading-snug line-clamp-2">{p.title}</p>
-                                    <p className={`text-lg font-black tabular-nums ${textColors[i]}`}>{p.totalEarnings.toLocaleString("es-ES", { minimumFractionDigits: 2 })}€</p>
-                                    <div className="flex flex-wrap gap-1">
-                                        {p.platforms?.map((pl: any) => (
-                                            <span key={pl.name} className="text-sm text-neutral-600 bg-white/5 border border-white/8 px-1.5 py-0.5 rounded-full">{pl.name}</span>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </Card>
-                );
-            })()}
-
-            <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <Card variant="glass" className="lg:col-span-2 p-8 border-white/5 bg-white/[0.01] space-y-8 relative overflow-hidden hover:shadow-[0_0_40px_rgba(99,102,241,0.08)] transition-all duration-500">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <SectionHeader
-                            icon={<Activity size={16} />}
-                            title="Evolución de Tendencias"
-                            subtitle="Análisis predictivo basado en volumen de ventas"
-                            color="indigo"
-                            size="sm"
-                        />
-                        <div className="w-full md:w-48 shrink-0">
-                            <KdpSelect value={chartPeriod} onChange={v => setChartPeriod(v as PeriodID)}
-                                options={[{ value: "month", label: "Último Mes" }, { value: "6months", label: "Últimos 6 Meses" }, { value: "year", label: "Último Año" }, { value: "all", label: "Histórico Total" }]} />
-                        </div>
-                    </div>
-                    <div className="h-[250px] w-full flex items-end justify-between gap-1 sm:gap-2 pt-14 mt-4">
-                        {chartData.map((height, i) => (
-                            <div key={i} className="flex-1 group/bar relative h-full flex items-end">
-                                <div className="w-full bg-gradient-to-t from-indigo-500/10 via-indigo-500/30 to-indigo-500/50 rounded-t-sm sm:rounded-t-lg group-hover/bar:from-indigo-500/30 group-hover/bar:to-indigo-400 transition-all duration-700 relative overflow-hidden" style={{ height: `${height}%` }}>
-                                    <div className="absolute inset-x-0 top-0 h-0.5 bg-white/40 blur-[1px]" />
-                                    <div className="absolute inset-0 bg-white/10 translate-y-full group-hover/bar:translate-y-0 transition-transform duration-500" />
-                                </div>
-                                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-white text-sm font-black text-black px-2 py-1 rounded-lg opacity-0 group-hover/bar:opacity-100 transition-all scale-75 group-hover/bar:scale-100 pointer-events-none shadow-2xl z-20">{height}€</div>
+                                ))}
                             </div>
-                        ))}
-                    </div>
-                    <div className="flex justify-between px-2 text-sm font-black text-neutral-600 uppercase tracking-widest pt-3 border-t border-white/5">
-                        {chartPeriod === "month" && <><span>Semana 1</span><span>Semana 2</span><span>Semana 3</span><span>Semana 4</span></>}
-                        {chartPeriod === "6months" && <><span>Mes 1</span><span>Mes 3</span><span>Mes 6</span></>}
-                        {chartPeriod === "year" && <><span>Q1</span><span>Q2</span><span>Q3</span><span>Q4</span></>}
-                        {chartPeriod === "all" && <><span>2024</span><span>2025</span><span>2026</span></>}
-                    </div>
-                </Card>
-                <Card variant="glass" className="p-8 border-white/5 bg-white/[0.01] space-y-8 flex flex-col justify-between relative overflow-hidden hover:shadow-[0_0_40px_rgba(99,102,241,0.08)] transition-all duration-500">
-                    <div className="space-y-6 relative">
-                        <SectionHeader icon={<BarChart size={16} />} title="Platform Split" subtitle="Distribución por canales de venta" color="blue" size="sm" />
-                        <div className="space-y-5">
-                            {[{ name: "Amazon KDP", percent: 65, color: "bg-orange-500" }, { name: "Etsy", percent: 25, color: "bg-indigo-500" }, { name: "Creative Fabrica", percent: 10, color: "bg-blue-500" }].map(plat => (
-                                <div key={plat.name} className="space-y-2.5">
-                                    <div className="flex justify-between items-center text-sm font-black uppercase tracking-widest"><span className="text-neutral-400">{plat.name}</span><span className="text-white italic tabular-nums">{plat.percent}%</span></div>
-                                    <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden p-[2px]"><div className={`h-full ${plat.color} rounded-full flex items-center justify-end px-1`} style={{ width: `${plat.percent}%` }}><div className="w-1 h-1 bg-white/40 rounded-full blur-[1px]" /></div></div>
+                        )}
+                        {topRoyaltyNiche && (
+                            <div className="mt-auto pt-3 border-t border-white/[0.05] flex items-center justify-between">
+                                <div className="min-w-0">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Mejor royalty</p>
+                                    <p className="text-sm font-black text-white truncate">{topRoyaltyNiche.name}</p>
                                 </div>
-                            ))}
-                        </div>
-                    </div>
-                    <div className="p-5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 space-y-3 relative group/alert hover:shadow-[0_0_20px_rgba(99,102,241,0.15)] transition-all duration-500">
-                        <div className="absolute inset-0 bg-indigo-500/5 opacity-0 group-hover/alert:opacity-100 transition-opacity duration-500 rounded-2xl" />
-                        <p className="text-sm font-black text-indigo-400 uppercase tracking-[0.05em] flex items-center gap-2"><Lightbulb size={10} /> Smart Insight</p>
-                        <p className="text-sm text-neutral-400 leading-relaxed italic relative">"Los posters digitales de la serie 'Cyberpunk' están rindiendo un 25% mejor en Etsy que en otras plataformas este mes."</p>
-                    </div>
-                </Card>
+                                <span className="text-base font-black text-amber-400 shrink-0">${topRoyalty.toFixed(0)}</span>
+                            </div>
+                        )}
+                    </Card>
+                </div>
             </section>
 
 
@@ -4572,76 +4846,6 @@ export function KdpFactoryApp() {
                 </div>
             </section>
 
-            {/* ── Tabla de integraciones ── */}
-            {(() => {
-                const badge: Record<string, string> = {
-                    dev:    "bg-amber-500/15 border-amber-500/30 text-amber-400",
-                    paused: "bg-neutral-500/15 border-neutral-500/30 text-neutral-500",
-                    study:  "bg-sky-500/15 border-sky-500/30 text-sky-400",
-                    active: "bg-emerald-500/15 border-emerald-500/30 text-emerald-400",
-                };
-                return (
-                    <section className="space-y-3">
-                        <div className="flex items-center justify-between gap-2">
-                            <SectionHeader icon={<Store size={15} />} title="Integraciones" subtitle="Estado de los marketplaces conectados o en hoja de ruta" color="indigo" size="sm" />
-                            <button
-                                onClick={() => { setEditingIntegration(null); setIntegrationDraft({ status: "study", statusLabel: "En estudio", icon: "🔗" }); setShowIntegrationModal(true); }}
-                                className="flex items-center gap-1.5 h-8 px-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20 hover:border-indigo-500/40 transition-all text-sm font-black uppercase tracking-wider shrink-0"
-                            >
-                                <Plus size={11} /> Añadir
-                            </button>
-                        </div>
-                        <Card variant="outline" className="overflow-hidden border-white/5 bg-white/[0.01]">
-                            {isLoadingIntegrations ? (
-                                <div className="divide-y divide-white/[0.05]">
-                                    {[...Array(4)].map((_, i) => (
-                                        <div key={i} className="flex items-center gap-4 px-5 py-3.5 animate-pulse">
-                                            <div className="w-7 h-5 rounded bg-white/5 shrink-0" />
-                                            <div className="flex-1 space-y-1.5">
-                                                <div className="h-2.5 w-28 rounded bg-white/5" />
-                                                <div className="h-2 w-44 rounded bg-white/5" />
-                                            </div>
-                                            <div className="h-5 w-20 rounded-lg bg-white/5 shrink-0" />
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : integrations.length === 0 ? (
-                                <div className="flex flex-col items-center gap-3 py-10 text-center">
-                                    <Store size={28} className="text-neutral-700" />
-                                    <p className="text-sm text-neutral-600">No hay integraciones. Añade la primera.</p>
-                                </div>
-                            ) : (
-                                <div className="divide-y divide-white/[0.05]">
-                                    {integrations.map((int) => (
-                                        <div key={int.id} className="group flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.02] transition-all">
-                                            <span className="text-lg w-7 shrink-0">{int.icon}</span>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-black text-white">{int.name}</p>
-                                                <p className="text-sm text-neutral-600 truncate">{int.desc}</p>
-                                                {int.url && <a href={int.url} target="_blank" rel="noreferrer" className="text-sm text-indigo-500 hover:text-indigo-400 truncate block">{int.url}</a>}
-                                            </div>
-                                            <span className={`shrink-0 text-sm font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${badge[int.status] ?? badge.study}`}>
-                                                {int.statusLabel}
-                                            </span>
-                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                                                <button
-                                                    onClick={() => { setEditingIntegration(int); setIntegrationDraft({ name: int.name, icon: int.icon, status: int.status, statusLabel: int.statusLabel, desc: int.desc, url: int.url ?? "" }); setShowIntegrationModal(true); }}
-                                                    className="w-6 h-6 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/10 transition-all"
-                                                ><Pencil size={10} /></button>
-                                                <button
-                                                    onClick={() => setConfirmDeleteIntegrationId(int.id)}
-                                                    className="w-6 h-6 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-neutral-500 hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/20 transition-all"
-                                                ><Trash2 size={10} /></button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </Card>
-                    </section>
-                );
-            })()}
-
             {/* ══ TIENDA GELATO ══ */}
             <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
                 <div className="h-px w-full bg-gradient-to-r from-orange-500/60 via-amber-400/20 to-transparent" />
@@ -4753,6 +4957,368 @@ export function KdpFactoryApp() {
     };
 
 
+
+    const renderConfig = () => {
+        const DAY_LABELS = ["L", "M", "X", "J", "V", "S", "D"];
+        const DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+        const PLATFORM_OPTIONS = [
+            { id: "amazon-kdp",   label: "Amazon KDP",   icon: "📦", url: (q: string) => `https://www.amazon.com/s?k=${encodeURIComponent(q)}&i=stripbooks` },
+            { id: "amazon-all",   label: "Amazon General", icon: "🛒", url: (q: string) => `https://www.amazon.com/s?k=${encodeURIComponent(q)}` },
+            { id: "etsy",         label: "Etsy",         icon: "🛍️", url: (q: string) => `https://www.etsy.com/search?q=${encodeURIComponent(q)}` },
+            { id: "redbubble",    label: "Redbubble",    icon: "🫧", url: (q: string) => `https://www.redbubble.com/shop/?query=${encodeURIComponent(q)}` },
+        ];
+        const toggleDay = (d: number) => setApDays(prev => { const s = new Set(prev); s.has(d) ? s.delete(d) : s.add(d); return s; });
+        const toggleRuleDay = (d: number) => setRuleDraft(prev => { const days = prev.days ?? []; return { ...prev, days: days.includes(d) ? days.filter(x => x !== d) : [...days, d] }; });
+        const cronPreview = buildCron();
+
+        const INTEGRATION_BADGE: Record<string, string> = {
+            dev:    "bg-amber-500/15 border-amber-500/30 text-amber-400",
+            paused: "bg-neutral-500/15 border-neutral-500/30 text-neutral-500",
+            study:  "bg-sky-500/15 border-sky-500/30 text-sky-400",
+            active: "bg-emerald-500/15 border-emerald-500/30 text-emerald-400",
+        };
+
+        return (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+            {/* ── AUTO-PILOT ──────────────────────────────────────────────── */}
+            <section className="space-y-5">
+                <SectionHeader icon={<Zap size={15} />} title="Auto-Pilot" subtitle="Automatiza el pipeline completo de producción" color="amber" size="sm" />
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+                    {/* ─ Lanzar ahora ─ */}
+                    <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 flex flex-col gap-4 hover:border-amber-500/20 hover:shadow-[0_0_30px_rgba(245,158,11,0.08)] transition-all group relative overflow-hidden">
+                        <div className="absolute -right-3 -top-3 w-14 h-14 bg-amber-500/8 blur-2xl rounded-full transition-all group-hover:scale-150" />
+                        <div className="flex items-center gap-2 relative">
+                            <Zap size={14} className="text-amber-400" />
+                            <span className="text-sm font-black text-white">Ejecución manual</span>
+                        </div>
+                        <p className="text-[11px] text-neutral-500 -mt-2">Procesa hasta {apMaxNiches} nichos con las reglas activas ahora mismo.</p>
+                        <button onClick={() => void runAutoPilotNow()} disabled={apRunning}
+                            className="mt-auto flex items-center justify-center gap-2 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black hover:border-amber-500 transition-all text-sm font-black uppercase tracking-widest disabled:opacity-50">
+                            {apRunning ? <span className="w-3 h-3 rounded-full border border-amber-400 border-t-transparent animate-spin" /> : <Zap size={12} />}
+                            Ejecutar ahora
+                        </button>
+                        <div className="border-t border-white/[0.05] pt-3 grid grid-cols-3 gap-2">
+                            {[
+                                { label: "Catálogos/nicho", value: apCatalogsPer, set: setApCatalogsPer },
+                                { label: "Imgs/catálogo", value: apImagesPerCatalog, set: setApImagesPerCatalog },
+                                { label: "Nichos/run", value: apMaxNiches, set: setApMaxNiches },
+                            ].map(f => (
+                                <div key={f.label}>
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-1">{f.label}</p>
+                                    <input type="number" min="1" max="20" value={f.value} onChange={e => f.set(e.target.value)}
+                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-2 py-1.5 text-sm text-white text-center font-black focus:outline-none focus:border-amber-500/40 transition-all" />
+                                </div>
+                            ))}
+                        </div>
+                        <button onClick={() => void saveAutoPilotSettings()} className="w-full h-8 rounded-xl bg-white/[0.03] border border-white/8 text-[10px] font-black uppercase tracking-widest text-neutral-500 hover:text-white hover:bg-white/8 transition-all">
+                            Guardar límites
+                        </button>
+                    </Card>
+
+                    {/* ─ Programación ─ */}
+                    <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 flex flex-col gap-4 hover:border-sky-500/20 hover:shadow-[0_0_30px_rgba(14,165,233,0.08)] transition-all group relative overflow-hidden lg:col-span-2">
+                        <div className="absolute -right-3 -top-3 w-14 h-14 bg-sky-500/8 blur-2xl rounded-full transition-all group-hover:scale-150" />
+                        <div className="flex items-center gap-2 relative">
+                            <Activity size={14} className="text-sky-400" />
+                            <span className="text-sm font-black text-white">Programación</span>
+                            {apScheduled && <span className="ml-auto text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/20 text-emerald-400">Activa</span>}
+                        </div>
+                        {/* Mode toggle */}
+                        <div className="flex gap-1 p-1 bg-white/[0.03] border border-white/8 rounded-xl w-fit">
+                            {([{ id: "specific", label: "Días específicos" }, { id: "interval", label: "Cada X horas" }] as const).map(m => (
+                                <button key={m.id} onClick={() => setApFreqMode(m.id)}
+                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${apFreqMode === m.id ? "bg-sky-500/20 text-sky-400 border border-sky-500/30" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                    {m.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {apFreqMode === "specific" ? (
+                            <div className="space-y-3">
+                                {/* Days picker */}
+                                <div>
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-2">Días de la semana</p>
+                                    <div className="flex gap-1.5">
+                                        {DAY_LABELS.map((d, i) => (
+                                            <button key={i} onClick={() => toggleDay(i + 1 > 6 ? 0 : i + 1)}
+                                                title={DAY_NAMES[i]}
+                                                className={`w-9 h-9 rounded-xl text-[11px] font-black border transition-all ${apDays.has(i + 1 > 6 ? 0 : i + 1) ? "bg-sky-500/20 border-sky-500/40 text-sky-400" : "bg-white/[0.03] border-white/8 text-neutral-600 hover:text-neutral-400 hover:border-white/15"}`}>
+                                                {d}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {/* Time picker */}
+                                <div>
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-2">Hora de ejecución</p>
+                                    <div className="flex items-center gap-2">
+                                        <select value={apHour} onChange={e => setApHour(Number(e.target.value))}
+                                            className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm font-black text-white focus:outline-none focus:border-sky-500/40 transition-all">
+                                            {Array.from({length: 24}, (_, i) => (
+                                                <option key={i} value={i}>{String(i).padStart(2, "0")}h</option>
+                                            ))}
+                                        </select>
+                                        <span className="text-neutral-600 font-black">:</span>
+                                        <select value={apMinute} onChange={e => setApMinute(e.target.value)}
+                                            className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm font-black text-white focus:outline-none focus:border-sky-500/40 transition-all">
+                                            {["00", "15", "30", "45"].map(m => <option key={m} value={m}>{m}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Intervalo</p>
+                                <div className="flex gap-2 flex-wrap">
+                                    {["1", "2", "4", "6", "12", "24"].map(h => (
+                                        <button key={h} onClick={() => setApIntervalHours(h)}
+                                            className={`h-9 px-4 rounded-xl text-sm font-black border transition-all ${apIntervalHours === h ? "bg-sky-500/20 border-sky-500/40 text-sky-400" : "bg-white/[0.03] border-white/8 text-neutral-600 hover:text-neutral-400"}`}>
+                                            Cada {h}h
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Cron preview */}
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/8">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Cron</span>
+                            <code className="text-[11px] font-mono text-sky-400 flex-1">{cronPreview}</code>
+                        </div>
+
+                        <div className="flex gap-2 mt-auto">
+                            {apScheduled ? (
+                                <button onClick={() => void cancelAutoPilotSchedule()} className="flex-1 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 transition-all text-sm font-black uppercase tracking-widest">
+                                    Cancelar programación
+                                </button>
+                            ) : (
+                                <button onClick={() => void scheduleAutoPilot()} className="flex-1 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 transition-all text-sm font-black uppercase tracking-widest">
+                                    Activar programación
+                                </button>
+                            )}
+                        </div>
+                    </Card>
+                </div>
+
+                {/* ─ Reglas ─ */}
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <SectionHeader icon={<BookOpen size={13} />} title="Reglas de búsqueda" subtitle="Qué busca el scraper cada día y dónde" color="violet" size="sm" />
+                        <button onClick={() => setShowRuleForm(v => !v)}
+                            className="flex items-center gap-1.5 h-8 px-3.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 hover:bg-violet-500/20 transition-all text-[10px] font-black uppercase tracking-widest">
+                            <Plus size={10} /> Nueva regla
+                        </button>
+                    </div>
+
+                    {/* Rule form */}
+                    {showRuleForm && (
+                        <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.04] p-4 space-y-4">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-violet-400">Nueva regla</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Días</p>
+                                    <div className="flex gap-1">
+                                        {DAY_LABELS.map((d, i) => {
+                                            const idx = i + 1 > 6 ? 0 : i + 1;
+                                            return (
+                                                <button key={i} onClick={() => toggleRuleDay(idx)}
+                                                    className={`w-8 h-8 rounded-lg text-[10px] font-black border transition-all ${(ruleDraft.days ?? []).includes(idx) ? "bg-violet-500/20 border-violet-500/40 text-violet-400" : "bg-white/[0.03] border-white/8 text-neutral-600 hover:text-neutral-400"}`}>
+                                                    {d}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Plataforma</p>
+                                    <div className="flex gap-1 flex-wrap">
+                                        {PLATFORM_OPTIONS.map(p => (
+                                            <button key={p.id} onClick={() => setRuleDraft(d => ({ ...d, platform: p.id }))}
+                                                className={`h-8 px-2.5 rounded-lg text-[10px] font-black border transition-all flex items-center gap-1 ${ruleDraft.platform === p.id ? "bg-violet-500/20 border-violet-500/40 text-violet-400" : "bg-white/[0.03] border-white/8 text-neutral-600 hover:text-neutral-400"}`}>
+                                                {p.icon} {p.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Búsqueda</p>
+                                <input value={ruleDraft.query ?? ""} onChange={e => setRuleDraft(d => ({ ...d, query: e.target.value }))}
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500/40 transition-all"
+                                    placeholder="Ej: coloring books animals, kawaii cats, botanical art…" />
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={addRule} className="h-8 px-4 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 hover:bg-violet-500/20 transition-all text-[10px] font-black uppercase tracking-widest">
+                                    Añadir regla
+                                </button>
+                                <button onClick={() => setShowRuleForm(false)} className="h-8 px-4 rounded-xl border border-white/10 text-neutral-600 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest">
+                                    Cancelar
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Rules list */}
+                    {apRules.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-white/8 bg-white/[0.01] p-8 text-center">
+                            <p className="text-sm text-neutral-600">Sin reglas — el scraper no sabrá qué buscar ni cuándo</p>
+                            <p className="text-[11px] text-neutral-700 mt-1">Añade al menos una regla para que el Auto-Pilot funcione</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {apRules.map(rule => {
+                                const plat = PLATFORM_OPTIONS.find(p => p.id === rule.platform);
+                                return (
+                                    <div key={rule.id} className="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 hover:bg-white/[0.04] transition-all">
+                                        <div className="flex gap-0.5 shrink-0">
+                                            {DAY_LABELS.map((d, i) => {
+                                                const idx = i + 1 > 6 ? 0 : i + 1;
+                                                return (
+                                                    <span key={i} className={`w-5 h-5 rounded-md text-[9px] font-black flex items-center justify-center ${rule.days.includes(idx) ? "bg-violet-500/20 text-violet-400" : "text-neutral-800"}`}>{d}</span>
+                                                );
+                                            })}
+                                        </div>
+                                        <span className="text-base shrink-0">{plat?.icon ?? "🔍"}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-black text-white truncate">{rule.query}</p>
+                                            <p className="text-[10px] text-neutral-600">{plat?.label}</p>
+                                        </div>
+                                        <button onClick={() => void saveApRules(apRules.filter(r => r.id !== rule.id))}
+                                            className="p-1.5 rounded-lg text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all">
+                                            <Trash2 size={12} />
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            </section>
+
+            {/* ── TELEGRAM ────────────────────────────────────────────────── */}
+            <section className="space-y-4">
+                <SectionHeader icon={<Activity size={15} />} title="Notificaciones Telegram" subtitle="Recibe avisos de cada paso del pipeline en tu móvil" color="sky" size="sm" />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 flex flex-col gap-4">
+                        <div className="space-y-3">
+                            <div>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-1.5">Bot Token</p>
+                                <input value={telegramToken} onChange={e => setTelegramToken(e.target.value)}
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-sky-500/40 transition-all"
+                                    placeholder="123456789:ABCDefGhIJKlmNoPQRsTUVwxyZ" />
+                            </div>
+                            <div>
+                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-1.5">Chat ID</p>
+                                <input value={telegramChatId} onChange={e => setTelegramChatId(e.target.value)}
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-sky-500/40 transition-all"
+                                    placeholder="-1001234567890" />
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={() => void saveAutoPilotSettings()} className="flex-1 h-9 rounded-xl bg-white/[0.03] border border-white/8 text-[10px] font-black uppercase tracking-widest text-neutral-500 hover:text-white hover:bg-white/8 transition-all">
+                                Guardar
+                            </button>
+                            <button onClick={() => void testTelegram()} disabled={testingTelegram}
+                                className="flex-1 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 hover:bg-sky-500/20 transition-all text-[10px] font-black uppercase tracking-widest disabled:opacity-50 flex items-center justify-center gap-1.5">
+                                {testingTelegram ? <span className="w-3 h-3 rounded-full border border-sky-400 border-t-transparent animate-spin" /> : null}
+                                Probar envío
+                            </button>
+                        </div>
+                    </Card>
+                    {/* Instructions */}
+                    <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 flex flex-col gap-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Cómo configurarlo</p>
+                        <div className="space-y-3">
+                            {[
+                                { step: "1", title: "Crea el bot", desc: "Abre Telegram y busca @BotFather. Escribe /newbot y sigue los pasos. Te dará el token." },
+                                { step: "2", title: "Obtén tu Chat ID", desc: "Envía un mensaje a tu bot. Luego abre: api.telegram.org/bot<TOKEN>/getUpdates y busca «chat»→«id»." },
+                                { step: "3", title: "Pega y prueba", desc: "Copia el token y el chat ID aquí y pulsa «Probar envío». Deberías recibir un mensaje." },
+                            ].map(s => (
+                                <div key={s.step} className="flex gap-3">
+                                    <span className="w-5 h-5 rounded-full bg-sky-500/15 border border-sky-500/20 text-sky-400 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">{s.step}</span>
+                                    <div>
+                                        <p className="text-sm font-black text-white">{s.title}</p>
+                                        <p className="text-[11px] text-neutral-500 mt-0.5 leading-relaxed">{s.desc}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <a href="https://core.telegram.org/bots#how-do-i-create-a-bot" target="_blank" rel="noopener noreferrer"
+                            className="mt-auto flex items-center gap-1 text-[10px] font-black text-sky-500 hover:text-sky-400 transition-colors">
+                            <ExternalLink size={9} /> Documentación oficial de Telegram Bots
+                        </a>
+                    </Card>
+                </div>
+            </section>
+
+            {/* ── INTEGRACIONES ───────────────────────────────────────────── */}
+            {(() => {
+                return (
+                    <section className="space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                            <SectionHeader icon={<Store size={15} />} title="Integraciones" subtitle="Estado de los marketplaces conectados o en hoja de ruta" color="indigo" size="sm" />
+                            <button
+                                onClick={() => { setEditingIntegration(null); setIntegrationDraft({ status: "study", statusLabel: "En estudio", icon: "🔗" }); setShowIntegrationModal(true); }}
+                                className="flex items-center gap-1.5 h-8 px-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20 hover:border-indigo-500/40 transition-all text-sm font-black uppercase tracking-wider shrink-0"
+                            >
+                                <Plus size={11} /> Añadir
+                            </button>
+                        </div>
+                        <Card variant="outline" className="overflow-hidden border-white/5 bg-white/[0.01]">
+                            {isLoadingIntegrations ? (
+                                <div className="divide-y divide-white/[0.05]">
+                                    {[...Array(4)].map((_, i) => (
+                                        <div key={i} className="flex items-center gap-4 px-5 py-3.5 animate-pulse">
+                                            <div className="w-7 h-5 rounded bg-white/5 shrink-0" />
+                                            <div className="flex-1 space-y-1.5">
+                                                <div className="h-2.5 w-28 rounded bg-white/5" />
+                                                <div className="h-2 w-44 rounded bg-white/5" />
+                                            </div>
+                                            <div className="h-5 w-20 rounded-lg bg-white/5 shrink-0" />
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : integrations.length === 0 ? (
+                                <div className="flex flex-col items-center gap-3 py-10 text-center">
+                                    <Store size={28} className="text-neutral-700" />
+                                    <p className="text-sm text-neutral-600">No hay integraciones. Añade la primera.</p>
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-white/[0.05]">
+                                    {integrations.map((int) => (
+                                        <div key={int.id} className="group flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.02] transition-all">
+                                            <span className="text-lg w-7 shrink-0">{int.icon}</span>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-black text-white">{int.name}</p>
+                                                <p className="text-sm text-neutral-600 truncate">{int.desc}</p>
+                                                {int.url && <a href={int.url} target="_blank" rel="noreferrer" className="text-sm text-indigo-500 hover:text-indigo-400 truncate block">{int.url}</a>}
+                                            </div>
+                                            <span className={`shrink-0 text-sm font-black uppercase tracking-widest px-2.5 py-1 rounded-lg border ${INTEGRATION_BADGE[int.status] ?? INTEGRATION_BADGE.study}`}>
+                                                {int.statusLabel}
+                                            </span>
+                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                                <button onClick={() => { setEditingIntegration(int); setIntegrationDraft({ name: int.name, icon: int.icon, status: int.status, statusLabel: int.statusLabel, desc: int.desc, url: int.url ?? "" }); setShowIntegrationModal(true); }}
+                                                    className="w-6 h-6 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/10 transition-all"
+                                                ><Pencil size={10} /></button>
+                                                <button onClick={() => setConfirmDeleteIntegrationId(int.id)}
+                                                    className="w-6 h-6 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-neutral-500 hover:text-rose-400 hover:bg-rose-500/10 hover:border-rose-500/20 transition-all"
+                                                ><Trash2 size={10} /></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </Card>
+                    </section>
+                );
+            })()}
+
+        </div>
+        );
+    };
 
     const renderAIStudio = () => {
         const currentModel = AI_MODELS.find(m => m.id === selectedModel);
@@ -6153,25 +6719,6 @@ export function KdpFactoryApp() {
                                                         </button>
                                                     </>
                                                 )}
-                                                {catalog.status === "completed" && catalog.images.length > 0 && (catalog.nicheIds?.length ?? 0) > 0 && (() => {
-                                                    const linkedNiche = niches.find(n => (catalog.nicheIds ?? []).includes(n._id));
-                                                    if (!linkedNiche) return null;
-                                                    return (
-                                                        <button
-                                                            onClick={() => {
-                                                                setContentNiche(`${linkedNiche.name} — ${NICHE_PRODUCT_OPTIONS.find(p => p.id === linkedNiche.productType)?.label ?? linkedNiche.productType}`);
-                                                                setContentType("kdp-physical-book");
-                                                                setContentResult(null);
-                                                                changeTab("studio");
-                                                                toast.success(`Contenido listo para: ${linkedNiche.name}`);
-                                                            }}
-                                                            title="Generar contenido KDP para este nicho"
-                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all border border-emerald-500/20 text-sm font-black uppercase tracking-widest"
-                                                        >
-                                                            <ArrowRight size={11} /> Contenido
-                                                        </button>
-                                                    );
-                                                })()}
                                                 {(catalog.skippedImages ?? 0) > 0 && !isActive && (
                                                     <button
                                                         onClick={() => void retryFailedSlots(catalog._id)}
@@ -7051,12 +7598,12 @@ export function KdpFactoryApp() {
 
                     {/* ── Kanban view ── */}
                     {!isLoadingNiches && nicheViewMode === "kanban" && niches.length > 0 && (() => {
-                        const PHASES: { id: NicheFE["phase"]; label: string; color: string; dot: string }[] = [
-                            { id: "niche",     label: "Nicho",     color: "border-sky-500/30 bg-sky-500/[0.05]",       dot: "bg-sky-400" },
-                            { id: "catalog",   label: "Catálogo",  color: "border-blue-500/30 bg-blue-500/[0.05]",     dot: "bg-blue-400" },
-                            { id: "pdf",       label: "PDF",       color: "border-violet-500/30 bg-violet-500/[0.05]", dot: "bg-violet-400" },
-                            { id: "cover",     label: "Cover",     color: "border-fuchsia-500/30 bg-fuchsia-500/[0.05]", dot: "bg-fuchsia-400" },
-                            { id: "published", label: "Publicado", color: "border-emerald-500/30 bg-emerald-500/[0.05]", dot: "bg-emerald-400" },
+                        const PHASES: { id: NicheFE["phase"]; label: string; accent: string; headerBg: string; colBg: string; dot: string; emptyText: string }[] = [
+                            { id: "niche",     label: "Nicho",     accent: "text-sky-400",     headerBg: "bg-sky-500/10",     colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-sky-400",     emptyText: "Añade nichos para empezar" },
+                            { id: "catalog",   label: "Catálogo",  accent: "text-blue-400",    headerBg: "bg-blue-500/10",    colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-blue-400",    emptyText: "Genera catálogos de imágenes" },
+                            { id: "pdf",       label: "PDF",       accent: "text-violet-400",  headerBg: "bg-violet-500/10",  colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-violet-400",  emptyText: "Monta el libro en PDF" },
+                            { id: "cover",     label: "Cover",     accent: "text-fuchsia-400", headerBg: "bg-fuchsia-500/10", colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-fuchsia-400", emptyText: "Diseña la portada final" },
+                            { id: "published", label: "Publicado", accent: "text-emerald-400", headerBg: "bg-emerald-500/10", colBg: "border-emerald-500/10 bg-emerald-500/[0.02]", dot: "bg-emerald-400", emptyText: "Aquí aparecen los publicados" },
                         ];
                         const phaseOrder = ["niche", "catalog", "pdf", "cover", "published"] as const;
                         const movePhase = async (nicheId: string, direction: 1 | -1) => {
@@ -7068,42 +7615,147 @@ export function KdpFactoryApp() {
                             await fetch(`${API_BASE_URL}/niches/${nicheId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: next }) }).catch(() => {});
                             setNiches(ns => ns.map(n => n._id === nicheId ? { ...n, phase: next } : n));
                         };
+                        const demandColor: Record<string, string> = { low: "text-rose-400", medium: "text-amber-400", high: "text-emerald-400", unknown: "text-neutral-600" };
+                        const compColor: Record<string, string> = { low: "text-emerald-400", medium: "text-amber-400", high: "text-rose-400", unknown: "text-neutral-600" };
+                        const totalRevenue = (n: NicheFE) => (n.royalties ?? []).reduce((s, r) => s + r.revenue, 0);
                         return (
-                            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 items-start">
                                 {PHASES.map(col => {
                                     const colNiches = niches.filter(n => (n.phase ?? "niche") === col.id);
+                                    const colImgs = colNiches.reduce((sum, n) => sum + iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).reduce((s, c) => s + c.images.length, 0), 0);
                                     return (
-                                        <div key={col.id} className={`rounded-2xl border ${col.color} p-3 space-y-2 min-h-[120px]`}>
-                                            <div className="flex items-center gap-2 pb-1 border-b border-white/5">
-                                                <span className={`w-2 h-2 rounded-full shrink-0 ${col.dot}`} />
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">{col.label}</span>
-                                                <span className="ml-auto text-sm font-mono text-neutral-600">{colNiches.length}</span>
-                                            </div>
-                                            {colNiches.length === 0 && (
-                                                <div className="flex items-center justify-center h-16 opacity-30">
-                                                    <span className="text-sm text-neutral-600">Sin nichos</span>
-                                                </div>
-                                            )}
-                                            {colNiches.map(niche => (
-                                                <div key={niche._id} className="group rounded-xl border border-white/8 bg-white/[0.03] hover:bg-white/[0.06] p-3 space-y-2 transition-all cursor-pointer" onClick={() => openNicheForm(niche)}>
-                                                    <p className="text-sm font-black text-white leading-tight line-clamp-2">{niche.name}</p>
-                                                    {niche.tags.length > 0 && <p className="text-sm text-neutral-600 truncate">{niche.tags.slice(0, 3).join(" · ")}</p>}
-                                                    {niche.etsyUrl && (
-                                                        <a href={niche.etsyUrl} target="_blank" rel="noopener noreferrer"
-                                                            onClick={e => e.stopPropagation()}
-                                                            className="inline-flex items-center gap-1 text-sm font-black text-sky-400 hover:text-sky-300 transition-colors">
-                                                            <ExternalLink size={8} /> Ver fuente
-                                                        </a>
+                                        <div key={col.id} className={`rounded-2xl border ${col.colBg} flex flex-col`}>
+                                            {/* Column header */}
+                                            <div className={`flex items-center gap-2 px-3 py-2.5 ${col.headerBg} rounded-t-2xl border-b border-white/[0.06]`}>
+                                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${col.dot}`} />
+                                                <span className={`text-[10px] font-black uppercase tracking-widest ${col.accent}`}>{col.label}</span>
+                                                <div className="ml-auto flex items-center gap-1">
+                                                    <span className="text-[10px] font-mono font-bold text-neutral-500 bg-white/[0.06] px-1.5 py-0.5 rounded-md">{colNiches.length}</span>
+                                                    {colImgs > 0 && (
+                                                        <span className="text-[10px] font-mono font-bold text-neutral-600 flex items-center gap-0.5">
+                                                            <ImageIcon size={8} className="opacity-50" />{colImgs}
+                                                        </span>
                                                     )}
-                                                    <div className="flex items-center justify-between">
-                                                        <span className={`text-sm font-black uppercase px-1.5 py-0.5 rounded-md ${niche.status === "active" ? "bg-emerald-500/15 text-emerald-400" : niche.status === "archived" ? "bg-neutral-500/15 text-neutral-500" : "bg-sky-500/15 text-sky-400"}`}>{niche.status}</span>
-                                                        <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <button onClick={e => { e.stopPropagation(); void movePhase(niche._id, -1); }} className="w-5 h-5 rounded-md bg-white/10 hover:bg-white/20 flex items-center justify-center text-neutral-400 hover:text-white transition-all" title="Retroceder">‹</button>
-                                                            <button onClick={e => { e.stopPropagation(); void movePhase(niche._id, 1); }} className="w-5 h-5 rounded-md bg-white/10 hover:bg-white/20 flex items-center justify-center text-neutral-400 hover:text-white transition-all" title="Avanzar">›</button>
-                                                        </div>
-                                                    </div>
                                                 </div>
-                                            ))}
+                                            </div>
+                                            {/* Cards */}
+                                            <div className="p-2 space-y-2 max-h-[70vh] overflow-y-auto">
+                                                {colNiches.length === 0 && (
+                                                    <div className="flex items-center justify-center py-10 opacity-25">
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500 text-center leading-relaxed">{col.emptyText}</span>
+                                                    </div>
+                                                )}
+                                                {colNiches.map(niche => {
+                                                    const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
+                                                    const imgCount = linkedCats.reduce((s, c) => s + c.images.length, 0);
+                                                    const productLabel = NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType;
+                                                    const styleLabel = (niche.productType === "printable-poster" ? PRINTABLE_STYLE_OPTIONS : NICHE_STYLE_OPTIONS).find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory;
+                                                    const rev = totalRevenue(niche);
+                                                    return (
+                                                        <div key={niche._id}
+                                                            className="group rounded-xl border border-white/[0.07] bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/[0.12] transition-all cursor-pointer overflow-hidden"
+                                                            onClick={() => openNicheForm(niche)}>
+                                                            {/* Card body */}
+                                                            <div className="p-3 space-y-2.5">
+                                                                <div className="flex items-start gap-1.5">
+                                                                    <p className="text-[13px] font-black text-white leading-snug line-clamp-2 flex-1">{niche.name}</p>
+                                                                    {niche.score != null && (
+                                                                        <span className={`shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full border ${niche.score >= 70 ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400" : niche.score >= 40 ? "bg-amber-500/15 border-amber-500/30 text-amber-400" : "bg-rose-500/15 border-rose-500/30 text-rose-400"}`}>
+                                                                            {niche.score}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {/* Pills */}
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    <span className="text-[9px] font-black uppercase tracking-wide text-sky-400/80 bg-sky-500/10 border border-sky-500/15 px-1.5 py-0.5 rounded-full">{productLabel}</span>
+                                                                    <span className="text-[9px] font-black uppercase tracking-wide text-neutral-400 bg-white/[0.04] border border-white/[0.06] px-1.5 py-0.5 rounded-full">{styleLabel}</span>
+                                                                </div>
+                                                                {/* Demand / Competition */}
+                                                                {(niche.demand !== "unknown" || niche.competition !== "unknown") && (
+                                                                    <div className="flex items-center gap-2">
+                                                                        {niche.demand !== "unknown" && (
+                                                                            <span className={`text-[9px] font-black uppercase tracking-wide ${demandColor[niche.demand]}`}>↑ {niche.demand}</span>
+                                                                        )}
+                                                                        {niche.competition !== "unknown" && (
+                                                                            <span className={`text-[9px] font-black uppercase tracking-wide ${compColor[niche.competition]}`}>⚔ {niche.competition}</span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                {/* Images from catalog */}
+                                                                {imgCount > 0 && (
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <ImageIcon size={9} className="text-neutral-600 shrink-0" />
+                                                                        <span className="text-[10px] font-bold text-neutral-500">{imgCount} imágenes</span>
+                                                                    </div>
+                                                                )}
+                                                                {/* Revenue (published) */}
+                                                                {col.id === "published" && rev > 0 && (
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <DollarSign size={9} className="text-emerald-500 shrink-0" />
+                                                                        <span className="text-[11px] font-black text-emerald-400">${rev.toFixed(2)}</span>
+                                                                    </div>
+                                                                )}
+                                                                {/* ASIN */}
+                                                                {col.id === "published" && niche.asin && (
+                                                                    <a href={`https://www.amazon.com/dp/${niche.asin}`} target="_blank" rel="noopener noreferrer"
+                                                                        onClick={e => e.stopPropagation()}
+                                                                        className="inline-flex items-center gap-1 text-[9px] font-black text-amber-400 hover:text-amber-300 uppercase tracking-wide transition-colors">
+                                                                        <ExternalLink size={8} /> {niche.asin}
+                                                                    </a>
+                                                                )}
+                                                                {/* Etsy source */}
+                                                                {niche.etsyUrl && col.id !== "published" && (
+                                                                    <a href={niche.etsyUrl} target="_blank" rel="noopener noreferrer"
+                                                                        onClick={e => e.stopPropagation()}
+                                                                        className="inline-flex items-center gap-1 text-[9px] font-black text-sky-400 hover:text-sky-300 uppercase tracking-wide transition-colors">
+                                                                        <ExternalLink size={8} /> Etsy
+                                                                    </a>
+                                                                )}
+                                                            </div>
+                                                            {/* Card footer: phase CTA + nav arrows */}
+                                                            <div className="flex items-center justify-between px-3 pb-2.5">
+                                                                {/* Phase-specific CTA */}
+                                                                {col.id === "niche" && (
+                                                                    <button onClick={e => { e.stopPropagation(); void generateNicheContent(niche); }}
+                                                                        className="text-[9px] font-black uppercase tracking-widest text-sky-400 hover:text-sky-300 transition-colors flex items-center gap-1">
+                                                                        <Sparkles size={9} /> Generar
+                                                                    </button>
+                                                                )}
+                                                                {col.id === "catalog" && (
+                                                                    <button onClick={e => { e.stopPropagation(); setCatalogFormNicheId(niche._id); setCatalogProductType(niche.productType ?? "coloring-book"); changeTab("creation"); }}
+                                                                        className="text-[9px] font-black uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
+                                                                        <Layers size={9} /> Catálogo
+                                                                    </button>
+                                                                )}
+                                                                {col.id === "pdf" && (
+                                                                    <button onClick={e => { e.stopPropagation(); changeTab("gelato"); }}
+                                                                        className="text-[9px] font-black uppercase tracking-widest text-violet-400 hover:text-violet-300 transition-colors flex items-center gap-1">
+                                                                        <BookOpen size={9} /> PDF
+                                                                    </button>
+                                                                )}
+                                                                {col.id === "cover" && (
+                                                                    <button onClick={e => { e.stopPropagation(); changeTab("studio"); }}
+                                                                        className="text-[9px] font-black uppercase tracking-widest text-fuchsia-400 hover:text-fuchsia-300 transition-colors flex items-center gap-1">
+                                                                        <ImageIcon size={9} /> Cover
+                                                                    </button>
+                                                                )}
+                                                                {col.id === "published" && (
+                                                                    <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500 flex items-center gap-1">
+                                                                        <CheckCircle2 size={9} /> Live
+                                                                    </span>
+                                                                )}
+                                                                {/* Prev / Next arrows */}
+                                                                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">
+                                                                    <button onClick={e => { e.stopPropagation(); void movePhase(niche._id, -1); }}
+                                                                        className="w-5 h-5 rounded-md bg-white/8 hover:bg-white/20 flex items-center justify-center text-neutral-400 hover:text-white transition-all text-[11px] leading-none" title="Retroceder">‹</button>
+                                                                    <button onClick={e => { e.stopPropagation(); void movePhase(niche._id, 1); }}
+                                                                        className="w-5 h-5 rounded-md bg-white/8 hover:bg-white/20 flex items-center justify-center text-neutral-400 hover:text-white transition-all text-[11px] leading-none" title="Avanzar">›</button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
                                     );
                                 })}
@@ -7143,7 +7795,22 @@ export function KdpFactoryApp() {
                                                 {/* ─ Card header ─ */}
                                                 <div className="flex items-start gap-3">
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-xl sm:text-2xl font-black text-white leading-tight tracking-tight">{niche.name}</p>
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <p className="text-xl sm:text-2xl font-black text-white leading-tight tracking-tight">{niche.name}</p>
+                                                            {niche.score != null ? (
+                                                                <button onClick={() => void scoreNicheWithAI(niche)} disabled={scoringNicheId === niche._id} title={niche.scoreReason ?? "Puntuación IA — click para recalcular"}
+                                                                    className={`shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border transition-all ${niche.score >= 70 ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25" : niche.score >= 40 ? "bg-amber-500/15 border-amber-500/30 text-amber-400 hover:bg-amber-500/25" : "bg-rose-500/15 border-rose-500/30 text-rose-400 hover:bg-rose-500/25"}`}>
+                                                                    {scoringNicheId === niche._id ? <span className="w-2 h-2 rounded-full border border-current border-t-transparent animate-spin inline-block" /> : <Sparkles size={8} />}
+                                                                    {niche.score}/100
+                                                                </button>
+                                                            ) : (
+                                                                <button onClick={() => void scoreNicheWithAI(niche)} disabled={scoringNicheId === niche._id} title="Calcular score con IA"
+                                                                    className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border border-white/10 text-neutral-600 hover:border-sky-500/30 hover:text-sky-400 hover:bg-sky-500/10 transition-all">
+                                                                    {scoringNicheId === niche._id ? <span className="w-2 h-2 rounded-full border border-current border-t-transparent animate-spin inline-block" /> : <Sparkles size={8} />}
+                                                                    Score IA
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                                                             <span className="text-xs font-black uppercase tracking-wide text-sky-400/80 bg-sky-500/10 border border-sky-500/20 px-2 py-0.5 rounded-full">
                                                                 {NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType}
@@ -7797,7 +8464,8 @@ export function KdpFactoryApp() {
                     { id: "studio", name: "Nichos", icon: <Target size={15} /> },
                     { id: "creation", name: "Imágenes", icon: <ImageIcon size={15} /> },
                     { id: "gelato", name: "Factory", icon: <Package size={15} /> },
-                    { id: "insights", name: "Finanzas", icon: <Activity size={15} /> },
+                    { id: "insights", name: "Insights", icon: <Activity size={15} /> },
+                    { id: "config", name: "Config", icon: <Settings size={15} /> },
                 ] satisfies AppTab[]}
                 activeTab={activeTab}
                 onChange={(id) => changeTab(id as TabID)}
@@ -7810,6 +8478,7 @@ export function KdpFactoryApp() {
                 {activeTab === "creation" && renderCreation()}
                 {activeTab === "insights" && renderInsights()}
                 {activeTab === "gelato" && <>{renderGelato()}{renderContenido()}</>}
+                {activeTab === "config" && renderConfig()}
             </div>
 
             {/* Image Preview Modal */}
