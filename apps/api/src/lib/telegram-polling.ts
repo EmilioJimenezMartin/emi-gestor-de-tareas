@@ -17,7 +17,8 @@ const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { section: "⚙️ Pipeline" },
     { cmd: "/pipeline",                    desc: "Estado detallado del pipeline activo" },
     { cmd: "/run",                         desc: "Lanza Auto-Pilot ahora" },
-    { cmd: "/parar",                       desc: "Detiene el Auto-Pilot en curso" },
+    { cmd: "/parar",                       desc: "Detiene todo el pipeline" },
+    { cmd: "/parar <code>id</code>",       desc: "Detiene solo ese nicho" },
     { cmd: "/cola",                        desc: "Cola de generación de catálogos" },
     { cmd: "/config",                      desc: "Ver configuración del Auto-Pilot" },
     { cmd: "/config <code>cats imgs</code>", desc: "Ej: /config 8 5 → 8 catálogos × 5 imgs" },
@@ -519,19 +520,89 @@ async function processUpdate(update: any): Promise<void> {
             return;
         }
 
-        if (text === "/parar") {
+        if (text === "/parar" || text.startsWith("/parar ")) {
+            const idArg = text.startsWith("/parar ") ? normalized.slice(7).trim() : "";
             try {
-                await Settings.findOneAndUpdate(
-                    { key: "AUTOPILOT_ABORT" },
-                    { key: "AUTOPILOT_ABORT", value: "1" },
-                    { upsert: true }
-                );
-                _io?.emit("autopilot:error", { message: "⛔ Parada solicitada desde Telegram" });
-                await sendTelegram(
-                    `🛑 <b>Señal de parada enviada</b>\n\n` +
-                    `El Auto-Pilot terminará el paso actual y se detendrá.\n` +
-                    `Usa /run para reanudar cuando quieras.`
-                );
+                const { Catalog } = await import("../models/catalog.js");
+
+                if (idArg) {
+                    // ── Stop a single niche ──────────────────────────────────
+                    const allNiches = await Niche.find().select("name autoPilotEnabled").lean();
+                    const niche = (allNiches as any[]).find(n =>
+                        String(n._id).endsWith(idArg.toLowerCase()) || String(n._id) === idArg
+                    );
+                    if (!niche) {
+                        await sendTelegram(`❌ No encontré ningún nicho con ID <code>${idArg}</code>\n<i>Usa /pipeline para ver los IDs</i>`);
+                        return;
+                    }
+
+                    // Disable autopilot for this niche
+                    await Niche.findByIdAndUpdate(niche._id, { $set: { autoPilotEnabled: false } });
+
+                    // Cancel its catalogs
+                    const cats = await Catalog.find({
+                        nicheIds: String(niche._id),
+                        status: { $in: ["running", "pending", "queued"] },
+                    }).select("_id").lean();
+                    const catIds = (cats as any[]).map(c => String(c._id));
+
+                    let cancelledJobs = 0;
+                    if (_agenda && catIds.length > 0) {
+                        try {
+                            const result = await _agenda.cancel({
+                                name: "generate-catalog-image",
+                                "data.catalogId": { $in: catIds },
+                            });
+                            cancelledJobs = result ?? 0;
+                        } catch { /* non-critical */ }
+                    }
+
+                    const { modifiedCount } = await Catalog.updateMany(
+                        { _id: { $in: catIds } },
+                        { $set: { status: "cancelled" } }
+                    );
+
+                    _io?.emit("niches:updated");
+                    _io?.emit("catalogs:updated");
+
+                    await sendTelegram(
+                        `🛑 <b>Nicho detenido</b>\n📚 <b>${niche.name}</b>\n\n` +
+                        `📦 ${modifiedCount} catálogo${modifiedCount !== 1 ? "s" : ""} cancelado${modifiedCount !== 1 ? "s" : ""}\n` +
+                        `🗂️ ${cancelledJobs} job${cancelledJobs !== 1 ? "s" : ""} de Agenda eliminado${cancelledJobs !== 1 ? "s" : ""}\n` +
+                        `⏸️ Auto-Pilot desactivado para este nicho\n\n` +
+                        `El resto del pipeline sigue activo.`
+                    );
+                } else {
+                    // ── Full stop ────────────────────────────────────────────
+                    await Settings.findOneAndUpdate(
+                        { key: "AUTOPILOT_ABORT" },
+                        { key: "AUTOPILOT_ABORT", value: "1" },
+                        { upsert: true }
+                    );
+
+                    let cancelledJobs = 0;
+                    if (_agenda) {
+                        try {
+                            const result = await _agenda.cancel({ name: "generate-catalog-image" });
+                            cancelledJobs = result ?? 0;
+                        } catch { /* non-critical */ }
+                    }
+
+                    const { modifiedCount } = await Catalog.updateMany(
+                        { status: { $in: ["running", "pending", "queued"] } },
+                        { $set: { status: "cancelled" } }
+                    );
+
+                    _io?.emit("autopilot:error", { message: "⛔ Pipeline detenido completamente desde Telegram" });
+                    _io?.emit("catalogs:updated");
+
+                    await sendTelegram(
+                        `🛑 <b>Pipeline detenido</b>\n\n` +
+                        `📦 ${modifiedCount} catálogo${modifiedCount !== 1 ? "s" : ""} cancelado${modifiedCount !== 1 ? "s" : ""}\n` +
+                        `🗂️ ${cancelledJobs} job${cancelledJobs !== 1 ? "s" : ""} de Agenda eliminado${cancelledJobs !== 1 ? "s" : ""}\n\n` +
+                        `Usa /run para reanudar cuando quieras.`
+                    );
+                }
             } catch (e: any) {
                 await sendTelegram(`❌ Error: ${e.message}`);
             }
@@ -652,7 +723,8 @@ async function processUpdate(update: any): Promise<void> {
 
                 for (const niche of niches as any[]) {
                     const phase = niche.phase ?? "niche";
-                    lines.push(`📚 <b>${niche.name}</b>`);
+                    const shortId = String(niche._id).slice(-8);
+                    lines.push(`📚 <b>${niche.name}</b>  <code>${shortId}</code>`);
                     lines.push(phaseLabel[phase] ?? `Fase: ${phase}`);
 
                     if (phase === "catalog") {
@@ -696,6 +768,9 @@ async function processUpdate(update: any): Promise<void> {
 
                 // Trim trailing blank line
                 while (lines[lines.length - 1] === ``) lines.pop();
+
+                lines.push(``);
+                lines.push(`<i>/parar &lt;id&gt; para detener un nicho · /parar para detener todo</i>`);
 
                 await sendTelegram(lines.join("\n"));
             } catch (e: any) {
