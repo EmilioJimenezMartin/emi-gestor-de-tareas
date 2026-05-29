@@ -266,10 +266,9 @@ const onMongoConnected = async () => {
     seeded = true;
   }
   await startAgendaOnce();
-  if (!pollingStarted) {
-    startTelegramPolling(io, deps.agenda);
-    pollingStarted = true;
-  }
+  // Always call so agenda is injected even on reconnects / late agenda start
+  startTelegramPolling(io, deps.agenda);
+  pollingStarted = true;
 };
 
 mongoose.connection.on("connected", () => {

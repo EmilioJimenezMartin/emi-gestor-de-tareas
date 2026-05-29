@@ -1,4 +1,4 @@
-import { getUpdates, answerCallbackQuery, editTelegramMessage, sendTelegram } from "./telegram.js";
+import { getUpdates, answerCallbackQuery, editTelegramMessage, sendTelegram, pinTelegramMessage } from "./telegram.js";
 import { TelegramAction } from "../models/telegram-action.js";
 import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
@@ -30,23 +30,33 @@ async function handleNicheDiscovery(
 ): Promise<string> {
     if (decision === "continuar") {
         const cfg = await getAutoPilotConfig();
-        // Activate autopilot on the niche and set it to active status
         await Niche.findByIdAndUpdate(tAction.nicheId, {
             $set: { autoPilotEnabled: true, status: "active", phase: "niche" },
         });
         _io?.emit("niches:updated");
+        _io?.emit("telegram:notification", {
+            message: `🚀 Pipeline lanzado desde Telegram · ${tAction.nicheName}`,
+            type: "success",
+        });
         await sendTelegram(
             `🚀 <b>Pipeline lanzado</b>\n` +
             `📚 <b>${tAction.nicheName}</b>\n\n` +
             `Se generarán <b>${cfg.catalogsPerNiche} catálogos</b> × <b>${cfg.imagesPerCatalog} imágenes</b>\n` +
             `El proceso puede tardar varios minutos.`
         );
-        // Trigger autopilot pipeline directly via agenda (avoids HTTP hop)
-        try {
-            if (_agenda) {
-                await _agenda.now("autopilot-run", {});
+        // Trigger via agenda; HTTP fallback if agenda not available
+        setImmediate(async () => {
+            let launched = false;
+            try {
+                if (_agenda) { await _agenda.now("autopilot-run", {}); launched = true; }
+            } catch (e) {
+                console.error("[telegram-poll] agenda.now failed:", e);
             }
-        } catch { /* non-critical — pipeline will run on next scheduled cycle */ }
+            if (!launched) {
+                const port = process.env.PORT || 3001;
+                try { await fetch(`http://localhost:${port}/autopilot/run`, { method: "POST" }); } catch { /* non-critical */ }
+            }
+        });
         return `✅ Lanzado — ${cfg.catalogsPerNiche} catálogos en producción`;
     }
 
@@ -56,10 +66,53 @@ async function handleNicheDiscovery(
     }
 
     if (decision === "descartar") {
-        await Niche.findByIdAndUpdate(tAction.nicheId, { $set: { status: "archived", autoPilotEnabled: false } });
+        const niche = await Niche.findById(tAction.nicheId).lean();
+
+        if (niche) {
+            // Delete Cloudinary sample image linked to this niche
+            try {
+                const port = process.env.PORT || 3001;
+                const base = `http://localhost:${port}`;
+                const imagesRes = await fetch(`${base}/cloudinary/images`);
+                if (imagesRes.ok) {
+                    const { images } = await imagesRes.json() as { images: any[] };
+                    const linked = images.find(img => img.nicheId === String((niche as any)._id));
+                    if (linked?.publicId) {
+                        await fetch(`${base}/cloudinary/delete`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ publicId: linked.publicId }),
+                        });
+                    }
+                }
+            } catch { /* non-critical */ }
+
+            // Remove entry from radar settings
+            if ((niche as any).sourceTitulo) {
+                try {
+                    const radarKeys = ["RADAR_ETSY_RESULT", "RADAR_AMAZON_RESULT", "RADAR_GENERAL_RESULT"];
+                    for (const key of radarKeys) {
+                        const row = await Settings.findOne({ key }).lean();
+                        if (row?.value) {
+                            const saved = JSON.parse(row.value as string);
+                            if (Array.isArray(saved?.nichos_detectados)) {
+                                saved.nichos_detectados = saved.nichos_detectados.filter(
+                                    (r: any) => r.titulo_producto !== (niche as any).sourceTitulo
+                                );
+                                await Settings.findOneAndUpdate({ key }, { $set: { value: JSON.stringify(saved) } });
+                            }
+                        }
+                    }
+                } catch { /* non-critical */ }
+            }
+        }
+
+        // Delete niche entirely
+        await Niche.findByIdAndDelete(tAction.nicheId);
         _io?.emit("niches:updated");
-        await sendTelegram(`🗑️ <b>Nicho descartado</b>\n<b>${tAction.nicheName}</b> — archivado`);
-        return "🗑️ Archivado";
+        _io?.emit("telegram:notification", { message: `🗑️ Nicho eliminado desde Telegram · ${tAction.nicheName}`, type: "info" });
+        await sendTelegram(`🗑️ <b>Nicho eliminado</b>\n<b>${tAction.nicheName}</b> — borrado definitivamente`);
+        return "🗑️ Eliminado";
     }
 
     return "";
@@ -72,11 +125,25 @@ async function handlePhaseApproval(
     if (approved) {
         await Niche.findByIdAndUpdate(tAction.nicheId, { $set: { phase: tAction.targetPhase } });
         _io?.emit("niches:updated");
+        _io?.emit("telegram:notification", {
+            message: `✅ Fase aprobada desde Telegram · ${tAction.nicheName} → ${tAction.targetPhase}`,
+            type: "success",
+        });
         await sendTelegram(`🚀 <b>Pipeline avanzado</b>\n<b>${tAction.nicheName}</b> → fase <b>${tAction.targetPhase}</b>`);
+        // Trigger next pipeline step
+        setImmediate(async () => {
+            try {
+                if (_agenda) { await _agenda.now("autopilot-run", {}); }
+            } catch { /* non-critical */ }
+        });
         return `✅ Avanzando a ${tAction.targetPhase}`;
     } else {
         await Niche.findByIdAndUpdate(tAction.nicheId, { $set: { autoPilotEnabled: false } });
         _io?.emit("niches:updated");
+        _io?.emit("telegram:notification", {
+            message: `⏸️ Pipeline pausado desde Telegram · ${tAction.nicheName}`,
+            type: "warning",
+        });
         await sendTelegram(`⏸️ <b>Pipeline pausado</b>\n<b>${tAction.nicheName}</b> — Auto-Pilot desactivado`);
         return "❌ Pipeline pausado";
     }
@@ -129,7 +196,109 @@ async function processUpdate(update: any): Promise<void> {
 
     // Handle text commands
     if (update.message?.text) {
-        const text: string = update.message.text.trim().toLowerCase();
+        const raw: string = update.message.text.trim();
+        const text = raw.toLowerCase();
+
+        if (text === "/ayuda" || text === "/help") {
+            const helpMsgId = await sendTelegram(
+                `🤖 <b>Emi Gestor — Comandos</b>\n\n` +
+                `📌 <b>Nichos</b>\n` +
+                `/crear <b>nombre</b> — Crea nicho y lanza discovery\n` +
+                `/nichos — Resumen (total, activos, fases)\n\n` +
+                `⚙️ <b>Pipeline</b>\n` +
+                `/run — Lanza Auto-Pilot ahora\n` +
+                `/status — Acciones pendientes\n\n` +
+                `❓ /ayuda — Muestra este mensaje (fijado al chat)`
+            );
+            if (helpMsgId) await pinTelegramMessage(helpMsgId);
+            return;
+        }
+
+        if (raw.toLowerCase().startsWith("/crear ")) {
+            const nicheName = raw.slice(7).trim();
+            if (!nicheName) {
+                await sendTelegram("❌ Indica el nombre: <code>/crear nombre del nicho</code>");
+                return;
+            }
+            try {
+                const niche = await Niche.create({
+                    name: nicheName,
+                    status: "found",
+                    productType: "coloring-book",
+                    styleCategory: "generic",
+                    styleCategories: ["generic"],
+                });
+                _io?.emit("niches:updated");
+                _io?.emit("telegram:notification", { message: `📚 Nuevo nicho creado desde Telegram · ${nicheName}`, type: "info" });
+                await sendTelegram(
+                    `✅ <b>Nicho creado</b>\n📚 <b>${nicheName}</b>\n\n⏳ Iniciando discovery — recibirás la imagen de muestra en breve…`
+                );
+                // Trigger single-niche discovery
+                const port = process.env.PORT || 3001;
+                setImmediate(async () => {
+                    try {
+                        await fetch(`http://localhost:${port}/autopilot/discover/${niche._id}`, { method: "POST" });
+                    } catch { /* non-critical */ }
+                });
+            } catch (e: any) {
+                await sendTelegram(`❌ Error creando nicho: ${e.message}`);
+            }
+            return;
+        }
+
+        if (text === "/nichos") {
+            try {
+                const [total, active, found, archived] = await Promise.all([
+                    Niche.countDocuments({}),
+                    Niche.countDocuments({ status: "active" }),
+                    Niche.countDocuments({ status: "found" }),
+                    Niche.countDocuments({ status: "archived" }),
+                ]);
+                const byPhase = await Niche.aggregate([
+                    { $match: { status: "active" } },
+                    { $group: { _id: "$phase", count: { $sum: 1 } } },
+                ]);
+                const phaseMap: Record<string, number> = {};
+                for (const p of byPhase) phaseMap[p._id] = p.count;
+                const phaseLines = [
+                    phaseMap["niche"] ? `  · niche: ${phaseMap["niche"]}` : null,
+                    phaseMap["catalog"] ? `  · catalog: ${phaseMap["catalog"]}` : null,
+                    phaseMap["pdf"] ? `  · pdf: ${phaseMap["pdf"]}` : null,
+                    phaseMap["published"] ? `  · publicado: ${phaseMap["published"]}` : null,
+                ].filter(Boolean).join("\n");
+                await sendTelegram(
+                    `📊 <b>Resumen de nichos</b>\n\n` +
+                    `📚 Total: <b>${total}</b>\n` +
+                    `✅ Activos: <b>${active}</b>\n` +
+                    (phaseLines ? `${phaseLines}\n` : "") +
+                    `🔍 En cola: <b>${found}</b>\n` +
+                    `🗄️ Archivados: <b>${archived}</b>`
+                );
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        if (text === "/run") {
+            try {
+                if (_agenda) {
+                    await _agenda.now("autopilot-run", {});
+                    await sendTelegram("🚀 <b>Auto-Pilot lanzado</b>\nRevisando nichos pendientes…");
+                } else {
+                    const port = process.env.PORT || 3001;
+                    const res = await fetch(`http://localhost:${port}/autopilot/run`, { method: "POST" });
+                    if (res.ok) {
+                        await sendTelegram("🚀 <b>Auto-Pilot lanzado</b>\nRevisando nichos pendientes…");
+                    } else {
+                        await sendTelegram("❌ No se pudo lanzar el Auto-Pilot — agenda no disponible");
+                    }
+                }
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
 
         if (text === "/status") {
             const pending = await TelegramAction.find({ status: "pending" }).lean();
@@ -197,9 +366,10 @@ async function poll(): Promise<void> {
 }
 
 export function startTelegramPolling(io?: any, agenda?: any): void {
+    // Always update deps so late-bound agenda/io are picked up on reconnects
+    if (io !== undefined) _io = io;
+    if (agenda !== undefined) _agenda = agenda;
     if (running) return;
-    _io = io ?? null;
-    _agenda = agenda ?? null;
     running = true;
     console.log("[telegram-poll] Started");
     void poll();

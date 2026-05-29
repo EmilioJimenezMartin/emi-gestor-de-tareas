@@ -3148,6 +3148,14 @@ export function KdpFactoryApp() {
             void fetchNiches();
         });
 
+        socket.on("telegram:notification", (data) => {
+            const fn = data.type === "error" ? toast.error
+                : data.type === "warning" ? toast.warning
+                : data.type === "success" ? toast.success
+                : toast.info;
+            fn(data.message, { duration: 5000 });
+        });
+
         return () => {
             socket.disconnect();
             catalogSocketRef.current = null;

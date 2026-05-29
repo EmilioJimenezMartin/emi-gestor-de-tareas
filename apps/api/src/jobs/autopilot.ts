@@ -248,6 +248,7 @@ async function runPipeline(
                     await new Promise(r => setTimeout(r, 400));
                 }
                 await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "catalog" } });
+                io?.emit("niches:updated");
                 io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ ${cfg.catalogsPerNiche} catálogos lanzados para "${niche.name}"` });
                 await sendTelegram(`🏭 <b>${niche.name}</b>\n🖼️ ${cfg.catalogsPerNiche} catálogos en generación · ${cfg.catalogsPerNiche * cfg.imagesPerCatalog} imágenes totales`);
             } catch (e: any) {
@@ -325,6 +326,7 @@ async function runPipeline(
                         generatedAt: new Date(),
                     };
                     await Niche.findByIdAndUpdate(niche._id, { $push: { listings: listing } });
+                    io?.emit("niches:updated");
                     io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ Listing SEO listo para "${niche.name}"` });
 
                     const action = await TelegramAction.create({

@@ -117,6 +117,19 @@ export async function editTelegramMessage(messageId: number, text: string): Prom
     } catch { /* best-effort */ }
 }
 
+// Pin a message in the chat
+export async function pinTelegramMessage(messageId: number): Promise<void> {
+    const cfg = await getTelegramConfig();
+    if (!cfg) return;
+    try {
+        await fetch(`https://api.telegram.org/bot${cfg.botToken}/pinChatMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: cfg.chatId, message_id: messageId, disable_notification: true }),
+        });
+    } catch { /* best-effort */ }
+}
+
 // Answer a callback query (removes loading state from button)
 export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
     const cfg = await getTelegramConfig();
