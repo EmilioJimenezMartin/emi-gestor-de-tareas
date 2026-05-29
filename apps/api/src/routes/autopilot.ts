@@ -133,6 +133,26 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             const sampleUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(samplePrompt)}?model=${sampleModel}&width=1024&height=1024&nologo=true&seed=${seed}`;
             await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: sampleUrl } });
 
+            // Upload sample image to Cloudinary (fire-and-forget, ~10s delay for Pollinations to render)
+            const port = process.env.PORT || 3001;
+            const base = `http://localhost:${port}`;
+            setTimeout(async () => {
+                try {
+                    const cldRes = await fetch(`${base}/cloudinary/upload-url`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ url: sampleUrl, nicheId }),
+                    });
+                    if (cldRes.ok) {
+                        const cldData = await cldRes.json() as any;
+                        const cloudUrl = cldData.image?.url;
+                        if (cloudUrl) {
+                            await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: cloudUrl } });
+                        }
+                    }
+                } catch { /* non-critical */ }
+            }, 10_000);
+
             // Create pending action and send Telegram
             const styleLabel: Record<string, string> = {
                 generic: "Genérico", anime: "Anime", illustration: "Ilustración",

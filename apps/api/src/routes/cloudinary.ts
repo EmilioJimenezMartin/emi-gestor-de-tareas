@@ -53,6 +53,7 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
                 prefix: `${FOLDER}/`,
                 max_results: 200,
                 direction: "desc",
+                context: true,
             });
 
             const images = (result.resources as any[]).map((r) => ({
@@ -63,6 +64,7 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
                 createdAt: r.created_at,
                 format: r.format,
                 bytes: r.bytes,
+                nicheId: (r.context?.custom?.nicheId as string | undefined) ?? null,
             }));
 
             return reply.send({ images });
@@ -141,6 +143,57 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
         } catch (error: any) {
             app.log.error(error);
             return reply.status(500).send({ error: error.message ?? "Error subiendo PDF" });
+        }
+    });
+
+    // POST /cloudinary/upload-url — upload from a public URL with optional nicheId metadata
+    app.post("/cloudinary/upload-url", async (request: any, reply) => {
+        try {
+            const config = await getCloudinaryConfig();
+            if (!config) return reply.status(503).send({ error: "Cloudinary no configurado." });
+            const { url, nicheId } = request.body || {};
+            if (!url || typeof url !== "string") return reply.status(400).send({ error: "url es requerido" });
+            const cld = await initCloudinary(config);
+            const result = await cld.uploader.upload(url, {
+                folder: FOLDER,
+                resource_type: "image",
+                ...(nicheId ? { context: `nicheId=${nicheId}`, tags: [`nicho:${nicheId}`, "sample"] } : { tags: ["sample"] }),
+            });
+            return reply.status(201).send({
+                image: {
+                    publicId: result.public_id,
+                    url: result.secure_url,
+                    width: result.width,
+                    height: result.height,
+                    format: result.format,
+                    bytes: result.bytes,
+                    createdAt: result.created_at,
+                    nicheId: nicheId ?? null,
+                },
+            });
+        } catch (error: any) {
+            app.log.error(error);
+            return reply.status(500).send({ error: "Error subiendo imagen desde URL", message: error.message });
+        }
+    });
+
+    // PATCH /cloudinary/niche — link or unlink a nicheId on an existing image via context
+    app.patch("/cloudinary/niche", async (request: any, reply) => {
+        try {
+            const config = await getCloudinaryConfig();
+            if (!config) return reply.status(503).send({ error: "Cloudinary no configurado." });
+            const { publicId, nicheId } = request.body || {};
+            if (!publicId || typeof publicId !== "string") return reply.status(400).send({ error: "publicId es requerido" });
+            const cld = await initCloudinary(config);
+            if (nicheId) {
+                await cld.uploader.add_context(`nicheId=${nicheId}`, [publicId]);
+            } else {
+                await cld.uploader.remove_all_context([publicId]);
+            }
+            return reply.send({ ok: true, publicId, nicheId: nicheId ?? null });
+        } catch (error: any) {
+            app.log.error(error);
+            return reply.status(500).send({ error: "Error actualizando metadata", message: error.message });
         }
     });
 

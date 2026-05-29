@@ -225,7 +225,9 @@ interface NicheFE {
     scoreReason?: string;
     scoredAt?: string;
     autoPilotEnabled?: boolean;
+    sampleImageUrl?: string;
     createdAt: string;
+    updatedAt?: string;
 }
 
 const NICHE_STYLE_OPTIONS: { id: NicheStyle; label: string; desc: string }[] = [
@@ -786,7 +788,35 @@ function GelatoUploadModal({
     );
 }
 
-type CloudinaryImage = { publicId: string; url: string; width: number; height: number; bytes: number };
+type CloudinaryImage = { publicId: string; url: string; width: number; height: number; bytes: number; nicheId?: string | null; createdAt?: string };
+
+function PipelineRuleRow({ rule, levelStyle }: {
+    rule: { key: string; level: string; icon: string; label: string; items: string[]; count: number };
+    levelStyle: Record<string, string>;
+}) {
+    const [open, setOpen] = React.useState(false);
+    return (
+        <div className={`rounded-xl border px-3 py-2 ${levelStyle[rule.level] ?? levelStyle.warn}`}>
+            <button
+                className="w-full flex items-center gap-2 text-left"
+                onClick={() => rule.items.length > 0 && setOpen(o => !o)}
+            >
+                <span className="text-sm shrink-0">{rule.icon}</span>
+                <span className="text-[12px] font-bold flex-1 leading-tight">{rule.label}</span>
+                {rule.items.length > 0 && (
+                    <ChevronDown size={12} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+                )}
+            </button>
+            {open && rule.items.length > 0 && (
+                <div className="mt-1.5 ml-5 space-y-0.5">
+                    {rule.items.map((item, i) => (
+                        <p key={i} className="text-[11px] opacity-70 truncate">· {item}</p>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
 
 export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
@@ -875,7 +905,8 @@ export function KdpFactoryApp() {
     const dimPickerBtnRef = useRef<HTMLButtonElement>(null);
     const modelPickerRectRef = useRef<DOMRect | null>(null);
     const dimPickerRectRef = useRef<DOMRect | null>(null);
-    const [cloudinaryImages, setCloudinaryImages] = useState<{ publicId: string; url: string; width: number; height: number; bytes: number; createdAt: string }[]>([]);
+    const [cloudinaryImages, setCloudinaryImages] = useState<CloudinaryImage[]>([]);
+    const [linkingNicheForCloud, setLinkingNicheForCloud] = useState<string | null>(null); // publicId being linked
     const [isLoadingCloudinary, setIsLoadingCloudinary] = useState(false);
     const [uploadingToCloud, setUploadingToCloud] = useState<number | null>(null);
     const [deletingFromCloud, setDeletingFromCloud] = useState<string | null>(null);
@@ -980,6 +1011,7 @@ export function KdpFactoryApp() {
     const [isDownloadingZip, setIsDownloadingZip] = useState(false);
     // Feature: cloudinary search + selection + custom catalog
     const [cloudSearch, setCloudSearch] = useState("");
+    const [cloudNicheFilter, setCloudNicheFilter] = useState<string>("all");
     const [isCloudSelectMode, setIsCloudSelectMode] = useState(false);
     const [selectedCloudUrls, setSelectedCloudUrls] = useState<Set<string>>(new Set());
     const [showCustomCatalogModal, setShowCustomCatalogModal] = useState(false);
@@ -2400,6 +2432,26 @@ export function KdpFactoryApp() {
             toast.error(e.message ?? "Error al eliminar");
         } finally {
             setDeletingFromCloud(null);
+        }
+    };
+
+    const linkCloudImageToNiche = async (publicId: string, nicheId: string | null) => {
+        setLinkingNicheForCloud(publicId);
+        try {
+            const res = await fetch(`${API_BASE_URL}/cloudinary/niche`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ publicId, nicheId }),
+            });
+            if (!res.ok) throw new Error("Error al actualizar");
+            setCloudinaryImages(prev => prev.map(img =>
+                img.publicId === publicId ? { ...img, nicheId } : img
+            ));
+            toast.success(nicheId ? "Imagen vinculada al nicho" : "Vínculo eliminado");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al vincular");
+        } finally {
+            setLinkingNicheForCloud(null);
         }
     };
 
@@ -3898,10 +3950,52 @@ export function KdpFactoryApp() {
         const scoredNiches = niches.filter(n => n.score != null);
         const avgScore = scoredNiches.length > 0 ? Math.round(scoredNiches.reduce((s, n) => s + (n.score ?? 0), 0) / scoredNiches.length) : null;
         const totalListings = niches.reduce((s, n) => s + (n.listings?.length ?? 0), 0);
+        const NOW = Date.now();
+        const daysAgo = (d: number) => new Date(NOW - d * 86400000).toISOString();
+        const hoursAgo = (h: number) => new Date(NOW - h * 3600000).toISOString();
+        const lastActivity = (n: NicheFE) => n.updatedAt ?? n.createdAt;
+
+        // ── Pipeline rules ────────────────────────────────────────────────
+        // R1: Listos para publicar (phase=pdf|cover, listings≥1)
+        const readyToPublish = niches.filter(n =>
+            (n.phase === "pdf" || n.phase === "cover") && (n.listings?.length ?? 0) >= 1
+        );
+        // R2: PDF sin listing SEO >3d
+        const pdfNoListing = niches.filter(n =>
+            n.phase === "pdf" && (!n.listings || n.listings.length === 0) && lastActivity(n) < daysAgo(3)
+        );
+        // R3: Catálogos completados sin avanzar >1d
+        const catalogDoneStuck = niches.filter(n => {
+            if ((n.phase ?? "niche") !== "catalog") return false;
+            const cats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
+            return cats.length > 0 && cats.every(c => c.status === "completed") && lastActivity(n) < daysAgo(1);
+        });
+        // R4: Catálogos generando/pendientes hace >6h (posible cuelgue)
+        const catalogGeneratingStuck = iaCatalogs.filter(c =>
+            (c.status === "running" || c.status === "pending" || c.status === "queued") && (c as any).createdAt && (c as any).createdAt < hoursAgo(6)
+        );
+        // R5: Imágenes generadas (≥5) + pipeline parado >2d
+        const imageStuck = niches.filter(n => {
+            const imgs = nicheImageCount(n);
+            return imgs >= 5 && (n.phase === "niche" || n.phase === "catalog") && lastActivity(n) < daysAgo(2) && n.status !== "archived";
+        });
+        // R6: Autopilot activo pero sin avanzar >2d
+        const autopilotStuck = niches.filter(n =>
+            n.autoPilotEnabled && n.status === "active" && n.phase !== "published" && lastActivity(n) < daysAgo(2)
+        );
+        // R7: Found sin imagen de muestra >2d (Telegram nunca enviado)
+        const foundNeverDiscovered = niches.filter(n =>
+            n.status === "found" && !n.sampleImageUrl && n.createdAt < daysAgo(2)
+        );
+        // R8: Sin contenido >7d (nicho huérfano)
         const staleDays = 7;
-        const staleCutoff = new Date(Date.now() - staleDays * 24 * 60 * 60 * 1000).toISOString();
-        const stalled = niches.filter(n => n.phase !== "published" && n.createdAt < staleCutoff && (n.phase ?? "niche") === "niche" && !n.generatedPrompt);
-        const readyToPublish = niches.filter(n => n.phase === "pdf" || n.phase === "cover");
+        const stalled = niches.filter(n =>
+            (n.phase ?? "niche") === "niche" && !n.generatedPrompt && n.createdAt < daysAgo(staleDays) && n.status !== "archived"
+        );
+        // R9: Score alto (≥70) sin producir
+        const highScoreUnproduced = niches.filter(n =>
+            (n.score ?? 0) >= 70 && (n.phase ?? "niche") === "niche" && n.status !== "archived"
+        );
         const topScoredNiches = [...niches].filter(n => n.score != null).sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 3);
         const topRoyaltyNiche = [...publishedNiches].sort((a, b) => (b.royalties ?? []).reduce((s, r) => s + r.revenue, 0) - (a.royalties ?? []).reduce((s, r) => s + r.revenue, 0))[0] ?? null;
         const topRoyalty = topRoyaltyNiche ? (topRoyaltyNiche.royalties ?? []).reduce((s, r) => s + r.revenue, 0) : 0;
@@ -4136,58 +4230,109 @@ export function KdpFactoryApp() {
 
                 {/* ── Pipeline alerts + Top scores ── */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 flex flex-col gap-3">
-                        <div className="flex items-center gap-2">
-                            <Activity size={13} className="text-neutral-600" />
-                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Estado del pipeline</span>
-                            {stalled.length === 0 && readyToPublish.length === 0 && (
-                                <span className="ml-auto text-[10px] font-black text-emerald-500 flex items-center gap-1"><CheckCircle2 size={10} /> Al día</span>
-                            )}
-                        </div>
-                        {stalled.length === 0 && readyToPublish.length === 0 ? (
-                            <p className="text-sm text-neutral-600">No hay bloqueos ni libros pendientes de publicar.</p>
-                        ) : (
-                            <div className="space-y-2">
-                                {stalled.length > 0 && (
-                                    <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/20">
-                                        <span className="text-amber-400 shrink-0 mt-0.5 text-sm">⚠</span>
-                                        <div className="min-w-0">
-                                            <p className="text-sm font-black text-amber-400">{stalled.length} nicho{stalled.length > 1 ? "s" : ""} sin contenido +{staleDays}d</p>
-                                            <p className="text-[11px] text-neutral-500 mt-0.5 truncate">{stalled.slice(0, 2).map(n => n.name).join(", ")}{stalled.length > 2 ? ` +${stalled.length - 2}` : ""}</p>
-                                        </div>
-                                    </div>
+                    {(() => {
+                        const totalIssues = pdfNoListing.length + catalogDoneStuck.length + catalogGeneratingStuck.length + imageStuck.length + autopilotStuck.length + foundNeverDiscovered.length + stalled.length;
+                        type RuleEntry = { key: string; level: "ok" | "warn" | "error" | "info"; icon: string; label: string; items: string[]; count: number };
+                        const rules: RuleEntry[] = [
+                            readyToPublish.length > 0 && {
+                                key: "ready", level: "ok" as const, icon: "✅",
+                                label: `${readyToPublish.length} libro${readyToPublish.length > 1 ? "s" : ""} listo${readyToPublish.length > 1 ? "s" : ""} para publicar`,
+                                items: readyToPublish.map(n => n.name), count: readyToPublish.length,
+                            },
+                            highScoreUnproduced.length > 0 && {
+                                key: "hiscore", level: "info" as const, icon: "⭐",
+                                label: `${highScoreUnproduced.length} nicho${highScoreUnproduced.length > 1 ? "s" : ""} con score ≥70 sin producir`,
+                                items: highScoreUnproduced.map(n => `${n.name} (${n.score})`), count: highScoreUnproduced.length,
+                            },
+                            imageStuck.length > 0 && {
+                                key: "imgstuck", level: "warn" as const, icon: "🖼️",
+                                label: `${imageStuck.length} nicho${imageStuck.length > 1 ? "s" : ""} con ≥5 imgs parado${imageStuck.length > 1 ? "s" : ""} +2d`,
+                                items: imageStuck.map(n => `${n.name} (${nicheImageCount(n)} imgs)`), count: imageStuck.length,
+                            },
+                            catalogDoneStuck.length > 0 && {
+                                key: "catdone", level: "warn" as const, icon: "📦",
+                                label: `${catalogDoneStuck.length} nicho${catalogDoneStuck.length > 1 ? "s" : ""} con catálogos listos sin avanzar`,
+                                items: catalogDoneStuck.map(n => n.name), count: catalogDoneStuck.length,
+                            },
+                            pdfNoListing.length > 0 && {
+                                key: "pdflisting", level: "error" as const, icon: "📝",
+                                label: `${pdfNoListing.length} en PDF sin listing SEO +3d`,
+                                items: pdfNoListing.map(n => n.name), count: pdfNoListing.length,
+                            },
+                            autopilotStuck.length > 0 && {
+                                key: "apstuck", level: "error" as const, icon: "🤖",
+                                label: `${autopilotStuck.length} autopilot activo parado +2d`,
+                                items: autopilotStuck.map(n => `${n.name} (fase: ${n.phase ?? "niche"})`), count: autopilotStuck.length,
+                            },
+                            catalogGeneratingStuck.length > 0 && {
+                                key: "catgen", level: "error" as const, icon: "⚙️",
+                                label: `${catalogGeneratingStuck.length} catálogo${catalogGeneratingStuck.length > 1 ? "s" : ""} generando +6h (posible cuelgue)`,
+                                items: catalogGeneratingStuck.map(c => c.name), count: catalogGeneratingStuck.length,
+                            },
+                            foundNeverDiscovered.length > 0 && {
+                                key: "undiscov", level: "warn" as const, icon: "🔍",
+                                label: `${foundNeverDiscovered.length} nicho${foundNeverDiscovered.length > 1 ? "s" : ""} found sin enviar a Telegram +2d`,
+                                items: foundNeverDiscovered.map(n => n.name), count: foundNeverDiscovered.length,
+                            },
+                            stalled.length > 0 && {
+                                key: "stalled", level: "warn" as const, icon: "⏳",
+                                label: `${stalled.length} nicho${stalled.length > 1 ? "s" : ""} sin contenido +${staleDays}d`,
+                                items: stalled.map(n => n.name), count: stalled.length,
+                            },
+                        ].filter(Boolean) as RuleEntry[];
+
+                        const levelStyle: Record<string, string> = {
+                            ok:    "bg-emerald-500/[0.07] border-emerald-500/25 text-emerald-300",
+                            warn:  "bg-amber-500/[0.07] border-amber-500/25 text-amber-300",
+                            error: "bg-rose-500/[0.07] border-rose-500/25 text-rose-300",
+                            info:  "bg-sky-500/[0.07] border-sky-500/25 text-sky-300",
+                        };
+
+                        return (
+                        <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 flex flex-col gap-3">
+                            <div className="flex items-center gap-2">
+                                <Activity size={13} className="text-neutral-600" />
+                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Estado del pipeline</span>
+                                {totalIssues === 0 && readyToPublish.length === 0 && (
+                                    <span className="ml-auto text-[10px] font-black text-emerald-500 flex items-center gap-1"><CheckCircle2 size={10} /> Al día</span>
                                 )}
-                                {readyToPublish.length > 0 && (
-                                    <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-500/[0.06] border border-emerald-500/20">
-                                        <span className="text-emerald-400 shrink-0 mt-0.5 text-sm">✓</span>
-                                        <div className="min-w-0">
-                                            <p className="text-sm font-black text-emerald-400">{readyToPublish.length} libro{readyToPublish.length > 1 ? "s" : ""} listo{readyToPublish.length > 1 ? "s" : ""} para publicar</p>
-                                            <p className="text-[11px] text-neutral-500 mt-0.5 truncate">{readyToPublish.slice(0, 2).map(n => n.name).join(", ")}{readyToPublish.length > 2 ? ` +${readyToPublish.length - 2}` : ""}</p>
-                                        </div>
-                                    </div>
+                                {totalIssues > 0 && (
+                                    <span className="ml-auto text-[10px] font-black text-rose-400">{totalIssues} problema{totalIssues > 1 ? "s" : ""}</span>
                                 )}
                             </div>
-                        )}
-                        {niches.length > 0 && (
-                            <div className="mt-auto pt-3 border-t border-white/[0.05]">
-                                <div className="flex rounded-full overflow-hidden h-1.5 gap-0.5">
-                                    {([
-                                        { phase: "niche" as const, color: "bg-sky-500" },
-                                        { phase: "catalog" as const, color: "bg-blue-500" },
-                                        { phase: "pdf" as const, color: "bg-violet-500" },
-                                        { phase: "cover" as const, color: "bg-fuchsia-500" },
-                                        { phase: "published" as const, color: "bg-emerald-500" },
-                                    ] as const).map(p => phaseCount(p.phase) > 0 && (
-                                        <div key={p.phase} className={`${p.color} rounded-full transition-all`} style={{ flex: phaseCount(p.phase) }} />
+
+                            {rules.length === 0 ? (
+                                <p className="text-sm text-neutral-600">No hay bloqueos ni libros pendientes.</p>
+                            ) : (
+                                <div className="space-y-1.5">
+                                    {rules.map(rule => (
+                                        <PipelineRuleRow key={rule.key} rule={rule} levelStyle={levelStyle} />
                                     ))}
                                 </div>
-                                <div className="flex justify-between mt-1">
-                                    <span className="text-[9px] text-neutral-700">Nicho</span>
-                                    <span className="text-[9px] text-neutral-700">Publicado</span>
+                            )}
+
+                            {niches.length > 0 && (
+                                <div className="mt-auto pt-3 border-t border-white/[0.05]">
+                                    <div className="flex rounded-full overflow-hidden h-1.5 gap-0.5">
+                                        {([
+                                            { phase: "niche" as const, color: "bg-sky-500" },
+                                            { phase: "catalog" as const, color: "bg-blue-500" },
+                                            { phase: "pdf" as const, color: "bg-violet-500" },
+                                            { phase: "cover" as const, color: "bg-fuchsia-500" },
+                                            { phase: "published" as const, color: "bg-emerald-500" },
+                                        ] as const).map(p => phaseCount(p.phase) > 0 && (
+                                            <div key={p.phase} className={`${p.color} rounded-full transition-all`} style={{ flex: phaseCount(p.phase) }} />
+                                        ))}
+                                    </div>
+                                    <div className="flex justify-between mt-1">
+                                        <span className="text-[9px] text-neutral-700">Nicho</span>
+                                        <span className="text-[9px] text-neutral-700">Publicado</span>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-                    </Card>
+                            )}
+                        </Card>
+                        );
+                    })()}
                     <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 flex flex-col gap-3">
                         <div className="flex items-center gap-2">
                             <Sparkles size={13} className="text-neutral-600" />
@@ -6566,15 +6711,27 @@ export function KdpFactoryApp() {
                         </div>
                     )}
 
-                    {/* Search */}
+                    {/* Search + Niche filter */}
                     {cloudinaryImages.length > 0 && (
-                        <div className="px-2">
+                        <div className="px-2 flex gap-2">
                             <input
                                 value={cloudSearch}
                                 onChange={e => setCloudSearch(e.target.value)}
                                 placeholder="Buscar por nombre de archivo…"
-                                className="w-full h-8 bg-white/5 border border-white/10 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-cyan-500/40 transition-all"
+                                className="flex-1 h-8 bg-white/5 border border-white/10 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-cyan-500/40 transition-all"
                             />
+                            <select
+                                value={cloudNicheFilter}
+                                onChange={e => setCloudNicheFilter(e.target.value)}
+                                className="h-8 bg-white/5 border border-white/10 rounded-xl px-2 text-xs text-neutral-400 focus:outline-none focus:border-cyan-500/40 transition-all max-w-[140px]"
+                            >
+                                <option value="all">Todos los nichos</option>
+                                <option value="linked">Vinculados</option>
+                                <option value="unlinked">Sin vincular</option>
+                                {niches.filter(n => n.status !== "archived").map(n => (
+                                    <option key={n._id} value={n._id}>{n.name}</option>
+                                ))}
+                            </select>
                         </div>
                     )}
 
@@ -6587,9 +6744,17 @@ export function KdpFactoryApp() {
                         </div>
                     ) : (
                         <div className="flex gap-4 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
-                            {cloudinaryImages.filter(img => !cloudSearch.trim() || img.publicId.toLowerCase().includes(cloudSearch.toLowerCase())).map((img, cldIdx) => {
+                            {cloudinaryImages.filter(img => {
+                                if (cloudSearch.trim() && !img.publicId.toLowerCase().includes(cloudSearch.toLowerCase())) return false;
+                                if (cloudNicheFilter === "linked") return !!img.nicheId;
+                                if (cloudNicheFilter === "unlinked") return !img.nicheId;
+                                if (cloudNicheFilter !== "all") return img.nicheId === cloudNicheFilter;
+                                return true;
+                            }).map((img, cldIdx) => {
                                 const isCloudSel = selectedCloudUrls.has(img.url);
                                 const isFav = favorites.has(img.url);
+                                const linkedNiche = img.nicheId ? niches.find(n => n._id === img.nicheId) : null;
+                                const isLinking = linkingNicheForCloud === img.publicId;
                                 return (
                                     <div
                                         key={img.publicId}
@@ -6626,6 +6791,40 @@ export function KdpFactoryApp() {
                                             >
                                                 <Heart size={11} className={isFav ? "fill-white" : ""} />
                                             </button>
+                                        )}
+
+                                        {/* Niche badge (bottom, always visible if linked) */}
+                                        {linkedNiche && (
+                                            <div className="absolute bottom-0 left-0 right-0 px-2 py-2 bg-gradient-to-t from-black/80 to-transparent pointer-events-none">
+                                                <span className="text-[10px] font-bold text-cyan-300 truncate block leading-tight">{linkedNiche.name}</span>
+                                            </div>
+                                        )}
+
+                                        {/* Link to niche dropdown (hover, top-right) */}
+                                        {!isCloudSelectMode && (
+                                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-all" onClick={e => e.stopPropagation()}>
+                                                {isLinking ? (
+                                                    <div className="p-1.5 rounded-xl bg-black/60 backdrop-blur-sm">
+                                                        <Loader2 size={11} className="animate-spin text-cyan-400" />
+                                                    </div>
+                                                ) : (
+                                                    <select
+                                                        value={img.nicheId ?? ""}
+                                                        onChange={e => {
+                                                            const val = e.target.value;
+                                                            void linkCloudImageToNiche(img.publicId, val || null);
+                                                        }}
+                                                        className="h-7 bg-black/70 backdrop-blur-sm border border-white/20 rounded-xl px-2 text-[10px] text-white focus:outline-none focus:border-cyan-500/40 cursor-pointer max-w-[110px]"
+                                                        title="Vincular a nicho"
+                                                    >
+                                                        <option value="">— Vincular nicho</option>
+                                                        {niches.filter(n => n.status !== "archived").map(n => (
+                                                            <option key={n._id} value={n._id}>{n.name}</option>
+                                                        ))}
+                                                        {img.nicheId && <option value="">✕ Desvincular</option>}
+                                                    </select>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 );

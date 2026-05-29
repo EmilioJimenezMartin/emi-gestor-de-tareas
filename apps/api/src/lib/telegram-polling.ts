@@ -38,6 +38,13 @@ async function handleNicheDiscovery(
             `Se generarán <b>${cfg.catalogsPerNiche} catálogos</b> × <b>${cfg.imagesPerCatalog} imágenes</b>\n` +
             `El proceso puede tardar varios minutos.`
         );
+        // Trigger the autopilot pipeline immediately (fire-and-forget)
+        const port = process.env.PORT || 3001;
+        setImmediate(async () => {
+            try {
+                await fetch(`http://localhost:${port}/autopilot/run`, { method: "POST" });
+            } catch { /* non-critical — pipeline will run on next scheduled cycle if this fails */ }
+        });
         return `✅ Lanzado — ${cfg.catalogsPerNiche} catálogos en producción`;
     }
 
