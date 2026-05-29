@@ -1031,8 +1031,11 @@ export function KdpFactoryApp() {
     const [apMaxNiches, setApMaxNiches] = useState("3");
     const [apScheduled, setApScheduled] = useState(false);
     const [apRunning, setApRunning] = useState(false);
-    const [apCurrentNiche, setApCurrentNiche] = useState<string | null>(null);
+    const [apCurrentNicheName, setApCurrentNicheName] = useState<string | null>(null);
+    const [apStage, setApStage] = useState<"discovery" | "prompt" | "sample" | "catalog" | "listing" | null>(null);
     const [apLogs, setApLogs] = useState<{ nicheId: string; message: string; ts: number }[]>([]);
+    const [apRuns, setApRuns] = useState<{ _id: string; startedAt: string; finishedAt?: string; status: string; discovered: number; pipelineProcessed: number; catalogsCreated: number; abortReason?: string }[]>([]);
+    const [apRunsLoading, setApRunsLoading] = useState(false);
     // Scheduler UI state
     const [apDays, setApDays] = useState<Set<number>>(new Set([1, 3, 5])); // Mon Wed Fri
     const [apHour, setApHour] = useState(9);
@@ -1177,6 +1180,14 @@ export function KdpFactoryApp() {
         } finally {
             setDeletingCatalogId(null);
         }
+    };
+
+    const fetchApRuns = async () => {
+        setApRunsLoading(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/autopilot/runs`);
+            if (res.ok) { const d = await res.json(); setApRuns(d.runs ?? []); }
+        } catch { /* ignore */ } finally { setApRunsLoading(false); }
     };
 
     const cancelCatalog = async (id: string) => {
@@ -3121,7 +3132,7 @@ export function KdpFactoryApp() {
     }, [activeTab, generatedImage, isGenerating]);
 
     // Fetch catalogs on mount (socket connects when entering creation tab)
-    useEffect(() => { void fetchCatalogs(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { void fetchCatalogs(); void fetchApRuns(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Always keep catalog socket connected so images appear in real-time on any tab
     useEffect(() => {
@@ -3173,25 +3184,33 @@ export function KdpFactoryApp() {
 
         socket.on("autopilot:log", (data: { nicheId: string; message: string }) => {
             setApRunning(true);
-            setApCurrentNiche(data.nicheId);
             setApLogs(prev => [...prev.slice(-49), { nicheId: data.nicheId, message: data.message, ts: Date.now() }]);
+        });
+
+        socket.on("autopilot:stage", (data: { stage: "discovery" | "prompt" | "sample" | "catalog" | "listing"; nicheId: string; nicheName: string }) => {
+            setApStage(data.stage);
+            setApCurrentNicheName(data.nicheName);
         });
 
         socket.on("autopilot:done", (data: { processed: number; timestamp?: string }) => {
             setApRunning(false);
-            setApCurrentNiche(null);
+            setApCurrentNicheName(null);
+            setApStage(null);
             const msg = `✅ Completado · ${data.processed} nicho${data.processed !== 1 ? "s" : ""} procesado${data.processed !== 1 ? "s" : ""}`;
             setApLogs(prev => [...prev.slice(-49), { nicheId: "", message: msg, ts: Date.now() }]);
             toast.success(msg);
             void fetchNiches();
+            void fetchApRuns();
         });
 
         socket.on("autopilot:error", (data: { message: string }) => {
             setApRunning(false);
-            setApCurrentNiche(null);
+            setApCurrentNicheName(null);
+            setApStage(null);
             const msg = `⛔ Detenido: ${data.message}`;
             setApLogs(prev => [...prev.slice(-49), { nicheId: "", message: msg, ts: Date.now() }]);
             toast.error(`Auto-Pilot detenido — ${data.message}`, { duration: 8000 });
+            void fetchApRuns();
         });
 
         socket.on("niches:updated", () => {
@@ -5405,44 +5424,123 @@ export function KdpFactoryApp() {
                 </div>
 
                 {/* ─ Live status panel ─ */}
-                {(apRunning || apLogs.length > 0) && (
-                    <Card variant="outline" className={`p-4 overflow-hidden relative transition-all ${apRunning ? "border-amber-500/25 bg-amber-500/[0.03]" : "border-white/5 bg-white/[0.02]"}`}>
-                        <div className={`absolute -right-3 -top-3 w-16 h-16 blur-2xl rounded-full transition-all ${apRunning ? "bg-amber-500/12" : "bg-white/[0.02]"}`} />
-                        <div className="flex items-center gap-2 mb-3 relative">
-                            {apRunning ? (
-                                <>
-                                    <span className="relative flex h-2 w-2 shrink-0">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
-                                    </span>
-                                    <span className="text-[11px] font-black uppercase tracking-widest text-amber-400">Ejecutando</span>
-                                    {apCurrentNiche && (
-                                        <span className="text-[11px] text-neutral-500 truncate">
-                                            · {niches.find(n => n._id === apCurrentNiche)?.name ?? apCurrentNiche}
+                {(apRunning || apLogs.length > 0) && (() => {
+                    const STAGES: { key: "discovery" | "prompt" | "sample" | "catalog" | "listing"; label: string; icon: string }[] = [
+                        { key: "discovery", label: "Descubrir", icon: "🔍" },
+                        { key: "prompt", label: "Prompt", icon: "✨" },
+                        { key: "sample", label: "Muestra", icon: "🖼️" },
+                        { key: "catalog", label: "Catálogo", icon: "🏭" },
+                        { key: "listing", label: "Listing", icon: "📝" },
+                    ];
+                    const activeIdx = apStage ? STAGES.findIndex(s => s.key === apStage) : -1;
+                    return (
+                        <Card variant="outline" className={`p-4 overflow-hidden relative transition-all ${apRunning ? "border-amber-500/25 bg-amber-500/[0.03]" : "border-white/5 bg-white/[0.02]"}`}>
+                            <div className={`absolute -right-3 -top-3 w-16 h-16 blur-2xl rounded-full transition-all ${apRunning ? "bg-amber-500/12" : "bg-transparent"}`} />
+                            <div className="flex items-center gap-2 mb-3 relative">
+                                {apRunning ? (
+                                    <>
+                                        <span className="relative flex h-2 w-2 shrink-0">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
                                         </span>
-                                    )}
-                                </>
-                            ) : (
-                                <>
-                                    <span className="w-2 h-2 rounded-full bg-neutral-700 shrink-0" />
-                                    <span className="text-[11px] font-black uppercase tracking-widest text-neutral-600">Última ejecución</span>
-                                </>
+                                        <span className="text-[11px] font-black uppercase tracking-widest text-amber-400">Ejecutando</span>
+                                        {apCurrentNicheName && (
+                                            <span className="text-[11px] text-neutral-500 truncate">· {apCurrentNicheName}</span>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
+                                        <span className="w-2 h-2 rounded-full bg-neutral-700 shrink-0" />
+                                        <span className="text-[11px] font-black uppercase tracking-widest text-neutral-600">Última ejecución</span>
+                                    </>
+                                )}
+                                <button onClick={() => setApLogs([])} className="ml-auto p-1 rounded-lg text-neutral-700 hover:text-neutral-500 hover:bg-white/5 transition-all" title="Limpiar log">
+                                    <X size={10} />
+                                </button>
+                            </div>
+                            {/* Pipeline stages */}
+                            {apRunning && (
+                                <div className="flex items-center gap-0 mb-3 overflow-x-auto no-scrollbar">
+                                    {STAGES.map((s, i) => {
+                                        const isDone = activeIdx > i;
+                                        const isActive = activeIdx === i;
+                                        return (
+                                            <React.Fragment key={s.key}>
+                                                <div className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${isActive ? "bg-amber-500/15 border border-amber-500/30 text-amber-400" : isDone ? "text-emerald-500/70" : "text-neutral-700"}`}>
+                                                    <span>{s.icon}</span>
+                                                    <span className={isActive ? "hidden sm:inline" : "hidden sm:inline"}>{s.label}</span>
+                                                    {isActive && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />}
+                                                </div>
+                                                {i < STAGES.length - 1 && (
+                                                    <span className={`text-[10px] px-0.5 ${isDone ? "text-emerald-600" : "text-neutral-800"}`}>›</span>
+                                                )}
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                </div>
                             )}
-                            <button onClick={() => setApLogs([])} className="ml-auto p-1 rounded-lg text-neutral-700 hover:text-neutral-500 hover:bg-white/5 transition-all" title="Limpiar log">
-                                <X size={10} />
+                            <div className="space-y-1 max-h-36 overflow-y-auto">
+                                {[...apLogs].reverse().map((log, i) => (
+                                    <div key={i} className="flex items-start gap-2">
+                                        <span className="text-[10px] font-mono text-neutral-700 shrink-0 mt-0.5 tabular-nums">
+                                            {new Date(log.ts).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                        </span>
+                                        <span className="text-[11px] text-neutral-400 leading-snug">{log.message}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </Card>
+                    );
+                })()}
+
+                {/* ─ Historial de runs ─ */}
+                {(apRuns.length > 0 || apRunsLoading) && (
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 flex items-center gap-1.5">
+                                <Clock size={10} /> Historial de ejecuciones
+                            </p>
+                            <button onClick={() => void fetchApRuns()} disabled={apRunsLoading} className="p-1 rounded-lg text-neutral-700 hover:text-neutral-500 hover:bg-white/5 transition-all disabled:opacity-40">
+                                <RefreshCw size={10} className={apRunsLoading ? "animate-spin" : ""} />
                             </button>
                         </div>
-                        <div className="space-y-1 max-h-36 overflow-y-auto">
-                            {[...apLogs].reverse().map((log, i) => (
-                                <div key={i} className="flex items-start gap-2">
-                                    <span className="text-[10px] font-mono text-neutral-700 shrink-0 mt-0.5 tabular-nums">
-                                        {new Date(log.ts).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                                    </span>
-                                    <span className="text-[11px] text-neutral-400 leading-snug">{log.message}</span>
-                                </div>
-                            ))}
+                        <div className="space-y-1.5">
+                            {apRuns.slice(0, 8).map(run => {
+                                const duration = run.finishedAt
+                                    ? Math.round((new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime()) / 60000)
+                                    : null;
+                                return (
+                                    <div key={run._id} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border text-[11px] ${
+                                        run.status === "completed" ? "bg-emerald-500/[0.03] border-emerald-500/10"
+                                        : run.status === "aborted" ? "bg-rose-500/[0.03] border-rose-500/10"
+                                        : run.status === "running" ? "bg-amber-500/[0.03] border-amber-500/20"
+                                        : "bg-white/[0.01] border-white/5"
+                                    }`}>
+                                        <span className="text-base leading-none">
+                                            {run.status === "completed" ? "✅" : run.status === "aborted" ? "⛔" : run.status === "running" ? "⏳" : "❌"}
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="font-mono text-neutral-500 text-[10px]">
+                                                    {new Date(run.startedAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })} {new Date(run.startedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                                                </span>
+                                                {duration !== null && <span className="text-neutral-700 text-[10px]">{duration}m</span>}
+                                            </div>
+                                            {run.abortReason && <p className="text-rose-400/70 text-[10px] truncate mt-0.5">{run.abortReason}</p>}
+                                        </div>
+                                        <div className="flex items-center gap-3 shrink-0">
+                                            {run.discovered > 0 && (
+                                                <span className="text-sky-400/80 font-black tabular-nums" title="Nichos descubiertos">🔍 {run.discovered}</span>
+                                            )}
+                                            {run.catalogsCreated > 0 && (
+                                                <span className="text-violet-400/80 font-black tabular-nums" title="Catálogos creados">🏭 {run.catalogsCreated}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
-                    </Card>
+                    </div>
                 )}
 
                 {/* ─ Reglas de búsqueda (cron scraper) ─ */}
@@ -6921,18 +7019,31 @@ export function KdpFactoryApp() {
                             <div className="space-y-3">
                                 {[0, 1, 2].map(i => (
                                     <div key={i} className="rounded-2xl border border-white/5 bg-white/[0.01] overflow-hidden animate-pulse">
-                                        <div className="h-px w-full bg-white/10" />
-                                        <div className="p-4 space-y-3">
+                                        <div className="h-px w-full bg-white/[0.08]" />
+                                        <div className="p-4 pl-5 space-y-3">
                                             <div className="flex items-start justify-between gap-4">
                                                 <div className="space-y-2 flex-1">
-                                                    <div className="h-4 w-1/3 bg-white/5 rounded-lg" />
-                                                    <div className="h-3 w-2/3 bg-white/5 rounded-lg" />
+                                                    <div className="h-5 w-2/5 bg-white/[0.06] rounded-lg" />
+                                                    <div className="h-3 w-3/5 bg-white/[0.04] rounded-lg" />
                                                 </div>
-                                                <div className="h-5 w-20 bg-white/5 rounded-full" />
+                                                <div className="flex flex-col items-end gap-2">
+                                                    <div className="h-5 w-20 bg-white/[0.06] rounded-full" />
+                                                    <div className="h-3 w-16 bg-white/[0.04] rounded-lg" />
+                                                </div>
                                             </div>
-                                            <div className="flex justify-between">
-                                                <div className="h-7 w-36 bg-white/5 rounded-xl" />
-                                                <div className="h-4 w-20 bg-white/5 rounded-lg" />
+                                            <div className="h-8 w-44 bg-white/[0.04] rounded-lg" />
+                                            {/* Mosaic placeholder */}
+                                            <div className="grid gap-1" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(52px, 1fr))" }}>
+                                                {Array.from({ length: i === 0 ? 8 : i === 1 ? 5 : 3 }).map((_, j) => (
+                                                    <div key={j} className="aspect-square rounded-lg bg-white/[0.04]" />
+                                                ))}
+                                            </div>
+                                            <div className="flex justify-between gap-2">
+                                                <div className="flex gap-1.5">
+                                                    <div className="h-8 w-20 bg-white/[0.04] rounded-xl" />
+                                                    <div className="h-8 w-20 bg-white/[0.04] rounded-xl" />
+                                                </div>
+                                                <div className="h-8 w-8 bg-white/[0.04] rounded-xl" />
                                             </div>
                                         </div>
                                     </div>
@@ -7030,6 +7141,26 @@ export function KdpFactoryApp() {
                                                         </span>
                                                     ) : null;
                                                 })}
+                                            </div>
+                                        )}
+                                        {/* Live mosaic */}
+                                        {catalog.images.length > 0 && (
+                                            <div className="grid gap-1" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(52px, 1fr))" }}>
+                                                {catalog.images.slice(-10).map((img) => (
+                                                    <div key={img.publicId} className="aspect-square overflow-hidden rounded-lg bg-white/5">
+                                                        <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                                                    </div>
+                                                ))}
+                                                {isActive && (
+                                                    <div className="aspect-square rounded-lg bg-white/5 border border-white/8 flex items-center justify-center">
+                                                        <Loader2 size={13} className="text-blue-400/60 animate-spin" />
+                                                    </div>
+                                                )}
+                                                {!isActive && catalog.images.length > 10 && (
+                                                    <div className="aspect-square rounded-lg bg-white/5 border border-white/8 flex items-center justify-center text-[10px] font-black text-neutral-600">
+                                                        +{catalog.images.length - 10}
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                         {/* Error */}

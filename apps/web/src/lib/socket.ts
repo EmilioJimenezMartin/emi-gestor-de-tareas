@@ -33,6 +33,7 @@ type ServerToClientEvents = {
   "autopilot:log": (payload: { nicheId: string; message: string }) => void;
   "autopilot:done": (payload: { processed: number; timestamp?: string }) => void;
   "autopilot:error": (payload: { message: string }) => void;
+  "autopilot:stage": (payload: { stage: "discovery" | "prompt" | "sample" | "catalog" | "listing"; nicheId: string; nicheName: string }) => void;
   "niches:updated": () => void;
   "telegram:notification": (payload: { message: string; type?: "success" | "info" | "warning" | "error" }) => void;
   "catalogs:updated": () => void;

@@ -2,7 +2,14 @@ import type { Agenda, Job } from "agenda";
 import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
 import { TelegramAction } from "../models/telegram-action.js";
+import { AutopilotRun } from "../models/autopilot-run.js";
 import { sendTelegram, sendTelegramPhotoDiscovery, sendTelegramApproval, shouldNotify } from "../lib/telegram.js";
+
+type RunStats = { discovered: number; pipelineProcessed: number; catalogsCreated: number };
+
+function emitStage(io: any, stage: string, nicheId: string, nicheName: string) {
+    io?.emit("autopilot:stage", { stage, nicheId, nicheName });
+}
 
 export const AUTOPILOT_JOB_NAME = "autopilot-run";
 
@@ -89,7 +96,8 @@ async function runDiscovery(
     base: string,
     io: any,
     tag: string,
-    abort: AbortSignal
+    abort: AbortSignal,
+    stats: RunStats
 ): Promise<number> {
     // Count total pending (all found, no sample yet)
     const totalPending = await Niche.countDocuments({
@@ -127,12 +135,14 @@ async function runDiscovery(
         if (await hasPendingAction(String(niche._id))) continue;
 
         io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🔍 Nuevo nicho detectado: "${niche.name}"` });
+        emitStage(io, "discovery", String(niche._id), niche.name);
 
         if (abort.aborted) break;
 
         // Generate prompt if missing
         let prompt = niche.generatedPrompt;
         if (!prompt) {
+            emitStage(io, "prompt", String(niche._id), niche.name);
             try {
                 const productType = niche.productType ?? "coloring-book";
                 const style = niche.styleCategory ?? "generic";
@@ -163,6 +173,7 @@ async function runDiscovery(
         }
 
         // Build sample image URL (Pollinations — public URL)
+        emitStage(io, "sample", String(niche._id), niche.name);
         const sampleUrl = buildSampleUrl(niche.name, niche.styleCategory ?? "generic", niche.productType ?? "coloring-book");
         await Niche.findByIdAndUpdate(niche._id, { $set: { sampleImageUrl: sampleUrl } });
         io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🖼️ Imagen de muestra generada para "${niche.name}"` });
@@ -204,6 +215,7 @@ async function runDiscovery(
         if (msgId) { action.messageId = msgId; await action.save(); }
         io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📩 Esperando tu decisión en Telegram para "${niche.name}"` });
         count++;
+        stats.discovered++;
 
         // Upload to Cloudinary after 12s (gives Pollinations time to render)
         const nicheId = String(niche._id);
@@ -238,7 +250,8 @@ async function runPipeline(
     base: string,
     io: any,
     tag: string,
-    abort: AbortSignal
+    abort: AbortSignal,
+    stats: RunStats
 ): Promise<number> {
     const candidates = await Niche.find({ autoPilotEnabled: true, status: "active" })
         .sort({ createdAt: 1 })
@@ -261,6 +274,7 @@ async function runPipeline(
 
         // ── niche → launch catalogs ──────────────────────────────────────────
         if (phase === "niche") {
+            emitStage(io, "catalog", String(niche._id), niche.name);
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🖼️ Lanzando ${cfg.catalogsPerNiche} catálogos para "${niche.name}"…` });
             try {
                 const aiModel = styleToAiModel(niche.styleCategory ?? "generic");
@@ -296,6 +310,7 @@ async function runPipeline(
                     await new Promise(r => setTimeout(r, 400));
                 }
                 if (!abort.aborted) {
+                    stats.catalogsCreated += cfg.catalogsPerNiche;
                     await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "catalog" } });
                     io?.emit("niches:updated");
                     io?.emit("catalogs:updated");
@@ -365,6 +380,7 @@ async function runPipeline(
 
         // ── pdf → generate SEO listing ────────────────────────────────────────
         if (phase === "pdf" && (!niche.listings || niche.listings.length === 0)) {
+            emitStage(io, "listing", String(niche._id), niche.name);
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📝 Generando listing KDP para "${niche.name}"…` });
             try {
                 const res = await fetch(`${base}/ai/generate-text`, {
@@ -429,7 +445,7 @@ async function runPipeline(
                     io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⛔ ${abort.reason}. Deteniendo ciclo.` });
                 }
             }
-            if (!abort.aborted) processed++;
+            if (!abort.aborted) { processed++; stats.pipelineProcessed++; }
             continue;
         }
     }
@@ -446,18 +462,25 @@ export function defineAutoPilotJob(agenda: Agenda, io: any) {
         console.log(`${tag} Run started at ${new Date().toISOString()}`);
         const cfg = await getConfig();
         const abort: AbortSignal = { aborted: false, reason: "" };
+        const stats: RunStats = { discovered: 0, pipelineProcessed: 0, catalogsCreated: 0 };
+
+        const run = await AutopilotRun.create({ startedAt: new Date(), status: "running" });
 
         if (await shouldNotify("autopilot.run")) {
             await sendTelegram(`🤖 <b>Auto-Pilot</b> — Ciclo iniciado`).catch(() => {});
         }
 
-        const discovered = await runDiscovery(cfg, base, io, tag, abort);
-        const processed = abort.aborted ? 0 : await runPipeline(cfg, base, io, tag, abort);
+        const discovered = await runDiscovery(cfg, base, io, tag, abort, stats);
+        const processed = abort.aborted ? 0 : await runPipeline(cfg, base, io, tag, abort, stats);
 
         const total = discovered + processed;
         console.log(`${tag} Done — ${discovered} discovered, ${processed} pipeline steps, aborted=${abort.aborted}`);
 
         if (abort.aborted) {
+            await AutopilotRun.findByIdAndUpdate(run._id, {
+                finishedAt: new Date(), status: "aborted", abortReason: abort.reason,
+                discovered: stats.discovered, pipelineProcessed: stats.pipelineProcessed, catalogsCreated: stats.catalogsCreated,
+            });
             io?.emit("autopilot:error", { message: abort.reason });
             if (await shouldNotify("api.error.quota")) {
                 await sendTelegram(
@@ -468,6 +491,11 @@ export function defineAutoPilotJob(agenda: Agenda, io: any) {
             }
             return;
         }
+
+        await AutopilotRun.findByIdAndUpdate(run._id, {
+            finishedAt: new Date(), status: "completed",
+            discovered: stats.discovered, pipelineProcessed: stats.pipelineProcessed, catalogsCreated: stats.catalogsCreated,
+        });
 
         io?.emit("autopilot:done", { processed: total, timestamp: new Date().toISOString() });
 

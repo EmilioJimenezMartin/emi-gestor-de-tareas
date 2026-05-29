@@ -26,6 +26,11 @@ export async function registerNicheRoutes(app: FastifyInstance) {
         try {
             const { name, description, tags, status, competition, demand, productType, styleCategory, styleCategories, notes, etsyUrl, _sourceTitulo } = request.body as any;
             if (!name?.trim()) return reply.status(400).send({ error: "name required" });
+
+            // Deduplication — return existing niche instead of creating a duplicate
+            const escaped = name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const existing = await Niche.findOne({ name: { $regex: new RegExp(`^${escaped}$`, "i") } }).lean();
+            if (existing) return reply.status(200).send({ niche: existing, duplicate: true });
             const resolvedStyles: string[] = Array.isArray(styleCategories) && styleCategories.length > 0
                 ? styleCategories
                 : styleCategory ? [styleCategory] : ["generic"];

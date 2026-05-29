@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
 import { TelegramAction } from "../models/telegram-action.js";
+import { AutopilotRun } from "../models/autopilot-run.js";
 import { getMongoStatus } from "../lib/mongo.js";
 import { sendTelegram, sendTelegramPhotoDiscovery, sendTelegramApproval } from "../lib/telegram.js";
 
@@ -192,6 +193,17 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             if (msgId) { action.messageId = msgId; await action.save(); }
 
             return reply.send({ ok: true, nicheId, sampleImageUrl: sampleUrl, actionId: String(action._id) });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // ── Run history ──────────────────────────────────────────────────────────
+    app.get("/autopilot/runs", async (_req, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const runs = await AutopilotRun.find().sort({ startedAt: -1 }).limit(20).lean();
+            return reply.send({ runs });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
         }
