@@ -18,7 +18,7 @@ export interface ICatalog extends Document {
         details: string;
         particulars: string;
     };
-    productType?: "coloring-book" | "printable-poster" | "other";
+    productType?: "coloring-book" | "printable-poster" | "seamless-pattern" | "other";
     creativity?: number;
     negativePrompt?: string;
     aiModel: {
@@ -33,6 +33,7 @@ export interface ICatalog extends Document {
     images: CatalogImage[];
     status: "queued" | "pending" | "running" | "completed" | "failed" | "cancelled";
     lastError?: string;
+    retries: number;
     skippedImages: number;
     queueOrder: number;
     nicheIds: string[];
@@ -62,7 +63,7 @@ const CatalogSchema = new Schema<ICatalog>(
             details: { type: String, default: "" },
             particulars: { type: String, default: "" },
         },
-        productType: { type: String, enum: ["coloring-book", "printable-poster", "other"], default: "coloring-book" },
+        productType: { type: String, enum: ["coloring-book", "printable-poster", "seamless-pattern", "other"], default: "coloring-book" },
         creativity: { type: Number, default: 50 },
         negativePrompt: { type: String, default: "" },
         aiModel: {
@@ -81,6 +82,7 @@ const CatalogSchema = new Schema<ICatalog>(
             default: "pending",
         },
         lastError: { type: String, default: "" },
+        retries: { type: Number, default: 0 },
         skippedImages: { type: Number, default: 0 },
         queueOrder: { type: Number, default: 0 },
         nicheIds: [{ type: String }],

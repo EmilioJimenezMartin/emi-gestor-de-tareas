@@ -3,7 +3,7 @@ import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
 import { TelegramAction } from "../models/telegram-action.js";
 import { AutopilotRun } from "../models/autopilot-run.js";
-import { sendTelegram, sendTelegramPhotoDiscovery, shouldNotify } from "../lib/telegram.js";
+import { sendTelegram, sendTelegramPhoto, sendTelegramPhotoDiscovery, shouldNotify } from "../lib/telegram.js";
 
 type RunStats = { discovered: number; pipelineProcessed: number; catalogsCreated: number };
 
@@ -33,6 +33,7 @@ type AutoPilotConfig = {
     catalogsPerNiche: number;
     imagesPerCatalog: number;
     maxNichesPerRun: number;
+    maxActiveCatalogs: number;
 };
 
 type AbortSignal = { aborted: boolean; reason: string };
@@ -40,16 +41,17 @@ type AbortSignal = { aborted: boolean; reason: string };
 async function getConfig(): Promise<AutoPilotConfig> {
     try {
         const rows = await Settings.find({
-            key: { $in: ["AUTOPILOT_CATALOGS_PER_NICHE", "AUTOPILOT_IMAGES_PER_CATALOG", "AUTOPILOT_MAX_NICHES"] },
+            key: { $in: ["AUTOPILOT_CATALOGS_PER_NICHE", "AUTOPILOT_IMAGES_PER_CATALOG", "AUTOPILOT_MAX_NICHES", "MAX_ACTIVE_CATALOGS"] },
         }).lean();
         const map = new Map((rows as any[]).map((r) => [r.key, r.value]));
         return {
             catalogsPerNiche: parseInt((map.get("AUTOPILOT_CATALOGS_PER_NICHE") as string) ?? "8") || 8,
             imagesPerCatalog: parseInt((map.get("AUTOPILOT_IMAGES_PER_CATALOG") as string) ?? "5") || 5,
             maxNichesPerRun: parseInt((map.get("AUTOPILOT_MAX_NICHES") as string) ?? "3") || 3,
+            maxActiveCatalogs: parseInt((map.get("MAX_ACTIVE_CATALOGS") as string) ?? "3") || 3,
         };
     } catch {
-        return { catalogsPerNiche: 8, imagesPerCatalog: 5, maxNichesPerRun: 3 };
+        return { catalogsPerNiche: 8, imagesPerCatalog: 5, maxNichesPerRun: 3, maxActiveCatalogs: 3 };
     }
 }
 
@@ -65,6 +67,9 @@ function buildSampleUrl(nicheName: string, style: string, productType: string): 
 
     if (productType === "printable-poster") {
         prompt = `${nicheName} printable wall art poster, colorful illustration, clean design, no text`;
+        model = "flux-realism";
+    } else if (productType === "seamless-pattern") {
+        prompt = `${nicheName} seamless tileable repeat surface pattern, flat design, symmetrical layout, clean edges, no background noise, vector-like, POD ready`;
         model = "flux-realism";
     } else {
         // coloring book
@@ -375,8 +380,24 @@ async function runPipeline(
             }
 
             if (done === 0) {
-                // All failed/cancelled — nothing to show, skip this niche
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ "${niche.name}": todos los catálogos fallaron o fueron cancelados` });
+                // All failed/cancelled — retry up to 2 times before giving up
+                const MAX_RETRIES = 2;
+                const { Catalog: CatalogModel } = await import("../models/catalog.js");
+                const failedCats = linkedCats.filter((c: any) => c.status === "failed");
+                const maxRetries = failedCats.length > 0 ? Math.max(...failedCats.map((c: any) => c.retries ?? 0)) : MAX_RETRIES;
+                if (maxRetries < MAX_RETRIES && failedCats.length > 0) {
+                    // Reset failed catalogs to queued and increment their retry counter
+                    await CatalogModel.updateMany(
+                        { nicheIds: String(niche._id), status: "failed" },
+                        { $set: { status: "queued" }, $inc: { retries: 1 } }
+                    );
+                    io?.emit("catalogs:updated");
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🔄 "${niche.name}": reintentando ${failedCats.length} catálogos fallidos (intento ${maxRetries + 1}/${MAX_RETRIES})` });
+                    processed++;
+                    continue;
+                }
+                // Exhausted retries — disable autopilot for this niche
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ "${niche.name}": todos los catálogos fallaron tras ${MAX_RETRIES} reintentos` });
                 await Niche.findByIdAndUpdate(niche._id, { $set: { autoPilotEnabled: false } });
                 io?.emit("niches:updated");
                 processed++;
@@ -527,11 +548,17 @@ async function runPipeline(
                 io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✅ Portada lista → "${niche.name}" PUBLICADO` });
 
                 if (await shouldNotify("pipeline.complete")) {
-                    await sendTelegram(
-                        `🎨 <b>Portada generada</b>\n\n` +
-                        `📚 <b>${niche.name}</b>\n\n` +
-                        `✅ <b>Pipeline completo</b> — listo para subir a KDP`
-                    ).catch(() => {});
+                    const listing = (niche.listings ?? [])[0];
+                    const caption = [
+                        `🎉 <b>Pipeline completo</b>`,
+                        ``,
+                        `📚 <b>${niche.name}</b>`,
+                        listing?.title ? `📝 ${listing.title}` : null,
+                        listing?.keywords?.length ? `🔑 ${listing.keywords.slice(0, 4).join(", ")}` : null,
+                        ``,
+                        `✅ Listo para subir a KDP`,
+                    ].filter(Boolean).join("\n");
+                    await sendTelegramPhoto(coverUrl, caption).catch(() => {});
                 }
 
             } catch (e: any) {

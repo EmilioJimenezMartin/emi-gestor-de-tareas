@@ -7,7 +7,7 @@ import { Settings } from "../models/settings.js";
 // Use &lt; &gt; instead of < > to avoid Telegram HTML parse errors
 const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { section: "📚 Nichos" },
-    { cmd: "/crear <code>nombre</code>",   desc: "Crea nicho y lanza discovery" },
+    { cmd: "/crear <code>nombre</code>",   desc: "Crea nicho. Prefijos: <code>printable</code>, <code>patron</code>, <code>libro de colorear</code>" },
     { cmd: "/nichos",                      desc: "Lista nichos activos con ID corto" },
     { cmd: "/nicho <code>id</code>",       desc: "Detalle de un nicho por ID" },
     { cmd: "/pdf <code>id</code>",         desc: "Abre el PDF de un nicho en la app" },
@@ -21,8 +21,8 @@ const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { cmd: "/parar",                       desc: "Detiene todo el pipeline" },
     { cmd: "/parar <code>id</code>",       desc: "Detiene solo ese nicho" },
     { cmd: "/cola",                        desc: "Cola de generación de catálogos" },
-    { cmd: "/config",                      desc: "Ver configuración del Auto-Pilot" },
-    { cmd: "/config <code>cats imgs</code>", desc: "Ej: /config 8 5 → 8 catálogos × 5 imgs" },
+    { cmd: "/config",                        desc: "Ver configuración del Auto-Pilot" },
+    { cmd: "/config <code>cats imgs [nichos]</code>", desc: "Ej: /config 1 1 1 (prueba) · /config 8 5 3 (prod)" },
     { cmd: "/status",                      desc: "Acciones de Telegram pendientes" },
     { section: "❓ Ayuda" },
     { cmd: "/ayuda",                       desc: "Este mensaje (fijado al chat)" },
@@ -49,15 +49,16 @@ let _agenda: any = null;
 async function getAutoPilotConfig() {
     try {
         const rows = await Settings.find({
-            key: { $in: ["AUTOPILOT_CATALOGS_PER_NICHE", "AUTOPILOT_IMAGES_PER_CATALOG"] },
+            key: { $in: ["AUTOPILOT_CATALOGS_PER_NICHE", "AUTOPILOT_IMAGES_PER_CATALOG", "AUTOPILOT_MAX_NICHES"] },
         }).lean();
         const map = new Map((rows as any[]).map((r) => [r.key, r.value]));
         return {
             catalogsPerNiche: parseInt((map.get("AUTOPILOT_CATALOGS_PER_NICHE") as string) ?? "8") || 8,
             imagesPerCatalog: parseInt((map.get("AUTOPILOT_IMAGES_PER_CATALOG") as string) ?? "5") || 5,
+            maxNichesPerRun: parseInt((map.get("AUTOPILOT_MAX_NICHES") as string) ?? "3") || 3,
         };
     } catch {
-        return { catalogsPerNiche: 8, imagesPerCatalog: 5 };
+        return { catalogsPerNiche: 8, imagesPerCatalog: 5, maxNichesPerRun: 3 };
     }
 }
 
@@ -324,6 +325,10 @@ async function processUpdate(update: any): Promise<void> {
                 productType = "printable-poster";
                 styleCategory = "wall-art";
                 nicheName = rawArg.slice("printable ".length).trim();
+            } else if (argLower.startsWith("patron ") || argLower.startsWith("patrón ")) {
+                productType = "seamless-pattern";
+                styleCategory = "geometric";
+                nicheName = rawArg.slice(argLower.startsWith("patron ") ? "patron ".length : "patrón ".length).trim();
             } else if (argLower.startsWith("libro para colorear ")) {
                 productType = "coloring-book";
                 styleCategory = "generic";
@@ -341,13 +346,13 @@ async function processUpdate(update: any): Promise<void> {
                 const niche = await Niche.create({
                     name: nicheName,
                     status: "found",
-                    productType: productType as "coloring-book" | "printable-poster",
-                    styleCategory: styleCategory as "generic" | "wall-art",
-                    styleCategories: [styleCategory as "generic" | "wall-art"],
+                    productType: productType as "coloring-book" | "printable-poster" | "seamless-pattern",
+                    styleCategory: styleCategory as "generic" | "wall-art" | "geometric",
+                    styleCategories: [styleCategory as "generic" | "wall-art" | "geometric"],
                 });
                 _io?.emit("niches:updated");
                 _io?.emit("telegram:notification", { message: `📚 Nuevo nicho creado desde Telegram · ${nicheName}`, type: "info" });
-                const typeTag = productType === "printable-poster" ? "🖼️ Póster imprimible" : "📚 Libro de colorear";
+                const typeTag = productType === "printable-poster" ? "🖼️ Póster imprimible" : productType === "seamless-pattern" ? "🔁 Patrón continuo" : "📚 Libro de colorear";
                 await sendTelegram(
                     `✅ <b>Nicho creado</b>\n${typeTag} · <b>${nicheName}</b>\n\n⏳ Iniciando discovery — recibirás la imagen de muestra en breve…`
                 );
@@ -722,11 +727,12 @@ async function processUpdate(update: any): Promise<void> {
                 if (args.length >= 2) {
                     const cats = parseInt(args[0]);
                     const imgs = parseInt(args[1]);
-                    if (isNaN(cats) || cats < 1 || isNaN(imgs) || imgs < 1) {
-                        await sendTelegram("❌ Valores inválidos. Ejemplo: <code>/config 8 5</code>");
+                    const nichos = args[2] ? parseInt(args[2]) : null;
+                    if (isNaN(cats) || cats < 1 || isNaN(imgs) || imgs < 1 || (nichos !== null && (isNaN(nichos) || nichos < 1))) {
+                        await sendTelegram("❌ Valores inválidos. Ejemplo: <code>/config 8 5 3</code>");
                         return;
                     }
-                    await Promise.all([
+                    const updates: Promise<any>[] = [
                         Settings.findOneAndUpdate(
                             { key: "AUTOPILOT_CATALOGS_PER_NICHE" },
                             { key: "AUTOPILOT_CATALOGS_PER_NICHE", value: String(cats) },
@@ -737,15 +743,25 @@ async function processUpdate(update: any): Promise<void> {
                             { key: "AUTOPILOT_IMAGES_PER_CATALOG", value: String(imgs) },
                             { upsert: true }
                         ),
-                    ]);
+                    ];
+                    if (nichos !== null) {
+                        updates.push(Settings.findOneAndUpdate(
+                            { key: "AUTOPILOT_MAX_NICHES" },
+                            { key: "AUTOPILOT_MAX_NICHES", value: String(nichos) },
+                            { upsert: true }
+                        ));
+                    }
+                    await Promise.all(updates);
                     _io?.emit("telegram:notification", {
-                        message: `⚙️ Config actualizada: ${cats} catálogos × ${imgs} imágenes`,
+                        message: `⚙️ Config actualizada: ${cats} catálogos × ${imgs} imágenes${nichos !== null ? ` · ${nichos} nichos/run` : ""}`,
                         type: "info",
                     });
+                    const cfg = await getAutoPilotConfig();
                     await sendTelegram(
                         `✅ <b>Configuración guardada</b>\n\n` +
-                        `📦 Catálogos por nicho: <b>${cats}</b>\n` +
-                        `🖼️ Imágenes por catálogo: <b>${imgs}</b>\n\n` +
+                        `📦 Catálogos por nicho: <b>${cfg.catalogsPerNiche}</b>\n` +
+                        `🖼️ Imágenes por catálogo: <b>${cfg.imagesPerCatalog}</b>\n` +
+                        `🔁 Nichos por ejecución: <b>${cfg.maxNichesPerRun}</b>\n\n` +
                         `<i>Aplicado en la próxima ejecución de Auto-Pilot</i>`
                     );
                 } else {
@@ -754,9 +770,11 @@ async function processUpdate(update: any): Promise<void> {
                     await sendTelegram(
                         `⚙️ <b>Configuración Auto-Pilot</b>\n\n` +
                         `📦 Catálogos por nicho: <b>${cfg.catalogsPerNiche}</b>\n` +
-                        `🖼️ Imágenes por catálogo: <b>${cfg.imagesPerCatalog}</b>\n\n` +
-                        `Para cambiar: <code>/config &lt;catálogos&gt; &lt;imágenes&gt;</code>\n` +
-                        `Ejemplo: <code>/config 8 5</code>`
+                        `🖼️ Imágenes por catálogo: <b>${cfg.imagesPerCatalog}</b>\n` +
+                        `🔁 Nichos por ejecución: <b>${cfg.maxNichesPerRun}</b>\n\n` +
+                        `Para cambiar: <code>/config &lt;cats&gt; &lt;imgs&gt; [nichos]</code>\n` +
+                        `Ej. prueba rápida: <code>/config 1 1 1</code>\n` +
+                        `Ej. producción: <code>/config 8 5 3</code>`
                     );
                 }
             } catch (e: any) {

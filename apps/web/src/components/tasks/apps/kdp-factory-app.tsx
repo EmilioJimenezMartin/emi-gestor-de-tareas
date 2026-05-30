@@ -182,7 +182,7 @@ type TabID = "insights" | "creation" | "studio" | "niches" | "gelato" | "config"
 type PeriodID = "month" | "6months" | "year" | "all";
 
 type NicheStatus = "found" | "active" | "research" | "archived";
-type NicheProductType = "coloring-book" | "printable-poster" | "other";
+type NicheProductType = "coloring-book" | "printable-poster" | "seamless-pattern" | "other";
 type NicheStyle = "generic" | "anime" | "illustration" | "children" | "realistic" | "watercolor" | "abstract"
     | "wall-art" | "botanical" | "affirmation" | "geometric" | "celestial" | "retro";
 
@@ -311,6 +311,7 @@ function buildColoringBookPromptParts(nicheName: string, style: NicheStyle, part
 const NICHE_PRODUCT_OPTIONS: { id: NicheProductType; label: string }[] = [
     { id: "coloring-book", label: "Libro de colorear" },
     { id: "printable-poster", label: "Printable" },
+    { id: "seamless-pattern", label: "Patrón continuo" },
     { id: "other", label: "Otro" },
 ];
 
@@ -345,6 +346,40 @@ function buildPrintablePromptParts(nicheName: string, style: NicheStyle, particu
     };
 }
 
+const SEAMLESS_STYLE_OPTIONS: { id: NicheStyle; label: string; desc: string; emoji: string }[] = [
+    { id: "geometric",   label: "Geométrico",   desc: "Formas simétricas, Bauhaus, retícula",  emoji: "◼️" },
+    { id: "botanical",   label: "Botánico",     desc: "Flores, hojas, plants repeat",          emoji: "🌿" },
+    { id: "abstract",    label: "Abstracto",    desc: "Texturas orgánicas, fluido, blob",       emoji: "🎨" },
+    { id: "retro",       label: "Retro",        desc: "Patrón vintage, iconos de época",        emoji: "📯" },
+    { id: "celestial",   label: "Celestial",    desc: "Estrellas, luna, cosmos repeat",         emoji: "🌙" },
+    { id: "watercolor",  label: "Acuarela",     desc: "Manchas acuarela tileable",              emoji: "💧" },
+    { id: "illustration",label: "Ilustración",  desc: "Ilustraciones planas, vector-like",      emoji: "✏️" },
+    { id: "children",    label: "Infantil",     desc: "Cute repeat pattern, kids motifs",       emoji: "🦄" },
+];
+
+// Seamless pattern prompt template — tileable, repeat-ready for POD
+function buildSeamlessPromptParts(nicheName: string, style: NicheStyle, particulars: string) {
+    const styleSpecs: Record<string, { specs: string; details: string }> = {
+        geometric:    { specs: "seamless tileable geometric repeat pattern, symmetrical grid, bold clean shapes, flat color palette, no background noise, vector-like precision, seamless edges",     details: "Bauhaus mid-century modern influence, balanced composition, tile-friendly proportions" },
+        botanical:    { specs: "seamless tileable botanical repeat pattern, hand-drawn style flowers and leaves, soft watercolor palette, white or transparent background, seamless edges",              details: "elegant floral arrangement, evenly spaced motifs, Spoonflower-ready tile" },
+        abstract:     { specs: "seamless tileable abstract repeat pattern, organic fluid shapes, textured brush strokes, neutral or earthy palette, no hard edges at tile boundary, seamless repeat",  details: "modern surface design aesthetic, balanced negative space, POD-ready" },
+        retro:        { specs: "seamless tileable retro vintage repeat pattern, mid-century icons and shapes, muted orange teal cream palette, flat graphic style, seamless edges",                     details: "50s kitchen tiles aesthetic, playful repetition, fabric-ready pattern" },
+        celestial:    { specs: "seamless tileable celestial repeat pattern, stars moons constellations on dark background, gold line art details, seamless edges, repeat-ready",                        details: "mystical atmosphere, even motif distribution, elegant on black or navy base" },
+        watercolor:   { specs: "seamless tileable watercolor wash repeat pattern, soft ink blooms and splashes, pastel palette, transparent overlapping layers, seamless edges",                        details: "dreamy artistic surface, loose organic feel, scrapbook and fabric aesthetic" },
+        illustration: { specs: "seamless tileable illustrated repeat pattern, flat vector-style icons, clean outlines, limited palette, evenly spaced motifs, seamless edges",                         details: "playful modern repeat, icon set aesthetic, gift-wrap and fabric ready" },
+        children:     { specs: "seamless tileable children cute repeat pattern, friendly cartoon characters or animals, bright playful colors, thick outlines, seamless edges",                        details: "kid-friendly surface design, stuffed-animals and nursery aesthetic, Redbubble-ready" },
+    };
+    const s = styleSpecs[style] ?? styleSpecs.geometric;
+    const theme = `${nicheName} seamless repeat surface pattern`;
+    return {
+        theme,
+        specs: s.specs,
+        details: s.details,
+        particulars,
+        fullPrompt: [theme, s.specs, s.details, particulars].filter(Boolean).join(", "),
+    };
+}
+
 interface CatalogImageFE {
     publicId: string;
     url: string;
@@ -359,7 +394,7 @@ interface IACatalogFE {
     name: string;
     prompt: string;
     promptParts?: { theme: string; specs: string; details: string; particulars: string };
-    productType?: "coloring-book" | "printable-poster" | "other";
+    productType?: "coloring-book" | "printable-poster" | "seamless-pattern" | "other";
     creativity?: number;
     negativePrompt?: string;
     aiModel: { id: string; name: string; provider: string; modelId: string };
@@ -924,7 +959,7 @@ export function KdpFactoryApp() {
     const [isLoadingCatalogs, setIsLoadingCatalogs] = useState(false);
     const [catalogFormName, setCatalogFormName] = useState("");
     const [catalogFormCount, setCatalogFormCount] = useState(5);
-    const [catalogProductType, setCatalogProductType] = useState<"coloring-book" | "printable-poster" | "other">("coloring-book");
+    const [catalogProductType, setCatalogProductType] = useState<"coloring-book" | "printable-poster" | "seamless-pattern" | "other">("coloring-book");
     const [catalogCreativity, setCatalogCreativity] = useState(50);
     const [catalogNegativePrompt, setCatalogNegativePrompt] = useState("");
     const [isCreatingCatalog, setIsCreatingCatalog] = useState(false);
@@ -984,6 +1019,7 @@ export function KdpFactoryApp() {
     const [nicheDeleteId, setNicheDeleteId] = useState<string | null>(null);
     const [nicheStatusFilter, setNicheStatusFilter] = useState<"all" | NicheStatus>("all");
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban">("list");
+    const [kanbanProductFilter, setKanbanProductFilter] = useState<"all" | "coloring-book" | "printable-poster" | "seamless-pattern">("all");
     const [studioSubTab, setStudioSubTab] = useState<"niches" | "radar">(() =>
         (typeof window !== "undefined" && localStorage.getItem("kdp-studio-subtab") as "niches" | "radar") || "niches"
     );
@@ -1035,6 +1071,7 @@ export function KdpFactoryApp() {
     const [apCatalogsPer, setApCatalogsPer] = useState("5");
     const [apImagesPerCatalog, setApImagesPerCatalog] = useState("5");
     const [apMaxNiches, setApMaxNiches] = useState("3");
+    const [apMaxActiveCatalogs, setApMaxActiveCatalogs] = useState("3");
     const [apScheduled, setApScheduled] = useState(false);
     const [apRunning, setApRunning] = useState(false);
     const [apCurrentNicheName, setApCurrentNicheName] = useState<string | null>(null);
@@ -1712,6 +1749,7 @@ export function KdpFactoryApp() {
                 { key: "AUTOPILOT_CATALOGS_PER_NICHE", value: apCatalogsPer },
                 { key: "AUTOPILOT_IMAGES_PER_CATALOG", value: apImagesPerCatalog },
                 { key: "AUTOPILOT_MAX_NICHES", value: apMaxNiches },
+                { key: "MAX_ACTIVE_CATALOGS", value: apMaxActiveCatalogs },
             ];
             await Promise.all(limitPairs.map(p => fetch(`${API_BASE_URL}/settings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
             const res = await fetch(`${API_BASE_URL}/autopilot/schedule`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cron }) });
@@ -1800,6 +1838,7 @@ export function KdpFactoryApp() {
                 { key: "AUTOPILOT_CATALOGS_PER_NICHE", value: apCatalogsPer },
                 { key: "AUTOPILOT_IMAGES_PER_CATALOG", value: apImagesPerCatalog },
                 { key: "AUTOPILOT_MAX_NICHES", value: apMaxNiches },
+                { key: "MAX_ACTIVE_CATALOGS", value: apMaxActiveCatalogs },
             ];
             await Promise.all(pairs.map(p => fetch(`${API_BASE_URL}/settings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
             toast.success("Configuración guardada");
@@ -3094,6 +3133,7 @@ export function KdpFactoryApp() {
                 if (settingsMap.has("AUTOPILOT_CATALOGS_PER_NICHE")) setApCatalogsPer(settingsMap.get("AUTOPILOT_CATALOGS_PER_NICHE")!);
                 if (settingsMap.has("AUTOPILOT_IMAGES_PER_CATALOG")) setApImagesPerCatalog(settingsMap.get("AUTOPILOT_IMAGES_PER_CATALOG")!);
                 if (settingsMap.has("AUTOPILOT_MAX_NICHES")) setApMaxNiches(settingsMap.get("AUTOPILOT_MAX_NICHES")!);
+                if (settingsMap.has("MAX_ACTIVE_CATALOGS")) setApMaxActiveCatalogs(settingsMap.get("MAX_ACTIVE_CATALOGS")!);
 
                 // Autopilot schedule — restore cron UI state
                 const savedCron = settingsMap.get("AUTOPILOT_CRON") ?? "";
@@ -3838,6 +3878,21 @@ export function KdpFactoryApp() {
         }
     };
 
+    // ── Exportar catálogo como dataset HuggingFace (metadata.jsonl) ──────────
+    const exportCatalogDataset = (catalog: typeof iaCatalogs[number]) => {
+        if (!catalog.images.length) { toast.error("Este catálogo no tiene imágenes"); return; }
+        const lines = catalog.images.map(img =>
+            JSON.stringify({ file_name: img.publicId.split("/").pop() + "." + (img.url.split(".").pop()?.split("?")[0] ?? "jpg"), url: img.url, prompt: catalog.prompt, catalog: catalog.name, productType: catalog.productType ?? "coloring-book" })
+        );
+        const blob = new Blob([lines.join("\n")], { type: "application/jsonl" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${catalog.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-dataset.jsonl`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        toast.success(`Dataset exportado · ${catalog.images.length} entradas`);
+    };
+
     // ── Pipeline automático: genera catálogos + KDP listing ──────────────────
     const runNichePipeline = async (niche: NicheFE, cfg?: { catalogs: number; imagesPerCatalog: number }) => {
         const IMAGES_PER_CATALOG = cfg?.imagesPerCatalog ?? pipelineConfig.imagesPerCatalog;
@@ -4379,13 +4434,11 @@ export function KdpFactoryApp() {
                 <SectionHeader icon={<Target size={16} />} title="Pipeline · Nichos" subtitle="Estado de producción y puntuaciones IA" color="blue" size="md" />
 
                 {/* ── Production KPI cards (same glass style) ── */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                     {[
                         { label: "Imágenes IA", value: totalImgsAll.toString(), sub: `${iaCatalogs.length} catálogos activos`, color: "blue", blob: "bg-blue-500/10", icon: <ImageIcon size={16} />, hoverCls: "hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.12)]" },
                         { label: "Nichos totales", value: niches.length.toString(), sub: `${niches.filter(n=>n.status==="active").length} activos`, color: "sky", blob: "bg-sky-500/10", icon: <Target size={16} />, hoverCls: "hover:border-sky-500/30 hover:shadow-[0_0_30px_rgba(14,165,233,0.12)]" },
                         { label: "Publicados", value: publishedNiches.length.toString(), sub: `${conversionRate}% conversión`, color: "emerald", blob: "bg-emerald-500/10", icon: <CheckCircle2 size={16} />, hoverCls: "hover:border-emerald-500/30 hover:shadow-[0_0_30px_rgba(16,185,129,0.12)]" },
-                        { label: "Royalties KDP", value: `$${totalRoyalties.toFixed(0)}`, sub: topRoyaltyNiche ? `Top: ${topRoyaltyNiche.name.split(" ").slice(0,2).join(" ")}` : "Sin publicados aún", color: "amber", blob: "bg-amber-500/10", icon: <DollarSign size={16} />, hoverCls: "hover:border-amber-500/30 hover:shadow-[0_0_30px_rgba(245,158,11,0.12)]" },
-                        { label: "Score medio IA", value: avgScore != null ? `${avgScore}` : "—", sub: avgScore != null ? `${scoredNiches.length} nichos puntuados` : "Puntúa nichos con IA", color: avgScore != null && avgScore >= 70 ? "emerald" : avgScore != null && avgScore >= 40 ? "amber" : "violet", blob: "bg-violet-500/10", icon: <Sparkles size={16} />, hoverCls: "hover:border-violet-500/30 hover:shadow-[0_0_30px_rgba(139,92,246,0.12)]" },
                         { label: "Listings SEO", value: totalListings.toString(), sub: `${niches.filter(n=>n.listings&&n.listings.length>0).length} nichos con listing`, color: "indigo", blob: "bg-indigo-500/10", icon: <FileText size={16} />, hoverCls: "hover:border-indigo-500/30 hover:shadow-[0_0_30px_rgba(99,102,241,0.12)]" },
                     ].map(s => (
                         <Card key={s.label} variant="outline" className={`p-6 bg-white/[0.02] border-white/5 flex flex-col gap-3 ${s.hoverCls} transition-all duration-500 group relative overflow-hidden`}>
@@ -4400,31 +4453,8 @@ export function KdpFactoryApp() {
                     ))}
                 </div>
 
-                {/* ── Pipeline funnel ── */}
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                    {([
-                        { phase: "niche" as const,     label: "Nicho",     color: "sky",     glow: "rgba(14,165,233,0.1)",   hoverBorder: "hover:border-sky-500/30",     blob: "bg-sky-500/10" },
-                        { phase: "catalog" as const,   label: "Catálogos", color: "blue",    glow: "rgba(59,130,246,0.1)",   hoverBorder: "hover:border-blue-500/30",    blob: "bg-blue-500/10" },
-                        { phase: "seo" as const,       label: "SEO",       color: "violet",  glow: "rgba(139,92,246,0.1)",   hoverBorder: "hover:border-violet-500/30",  blob: "bg-violet-500/10" },
-                        { phase: "cover" as const,     label: "Portada",   color: "fuchsia", glow: "rgba(217,70,239,0.1)",   hoverBorder: "hover:border-fuchsia-500/30", blob: "bg-fuchsia-500/10" },
-                        { phase: "published" as const, label: "Publicado", color: "emerald", glow: "rgba(16,185,129,0.1)",   hoverBorder: "hover:border-emerald-500/30", blob: "bg-emerald-500/10" },
-                    ] as const).map(col => {
-                        const cnt = phaseCount(col.phase);
-                        const imgs = phaseImgs(col.phase);
-                        return (
-                            <button key={col.phase} onClick={() => { setNicheViewMode("kanban"); changeTab("niches"); }}
-                                className={`group relative rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5 text-left overflow-hidden transition-all ${col.hoverBorder} hover:shadow-[0_0_24px_${col.glow}] hover:bg-white/[0.04]`}>
-                                <div className={`absolute -right-3 -top-3 w-12 h-12 ${col.blob} blur-2xl rounded-full transition-all group-hover:scale-150`} />
-                                <p className={`text-3xl font-black text-${col.color}-400 tabular-nums relative`}>{cnt}</p>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mt-1.5 relative">{col.label}</p>
-                                {imgs > 0 && <p className={`text-[10px] text-${col.color}-500/60 mt-0.5 relative`}>{imgs} imgs</p>}
-                            </button>
-                        );
-                    })}
-                </div>
-
-                {/* ── Pipeline alerts + Top scores ── */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* ── Pipeline alerts ── */}
+                <div className="grid grid-cols-1 gap-4">
                     {(() => {
                         const totalIssues = pdfNoListing.length + catalogDoneStuck.length + catalogGeneratingStuck.length + imageStuck.length + autopilotStuck.length + foundNeverDiscovered.length + stalled.length;
                         type RuleEntry = { key: string; level: "ok" | "warn" | "error" | "info"; icon: string; label: string; items: string[]; count: number };
@@ -4528,40 +4558,6 @@ export function KdpFactoryApp() {
                         </Card>
                         );
                     })()}
-                    <Card variant="outline" className="p-5 bg-white/[0.02] border-white/5 flex flex-col gap-3">
-                        <div className="flex items-center gap-2">
-                            <Sparkles size={13} className="text-neutral-600" />
-                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Top Score IA</span>
-                            {topScoredNiches.length === 0 && <span className="ml-auto text-[10px] text-neutral-600">Puntúa nichos con IA</span>}
-                        </div>
-                        {topScoredNiches.length === 0 ? (
-                            <p className="text-sm text-neutral-600">Sin puntuaciones aún. Abre un nicho y pulsa «Score IA».</p>
-                        ) : (
-                            <div className="space-y-3 flex-1">
-                                {topScoredNiches.map((n, i) => (
-                                    <div key={n._id} className="flex items-center gap-3">
-                                        <span className="text-[11px] font-black text-neutral-700 w-4 shrink-0 tabular-nums">#{i + 1}</span>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-black text-white truncate">{n.name}</p>
-                                            <div className="w-full bg-white/[0.05] rounded-full h-1 mt-1">
-                                                <div className={`h-1 rounded-full ${(n.score ?? 0) >= 70 ? "bg-emerald-400" : (n.score ?? 0) >= 40 ? "bg-amber-400" : "bg-rose-400"}`} style={{ width: `${n.score ?? 0}%` }} />
-                                            </div>
-                                        </div>
-                                        <span className={`text-base font-black shrink-0 tabular-nums ${(n.score ?? 0) >= 70 ? "text-emerald-400" : (n.score ?? 0) >= 40 ? "text-amber-400" : "text-rose-400"}`}>{n.score}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        {topRoyaltyNiche && (
-                            <div className="mt-auto pt-3 border-t border-white/[0.05] flex items-center justify-between">
-                                <div className="min-w-0">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Mejor royalty</p>
-                                    <p className="text-sm font-black text-white truncate">{topRoyaltyNiche.name}</p>
-                                </div>
-                                <span className="text-base font-black text-amber-400 shrink-0">${topRoyalty.toFixed(0)}</span>
-                            </div>
-                        )}
-                    </Card>
                 </div>
             </section>
 
@@ -5574,11 +5570,12 @@ export function KdpFactoryApp() {
                         </div>
 
                         {/* Limits */}
-                        <div className="relative border-t border-white/[0.05] pt-3 grid grid-cols-3 gap-2 mt-1">
+                        <div className="relative border-t border-white/[0.05] pt-3 grid grid-cols-2 gap-2 mt-1">
                             {[
                                 { label: "Cat./nicho", value: apCatalogsPer, set: setApCatalogsPer },
                                 { label: "Imgs/cat.", value: apImagesPerCatalog, set: setApImagesPerCatalog },
                                 { label: "Nichos/run", value: apMaxNiches, set: setApMaxNiches },
+                                { label: "Cat. activos", value: apMaxActiveCatalogs, set: setApMaxActiveCatalogs },
                             ].map(f => (
                                 <div key={f.label}>
                                     <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600 mb-1">{f.label}</p>
@@ -7561,6 +7558,21 @@ export function KdpFactoryApp() {
                             </div>
                         </div>
                     )}
+                    {/* Refreshing skeleton — append 1 ghost card at top when reloading with existing catalogs */}
+                    {isLoadingCatalogs && iaCatalogs.length > 0 && (
+                        <div className="mb-3 rounded-2xl border border-white/5 bg-white/[0.01] overflow-hidden animate-pulse">
+                            <div className="h-px w-full bg-white/[0.08]" />
+                            <div className="p-4 pl-5 space-y-3">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="space-y-2 flex-1">
+                                        <div className="h-5 w-2/5 bg-white/[0.06] rounded-lg" />
+                                        <div className="h-3 w-3/5 bg-white/[0.04] rounded-lg" />
+                                    </div>
+                                    <div className="h-5 w-20 bg-white/[0.06] rounded-full" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     {iaCatalogs.length > 0 && (() => {
                         const filteredByCatalogNiche = (() => {
                             let base = iaCatalogs;
@@ -7758,6 +7770,13 @@ export function KdpFactoryApp() {
                                                         >
                                                             {directPdfCatalogId === catalog._id ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
                                                             PDF
+                                                        </button>
+                                                        <button
+                                                            onClick={() => exportCatalogDataset(catalog)}
+                                                            title="Exportar como dataset HuggingFace (.jsonl)"
+                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition-all border border-violet-500/20 text-sm font-black uppercase tracking-widest"
+                                                        >
+                                                            <Download size={11} /> Dataset
                                                         </button>
                                                     </>
                                                 )}
@@ -8680,6 +8699,16 @@ export function KdpFactoryApp() {
                                 {isLoadingNiches ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                             </button>
                             {/* View toggle */}
+                            {nicheViewMode === "kanban" && (
+                                <div className="flex p-0.5 bg-white/[0.04] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest">
+                                    {(["all", "coloring-book", "printable-poster", "seamless-pattern"] as const).map(f => (
+                                        <button key={f} onClick={() => setKanbanProductFilter(f)}
+                                            className={`px-2.5 h-7 rounded-[10px] transition-all whitespace-nowrap ${kanbanProductFilter === f ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                            {f === "all" ? "Todos" : f === "coloring-book" ? "Libros" : f === "printable-poster" ? "Pósters" : "Patrones"}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                             <div className="flex p-1 bg-white/[0.04] border border-white/8 rounded-xl gap-0.5">
                                 <button onClick={() => setNicheViewMode("list")} title="Vista lista"
                                     className={`w-8 h-7 rounded-lg flex items-center justify-center transition-all ${nicheViewMode === "list" ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
@@ -8800,7 +8829,9 @@ export function KdpFactoryApp() {
                                     // "pdf" is the legacy name for "seo" — show both in the seo column
                                     const colNiches = niches.filter(n => {
                                         const p = n.phase ?? "niche";
-                                        return p === col.id || (col.id === "seo" && p === "pdf");
+                                        if (!(p === col.id || (col.id === "seo" && p === "pdf"))) return false;
+                                        if (kanbanProductFilter !== "all" && (n.productType ?? "coloring-book") !== kanbanProductFilter) return false;
+                                        return true;
                                     });
                                     const colImgs = colNiches.reduce((sum, n) => sum + iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).reduce((s, c) => s + c.images.length, 0), 0);
                                     return (
@@ -8829,8 +8860,12 @@ export function KdpFactoryApp() {
                                                     const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
                                                     const imgCount = linkedCats.reduce((s, c) => s + c.images.length, 0);
                                                     const productLabel = NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType;
-                                                    const styleLabel = (niche.productType === "printable-poster" ? PRINTABLE_STYLE_OPTIONS : NICHE_STYLE_OPTIONS).find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory;
+                                                    const styleLabel = (niche.productType === "printable-poster" ? PRINTABLE_STYLE_OPTIONS : niche.productType === "seamless-pattern" ? SEAMLESS_STYLE_OPTIONS : NICHE_STYLE_OPTIONS).find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory;
                                                     const rev = totalRevenue(niche);
+                                                    const catsDone = linkedCats.filter(c => c.status === "completed").length;
+                                                    const catsTotal = linkedCats.length;
+                                                    const catsRunning = linkedCats.filter(c => c.status === "running" || c.status === "pending").length;
+                                                    const catsFailed = linkedCats.filter(c => c.status === "failed").length;
                                                     return (
                                                         <div key={niche._id}
                                                             className={`group relative rounded-xl border border-white/[0.07] bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/[0.12] hover:shadow-[0_0_20px_var(--col-glow)] transition-all cursor-pointer overflow-hidden`}
@@ -8868,6 +8903,30 @@ export function KdpFactoryApp() {
                                                                     <div className="flex items-center gap-1.5">
                                                                         <ImageIcon size={9} className="text-neutral-600 shrink-0" />
                                                                         <span className="text-[10px] font-bold text-neutral-500">{imgCount} imágenes</span>
+                                                                    </div>
+                                                                )}
+                                                                {/* Catalog progress bar (catalog phase only) */}
+                                                                {catsTotal > 0 && col.id === "catalog" && (
+                                                                    <div className="space-y-1">
+                                                                        <div className="flex items-center justify-between text-[9px]">
+                                                                            <span className="font-black uppercase tracking-widest text-neutral-600">Catálogos</span>
+                                                                            <span className={`font-black tabular-nums ${catsRunning > 0 ? "text-blue-400" : catsFailed > 0 ? "text-rose-400" : "text-emerald-400"}`}>
+                                                                                {catsDone}/{catsTotal}
+                                                                                {catsRunning > 0 && <span className="text-neutral-600 font-normal ml-1">· {catsRunning} activos</span>}
+                                                                                {catsFailed > 0 && <span className="text-rose-500 font-normal ml-1">· {catsFailed} fallidos</span>}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="h-1 bg-white/[0.04] rounded-full overflow-hidden flex gap-px">
+                                                                            {catsTotal > 0 && Array.from({ length: catsTotal }).map((_, i) => {
+                                                                                const cat = linkedCats[i];
+                                                                                const color = !cat ? "bg-white/[0.04]"
+                                                                                    : cat.status === "completed" ? "bg-emerald-500"
+                                                                                    : cat.status === "running" || cat.status === "pending" ? "bg-blue-400 animate-pulse"
+                                                                                    : cat.status === "failed" ? "bg-rose-500"
+                                                                                    : "bg-white/[0.08]";
+                                                                                return <div key={i} className={`flex-1 h-full ${color} rounded-full`} />;
+                                                                            })}
+                                                                        </div>
                                                                     </div>
                                                                 )}
                                                                 {/* Revenue (published) */}
@@ -9012,7 +9071,7 @@ export function KdpFactoryApp() {
                                                                 {NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType}
                                                             </span>
                                                             <span className="text-xs font-black uppercase tracking-wide text-neutral-400 bg-white/[0.04] border border-white/8 px-2 py-0.5 rounded-full">
-                                                                {(niche.productType === "printable-poster" ? PRINTABLE_STYLE_OPTIONS : NICHE_STYLE_OPTIONS).find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory}
+                                                                {(niche.productType === "printable-poster" ? PRINTABLE_STYLE_OPTIONS : niche.productType === "seamless-pattern" ? SEAMLESS_STYLE_OPTIONS : NICHE_STYLE_OPTIONS).find(s => s.id === (niche.styleCategory ?? "generic"))?.label ?? niche.styleCategory}
                                                             </span>
                                                         </div>
                                                         {niche.description && <p className="text-sm text-neutral-500 mt-2 line-clamp-2 leading-relaxed">{niche.description}</p>}
@@ -11436,16 +11495,17 @@ export function KdpFactoryApp() {
                             <div className="space-y-1.5">
                                 <div className="flex items-center justify-between">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
-                                        {nicheFormProductType === "printable-poster" ? "Estilo de print" : "Estilo visual"}
+                                        {nicheFormProductType === "printable-poster" ? "Estilo de print" : nicheFormProductType === "seamless-pattern" ? "Estilo de patrón" : "Estilo visual"}
                                     </label>
                                     {nicheFormStyles.length > 1 && (
-                                        <span className={`text-sm font-black ${nicheFormProductType === "printable-poster" ? "text-emerald-400" : "text-sky-400"}`}>{nicheFormStyles.length} seleccionados</span>
+                                        <span className={`text-sm font-black ${nicheFormProductType === "printable-poster" ? "text-emerald-400" : nicheFormProductType === "seamless-pattern" ? "text-amber-400" : "text-sky-400"}`}>{nicheFormStyles.length} seleccionados</span>
                                     )}
                                 </div>
                                 <div className="grid grid-cols-2 gap-1.5">
-                                    {(nicheFormProductType === "printable-poster" ? PRINTABLE_STYLE_OPTIONS : NICHE_STYLE_OPTIONS).map(opt => {
+                                    {(nicheFormProductType === "printable-poster" ? PRINTABLE_STYLE_OPTIONS : nicheFormProductType === "seamless-pattern" ? SEAMLESS_STYLE_OPTIONS : NICHE_STYLE_OPTIONS).map(opt => {
                                         const active = nicheFormStyles.includes(opt.id);
                                         const isPrint = nicheFormProductType === "printable-poster";
+                                        const isSeamless = nicheFormProductType === "seamless-pattern";
                                         return (
                                             <button key={opt.id} onClick={() => {
                                                 setNicheFormStyles(prev => {
@@ -11456,12 +11516,12 @@ export function KdpFactoryApp() {
                                                     return [...prev, opt.id];
                                                 });
                                             }}
-                                                className={`py-2 rounded-xl border px-2.5 text-left transition-all flex items-start gap-1.5 ${active ? (isPrint ? "border-emerald-500/40 bg-emerald-500/10 ring-1 ring-emerald-500/20" : "border-sky-500/40 bg-sky-500/10 ring-1 ring-violet-500/20") : "border-white/8 bg-white/[0.02] hover:bg-white/5"}`}>
-                                                <div className={`mt-0.5 w-3 h-3 rounded-sm border-2 flex items-center justify-center shrink-0 transition-all ${active ? (isPrint ? "bg-emerald-500 border-emerald-500" : "bg-sky-500 border-violet-500") : "border-neutral-600"}`}>
+                                                className={`py-2 rounded-xl border px-2.5 text-left transition-all flex items-start gap-1.5 ${active ? (isPrint ? "border-emerald-500/40 bg-emerald-500/10 ring-1 ring-emerald-500/20" : isSeamless ? "border-amber-500/40 bg-amber-500/10 ring-1 ring-amber-500/20" : "border-sky-500/40 bg-sky-500/10 ring-1 ring-violet-500/20") : "border-white/8 bg-white/[0.02] hover:bg-white/5"}`}>
+                                                <div className={`mt-0.5 w-3 h-3 rounded-sm border-2 flex items-center justify-center shrink-0 transition-all ${active ? (isPrint ? "bg-emerald-500 border-emerald-500" : isSeamless ? "bg-amber-500 border-amber-500" : "bg-sky-500 border-violet-500") : "border-neutral-600"}`}>
                                                     {active && <Check size={7} className="text-white" strokeWidth={3} />}
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <span className={`block text-[10px] font-black uppercase tracking-wide leading-tight ${active ? (isPrint ? "text-emerald-400" : "text-sky-400") : "text-neutral-400"}`}>
+                                                    <span className={`block text-[10px] font-black uppercase tracking-wide leading-tight ${active ? (isPrint ? "text-emerald-400" : isSeamless ? "text-amber-400" : "text-sky-400") : "text-neutral-400"}`}>
                                                         {"emoji" in opt ? `${opt.emoji} ` : ""}{opt.label}
                                                     </span>
                                                     <span className="block text-[9px] text-neutral-600 leading-tight truncate">{opt.desc}</span>
@@ -11472,6 +11532,9 @@ export function KdpFactoryApp() {
                                 </div>
                                 {nicheFormProductType === "printable-poster" && (
                                     <p className="text-[10px] text-neutral-700 italic mt-1">Genera prints a color listos para Etsy · KDP · Redbubble · Gelato</p>
+                                )}
+                                {nicheFormProductType === "seamless-pattern" && (
+                                    <p className="text-[10px] text-neutral-700 italic mt-1">Patrones tileable listos para Redbubble · Spoonflower · Society6 · Merch by Amazon AOP</p>
                                 )}
                             </div>
                             {/* Competition + Demand */}

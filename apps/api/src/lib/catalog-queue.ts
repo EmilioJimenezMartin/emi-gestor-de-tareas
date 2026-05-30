@@ -1,19 +1,37 @@
 import type { Agenda } from "agenda";
 import { Catalog } from "../models/catalog.js";
+import { Settings } from "../models/settings.js";
 
 const JOB_NAME = "generate-catalog-image";
 const QUEUE_COOLDOWN = "in 2 minutes";
+const DEFAULT_MAX_ACTIVE = 3;
+
+async function getMaxActiveCatalogs(): Promise<number> {
+    try {
+        const row = await Settings.findOne({ key: "MAX_ACTIVE_CATALOGS" }).lean();
+        const val = parseInt((row as any)?.value ?? "");
+        return isNaN(val) || val < 1 ? DEFAULT_MAX_ACTIVE : val;
+    } catch {
+        return DEFAULT_MAX_ACTIVE;
+    }
+}
 
 /**
  * Atomically picks the oldest queued catalog, marks it "running", emits a
  * socket event so the frontend reacts immediately, then schedules its first
  * image job after QUEUE_COOLDOWN.
  *
- * Using findOneAndUpdate with the { status: "queued" } filter is the race-
- * condition guard: even if two concurrent callers race (cancel + complete at
- * the same moment), only one will find and claim the document.
+ * Respects MAX_ACTIVE_CATALOGS setting — if the limit is reached, no new
+ * catalog is activated until a running one completes or is cancelled.
  */
 export async function activateNextQueued(agenda: Agenda, io: any): Promise<void> {
+    const maxActive = await getMaxActiveCatalogs();
+    const activeCount = await Catalog.countDocuments({ status: { $in: ["running", "pending"] } });
+    if (activeCount >= maxActive) {
+        console.log(`[catalog-queue] Active=${activeCount}/${maxActive} — holding queue`);
+        return;
+    }
+
     const next = await Catalog.findOneAndUpdate(
         { status: "queued" },
         { $set: { status: "running" } },

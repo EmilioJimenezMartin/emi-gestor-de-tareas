@@ -81,6 +81,25 @@ export async function sendTelegramPhotoDiscovery(opts: {
     }
 }
 
+// Send a photo without inline keyboard (e.g. pipeline completion notifications)
+export async function sendTelegramPhoto(imageUrl: string, caption: string): Promise<number | null> {
+    const cfg = await getTelegramConfig();
+    if (!cfg) return null;
+    try {
+        const res = await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendPhoto`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: cfg.chatId, photo: imageUrl, caption, parse_mode: "HTML" }),
+        });
+        const data = await res.json() as any;
+        if (!data.ok) console.error("[Telegram] sendPhoto error:", data);
+        return data?.result?.message_id ?? null;
+    } catch (e) {
+        console.error("[Telegram] sendPhoto failed:", e);
+        return null;
+    }
+}
+
 // Send text with 2-button approval (pipeline phase transitions)
 export async function sendTelegramApproval(opts: {
     text: string;
