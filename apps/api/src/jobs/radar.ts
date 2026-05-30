@@ -2,8 +2,25 @@ import type { Agenda, Job } from "agenda";
 import { RadarJob } from "../models/radar-job.js";
 import { EtsyNicheResultSchema, NicheInsightSchema, ETSY_SYSTEM_PROMPT, AMAZON_SYSTEM_PROMPT } from "../routes/radar.js";
 import { analyzePageForRadar } from "../lib/ai.js";
+import { AUTOPILOT_JOB_NAME } from "./autopilot.js";
 
 export const RADAR_JOB_NAME = "run-radar-analysis";
+
+// Compute a 0–100 score from raw radar product data
+function computeNicheScore(product: any): number {
+    let score = 40; // base
+    if (product.bestseller) score += 25;
+    const reviews = parseInt(String(product.total_reseñas ?? "0").replace(/[^\d]/g, "")) || 0;
+    if (reviews > 10_000) score += 20;
+    else if (reviews > 5_000) score += 15;
+    else if (reviews > 1_000) score += 10;
+    else if (reviews > 100) score += 5;
+    const cart = parseInt(String(product.personas_carrito ?? "0").replace(/[^\d]/g, "")) || 0;
+    if (cart > 100) score += 15;
+    else if (cart > 20) score += 10;
+    else if (cart > 5) score += 5;
+    return Math.min(score, 100);
+}
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
@@ -356,6 +373,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                                 const existing = await Niche.findOne({ sourceTitulo: product.titulo_producto }).lean();
                                 if (existing) continue;
 
+                                const nicheScore = computeNicheScore(product);
                                 const niche = await Niche.create({
                                     name: nicheName,
                                     status: "found",
@@ -363,11 +381,13 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                                     productType: "coloring-book",
                                     styleCategory: "generic",
                                     styleCategories: ["generic"],
+                                    score: nicheScore,
+                                    scoreReason: `Radar: bestseller=${product.bestseller ?? false}, reseñas=${product.total_reseñas ?? 0}, carrito=${product.personas_carrito ?? 0}`,
                                 });
                                 io?.emit("niches:updated");
                                 createdCount++;
 
-                                // Trigger discover: generates image + sends Telegram photo with buttons
+                                // Trigger discover: generates prompt + sends Telegram photo with buttons
                                 await fetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
 
                             } catch (e: any) {
@@ -378,15 +398,21 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                             if (i < newNiches.length - 1) await new Promise(r => setTimeout(r, 15_000));
                         }
 
-                        // Final message after all photos are sent
+                        // Final message + autopilot trigger after all photos are sent
                         if (createdCount > 0) {
                             try {
                                 const { sendTelegram: tg } = await import("../lib/telegram.js");
                                 await tg(
                                     `📬 <b>${createdCount} nicho${createdCount !== 1 ? "s" : ""} enviado${createdCount !== 1 ? "s" : ""} a Telegram</b>\n\n` +
                                     `Responde a cada imagen para confirmar o descartar.\n` +
-                                    `Cuando hayas decidido, usa /run para lanzar el pipeline.`
+                                    `Los de score alto se lanzan automáticamente.`
                                 );
+                            } catch { /* non-critical */ }
+
+                            // Schedule autopilot-run: picks up auto-approved niches immediately
+                            try {
+                                await agenda.schedule("in 10 seconds", AUTOPILOT_JOB_NAME, {});
+                                console.log("[radar-queue] Scheduled autopilot-run after niche creation");
                             } catch { /* non-critical */ }
                         }
                     });

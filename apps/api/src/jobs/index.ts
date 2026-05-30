@@ -5,7 +5,8 @@ import { definePatternGenJob } from "./pattern-generation.js";
 import { defineAutoPilotJob, AUTOPILOT_JOB_NAME } from "./autopilot.js";
 import { defineCatalogWatchdog, scheduleWatchdog } from "./catalog-watchdog.js";
 import { defineRadarScheduleJob, RADAR_SCHEDULE_JOB_NAME } from "./radar-schedule.js";
-export { AUTOPILOT_JOB_NAME };
+import { defineKdpPublisherJob, KDP_PUBLISHER_JOB_NAME } from "./kdp-publisher.js";
+export { AUTOPILOT_JOB_NAME, KDP_PUBLISHER_JOB_NAME };
 
 export function defineJobs(agenda: Agenda, io?: any) {
     agenda.define("dummy-task", async (job: Job) => {
@@ -29,6 +30,7 @@ export function defineJobs(agenda: Agenda, io?: any) {
         defineAutoPilotJob(agenda, io);
         defineCatalogWatchdog(agenda, io);
         defineRadarScheduleJob(agenda, io);
+        defineKdpPublisherJob(agenda, io);
     }
 }
 

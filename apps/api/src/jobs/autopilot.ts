@@ -4,6 +4,7 @@ import { Settings } from "../models/settings.js";
 import { TelegramAction } from "../models/telegram-action.js";
 import { AutopilotRun } from "../models/autopilot-run.js";
 import { sendTelegram, sendTelegramPhoto, sendTelegramPhotoDiscovery, shouldNotify } from "../lib/telegram.js";
+import { withImageSlot, withLlmSlot } from "../lib/ai-semaphore.js";
 
 type RunStats = { discovered: number; pipelineProcessed: number; catalogsCreated: number };
 
@@ -53,6 +54,16 @@ async function getConfig(): Promise<AutoPilotConfig> {
         };
     } catch {
         return { catalogsPerNiche: 8, imagesPerCatalog: 5, maxNichesPerRun: 3, maxActiveCatalogs: 3 };
+    }
+}
+
+async function getAutoApproveThreshold(): Promise<number> {
+    try {
+        const row = await Settings.findOne({ key: "AUTO_APPROVE_SCORE" }).lean();
+        const val = parseInt((row as any)?.value ?? "");
+        return isNaN(val) || val <= 0 ? 0 : val; // 0 = disabled
+    } catch {
+        return 0;
     }
 }
 
@@ -109,7 +120,8 @@ async function runDiscovery(
     io: any,
     tag: string,
     abort: AbortSignal,
-    stats: RunStats
+    stats: RunStats,
+    agenda: any
 ): Promise<number> {
     // Count total pending (all found, no sample yet)
     const totalPending = await Niche.countDocuments({
@@ -162,11 +174,14 @@ async function runDiscovery(
                 const productType = niche.productType ?? "coloring-book";
                 const style = niche.styleCategory ?? "generic";
                 const aiType = productType === "printable-poster" ? "printable-particulars" : "niche-particulars";
-                const res = await fetch(`${base}/ai/generate-text`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ type: aiType, niche: niche.name, productType, extras: style }),
-                });
+                const res = await withLlmSlot(`discovery-prompt:${String(niche._id)}`, () =>
+                    fetch(`${base}/ai/generate-text`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ type: aiType, niche: niche.name, productType, extras: style }),
+                        signal: AbortSignal.timeout(25_000),
+                    })
+                );
                 if (res.status === 429) {
                     abort.aborted = true;
                     abort.reason = "Cuota de IA agotada (429) durante descubrimiento";
@@ -185,6 +200,24 @@ async function runDiscovery(
             } catch (e: any) {
                 io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error generando prompt: ${e.message}` });
             }
+        }
+
+        // Auto-approve if score exceeds threshold — skip Telegram and launch pipeline directly
+        const autoThreshold = await getAutoApproveThreshold();
+        if (autoThreshold > 0 && (niche as any).score >= autoThreshold) {
+            await Niche.findByIdAndUpdate(niche._id, {
+                $set: { status: "active", phase: "niche", autoPilotEnabled: true },
+            });
+            io?.emit("niches:updated");
+            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🤖 Auto-aprobado (score ${(niche as any).score} ≥ ${autoThreshold}) → pipeline lanzado` });
+            await sendTelegram(
+                `🤖 <b>Auto-aprobado</b> (score <b>${(niche as any).score}</b> ≥ ${autoThreshold})\n` +
+                `📚 <b>${niche.name}</b> → pipeline lanzado automáticamente`
+            ).catch(() => {});
+            count++;
+            stats.discovered++;
+            await agenda.schedule("in 5 seconds", "autopilot-run", {}).catch(() => {});
+            continue;
         }
 
         // Build sample image URL (Pollinations — public URL)
@@ -605,16 +638,19 @@ async function runPipeline(
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📝 Generando listing KDP para "${niche.name}"…` });
             let seoOk = false;
             try {
-                const res = await fetch(`${base}/ai/generate-text`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        type: "full-listing",
-                        niche: niche.name,
-                        productType: niche.productType ?? "coloring-book",
-                        language: "en",
-                    }),
-                });
+                const res = await withLlmSlot(`seo:${String(niche._id)}`, () =>
+                    fetch(`${base}/ai/generate-text`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            type: "full-listing",
+                            niche: niche.name,
+                            productType: niche.productType ?? "coloring-book",
+                            language: "en",
+                        }),
+                        signal: AbortSignal.timeout(30_000),
+                    })
+                );
                 if (res.status === 429) {
                     abort.aborted = true;
                     abort.reason = "Cuota de IA agotada (429) durante generación de listing SEO";
@@ -711,13 +747,13 @@ async function runPipeline(
                 const seed = Math.floor(Math.random() * 99999);
                 const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(coverPrompt)}?model=${model}&width=768&height=1024&nologo=true&seed=${seed}`;
 
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🖼️ Descargando portada desde Pollinations…` });
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🖼️ Descargando portada desde Pollinations (esperando img-lock…)` });
 
-                // Fetch the image buffer
-                const imgRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(90_000) });
-                if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
-                const arrayBuf = await imgRes.arrayBuffer();
-                const imageBuffer = Buffer.from(arrayBuf);
+                const imageBuffer = await withImageSlot(`cover:${String(niche._id)}`, async () => {
+                    const imgRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(90_000) });
+                    if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
+                    return Buffer.from(await imgRes.arrayBuffer());
+                });
 
                 // Upload to Cloudinary in covers/ folder
                 const port = process.env.PORT || 3001;
@@ -818,7 +854,7 @@ export function defineAutoPilotJob(agenda: Agenda, io: any) {
             await sendTelegram(`🤖 <b>Auto-Pilot</b> — Ciclo iniciado`).catch(() => {});
         }
 
-        const discovered = await runDiscovery(cfg, base, io, tag, abort, stats);
+        const discovered = await runDiscovery(cfg, base, io, tag, abort, stats, agenda);
         const processed = abort.aborted ? 0 : await runPipeline(cfg, base, io, tag, abort, stats, agenda);
 
         const total = discovered + processed;

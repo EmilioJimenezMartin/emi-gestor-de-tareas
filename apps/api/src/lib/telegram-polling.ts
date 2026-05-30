@@ -3,6 +3,7 @@ import { TelegramAction } from "../models/telegram-action.js";
 import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
 import { activateNextQueued } from "./catalog-queue.js";
+import { withImageSlot } from "./ai-semaphore.js";
 
 // ── Command registry — add entries here to auto-include them in /ayuda ────────
 // Use &lt; &gt; instead of < > to avoid Telegram HTML parse errors
@@ -29,9 +30,27 @@ const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { cmd: "/config",                        desc: "Ver configuración del Auto-Pilot" },
     { cmd: "/config <code>cats imgs [nichos]</code>", desc: "Ej: /config 1 1 1 (prueba) · /config 8 5 3 (prod)" },
     { cmd: "/status",                      desc: "Acciones de Telegram pendientes" },
+    { section: "📦 KDP" },
+    { cmd: "/kdp <code>id</code>",            desc: "Sube el libro a KDP (requiere PDF + SEO + credenciales)" },
+    { cmd: "/kdpotp <code>XXXXXX</code>",     desc: "Envía código OTP si KDP solicita verificación 2FA" },
     { section: "❓ Ayuda" },
     { cmd: "/ayuda",                       desc: "Este mensaje (fijado al chat)" },
 ];
+
+function formatElapsed(date: Date | string | undefined): string {
+    if (!date) return "fecha desconocida";
+    const ms = Date.now() - new Date(date).getTime();
+    if (ms < 0) return "ahora mismo";
+    const sec = Math.floor(ms / 1000);
+    const min = Math.floor(sec / 60);
+    const hr  = Math.floor(min / 60);
+    const days = Math.floor(hr / 24);
+    if (days >= 2)  return `${days} días`;
+    if (days === 1) return `1 día ${hr % 24}h`;
+    if (hr >= 1)    return `${hr}h ${min % 60}min`;
+    if (min >= 1)   return `${min}min`;
+    return `${sec}s`;
+}
 
 function buildHelpText(): string {
     const lines: string[] = [`🤖 <b>Emi Gestor — Comandos</b>\n`];
@@ -441,9 +460,11 @@ async function processUpdate(update: any): Promise<void> {
 
             setImmediate(async () => {
                 try {
-                    const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(90_000) });
-                    if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
-                    const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+                    const imgBuffer = await withImageSlot(`/img:${Date.now()}`, async () => {
+                        const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(90_000) });
+                        if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
+                        return Buffer.from(await imgRes.arrayBuffer());
+                    });
 
                     const msgId = await sendTelegramImageBinary(
                         imgBuffer,
@@ -1094,23 +1115,22 @@ async function processUpdate(update: any): Promise<void> {
                     niche: "🏭", catalog: "🖼️", libro: "📖", seo: "📝", pdf: "📝", cover: "🎨", published: "✅",
                 };
                 const phaseDesc: Record<string, string> = {
-                    niche: "creando catálogos",
-                    catalog: "generando imágenes",
-                    libro: "generando libro PDF",
-                    seo: "generando SEO",
-                    pdf: "generando SEO",
-                    cover: "generando portada",
-                    published: "listo para publicar",
+                    niche: "Creando catálogos",
+                    catalog: "Generando imágenes",
+                    libro: "Generando libro PDF",
+                    seo: "Generando SEO",
+                    pdf: "Generando SEO",
+                    cover: "Generando portada",
+                    published: "Listo para publicar",
                 };
 
-                // All active niches with incomplete pipeline (manual or autopilot)
                 const allNiches = await Niche.find({
                     status: "active",
                     phase: { $in: ["niche", "catalog", "libro", "seo", "cover"] },
                 })
                     .sort({ updatedAt: -1 })
                     .limit(20)
-                    .select("name phase autoPilotEnabled listings")
+                    .select("name phase autoPilotEnabled listings updatedAt createdAt")
                     .lean();
 
                 if (allNiches.length === 0) {
@@ -1119,17 +1139,51 @@ async function processUpdate(update: any): Promise<void> {
                 }
 
                 const lines: string[] = [`📋 <b>Estado del pipeline</b>\n`];
-                for (const n of allNiches) {
+                for (const n of allNiches as any[]) {
                     const phase = n.phase ?? "niche";
                     const shortId = String(n._id).slice(-8);
                     const icon = phaseIcon[phase] ?? "❓";
                     const desc = phaseDesc[phase] ?? phase;
-                    const manualTag = !n.autoPilotEnabled ? " <i>(manual)</i>" : "";
-                    lines.push(`${icon} <code>${shortId}</code> — ${(n.name as string).slice(0, 30)}${(n.name as string).length > 30 ? "…" : ""}`);
-                    lines.push(`   ${desc}${manualTag}`);
+                    const manualTag = !n.autoPilotEnabled ? " · <i>manual</i>" : " · AP";
+                    const elapsed = formatElapsed(n.updatedAt);
+
+                    lines.push(`${icon} <code>${shortId}</code> <b>${(n.name as string).slice(0, 28)}${(n.name as string).length > 28 ? "…" : ""}</b>${manualTag}`);
+
+                    if (phase === "catalog") {
+                        const cats = await Catalog.find({ nicheIds: String(n._id) })
+                            .select("status images totalImages updatedAt lastError")
+                            .lean();
+                        const done = cats.filter((c: any) => c.status === "completed").length;
+                        const totalImgs = cats.reduce((s: number, c: any) => s + (c.images?.length ?? 0), 0);
+                        const totalSlots = cats.reduce((s: number, c: any) => s + (c.totalImages ?? 0), 0);
+                        // Find most recent image activity
+                        const lastActive = cats
+                            .filter((c: any) => c.images?.length > 0 || c.status === "running")
+                            .map((c: any) => new Date(c.updatedAt).getTime())
+                            .sort((a: number, b: number) => b - a)[0];
+                        const lastError = cats
+                            .filter((c: any) => c.lastError)
+                            .sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0]?.lastError;
+
+                        lines.push(`   ${desc} · ${done}/${cats.length} cats · ${totalImgs}/${totalSlots} imgs`);
+                        if (lastActive) {
+                            const sinceImg = formatElapsed(new Date(lastActive));
+                            const isStale = Date.now() - lastActive > 7 * 60 * 1000;
+                            lines.push(`   ${isStale ? "⚠️" : "🕐"} Última imagen hace <b>${sinceImg}</b>`);
+                        } else {
+                            lines.push(`   ⏳ Sin imágenes aún · en fase hace <b>${elapsed}</b>`);
+                        }
+                        if (lastError) lines.push(`   ❌ <i>${lastError.slice(0, 80)}${lastError.length > 80 ? "…" : ""}</i>`);
+                    } else {
+                        const WARN_PHASE_MS: Record<string, number> = { libro: 2 * 3600_000, seo: 3600_000, cover: 3600_000 };
+                        const warnMs = WARN_PHASE_MS[phase] ?? 0;
+                        const phaseMs = Date.now() - new Date(n.updatedAt).getTime();
+                        const stale = warnMs > 0 && phaseMs > warnMs;
+                        lines.push(`   ${desc} · ${stale ? "⚠️ " : ""}en esta fase hace <b>${elapsed}</b>`);
+                    }
                 }
                 lines.push(``);
-                lines.push(`<i>/nicho &lt;id&gt; · /pipeline · /parar &lt;id&gt;</i>`);
+                lines.push(`<i>/pipeline para detalle · /avanzar &lt;id&gt; · /retry &lt;id&gt;</i>`);
 
                 await sendTelegram(lines.join("\n"));
             } catch (e: any) {
@@ -1152,19 +1206,15 @@ async function processUpdate(update: any): Promise<void> {
                     published: "✅ Publicado",
                 };
 
-                // Niches with active catalog work (manual or autopilot)
                 const activeCats = await Catalog.find({ status: { $in: ["running", "pending", "queued"] } })
                     .select("nicheIds")
                     .lean();
-                const nicheIdsWithWork = [...new Set((activeCats as any[]).flatMap(c => c.nicheIds ?? []))];
+                const nicheIdsWithWork = [...new Set((activeCats as any[]).flatMap((c: any) => c.nicheIds ?? []))];
 
-                // Include ALL active niches with incomplete pipeline (not just autopilot-enabled)
                 const apNiches = await Niche.find({
                     status: "active",
                     phase: { $in: ["niche", "catalog", "libro", "seo", "cover"] },
-                })
-                    .select("_id")
-                    .lean();
+                }).select("_id").lean();
                 const apNicheIds = (apNiches as any[]).map(n => String(n._id));
 
                 const allIds = [...new Set([...nicheIdsWithWork, ...apNicheIds])];
@@ -1172,7 +1222,7 @@ async function processUpdate(update: any): Promise<void> {
                 const niches = allIds.length > 0
                     ? await Niche.find({ _id: { $in: allIds } })
                         .sort({ updatedAt: -1 })
-                        .select("name phase listings autoPilotEnabled")
+                        .select("name phase listings autoPilotEnabled updatedAt createdAt bookPdfUrl coverUrl")
                         .lean()
                     : [];
 
@@ -1182,65 +1232,177 @@ async function processUpdate(update: any): Promise<void> {
                 }
 
                 const nowMs = Date.now();
-                // Threshold: catalog stuck if running but not updated in 7 min (images abort at 5 min + 30s skip delay)
                 const STUCK_MS = 7 * 60 * 1000;
-                const lines: string[] = [`⚙️ <b>Estado del pipeline</b> (${niches.length} nicho${niches.length !== 1 ? "s" : ""})`, ``];
+                const lines: string[] = [`⚙️ <b>Pipeline</b> — ${niches.length} nicho${niches.length !== 1 ? "s" : ""}`, ``];
 
                 for (const niche of niches as any[]) {
                     const phase = niche.phase ?? "niche";
                     const shortId = String(niche._id).slice(-8);
-                    const apTag = niche.autoPilotEnabled ? " · AP" : " · manual";
-                    lines.push(`📚 <b>${niche.name}</b>  <code>${shortId}</code>${apTag}`);
-                    lines.push(phaseLabel[phase] ?? `Fase: ${phase}`);
+                    const apTag = niche.autoPilotEnabled ? "AP" : "manual";
+                    const phaseElapsed = formatElapsed(niche.updatedAt);
+
+                    lines.push(`📚 <b>${niche.name}</b> <code>${shortId}</code> · ${apTag}`);
+                    lines.push(`${phaseLabel[phase] ?? `Fase: ${phase}`} · <b>${phaseElapsed}</b> en esta fase`);
 
                     if (phase === "catalog") {
                         const cats = await Catalog.find({ nicheIds: String(niche._id) })
-                            .select("name status images totalImages updatedAt skippedImages")
+                            .select("name status images totalImages updatedAt skippedImages lastError")
                             .lean();
 
                         const total = cats.length;
                         const completed = cats.filter((c: any) => c.status === "completed").length;
+                        const failed = cats.filter((c: any) => c.status === "failed").length;
                         const running = cats.filter((c: any) => c.status === "running");
                         const pending = cats.filter((c: any) => c.status === "pending" || c.status === "queued").length;
                         const totalImgs = cats.reduce((s: number, c: any) => s + (c.images?.length ?? 0), 0);
                         const totalSlots = cats.reduce((s: number, c: any) => s + (c.totalImages ?? 0), 0);
 
-                        lines.push(`  📦 Catálogos: <b>${completed}/${total}</b> listos · ${pending} pendientes`);
-                        lines.push(`  🖼️ Imágenes: <b>${totalImgs}/${totalSlots}</b>`);
+                        // Most recent image activity across all catalogs
+                        const lastImageMs = Math.max(0, ...cats
+                            .filter((c: any) => c.images?.length > 0)
+                            .map((c: any) => new Date(c.updatedAt).getTime()));
+                        const sinceLastImage = lastImageMs > 0 ? formatElapsed(new Date(lastImageMs)) : null;
+                        const imageIsStale = lastImageMs > 0 && nowMs - lastImageMs > 10 * 60_000;
+
+                        lines.push(`  📦 <b>${completed}/${total}</b> cats listos${failed > 0 ? ` · ❌ ${failed} fallidos` : ""}${pending > 0 ? ` · ${pending} pendientes` : ""}`);
+                        lines.push(`  🖼️ <b>${totalImgs}/${totalSlots}</b> imágenes`);
+
+                        if (sinceLastImage) {
+                            lines.push(`  ${imageIsStale ? "⚠️" : "🕐"} Última imagen hace <b>${sinceLastImage}</b>${imageIsStale ? " — posible bloqueo" : ""}`);
+                        } else if (total > 0) {
+                            lines.push(`  ⏳ Sin imágenes aún · esperando desde <b>${phaseElapsed}</b>`);
+                        }
 
                         for (const cat of running as any[]) {
                             const imgs = cat.images?.length ?? 0;
                             const skipped = cat.skippedImages ?? 0;
                             const attempted = imgs + skipped;
-                            const elapsedMs = nowMs - new Date(cat.updatedAt).getTime();
-                            const elapsedMin = Math.floor(elapsedMs / 60_000);
-                            const isStuck = elapsedMs > STUCK_MS;
-                            const healthIcon = isStuck ? "🔴" : elapsedMs > 4 * 60_000 ? "🟡" : "🟢";
-                            const stuckNote = isStuck ? ` ⚠️ sin actividad ${elapsedMin}min` : "";
-                            lines.push(`  ${healthIcon} ⚙️ ${cat.name.slice(0, 28)} — ${attempted}/${cat.totalImages} intentadas${stuckNote}`);
+                            const catMs = nowMs - new Date(cat.updatedAt).getTime();
+                            const isStuck = catMs > STUCK_MS;
+                            const healthIcon = isStuck ? "🔴" : catMs > 4 * 60_000 ? "🟡" : "🟢";
+                            const stuckNote = isStuck ? ` · sin actividad <b>${formatElapsed(cat.updatedAt)}</b>` : ` · activo hace ${formatElapsed(cat.updatedAt)}`;
+                            lines.push(`  ${healthIcon} ${cat.name.slice(0, 26)} — ${attempted}/${cat.totalImages}${stuckNote}`);
+                            if (cat.lastError && isStuck) {
+                                lines.push(`     ❌ <i>${cat.lastError.slice(0, 70)}${cat.lastError.length > 70 ? "…" : ""}</i>`);
+                            }
+                        }
+
+                        // Show last error from any catalog if no images and stale
+                        if (totalImgs === 0 && total > 0) {
+                            const anyError = (cats as any[])
+                                .filter((c: any) => c.lastError)
+                                .sort((a: any, b: any) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0]?.lastError;
+                            if (anyError) lines.push(`  ❌ <i>${anyError.slice(0, 80)}${anyError.length > 80 ? "…" : ""}</i>`);
+                        }
+
+                    } else if (phase === "libro") {
+                        const hasPdf = !!(niche as any).bookPdfUrl;
+                        if (hasPdf) {
+                            lines.push(`  📄 PDF listo — esperando autopilot para avanzar`);
+                        } else {
+                            const WARN_MS = 2 * 3600_000;
+                            const phaseMs = nowMs - new Date(niche.updatedAt).getTime();
+                            if (phaseMs > WARN_MS) lines.push(`  ⚠️ Generando PDF · lleva <b>${phaseElapsed}</b> — puede estar bloqueado`);
+                            else lines.push(`  ⏳ Generando PDF…`);
                         }
 
                     } else if (phase === "seo" || phase === "pdf") {
                         const listingCount = (niche.listings ?? []).length;
+                        const WARN_MS = 3600_000;
+                        const phaseMs = nowMs - new Date(niche.updatedAt).getTime();
                         if (listingCount > 0) {
-                            lines.push(`  📝 Listing SEO generado — generando portada…`);
+                            lines.push(`  📝 ${listingCount} listing${listingCount > 1 ? "s" : ""} SEO listo${listingCount > 1 ? "s" : ""} · esperando portada`);
+                        } else if (phaseMs > WARN_MS) {
+                            lines.push(`  ⚠️ Generando SEO · lleva <b>${phaseElapsed}</b> — puede estar bloqueado`);
                         } else {
                             lines.push(`  📝 Generando listing SEO…`);
                         }
+
                     } else if (phase === "cover") {
-                        lines.push(`  🎨 Generando portada KDP…`);
+                        const hasCover = !!(niche as any).coverUrl;
+                        const WARN_MS = 3600_000;
+                        const phaseMs = nowMs - new Date(niche.updatedAt).getTime();
+                        if (hasCover) {
+                            lines.push(`  🎨 Portada lista · esperando publicación`);
+                        } else if (phaseMs > WARN_MS) {
+                            lines.push(`  ⚠️ Generando portada · lleva <b>${phaseElapsed}</b> — puede estar bloqueado`);
+                        } else {
+                            lines.push(`  🎨 Generando portada KDP…`);
+                        }
                     }
 
                     lines.push(``);
                 }
 
-                // Trim trailing blank line
                 while (lines[lines.length - 1] === ``) lines.pop();
-
                 lines.push(``);
-                lines.push(`<i>/parar &lt;id&gt; para detener un nicho · /parar para detener todo</i>`);
+                lines.push(`<i>/avanzar &lt;id&gt; · /retry &lt;id&gt; · /parar &lt;id&gt;</i>`);
 
                 await sendTelegram(lines.join("\n"));
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        if (text.startsWith("/kdpotp ") || text === "/kdpotp") {
+            const code = normalized.slice(8).trim();
+            if (!code) {
+                await sendTelegram("❌ Uso: <code>/kdpotp XXXXXX</code>");
+                return;
+            }
+            try {
+                await Settings.findOneAndUpdate(
+                    { key: "KDP_OTP_CODE" },
+                    { key: "KDP_OTP_CODE", value: code },
+                    { upsert: true }
+                );
+                await sendTelegram(`🔐 <b>Código OTP recibido</b>\nSe enviará a KDP en breve…`);
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        if (text.startsWith("/kdp ") || text === "/kdp") {
+            const idArg = normalized.slice(5).trim();
+            if (!idArg) {
+                await sendTelegram(
+                    "❌ Uso: <code>/kdp &lt;id_nicho&gt;</code>\n\n" +
+                    "Requerido: PDF del libro + listing SEO + credenciales KDP\n" +
+                    "Ajustes: <code>KDP_EMAIL</code> · <code>KDP_PASSWORD</code> · <code>KDP_AUTHOR_NAME</code> · <code>KDP_DEFAULT_PRICE</code>\n\n" +
+                    "<i>Usa /nichos para ver los IDs</i>"
+                );
+                return;
+            }
+            try {
+                const allNiches = await Niche.find().select("name phase listings bookPdfUrl").lean();
+                const niche = (allNiches as any[]).find(n =>
+                    String(n._id).endsWith(idArg.toLowerCase()) || String(n._id) === idArg
+                );
+                if (!niche) {
+                    await sendTelegram(`❌ No encontré ningún nicho con ID <code>${idArg}</code>`);
+                    return;
+                }
+                if (!niche.bookPdfUrl) {
+                    await sendTelegram(`⚠️ <b>${niche.name}</b> aún no tiene PDF del libro generado`);
+                    return;
+                }
+                if (!(niche.listings?.length > 0)) {
+                    await sendTelegram(`⚠️ <b>${niche.name}</b> aún no tiene listing SEO generado`);
+                    return;
+                }
+                if (!_agenda) {
+                    await sendTelegram("❌ Agenda no disponible");
+                    return;
+                }
+                await _agenda.now("kdp-publish", { nicheId: String(niche._id) });
+                _io?.emit("kdp:queued", { nicheId: String(niche._id) });
+                await sendTelegram(
+                    `🚀 <b>KDP Upload iniciado</b>\n` +
+                    `📚 <b>${niche.name}</b>\n\n` +
+                    `⏳ Descargando PDF y portada… recibirás actualizaciones aquí.`
+                );
             } catch (e: any) {
                 await sendTelegram(`❌ Error: ${e.message}`);
             }
