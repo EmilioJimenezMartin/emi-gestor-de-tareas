@@ -372,7 +372,7 @@ async function processUpdate(update: any): Promise<void> {
         if (text === "/nichos") {
             try {
                 const phaseIcon: Record<string, string> = {
-                    niche: "🏭", catalog: "🖼️", seo: "📝", pdf: "📝", cover: "🎨", published: "✅",
+                    niche: "🏭", catalog: "🖼️", libro: "📖", seo: "📝", pdf: "📝", cover: "🎨", published: "✅",
                 };
                 const statusIcon: Record<string, string> = {
                     active: "⚡", found: "🔍", archived: "🗄️", discarded: "🗑️",
@@ -457,6 +457,7 @@ async function processUpdate(update: any): Promise<void> {
 
                 const phaseLabel: Record<string, string> = {
                     niche: "🏭 Generando catálogos", catalog: "🖼️ Catálogos en proceso",
+                    libro: "📖 Generando libro PDF",
                     seo: "📝 Generando SEO", pdf: "📝 Generando SEO",
                     cover: "🎨 Generando portada", published: "✅ Publicado",
                 };
@@ -788,35 +789,27 @@ async function processUpdate(update: any): Promise<void> {
                 const { Catalog } = await import("../models/catalog.js");
 
                 const phaseIcon: Record<string, string> = {
-                    niche: "🏭", catalog: "🖼️", seo: "📝", pdf: "📝", cover: "🎨", published: "✅",
+                    niche: "🏭", catalog: "🖼️", libro: "📖", seo: "📝", pdf: "📝", cover: "🎨", published: "✅",
                 };
                 const phaseDesc: Record<string, string> = {
                     niche: "creando catálogos",
                     catalog: "generando imágenes",
+                    libro: "generando libro PDF",
                     seo: "generando SEO",
                     pdf: "generando SEO",
                     cover: "generando portada",
                     published: "listo para publicar",
                 };
 
-                // Active autopilot niches
-                const apNiches = await Niche.find({ autoPilotEnabled: true, status: "active" })
+                // All active niches with incomplete pipeline (manual or autopilot)
+                const allNiches = await Niche.find({
+                    status: "active",
+                    phase: { $in: ["niche", "catalog", "libro", "seo", "cover"] },
+                })
                     .sort({ updatedAt: -1 })
-                    .select("name phase listings")
+                    .limit(20)
+                    .select("name phase autoPilotEnabled listings")
                     .lean();
-
-                // Niches with active catalog work (may not be autopilot)
-                const activeCats = await Catalog.find({ status: { $in: ["running", "pending", "queued"] } })
-                    .select("nicheIds").lean();
-                const activeNicheIds = [...new Set((activeCats as any[]).flatMap((c: any) => c.nicheIds ?? []))];
-                const manualNiches = activeNicheIds.length > 0
-                    ? await Niche.find({
-                        _id: { $in: activeNicheIds },
-                        $or: [{ autoPilotEnabled: false }, { autoPilotEnabled: { $exists: false } }],
-                    }).select("name phase").lean()
-                    : [];
-
-                const allNiches = [...(apNiches as any[]), ...(manualNiches as any[])];
 
                 if (allNiches.length === 0) {
                     await sendTelegram("💤 <b>Pipeline vacío</b>\nNingún nicho activo.\n\nUsa /run para lanzar el Auto-Pilot.");
@@ -850,6 +843,7 @@ async function processUpdate(update: any): Promise<void> {
                 const phaseLabel: Record<string, string> = {
                     niche: "🏭 Creando catálogos",
                     catalog: "🖼️ Generando imágenes",
+                    libro: "📖 Generando libro PDF",
                     seo: "📝 Generando SEO",
                     pdf: "📝 Generando SEO",
                     cover: "🎨 Generando portada",
@@ -862,8 +856,11 @@ async function processUpdate(update: any): Promise<void> {
                     .lean();
                 const nicheIdsWithWork = [...new Set((activeCats as any[]).flatMap(c => c.nicheIds ?? []))];
 
-                // Also include autopilot-enabled niches in other phases (seo, cover...)
-                const apNiches = await Niche.find({ autoPilotEnabled: true, status: "active" })
+                // Include ALL active niches with incomplete pipeline (not just autopilot-enabled)
+                const apNiches = await Niche.find({
+                    status: "active",
+                    phase: { $in: ["niche", "catalog", "libro", "seo", "cover"] },
+                })
                     .select("_id")
                     .lean();
                 const apNicheIds = (apNiches as any[]).map(n => String(n._id));

@@ -227,8 +227,8 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
 
             let finalNegativePrompt = "";
             if (productType === "coloring-book") {
-                finalPrompt += ". Style: clean black and white line art, coloring book style, thick clean outlines, white background, no shading, no gray fills, no color, no gradients";
-                const coloringNegative = "shading, gray fill, gray tones, shadows, gradients, color, colors, sepia, tones, textures, crosshatching, stippling, watercolor, painterly, blur, glow, soft edges, background pattern, noise, grain, vignette, watermark, signature, logo, frame, border decoration";
+                finalPrompt += ". Style: clean black and white line art, coloring book page, thick clean black outlines only, pure white background #FFFFFF, no shading, no gray, no grey, no color fills, no gradients, no textures, high contrast black on white";
+                const coloringNegative = "gray, grey, gray background, grey background, gray fill, grey fill, gray tones, grey tones, off-white, cream, beige, shading, shadows, gradients, color, colors, sepia, tones, textures, crosshatching, stippling, watercolor, painterly, blur, glow, soft edges, background pattern, noise, grain, vignette, watermark, signature, logo, frame, border decoration";
                 finalNegativePrompt = userNegative ? `${coloringNegative}, ${userNegative}` : coloringNegative;
             } else if (productType === "printable-poster") {
                 finalPrompt += ". Style: high quality, high resolution, vibrant colors, print-ready, professional poster design, sharp fine details, suitable for large format printing";
@@ -332,6 +332,27 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             console.log(`${tag} Quality: score=${quality.score} ok=${quality.ok}${quality.reason ? ` reason="${quality.reason}"` : ""}`);
             if (!quality.ok) {
                 throw new Error(`Calidad insuficiente (score ${quality.score}): ${quality.reason}`);
+            }
+
+            // Force pure white background for coloring books (grey → #FFFFFF)
+            if ((catalog.productType ?? "coloring-book") === "coloring-book") {
+                try {
+                    const { data: px, info: pxi } = await sharp(imageBuffer)
+                        .flatten({ background: { r: 255, g: 255, b: 255 } })
+                        .removeAlpha()
+                        .raw()
+                        .toBuffer({ resolveWithObject: true });
+                    for (let p = 0; p < px.length; p += 3) {
+                        if (px[p] > 200 && px[p + 1] > 200 && px[p + 2] > 200) {
+                            px[p] = 255; px[p + 1] = 255; px[p + 2] = 255;
+                        }
+                    }
+                    imageBuffer = await sharp(px, {
+                        raw: { width: pxi.width, height: pxi.height, channels: 3 },
+                    }).png().toBuffer();
+                } catch (e: any) {
+                    console.warn(`${tag} Background whitening failed (using original): ${e.message}`);
+                }
             }
 
             // Upload to Cloudinary

@@ -454,8 +454,17 @@ async function runPipeline(
             continue;
         }
 
-        // ── libro → generate PDF book from shuffled catalog images ───────────
-        if ((phase as string) === "libro" && !(niche as any).bookPdfUrl) {
+        // ── libro → generate PDF book or skip-ahead if already created manually ─
+        if ((phase as string) === "libro") {
+            if ((niche as any).bookPdfUrl) {
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📖 Libro ya existe → avanzando a SEO` });
+                await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "seo" } });
+                io?.emit("niches:updated");
+                await agenda.schedule("in 3 seconds", "autopilot-run", {}).catch(() => {});
+                processed++;
+                stats.pipelineProcessed++;
+                continue;
+            }
             emitStage(io, "libro", String(niche._id), niche.name);
             const imageUrls: string[] = (niche as any).catalogImageOrder ?? [];
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📖 Generando libro PDF para "${niche.name}" (${imageUrls.length} páginas)…` });
@@ -487,8 +496,28 @@ async function runPipeline(
                             if (!imgRes.ok) continue;
                             const rawBuffer = Buffer.from(await imgRes.arrayBuffer());
 
+                            // Force pure white background (grey/off-white → #FFFFFF) for coloring books
+                            let cleanBuffer = rawBuffer;
+                            if ((niche.productType ?? "coloring-book") === "coloring-book") {
+                                try {
+                                    const { data: px, info: pxi } = await sharp.default(rawBuffer)
+                                        .flatten({ background: { r: 255, g: 255, b: 255 } })
+                                        .removeAlpha()
+                                        .raw()
+                                        .toBuffer({ resolveWithObject: true });
+                                    for (let p = 0; p < px.length; p += 3) {
+                                        if (px[p] > 200 && px[p + 1] > 200 && px[p + 2] > 200) {
+                                            px[p] = 255; px[p + 1] = 255; px[p + 2] = 255;
+                                        }
+                                    }
+                                    cleanBuffer = await sharp.default(px, {
+                                        raw: { width: pxi.width, height: pxi.height, channels: 3 },
+                                    }).png().toBuffer();
+                                } catch { /* keep original if processing fails */ }
+                            }
+
                             // Convert to JPEG at 85% quality to keep PDF size manageable
-                            const jpegBuffer = await sharp.default(rawBuffer).jpeg({ quality: 85 }).toBuffer();
+                            const jpegBuffer = await sharp.default(cleanBuffer).jpeg({ quality: 85 }).toBuffer();
 
                             const img = await pdfDoc.embedJpg(jpegBuffer);
                             const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
@@ -555,7 +584,16 @@ async function runPipeline(
         }
 
         // ── seo (or legacy pdf) → generate SEO listing ───────────────────────
-        if ((phase === "seo" || (phase as string) === "pdf") && (!niche.listings || niche.listings.length === 0)) {
+        if (phase === "seo" || (phase as string) === "pdf") {
+            if (niche.listings && niche.listings.length > 0) {
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📝 SEO ya existe → avanzando a portada` });
+                await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "cover" } });
+                io?.emit("niches:updated");
+                await agenda.schedule("in 3 seconds", "autopilot-run", {}).catch(() => {});
+                processed++;
+                stats.pipelineProcessed++;
+                continue;
+            }
             emitStage(io, "listing", String(niche._id), niche.name);
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📝 Generando listing KDP para "${niche.name}"…` });
             let seoOk = false;
@@ -631,7 +669,23 @@ async function runPipeline(
         }
 
         // ── cover → generate KDP cover image ─────────────────────────────────
-        if (phase === "cover" && !niche.coverUrl) {
+        if (phase === "cover") {
+            if (niche.coverUrl) {
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🎨 Portada ya existe → marcando como publicado` });
+                await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "published" } });
+                io?.emit("niches:updated");
+                if (await shouldNotify("pipeline.complete")) {
+                    const listing0 = (niche.listings ?? [])[0];
+                    await sendTelegram(
+                        `✅ <b>Pipeline completo</b>\n📚 <b>${niche.name}</b>` +
+                        (listing0?.title ? `\n📝 ${listing0.title}` : "") +
+                        `\n\n✅ Listo para subir a KDP`
+                    ).catch(() => {});
+                }
+                processed++;
+                stats.pipelineProcessed++;
+                continue;
+            }
             emitStage(io, "cover", String(niche._id), niche.name);
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🎨 Generando portada para "${niche.name}"…` });
 
@@ -734,7 +788,7 @@ async function checkUserAbort(abort: AbortSignal): Promise<void> {
 
 export function defineAutoPilotJob(agenda: Agenda, io: any) {
     // concurrency: 1 ensures only one autopilot run at a time — extra triggers queue automatically
-    agenda.define(AUTOPILOT_JOB_NAME, { concurrency: 1, lockLifetime: 120 * 60 * 1000 }, async (_job: Job) => {
+    agenda.define(AUTOPILOT_JOB_NAME, { concurrency: 1, lockLifetime: 45 * 60 * 1000 }, async (_job: Job) => {
         const port = process.env.PORT || 3001;
         const base = `http://localhost:${port}`;
         const tag = "[autopilot]";
