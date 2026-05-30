@@ -8794,7 +8794,7 @@ export function KdpFactoryApp() {
                         const nicheChartData = niches
                             .map(n => {
                                 const cats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
-                                return { label: n.name.split(" ").slice(0, 2).join(" "), images: cats.reduce((s, c) => s + c.images.length, 0), catalogs: cats.length };
+                                return { label: n.name.split(" ").slice(0, 3).join(" "), images: cats.reduce((s, c) => s + c.images.length, 0), catalogs: cats.length };
                             });
                         return (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

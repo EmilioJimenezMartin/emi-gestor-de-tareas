@@ -82,9 +82,17 @@ export function KdpVerticalBarChart({
             )}
 
             {items.length > 0 && (
-                <div className="flex justify-between pt-3 border-t border-white/5 gap-1 overflow-hidden">
+                <div className="flex justify-between pt-3 border-t border-white/5 gap-1">
                     {items.map((item, i) => (
-                        <span key={i} className="flex-1 text-[8px] font-black text-neutral-600 uppercase tracking-widest truncate text-center">{item.label}</span>
+                        <div key={i} className="flex-1 flex justify-center" style={{ height: 60 }}>
+                            <span
+                                className="text-[8px] font-black text-neutral-600 uppercase tracking-widest whitespace-nowrap"
+                                style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+                                title={item.label}
+                            >
+                                {item.label}
+                            </span>
+                        </div>
                     ))}
                 </div>
             )}
