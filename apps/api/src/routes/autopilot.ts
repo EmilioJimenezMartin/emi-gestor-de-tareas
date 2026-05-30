@@ -350,4 +350,25 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             return reply.status(500).send({ error: e.message });
         }
     });
+
+    // ── Trigger KDP publish job ───────────────────────────────────────────────
+    app.post("/niches/:id/publish-kdp", async (req: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        const { id } = req.params as { id: string };
+        try {
+            const niche = await Niche.findById(id).lean();
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+            const n = niche as any;
+            if (!n.bookPdfUrl) return reply.status(400).send({ error: "El nicho no tiene PDF generado. Genera el PDF del libro primero." });
+            if (!n.listings?.[0]?.title) return reply.status(400).send({ error: "El nicho no tiene listing SEO. Genera el listing primero." });
+            if (!deps.agenda) return reply.status(503).send({ error: "Agenda no disponible" });
+
+            await deps.agenda.now("kdp-publish", { nicheId: String(n._id) });
+            deps.io?.emit("kdp:status", { nicheId: id, status: "queued" });
+
+            return reply.send({ queued: true, message: `Job KDP encolado para "${n.name}"` });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
 }

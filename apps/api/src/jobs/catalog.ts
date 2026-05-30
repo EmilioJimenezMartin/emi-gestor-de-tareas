@@ -1,6 +1,7 @@
 import type { Agenda, Job } from "agenda";
 import axios from "axios";
 import { Catalog } from "../models/catalog.js";
+import { PromptMetric } from "../models/prompt-metric.js";
 import { getCloudinaryConfig, initCloudinary } from "../routes/cloudinary.js";
 import { activateNextQueued } from "../lib/catalog-queue.js";
 import { sendTelegram, shouldNotify } from "../lib/telegram.js";
@@ -11,6 +12,49 @@ const JOB_NAME = "generate-catalog-image";
 const LOCK_LIFETIME_MS = 8 * 60 * 1000;  // 8 min per job execution
 const AXIOS_TIMEOUT_MS = 120_000;          // 2 min — per-request axios timeout
 const HARD_ABORT_MS = 5 * 60 * 1000;      // 5 min — auto-skip if image hangs this long
+const MAX_IMAGE_RETRIES = 2;               // retry failed image up to 2 times before skipping
+
+function simplifyPrompt(prompt: string): string {
+    return prompt
+        .replace(/[^a-zA-Z0-9\s,.\-éáíóúüñÉÁÍÓÚÜÑ]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .split(/\s+/)
+        .slice(0, 25)
+        .join(" ");
+}
+
+async function getNicheScore(nicheIds: string[]): Promise<number> {
+    if (!nicheIds?.length) return 0;
+    try {
+        const { Niche } = await import("../models/niche.js");
+        const niche = await Niche.findById(nicheIds[0]).select("score").lean();
+        return (niche as any)?.score ?? 0;
+    } catch { return 0; }
+}
+
+async function trackPromptMetric(prompt: string, productType: string, success: boolean, score: number): Promise<void> {
+    try {
+        const normalized = prompt.slice(0, 200).toLowerCase().replace(/\s+/g, " ").trim();
+        const hash = Buffer.from(normalized).toString("base64").slice(0, 40);
+        const preview = prompt.slice(0, 120);
+        const doc = await PromptMetric.findOneAndUpdate(
+            { promptHash: hash, productType },
+            {
+                $set: { promptPreview: preview, lastUsed: new Date() },
+                $inc: { attempts: 1, successes: success ? 1 : 0, skips: success ? 0 : 1, totalScore: score },
+            },
+            { upsert: true, new: true }
+        );
+        if (doc) {
+            doc.avgScore = doc.attempts > 0 ? Math.round(doc.totalScore / doc.attempts) : 0;
+            doc.successRate = doc.attempts > 0 ? Math.round((doc.successes / doc.attempts) * 100) : 0;
+            await doc.save();
+        }
+    } catch (e: any) {
+        console.warn(`[prompt-metrics] track failed: ${e?.message}`);
+    }
+}
 
 type QualityResult = { ok: boolean; score: number; reason?: string };
 
@@ -150,8 +194,12 @@ async function checkAutoPilotContinue(tag: string, catalogId: string, nicheIds: 
 
 export function defineCatalogJob(agenda: Agenda, io: any) {
     const handler = async (job: Job) => {
-        const { catalogId } = (job.attrs.data ?? {}) as { catalogId: string };
-        const tag = `[catalog-job][${catalogId}]`;
+        const { catalogId, retryCount = 0, overridePrompt } = (job.attrs.data ?? {}) as {
+            catalogId: string;
+            retryCount?: number;
+            overridePrompt?: string;
+        };
+        const tag = `[catalog-job][${catalogId}]${retryCount > 0 ? `[retry${retryCount}]` : ""}`;
 
         if (!catalogId) {
             console.error(`${tag} No catalogId provided`);
@@ -168,6 +216,9 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             console.log(`${tag} Cancelled — skipping`);
             return;
         }
+
+        // Priority = niche score so high-value niches jump ahead in the AI queue
+        const nicheScore = await getNicheScore(catalog.nicheIds ?? []);
 
         const attemptedSoFar = catalog.images.length + (catalog.skippedImages ?? 0);
 
@@ -199,9 +250,9 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
         // promptSnippet emitted after prompt is built (below)
 
         try {
-            // Build prompt
+            // Build prompt — use simplified override on retries
             const creativity = catalog.creativity ?? 50;
-            let finalPrompt = catalog.prompt;
+            let finalPrompt = overridePrompt || catalog.prompt;
             if (catalog.promptParts?.theme) {
                 let particulars = catalog.promptParts.particulars ?? "";
                 if (particulars && creativity > 10) {
@@ -260,7 +311,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 const negParam = finalNegativePrompt ? `&negative=${encodeURIComponent(finalNegativePrompt)}` : "";
                 const enhance = productType === "coloring-book" ? "false" : "true";
                 const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=${catalog.width}&height=${catalog.height}&seed=${seed}&model=${encodeURIComponent(modelParam)}&nologo=true&enhance=${enhance}${negParam}`;
-                console.log(`${tag} Calling Pollinations model=${modelParam} (waiting for img-lock…)`);
+                console.log(`${tag} Calling Pollinations model=${modelParam} (waiting for img-lock… priority=${nicheScore})`);
                 imageBuffer = await withImageSlot(`catalog:${catalogId}:${imageSlot}`, async () => {
                     const abortCtrl = new AbortController();
                     const hardTimeout = setTimeout(() => abortCtrl.abort(), HARD_ABORT_MS);
@@ -293,7 +344,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 });
             } else {
                 const port = process.env.PORT || 3001;
-                console.log(`${tag} Calling proxy: provider=${catalog.aiModel.provider} model=${catalog.aiModel.modelId} (waiting for img-lock…)`);
+                console.log(`${tag} Calling proxy: provider=${catalog.aiModel.provider} model=${catalog.aiModel.modelId} (waiting for img-lock… priority=${nicheScore})`);
                 imageBuffer = await withImageSlot(`catalog-proxy:${catalogId}:${imageSlot}`, async () => {
                     const abortCtrl = new AbortController();
                     const hardTimeout = setTimeout(() => abortCtrl.abort(), HARD_ABORT_MS);
@@ -395,6 +446,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             freshCatalog.images.push(newImage);
             freshCatalog.lastError = "";
             const newCount = freshCatalog.images.length;
+            void trackPromptMetric(finalPrompt, catalog.productType ?? "coloring-book", true, quality.score);
             const newAttempted = newCount + (freshCatalog.skippedImages ?? 0);
             const isComplete = newAttempted >= freshCatalog.totalImages;
             freshCatalog.status = isComplete ? "completed" : "running";
@@ -443,7 +495,8 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             }
         } catch (e: any) {
             const errMsg = e?.message ?? String(e);
-            console.error(`${tag} Image generation failed — skipping slot: ${errMsg}`);
+            console.error(`${tag} Image generation failed (retry ${retryCount}/${MAX_IMAGE_RETRIES}): ${errMsg}`);
+
             if (/quota|rate.?limit|429|too many requests|exhausted/i.test(errMsg)) {
                 shouldNotify("api.error.quota").then(ok => {
                     if (ok) sendTelegram(`⚠️ <b>Error de cuota</b>\nCatálogo: ${catalogId}\n${errMsg.slice(0, 120)}`).catch(() => {});
@@ -453,7 +506,33 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             const freshCatalog = await Catalog.findById(catalogId);
             if (!freshCatalog || freshCatalog.status === "cancelled") return;
 
-            // Skip this image slot: increment skippedImages, do NOT retry
+            // Retry up to MAX_IMAGE_RETRIES times before skipping the slot
+            if (retryCount < MAX_IMAGE_RETRIES) {
+                const nextRetry = retryCount + 1;
+                // On 2nd retry use a simplified prompt to avoid model confusion
+                const nextOverride = nextRetry >= 2
+                    ? simplifyPrompt(overridePrompt || freshCatalog.prompt)
+                    : overridePrompt;
+                const delay = retryCount === 0 ? "in 60 seconds" : "in 90 seconds";
+                console.log(`${tag} Scheduling retry ${nextRetry}/${MAX_IMAGE_RETRIES} ${delay}${nextOverride ? " (simplified prompt)" : ""}`);
+                freshCatalog.lastError = `Reintentando (${nextRetry}/${MAX_IMAGE_RETRIES}): ${errMsg}`;
+                await freshCatalog.save();
+                io.emit("catalog:progress", {
+                    catalogId,
+                    status: "running",
+                    current: freshCatalog.images.length,
+                    total: freshCatalog.totalImages,
+                    skipped: freshCatalog.skippedImages ?? 0,
+                    lastError: freshCatalog.lastError,
+                });
+                try {
+                    await agenda.schedule(delay, JOB_NAME, { catalogId, retryCount: nextRetry, ...(nextOverride ? { overridePrompt: nextOverride } : {}) });
+                } catch { /* fallback: skip slot */ }
+                return;
+            }
+
+            // All retries exhausted — skip this slot
+            void trackPromptMetric(overridePrompt || freshCatalog.prompt, freshCatalog.productType ?? "coloring-book", false, 0);
             freshCatalog.skippedImages = (freshCatalog.skippedImages ?? 0) + 1;
             freshCatalog.lastError = errMsg;
 
@@ -462,7 +541,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             freshCatalog.status = isComplete ? "completed" : "running";
             await freshCatalog.save();
 
-            console.log(`${tag} Skipped slot ${freshCatalog.skippedImages} (attempted ${newAttempted}/${freshCatalog.totalImages}) — complete=${isComplete}`);
+            console.log(`${tag} Skipped slot (${freshCatalog.skippedImages} total, attempted ${newAttempted}/${freshCatalog.totalImages}) — complete=${isComplete}`);
 
             io.emit("catalog:progress", {
                 catalogId,
@@ -481,7 +560,6 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 });
                 void checkAutoPilotContinue(tag, catalogId, freshCatalog.nicheIds ?? [], agenda, io);
             } else {
-                // Short wait before next slot so stuck images don't block the catalog
                 console.log(`${tag} Scheduling next slot in 30 seconds`);
                 try {
                     await agenda.schedule("in 30 seconds", JOB_NAME, { catalogId });

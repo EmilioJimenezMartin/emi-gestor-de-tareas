@@ -44,6 +44,7 @@ export interface INiche extends Document {
     autoPilotEnabled?: boolean;
     sampleImageUrl?: string;
     catalogImageOrder?: string[];
+    coverCandidates?: string[];
     createdAt: Date;
     updatedAt: Date;
 }
@@ -94,6 +95,7 @@ const NicheSchema = new Schema<INiche>(
         autoPilotEnabled: { type: Boolean, default: false },
         sampleImageUrl: { type: String },
         catalogImageOrder: [{ type: String }],
+        coverCandidates: [{ type: String }],
     },
     { timestamps: true }
 );

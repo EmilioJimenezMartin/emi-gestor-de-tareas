@@ -230,6 +230,7 @@ interface NicheFE {
     autoPilotEnabled?: boolean;
     sampleImageUrl?: string;
     coverUrl?: string;
+    coverCandidates?: string[];
     createdAt: string;
     updatedAt?: string;
 }
@@ -862,7 +863,7 @@ export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
         if (typeof window === "undefined") return "insights";
         const saved = localStorage.getItem("kdp-active-tab");
-        return (saved && ["insights", "creation", "studio", "gelato"].includes(saved)) ? saved as TabID : "studio";
+        return (saved && ["insights", "creation", "studio", "gelato", "config"].includes(saved)) ? saved as TabID : "studio";
     });
     const changeTab = (tab: TabID) => { localStorage.setItem("kdp-active-tab", tab); setActiveTab(tab); };
     const [chartPeriod, setChartPeriod] = useState<PeriodID>("month");
@@ -1151,6 +1152,43 @@ export function KdpFactoryApp() {
     const [nicheDetailTab, setNicheDetailTab] = useState<"images" | "catalogs" | "seo" | "book" | "actions">("images");
     const [imagePromptSuggestion, setImagePromptSuggestion] = useState<string | null>(null);
     const [isGeneratingImagePrompt, setIsGeneratingImagePrompt] = useState(false);
+
+    // --- Pipeline dashboard state ---
+    type PipelineNiche = {
+        id: string; name: string; phase: string; score: number | null; autoPilotEnabled: boolean; phaseMs: number;
+        catalogs: { running: number; completed: number; queued: number; total: number; imgsDone: number; imgsTotal: number };
+        lastImageAt: string | null; lastError: string | null; updatedAt: string;
+    };
+    const [pipelineData, setPipelineData] = useState<{ niches: PipelineNiche[]; semaphore: { image: any; llm: any } } | null>(null);
+    const [pipelineLoading, setPipelineLoading] = useState(false);
+    type PromptMetricFE = { _id: string; promptPreview: string; productType: string; attempts: number; successes: number; skips: number; avgScore: number; successRate: number; lastUsed: string };
+    const [promptMetrics, setPromptMetrics] = useState<PromptMetricFE[]>([]);
+    const [promptMetricsLoading, setPromptMetricsLoading] = useState(false);
+    const [promptMetricsProductType, setPromptMetricsProductType] = useState<string>("coloring-book");
+
+    // --- Ventas / KDP Sales state ---
+    type KdpSaleFE = { _id: string; period: string; asin: string; nicheId: string | null; title: string; marketplace: string; unitsSold: number; royaltiesUsd: number };
+    const [salesData, setSalesData] = useState<KdpSaleFE[]>([]);
+    const [salesSummary, setSalesSummary] = useState<Record<string, { units: number; royalties: number; asins: number }>>({});
+    const [salesLoading, setSalesLoading] = useState(false);
+    const [salesPeriodFilter, setSalesPeriodFilter] = useState<string>("");
+    const [salesCsv, setSalesCsv] = useState("");
+    const [salesImportPeriod, setSalesImportPeriod] = useState(() => new Date().toISOString().slice(0, 7));
+    const [isImportingSales, setIsImportingSales] = useState(false);
+    const [salesPeriods, setSalesPeriods] = useState<string[]>([]);
+
+    // --- Alert settings state ---
+    const [alertSettings, setAlertSettings] = useState({
+        ALERT_STUCK_PIPELINE_ENABLED: "true",
+        ALERT_STUCK_PIPELINE_HOURS: "4",
+        ALERT_STUCK_CATALOG_ENABLED: "true",
+        ALERT_STUCK_CATALOG_HOURS: "2",
+    });
+    const [savingAlertSettings, setSavingAlertSettings] = useState(false);
+
+    // --- KDP publish CTA state ---
+    const [kdpPublishStatus, setKdpPublishStatus] = useState<Record<string, "idle" | "queued" | "login" | "uploading-pdf" | "done" | "error">>({});
+    const [kdpPublishError, setKdpPublishError] = useState<Record<string, string>>({});
 
     // --- Trends state ---
     const [trendsPlatform, setTrendsPlatform] = useState<"all" | "kdp" | "etsy" | "printify">("all");
@@ -1971,6 +2009,26 @@ export function KdpFactoryApp() {
             toast.success("Datos de publicación guardados");
         } catch { toast.error("Error al guardar publicación"); }
         finally { setIsSavingPublish(false); }
+    };
+
+    const triggerKdpPublish = async (nicheId: string) => {
+        setKdpPublishStatus(prev => ({ ...prev, [nicheId]: "queued" }));
+        setKdpPublishError(prev => { const n = { ...prev }; delete n[nicheId]; return n; });
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches/${nicheId}/publish-kdp`, { method: "POST" });
+            const data = await res.json();
+            if (!res.ok) {
+                setKdpPublishStatus(prev => ({ ...prev, [nicheId]: "error" }));
+                setKdpPublishError(prev => ({ ...prev, [nicheId]: data.error ?? "Error desconocido" }));
+                toast.error(data.error ?? "Error al lanzar KDP");
+            } else {
+                toast.success("Job KDP encolado — recibirás una notificación por Telegram");
+            }
+        } catch (e: any) {
+            setKdpPublishStatus(prev => ({ ...prev, [nicheId]: "error" }));
+            setKdpPublishError(prev => ({ ...prev, [nicheId]: e.message }));
+            toast.error("Error de red al lanzar KDP");
+        }
     };
 
     const addRoyaltyEntry = async (nicheId: string) => {
@@ -3187,6 +3245,13 @@ export function KdpFactoryApp() {
                     setApScheduled(false);
                 }
 
+                // Alert settings
+                const alertKeys = ["ALERT_STUCK_PIPELINE_ENABLED", "ALERT_STUCK_PIPELINE_HOURS", "ALERT_STUCK_CATALOG_ENABLED", "ALERT_STUCK_CATALOG_HOURS"];
+                const alertMap = new Map<string, string>((data.settings ?? []).map((s: any) => [s.key, String(s.value)]));
+                const newAlerts: typeof alertSettings = { ...alertSettings };
+                for (const k of alertKeys) { if (alertMap.has(k)) (newAlerts as any)[k] = alertMap.get(k)!; }
+                setAlertSettings(newAlerts);
+
                 // Book drafts (multi-draft)
                 const draftsFound = (data.settings ?? []).find((s: any) => s.key === "kdp-book-drafts");
                 if (draftsFound?.value && Array.isArray(draftsFound.value) && draftsFound.value.length > 0) {
@@ -3373,6 +3438,18 @@ export function KdpFactoryApp() {
                 : data.type === "success" ? toast.success
                 : toast.info;
             fn(data.message, { duration: 5000 });
+        });
+
+        socket.on("kdp:status", (data: { nicheId: string; status: string; message?: string }) => {
+            const s = data.status as "idle" | "queued" | "login" | "uploading-pdf" | "done" | "error";
+            setKdpPublishStatus(prev => ({ ...prev, [data.nicheId]: s }));
+            if (data.status === "error" && data.message) {
+                setKdpPublishError(prev => ({ ...prev, [data.nicheId]: data.message! }));
+                toast.error(`KDP error: ${data.message.slice(0, 80)}`);
+            } else if (data.status === "done") {
+                toast.success("✅ KDP borrador guardado en Amazon");
+                void fetchNiches();
+            }
         });
 
         return () => {
@@ -4188,6 +4265,339 @@ export function KdpFactoryApp() {
         research: { label: "Investigando", color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
         active: { label: "Activo", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
         archived: { label: "Archivado", color: "text-neutral-500 bg-neutral-500/10 border-neutral-500/20" },
+    };
+
+    // ── Pipeline helpers ──────────────────────────────────────────────────────
+    const fetchPipelineData = async () => {
+        setPipelineLoading(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/pipeline/status`);
+            if (res.ok) setPipelineData(await res.json());
+        } catch { } finally { setPipelineLoading(false); }
+    };
+    const fetchPromptMetrics = async (productType = promptMetricsProductType) => {
+        setPromptMetricsLoading(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/pipeline/prompt-metrics?productType=${productType}&limit=30`);
+            if (res.ok) { const d = await res.json(); setPromptMetrics(d.metrics ?? []); }
+        } catch { } finally { setPromptMetricsLoading(false); }
+    };
+    const fetchSalesData = async (period = salesPeriodFilter) => {
+        setSalesLoading(true);
+        try {
+            const params = new URLSearchParams();
+            if (period) params.set("period", period);
+            const [salesRes, periodsRes] = await Promise.all([
+                fetch(`${API_BASE_URL}/kdp-sales?${params}`),
+                fetch(`${API_BASE_URL}/kdp-sales/periods`),
+            ]);
+            if (salesRes.ok) { const d = await salesRes.json(); setSalesData(d.sales ?? []); setSalesSummary(d.summary ?? {}); }
+            if (periodsRes.ok) { const d = await periodsRes.json(); setSalesPeriods(d.periods ?? []); }
+        } catch { } finally { setSalesLoading(false); }
+    };
+    const importSalesCsv = async () => {
+        if (!salesCsv.trim()) return;
+        setIsImportingSales(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/kdp-sales/import`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ csv: salesCsv, period: salesImportPeriod }),
+            });
+            const d = await res.json();
+            if (!res.ok) { toast.error(d.error ?? "Error importando"); return; }
+            toast.success(`${d.imported} ventas importadas · ${d.linked} vinculadas a nichos`);
+            setSalesCsv("");
+            void fetchSalesData(salesImportPeriod);
+        } catch { toast.error("Error importando"); } finally { setIsImportingSales(false); }
+    };
+    const saveAlertSettings = async () => {
+        setSavingAlertSettings(true);
+        try {
+            await fetch(`${API_BASE_URL}/settings`, {
+                method: "PATCH", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(Object.entries(alertSettings).map(([key, value]) => ({ key, value }))),
+            });
+            toast.success("Alertas guardadas");
+        } catch { toast.error("Error guardando alertas"); } finally { setSavingAlertSettings(false); }
+    };
+
+    function fmtMs(ms: number): string {
+        const h = Math.floor(ms / 3_600_000);
+        const m = Math.floor((ms % 3_600_000) / 60_000);
+        const d = Math.floor(ms / 86_400_000);
+        if (d > 0) return `${d}d ${h % 24}h`;
+        if (h > 0) return `${h}h ${m}min`;
+        return `${m}min`;
+    }
+
+    const renderPipeline = () => (
+        <div className="space-y-6">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                    <h2 className="text-xl font-black text-white">Pipeline en tiempo real</h2>
+                    <p className="text-sm text-neutral-600">Estado de todos los nichos activos · actualizado al cargar</p>
+                </div>
+                <button onClick={fetchPipelineData} disabled={pipelineLoading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 bg-white/[0.03] text-sm font-black text-neutral-500 hover:text-white transition-all disabled:opacity-40">
+                    {pipelineLoading ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Actualizar
+                </button>
+            </div>
+
+            {!pipelineData && !pipelineLoading && (
+                <button onClick={fetchPipelineData} className="w-full py-12 rounded-2xl border border-dashed border-white/10 text-neutral-600 hover:text-neutral-400 transition-colors text-sm font-black flex items-center justify-center gap-2">
+                    <Zap size={14} /> Cargar estado del pipeline
+                </button>
+            )}
+
+            {pipelineLoading && (
+                <div className="flex items-center justify-center py-16 text-neutral-700">
+                    <Loader2 size={20} className="animate-spin mr-2" /> Cargando…
+                </div>
+            )}
+
+            {pipelineData && (
+                <div className="space-y-6">
+                    {/* Semaphore status */}
+                    <div className="grid grid-cols-2 gap-3">
+                        {[
+                            { label: "Cola imágenes", s: pipelineData.semaphore.image, color: "sky" },
+                            { label: "Cola LLM", s: pipelineData.semaphore.llm, color: "violet" },
+                        ].map(({ label, s, color }) => (
+                            <Card key={label} variant="glass" className="p-4 border-white/5 bg-white/[0.01] space-y-1">
+                                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-neutral-500">
+                                    <div className={`w-2 h-2 rounded-full ${s.busy ? (color === "sky" ? "bg-sky-400 shadow-[0_0_6px_rgba(56,189,248,0.6)]" : "bg-violet-400 shadow-[0_0_6px_rgba(167,139,250,0.6)]") : "bg-neutral-700"}`} />
+                                    {label}
+                                    {s.busy && <span className="ml-auto text-amber-400">OCUPADO</span>}
+                                    {!s.busy && <span className="ml-auto text-emerald-400">LIBRE</span>}
+                                </div>
+                                {s.busy && <p className="text-[10px] text-neutral-500 truncate">{s.holder} · {fmtMs(s.heldMs)}</p>}
+                                {s.queueLength > 0 && <p className="text-[10px] text-amber-400/70">{s.queueLength} en cola</p>}
+                            </Card>
+                        ))}
+                    </div>
+
+                    {/* Per-niche rows */}
+                    {pipelineData.niches.length === 0 && (
+                        <p className="text-sm text-neutral-600 text-center py-8">No hay nichos activos en el pipeline.</p>
+                    )}
+                    <div className="space-y-3">
+                        {pipelineData.niches.map(n => {
+                            const phaseColor: Record<string, string> = {
+                                niche: "text-sky-400", catalog: "text-blue-400", libro: "text-violet-400",
+                                seo: "text-amber-400", cover: "text-orange-400", published: "text-emerald-400",
+                            };
+                            const isStuck = n.phaseMs > 4 * 3_600_000 && !["published", "niche"].includes(n.phase);
+                            const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
+                            return (
+                                <Card key={n.id} variant="glass" className={`p-4 border-white/5 bg-white/[0.01] space-y-3 ${isStuck ? "border-amber-500/20 bg-amber-500/[0.02]" : ""}`}>
+                                    <div className="flex items-start gap-3">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="font-black text-white text-sm truncate">{n.name}</span>
+                                                {n.score != null && (
+                                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${n.score >= 70 ? "bg-emerald-500/15 text-emerald-400" : n.score >= 50 ? "bg-amber-500/15 text-amber-400" : "bg-neutral-500/15 text-neutral-500"}`}>
+                                                        {n.score}pts
+                                                    </span>
+                                                )}
+                                                {n.autoPilotEnabled && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400">AP</span>}
+                                                {isStuck && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 flex items-center gap-0.5"><AlertTriangle size={8} /> ATASCADO</span>}
+                                            </div>
+                                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                <span className={`text-[10px] font-black uppercase ${phaseColor[n.phase] ?? "text-neutral-400"}`}>{n.phase}</span>
+                                                <span className="text-[9px] text-neutral-600">{fmtMs(n.phaseMs)} en esta fase</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Catalog progress */}
+                                    {n.phase === "catalog" && n.catalogs.total > 0 && (
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center justify-between text-[10px]">
+                                                <span className="text-neutral-600">{n.catalogs.imgsDone}/{n.catalogs.imgsTotal} imágenes · {n.catalogs.running} activo{n.catalogs.running !== 1 ? "s" : ""} · {n.catalogs.queued} en cola</span>
+                                                <span className="text-neutral-500 font-black">{imgPct}%</span>
+                                            </div>
+                                            <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                                                <div className="h-full bg-gradient-to-r from-blue-500/60 to-sky-400/60 rounded-full transition-all duration-500" style={{ width: `${imgPct}%` }} />
+                                            </div>
+                                            {n.lastImageAt && (
+                                                <p className="text-[9px] text-neutral-700">
+                                                    Última imagen: {fmtMs(Date.now() - new Date(n.lastImageAt).getTime())} atrás
+                                                    {Date.now() - new Date(n.lastImageAt).getTime() > 10 * 60_000 && <span className="text-amber-400 ml-1">⚠️</span>}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {n.lastError && (
+                                        <p className="text-[9px] text-rose-400/80 font-mono bg-rose-500/5 rounded-lg px-2 py-1 truncate" title={n.lastError}>{n.lastError}</p>
+                                    )}
+                                </Card>
+                            );
+                        })}
+                    </div>
+
+                    {/* Prompt metrics */}
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div>
+                                <h3 className="text-base font-black text-white">Métricas de prompts</h3>
+                                <p className="text-xs text-neutral-600">Prompts con mejor tasa de éxito · mínimo 3 intentos</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {["coloring-book", "printable-poster", "seamless-pattern"].map(pt => (
+                                    <button key={pt} onClick={() => { setPromptMetricsProductType(pt); void fetchPromptMetrics(pt); }}
+                                        className={`px-2 py-1 rounded-lg border text-[10px] font-black transition-all ${promptMetricsProductType === pt ? "bg-sky-500/20 border-sky-500/40 text-sky-400" : "border-white/10 text-neutral-600 hover:text-neutral-400"}`}>
+                                        {pt === "coloring-book" ? "Coloring" : pt === "printable-poster" ? "Poster" : "Pattern"}
+                                    </button>
+                                ))}
+                                <button onClick={() => void fetchPromptMetrics()} disabled={promptMetricsLoading}
+                                    className="h-7 w-7 rounded-lg border border-white/10 text-neutral-600 hover:text-white transition-all flex items-center justify-center disabled:opacity-40">
+                                    {promptMetricsLoading ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                                </button>
+                            </div>
+                        </div>
+
+                        {promptMetrics.length === 0 && !promptMetricsLoading && (
+                            <button onClick={() => void fetchPromptMetrics()} className="w-full py-8 rounded-2xl border border-dashed border-white/10 text-neutral-600 hover:text-neutral-400 transition-colors text-xs font-black">
+                                Cargar métricas
+                            </button>
+                        )}
+
+                        {promptMetrics.length > 0 && (
+                            <div className="space-y-1.5">
+                                {promptMetrics.map(m => (
+                                    <Card key={m._id} variant="glass" className="p-3 border-white/5 bg-white/[0.01]">
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-[10px] text-neutral-400 leading-relaxed line-clamp-2">{m.promptPreview}</p>
+                                            </div>
+                                            <div className="shrink-0 text-right space-y-0.5">
+                                                <div className={`text-sm font-black ${m.successRate >= 80 ? "text-emerald-400" : m.successRate >= 60 ? "text-amber-400" : "text-rose-400"}`}>{m.successRate}%</div>
+                                                <div className="text-[9px] text-neutral-600">{m.successes}/{m.attempts} OK</div>
+                                                <div className="text-[9px] text-neutral-700">score {m.avgScore}</div>
+                                            </div>
+                                        </div>
+                                        <div className="mt-1.5 h-0.5 bg-white/5 rounded-full overflow-hidden">
+                                            <div className={`h-full rounded-full ${m.successRate >= 80 ? "bg-emerald-500/60" : m.successRate >= 60 ? "bg-amber-500/60" : "bg-rose-500/60"}`} style={{ width: `${m.successRate}%` }} />
+                                        </div>
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+
+    const renderVentas = () => {
+        const totalUnits = salesData.reduce((s, r) => s + r.unitsSold, 0);
+        const totalRoyalties = salesData.reduce((s, r) => s + r.royaltiesUsd, 0);
+        const linkedCount = salesData.filter(r => r.nicheId).length;
+        return (
+            <div className="space-y-6">
+                <div>
+                    <h2 className="text-xl font-black text-white">Ventas KDP</h2>
+                    <p className="text-sm text-neutral-600">Importa informes CSV de Amazon KDP para ver royalties por nicho</p>
+                </div>
+
+                {/* Import CSV */}
+                <Card variant="glass" className="p-5 border-white/5 bg-white/[0.01] space-y-4">
+                    <h3 className="text-sm font-black text-white flex items-center gap-2"><Upload size={12} /> Importar informe KDP</h3>
+                    <div className="space-y-2">
+                        <div className="flex gap-2">
+                            <input type="month" value={salesImportPeriod} onChange={e => setSalesImportPeriod(e.target.value)}
+                                className="h-8 px-2 rounded-lg border border-white/10 bg-white/[0.03] text-sm text-white" />
+                            <button onClick={() => void fetchSalesData()} disabled={salesLoading}
+                                className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-white/10 bg-white/[0.03] text-sm font-black text-neutral-500 hover:text-white transition-all disabled:opacity-40">
+                                {salesLoading ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />} Actualizar
+                            </button>
+                        </div>
+                        <textarea value={salesCsv} onChange={e => setSalesCsv(e.target.value)}
+                            placeholder="Pega aquí el CSV del informe de royalties de Amazon KDP…"
+                            className="w-full h-28 px-3 py-2 rounded-xl border border-white/10 bg-white/[0.03] text-xs text-neutral-300 font-mono resize-none focus:outline-none focus:border-sky-500/40 placeholder:text-neutral-700" />
+                        <button onClick={() => void importSalesCsv()} disabled={!salesCsv.trim() || isImportingSales}
+                            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sm font-black text-sky-400 hover:bg-sky-500/25 transition-all disabled:opacity-40">
+                            {isImportingSales ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />} Importar
+                        </button>
+                    </div>
+                </Card>
+
+                {/* Period filter */}
+                {salesPeriods.length > 0 && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] font-black text-neutral-600 uppercase tracking-widest">Período:</span>
+                        <button onClick={() => { setSalesPeriodFilter(""); void fetchSalesData(""); }}
+                            className={`px-2 py-1 rounded-lg border text-[10px] font-black transition-all ${!salesPeriodFilter ? "bg-white/10 border-white/20 text-white" : "border-white/10 text-neutral-600 hover:text-neutral-400"}`}>
+                            Todos
+                        </button>
+                        {salesPeriods.map(p => (
+                            <button key={p} onClick={() => { setSalesPeriodFilter(p); void fetchSalesData(p); }}
+                                className={`px-2 py-1 rounded-lg border text-[10px] font-black transition-all ${salesPeriodFilter === p ? "bg-sky-500/20 border-sky-500/40 text-sky-400" : "border-white/10 text-neutral-600 hover:text-neutral-400"}`}>
+                                {p}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {/* Summary cards */}
+                {salesData.length > 0 && (
+                    <div className="grid grid-cols-3 gap-3">
+                        {[
+                            { label: "Unidades", value: totalUnits, icon: <BookOpen size={12} />, color: "sky" },
+                            { label: "Royalties", value: `$${totalRoyalties.toFixed(2)}`, icon: <DollarSign size={12} />, color: "emerald" },
+                            { label: "Vinculados", value: `${linkedCount}/${salesData.length}`, icon: <Target size={12} />, color: "violet" },
+                        ].map(({ label, value, icon, color }) => (
+                            <Card key={label} variant="glass" className="p-3 border-white/5 bg-white/[0.01] text-center">
+                                <div className={`text-lg font-black ${color === "sky" ? "text-sky-400" : color === "emerald" ? "text-emerald-400" : "text-violet-400"}`}>{value}</div>
+                                <div className="text-[9px] font-black text-neutral-600 uppercase tracking-widest flex items-center justify-center gap-1 mt-0.5">{icon} {label}</div>
+                            </Card>
+                        ))}
+                    </div>
+                )}
+
+                {/* Sales table */}
+                {salesData.length === 0 && !salesLoading && (
+                    <div className="text-center py-12 text-neutral-700 text-sm">No hay datos de ventas. Importa un informe CSV.</div>
+                )}
+                {salesLoading && <div className="flex justify-center py-8"><Loader2 size={18} className="animate-spin text-neutral-700" /></div>}
+                {salesData.length > 0 && (
+                    <div className="space-y-2">
+                        <p className="text-[10px] font-black text-neutral-600 uppercase tracking-widest">{salesData.length} entradas</p>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                                <thead>
+                                    <tr className="text-[9px] font-black text-neutral-600 uppercase tracking-widest border-b border-white/5">
+                                        <th className="text-left py-2 pr-3">Período</th>
+                                        <th className="text-left py-2 pr-3">Título</th>
+                                        <th className="text-left py-2 pr-3">ASIN</th>
+                                        <th className="text-right py-2 pr-3">Unidades</th>
+                                        <th className="text-right py-2">Royalties</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {salesData.map(r => {
+                                        const niche = niches.find(n => n._id === r.nicheId);
+                                        return (
+                                            <tr key={r._id} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
+                                                <td className="py-2 pr-3 text-neutral-500">{r.period}</td>
+                                                <td className="py-2 pr-3 max-w-[200px]">
+                                                    <div className="truncate text-neutral-300">{r.title || "—"}</div>
+                                                    {niche && <div className="text-[9px] text-sky-400 truncate">{niche.name}</div>}
+                                                </td>
+                                                <td className="py-2 pr-3 font-mono text-neutral-500">{r.asin}</td>
+                                                <td className="py-2 pr-3 text-right font-black text-white">{r.unitsSold}</td>
+                                                <td className="py-2 text-right font-black text-emerald-400">${r.royaltiesUsd.toFixed(2)}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
     };
 
 
@@ -5493,6 +5903,106 @@ export function KdpFactoryApp() {
                         </>
                     )}
                 </div>
+
+                {/* ── VENTAS KDP ──────────────────────────────────────────── */}
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div>
+                            <h3 className="text-base font-black text-white flex items-center gap-2"><TrendingUp size={14} className="text-emerald-400" /> Ventas KDP</h3>
+                            <p className="text-xs text-neutral-600">Importa informes CSV de Amazon KDP para ver royalties por nicho</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <input type="month" value={salesImportPeriod} onChange={e => setSalesImportPeriod(e.target.value)}
+                                className="h-7 px-2 rounded-lg border border-white/10 bg-white/[0.03] text-xs text-white" />
+                            <button onClick={() => void fetchSalesData()} disabled={salesLoading}
+                                className="h-7 px-2.5 rounded-lg border border-white/10 bg-white/[0.03] text-xs font-black text-neutral-500 hover:text-white transition-all disabled:opacity-40 flex items-center gap-1">
+                                {salesLoading ? <Loader2 size={9} className="animate-spin" /> : <RefreshCw size={9} />}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Import CSV */}
+                    <div className="space-y-2">
+                        <textarea value={salesCsv} onChange={e => setSalesCsv(e.target.value)}
+                            placeholder="Pega aquí el CSV del informe de royalties de Amazon KDP…"
+                            className="w-full h-20 px-3 py-2 rounded-xl border border-white/10 bg-white/[0.03] text-xs text-neutral-300 font-mono resize-none focus:outline-none focus:border-emerald-500/40 placeholder:text-neutral-700" />
+                        <button onClick={() => void importSalesCsv()} disabled={!salesCsv.trim() || isImportingSales}
+                            className="w-full flex items-center justify-center gap-1.5 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-xs font-black text-emerald-400 hover:bg-emerald-500/20 transition-all disabled:opacity-40">
+                            {isImportingSales ? <Loader2 size={9} className="animate-spin" /> : <Upload size={9} />} Importar informe
+                        </button>
+                    </div>
+
+                    {/* Period filter */}
+                    {salesPeriods.length > 0 && (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            {["", ...salesPeriods].map(p => (
+                                <button key={p || "all"} onClick={() => { setSalesPeriodFilter(p); void fetchSalesData(p); }}
+                                    className={`px-2 py-0.5 rounded-lg border text-[9px] font-black transition-all ${salesPeriodFilter === p ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400" : "border-white/10 text-neutral-600 hover:text-neutral-400"}`}>
+                                    {p || "Todos"}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Summary */}
+                    {salesData.length > 0 && (() => {
+                        const totalUnits = salesData.reduce((s, r) => s + r.unitsSold, 0);
+                        const totalRoyalties = salesData.reduce((s, r) => s + r.royaltiesUsd, 0);
+                        const linked = salesData.filter(r => r.nicheId).length;
+                        return (
+                            <div className="grid grid-cols-3 gap-2">
+                                {[
+                                    { label: "Unidades", value: totalUnits, color: "text-sky-400" },
+                                    { label: "Royalties", value: `$${totalRoyalties.toFixed(2)}`, color: "text-emerald-400" },
+                                    { label: "Vinculados", value: `${linked}/${salesData.length}`, color: "text-violet-400" },
+                                ].map(({ label, value, color }) => (
+                                    <Card key={label} variant="glass" className="p-3 border-white/5 bg-white/[0.01] text-center">
+                                        <div className={`text-base font-black ${color}`}>{value}</div>
+                                        <div className="text-[9px] text-neutral-600 mt-0.5">{label}</div>
+                                    </Card>
+                                ))}
+                            </div>
+                        );
+                    })()}
+
+                    {salesLoading && <div className="flex justify-center py-6"><Loader2 size={16} className="animate-spin text-neutral-700" /></div>}
+                    {!salesLoading && salesData.length === 0 && salesPeriods.length === 0 && (
+                        <p className="text-xs text-neutral-600 text-center py-4">Sin datos. Importa un informe CSV de KDP.</p>
+                    )}
+                    {salesData.length > 0 && (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                                <thead>
+                                    <tr className="text-[9px] font-black text-neutral-600 uppercase tracking-widest border-b border-white/5">
+                                        <th className="text-left py-1.5 pr-3">Período</th>
+                                        <th className="text-left py-1.5 pr-3">Título / Nicho</th>
+                                        <th className="text-left py-1.5 pr-3">ASIN</th>
+                                        <th className="text-right py-1.5 pr-3">Uds</th>
+                                        <th className="text-right py-1.5">$</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {salesData.map(r => {
+                                        const niche = niches.find(n => n._id === r.nicheId);
+                                        return (
+                                            <tr key={r._id} className="border-b border-white/[0.03] hover:bg-white/[0.02]">
+                                                <td className="py-1.5 pr-3 text-neutral-500">{r.period}</td>
+                                                <td className="py-1.5 pr-3 max-w-[180px]">
+                                                    <div className="truncate text-neutral-400">{r.title || "—"}</div>
+                                                    {niche && <div className="text-[8px] text-sky-400 truncate">{niche.name}</div>}
+                                                </td>
+                                                <td className="py-1.5 pr-3 font-mono text-[9px] text-neutral-600">{r.asin}</td>
+                                                <td className="py-1.5 pr-3 text-right font-black text-white">{r.unitsSold}</td>
+                                                <td className="py-1.5 text-right font-black text-emerald-400">${r.royaltiesUsd.toFixed(2)}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+
             </div>
         </div>
         );
@@ -6226,6 +6736,47 @@ export function KdpFactoryApp() {
                 </div>
             </section>
 
+            {/* ── ALERTAS PROACTIVAS ──────────────────────────────────────── */}
+            <section className="space-y-4">
+                <SectionHeader icon={<Bell size={13} />} title="Alertas proactivas" subtitle="Telegram te avisa automáticamente cuando algo se atasca · se comprueban cada 30 min" color="amber" size="sm" />
+                <Card variant="outline" className="border-white/5 bg-white/[0.01] overflow-hidden">
+                    <div className="divide-y divide-white/[0.04]">
+                        {[
+                            { key: "ALERT_STUCK_PIPELINE_ENABLED", hoursKey: "ALERT_STUCK_PIPELINE_HOURS", label: "Nicho atascado en pipeline", desc: "Avisa si un nicho con autopilot lleva más de N horas sin avanzar de fase" },
+                            { key: "ALERT_STUCK_CATALOG_ENABLED", hoursKey: "ALERT_STUCK_CATALOG_HOURS", label: "Catálogo sin actividad", desc: "Avisa si un catálogo en generación lleva más de N horas sin producir imágenes" },
+                        ].map(({ key, hoursKey, label, desc }) => {
+                            const enabled = alertSettings[key as keyof typeof alertSettings] !== "false";
+                            const hours = alertSettings[hoursKey as keyof typeof alertSettings];
+                            return (
+                                <div key={key} className={`flex items-center gap-4 px-5 py-4 transition-all ${enabled ? "opacity-100" : "opacity-40"}`}>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-black text-white">{label}</p>
+                                        <p className="text-[11px] text-neutral-500 mt-0.5">{desc}</p>
+                                    </div>
+                                    <div className="flex items-center gap-3 shrink-0">
+                                        <div className="flex items-center gap-1">
+                                            <input type="number" min="1" max="48" value={hours}
+                                                onChange={e => setAlertSettings(prev => ({ ...prev, [hoursKey]: e.target.value }))}
+                                                className="w-12 h-6 px-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-xs text-center text-white" />
+                                            <span className="text-[10px] text-neutral-600">h</span>
+                                        </div>
+                                        <button
+                                            onClick={() => setAlertSettings(prev => ({ ...prev, [key]: enabled ? "false" : "true" }))}
+                                            className={`relative w-9 h-5 rounded-full border transition-all duration-200 ${enabled ? "bg-amber-500/20 border-amber-500/40" : "bg-white/[0.04] border-white/10"}`}>
+                                            <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-all duration-200 ${enabled ? "left-4 bg-amber-400" : "left-0.5 bg-neutral-600"}`} />
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </Card>
+                <button onClick={() => void saveAlertSettings()} disabled={savingAlertSettings}
+                    className="flex items-center gap-1.5 h-8 px-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm font-black text-amber-400 hover:bg-amber-500/20 transition-all disabled:opacity-40">
+                    {savingAlertSettings ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} Guardar alertas
+                </button>
+            </section>
+
             {/* ── INTEGRACIONES ───────────────────────────────────────────── */}
             {(() => {
                 return (
@@ -6287,6 +6838,112 @@ export function KdpFactoryApp() {
                     </section>
                 );
             })()}
+
+            {/* ── PIPELINE EN TIEMPO REAL ─────────────────────────────────── */}
+            <section className="space-y-4">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <SectionHeader icon={<Zap size={13} />} title="Pipeline en tiempo real" subtitle="Estado de todos los nichos activos en producción" color="sky" size="sm" />
+                    <button onClick={fetchPipelineData} disabled={pipelineLoading}
+                        className="flex items-center gap-1.5 h-7 px-3 rounded-xl border border-white/10 bg-white/[0.03] text-[11px] font-black text-neutral-500 hover:text-white transition-all disabled:opacity-40">
+                        {pipelineLoading ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />} Actualizar
+                    </button>
+                </div>
+
+                {!pipelineData && !pipelineLoading && (
+                    <button onClick={fetchPipelineData} className="w-full py-8 rounded-2xl border border-dashed border-white/10 text-neutral-600 hover:text-neutral-400 transition-colors text-xs font-black flex items-center justify-center gap-2">
+                        <Zap size={12} /> Cargar estado del pipeline
+                    </button>
+                )}
+                {pipelineLoading && <div className="flex justify-center py-8 text-neutral-700"><Loader2 size={16} className="animate-spin" /></div>}
+
+                {pipelineData && (
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-3">
+                            {[{ label: "Cola imágenes", s: pipelineData.semaphore.image }, { label: "Cola LLM", s: pipelineData.semaphore.llm }].map(({ label, s }) => (
+                                <Card key={label} variant="glass" className="p-3 border-white/5 bg-white/[0.01]">
+                                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-neutral-500">
+                                        <div className={`w-2 h-2 rounded-full ${s.busy ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)]" : "bg-emerald-500/60"}`} />
+                                        {label}
+                                        <span className={`ml-auto font-black ${s.busy ? "text-amber-400" : "text-emerald-400"}`}>{s.busy ? "OCUPADO" : "LIBRE"}</span>
+                                    </div>
+                                    {s.busy && <p className="text-[9px] text-neutral-600 mt-1 truncate">{s.holder} · {fmtMs(s.heldMs)}</p>}
+                                    {s.queueLength > 0 && <p className="text-[9px] text-amber-400/70">{s.queueLength} esperando</p>}
+                                </Card>
+                            ))}
+                        </div>
+
+                        {pipelineData.niches.length === 0 && <p className="text-xs text-neutral-600 text-center py-4">No hay nichos activos en el pipeline.</p>}
+                        <div className="space-y-2">
+                            {pipelineData.niches.map(n => {
+                                const phaseColor: Record<string, string> = {
+                                    niche: "text-sky-400", catalog: "text-blue-400", libro: "text-violet-400",
+                                    seo: "text-amber-400", cover: "text-orange-400", published: "text-emerald-400",
+                                };
+                                const isStuck = n.phaseMs > 4 * 3_600_000 && !["published", "niche"].includes(n.phase);
+                                const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
+                                return (
+                                    <Card key={n.id} variant="glass" className={`p-3 border-white/5 bg-white/[0.01] space-y-2 ${isStuck ? "border-amber-500/20" : ""}`}>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-black text-white text-sm flex-1 truncate">{n.name}</span>
+                                            {n.score != null && <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${n.score >= 70 ? "bg-emerald-500/15 text-emerald-400" : "bg-neutral-500/15 text-neutral-500"}`}>{n.score}pts</span>}
+                                            {n.autoPilotEnabled && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400">AP</span>}
+                                            {isStuck && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 flex items-center gap-0.5"><AlertTriangle size={8} /> ATASCADO</span>}
+                                            <span className={`text-[10px] font-black uppercase ${phaseColor[n.phase] ?? "text-neutral-400"}`}>{n.phase}</span>
+                                            <span className="text-[9px] text-neutral-600">{fmtMs(n.phaseMs)}</span>
+                                        </div>
+                                        {n.phase === "catalog" && n.catalogs.total > 0 && (
+                                            <div className="space-y-1">
+                                                <div className="flex justify-between text-[9px] text-neutral-600">
+                                                    <span>{n.catalogs.imgsDone}/{n.catalogs.imgsTotal} imgs · {n.catalogs.running} activo{n.catalogs.running !== 1 ? "s" : ""}</span>
+                                                    <span className="font-black">{imgPct}%</span>
+                                                </div>
+                                                <div className="h-0.5 bg-white/5 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-gradient-to-r from-blue-500/60 to-sky-400/60 rounded-full" style={{ width: `${imgPct}%` }} />
+                                                </div>
+                                            </div>
+                                        )}
+                                        {n.lastError && <p className="text-[9px] text-rose-400/70 font-mono truncate bg-rose-500/5 rounded px-2 py-0.5" title={n.lastError}>{n.lastError}</p>}
+                                    </Card>
+                                );
+                            })}
+                        </div>
+
+                        {/* Prompt metrics */}
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5"><Star size={10} /> Métricas de prompts</p>
+                                <div className="flex items-center gap-1.5">
+                                    {["coloring-book", "printable-poster"].map(pt => (
+                                        <button key={pt} onClick={() => { setPromptMetricsProductType(pt); void fetchPromptMetrics(pt); }}
+                                            className={`px-2 py-0.5 rounded-lg border text-[9px] font-black transition-all ${promptMetricsProductType === pt ? "bg-sky-500/20 border-sky-500/40 text-sky-400" : "border-white/10 text-neutral-600"}`}>
+                                            {pt === "coloring-book" ? "Coloring" : "Poster"}
+                                        </button>
+                                    ))}
+                                    <button onClick={() => void fetchPromptMetrics()} disabled={promptMetricsLoading} className="h-5 w-5 rounded border border-white/10 text-neutral-600 hover:text-white flex items-center justify-center disabled:opacity-40">
+                                        {promptMetricsLoading ? <Loader2 size={8} className="animate-spin" /> : <RefreshCw size={8} />}
+                                    </button>
+                                </div>
+                            </div>
+                            {promptMetrics.length === 0 && !promptMetricsLoading && (
+                                <button onClick={() => void fetchPromptMetrics()} className="w-full py-4 rounded-xl border border-dashed border-white/10 text-neutral-600 text-xs font-black">
+                                    Cargar métricas
+                                </button>
+                            )}
+                            {promptMetrics.slice(0, 8).map(m => (
+                                <div key={m._id} className="flex items-center gap-3 px-3 py-2 rounded-xl border border-white/5 bg-white/[0.01]">
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[9px] text-neutral-500 truncate">{m.promptPreview}</p>
+                                    </div>
+                                    <div className="shrink-0 text-right">
+                                        <span className={`text-sm font-black ${m.successRate >= 80 ? "text-emerald-400" : m.successRate >= 60 ? "text-amber-400" : "text-rose-400"}`}>{m.successRate}%</span>
+                                        <p className="text-[8px] text-neutral-600">{m.successes}/{m.attempts}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </section>
 
         </div>
         );
@@ -9406,6 +10063,39 @@ export function KdpFactoryApp() {
                                                             {isSavingPublish ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
                                                             Guardar y marcar publicado
                                                         </button>
+                                                        {/* Publish platform CTAs */}
+                                                        <div className="grid grid-cols-2 gap-2 pt-1">
+                                                            {(() => {
+                                                                const kStatus = kdpPublishStatus[niche._id] ?? "idle";
+                                                                const isRunning = ["queued", "login", "uploading-pdf"].includes(kStatus);
+                                                                const hasPdf = !!niche.bookPdfUrl;
+                                                                const hasListing = !!(niche.listings?.[0]?.title);
+                                                                const statusLabel: Record<string, string> = { queued: "En cola…", login: "KDP login…", "uploading-pdf": "Subiendo…", done: "✓ En KDP", error: "Reintentar KDP" };
+                                                                return (
+                                                                    <button onClick={() => void triggerKdpPublish(niche._id)} disabled={isRunning || !hasPdf || !hasListing}
+                                                                        title={!hasPdf ? "Falta PDF" : !hasListing ? "Falta listing SEO" : undefined}
+                                                                        className={`h-8 rounded-lg border text-sm font-black flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 ${kStatus === "done" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : kStatus === "error" ? "border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/15" : "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/15"}`}>
+                                                                        {isRunning ? <Loader2 size={10} className="animate-spin" /> : <Upload size={10} />}
+                                                                        {isRunning ? (statusLabel[kStatus] ?? "…") : kStatus === "done" ? statusLabel.done : "Amazon KDP"}
+                                                                    </button>
+                                                                );
+                                                            })()}
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (niche.bookPdfUrl) {
+                                                                        const link = document.createElement("a");
+                                                                        link.href = niche.bookPdfUrl;
+                                                                        link.download = `${niche.name.replace(/\s+/g, "-").toLowerCase()}.pdf`;
+                                                                        link.target = "_blank";
+                                                                        link.click();
+                                                                    }
+                                                                    window.open("https://gelato.com/dashboard", "_blank");
+                                                                }}
+                                                                disabled={!niche.bookPdfUrl}
+                                                                className="h-8 rounded-lg border border-orange-500/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/15 text-sm font-black flex items-center justify-center gap-1.5 transition-all disabled:opacity-40">
+                                                                <ExternalLink size={10} /> Gelato
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 )}
 
@@ -12679,6 +13369,36 @@ export function KdpFactoryApp() {
                                 )}
                                 {nicheDetailTab === "book" && (
                                     <div className="space-y-4">
+                                        {/* Cover candidates (feature 8) */}
+                                        {(detailNiche.coverCandidates?.length ?? 0) > 0 && (
+                                            <div className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/[0.03] p-4 space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-sm font-black text-fuchsia-300">Variantes de portada ({detailNiche.coverCandidates!.length})</p>
+                                                    <p className="text-[10px] text-neutral-500">Selecciona la portada principal</p>
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {detailNiche.coverCandidates!.map((url, idx) => {
+                                                        const isActive = detailNiche.coverUrl === url;
+                                                        return (
+                                                            <div key={idx} className={`relative rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${isActive ? "border-fuchsia-500 shadow-[0_0_12px_rgba(217,70,239,0.3)]" : "border-transparent hover:border-white/20"}`}
+                                                                onClick={async () => {
+                                                                    await fetch(`${API_BASE_URL}/niches/${detailNiche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ coverUrl: url }) });
+                                                                    void fetchNiches();
+                                                                    toast.success(`Variante ${idx + 1} seleccionada`);
+                                                                }}>
+                                                                <img src={url} alt={`Variante ${idx + 1}`} className="w-full object-cover" style={{ aspectRatio: "3/4" }} />
+                                                                {isActive && (
+                                                                    <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-fuchsia-500 flex items-center justify-center">
+                                                                        <Check size={10} className="text-white" />
+                                                                    </div>
+                                                                )}
+                                                                <div className="absolute bottom-0 inset-x-0 bg-black/50 text-center text-[9px] font-black text-white/70 py-0.5">{idx + 1}</div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
                                         {detailNiche.generatedPrompt && (
                                             <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-1.5">
                                                 <div className="flex items-center justify-between">
@@ -12773,6 +13493,65 @@ export function KdpFactoryApp() {
                                                 className="h-9 px-5 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sm font-black text-sky-300 hover:bg-sky-500/25 transition-all flex items-center gap-2 disabled:opacity-40">
                                                 {isSavingPublish ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} Guardar publicación
                                             </button>
+                                        </div>
+
+                                        {/* Publish CTAs */}
+                                        <div className="space-y-3 pt-4 border-t border-white/6">
+                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Subir a plataforma</p>
+                                            {/* KDP CTA */}
+                                            {(() => {
+                                                const kStatus = kdpPublishStatus[detailNiche._id] ?? "idle";
+                                                const kErr = kdpPublishError[detailNiche._id];
+                                                const hasPdf = !!detailNiche.bookPdfUrl;
+                                                const hasListing = !!(detailNiche.listings?.[0]?.title);
+                                                const isRunning = ["queued", "login", "uploading-pdf"].includes(kStatus);
+                                                const statusLabel: Record<string, string> = {
+                                                    queued: "En cola…",
+                                                    login: "Iniciando sesión en KDP…",
+                                                    "uploading-pdf": "Subiendo PDF…",
+                                                    "setting-price": "Configurando precio…",
+                                                    done: "✓ Borrador guardado en KDP",
+                                                    error: "Error — reintentar",
+                                                };
+                                                return (
+                                                    <div className="space-y-1.5">
+                                                        <button
+                                                            onClick={() => void triggerKdpPublish(detailNiche._id)}
+                                                            disabled={isRunning || !hasPdf || !hasListing}
+                                                            className={`w-full h-10 px-4 rounded-xl border text-sm font-black flex items-center justify-center gap-2 transition-all disabled:opacity-40 ${kStatus === "done" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : kStatus === "error" ? "border-rose-500/40 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20" : "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"}`}>
+                                                            {isRunning ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                                                            {isRunning ? (statusLabel[kStatus] ?? "Procesando…") : kStatus === "done" ? statusLabel.done : "Subir a Amazon KDP"}
+                                                        </button>
+                                                        {kErr && <p className="text-xs text-rose-400 px-1">{kErr}</p>}
+                                                        {!hasPdf && <p className="text-xs text-neutral-600 px-1">Falta el PDF del libro</p>}
+                                                        {hasPdf && !hasListing && <p className="text-xs text-neutral-600 px-1">Falta el listing SEO</p>}
+                                                    </div>
+                                                );
+                                            })()}
+                                            {/* Gelato CTA */}
+                                            {(() => {
+                                                const hasPdf = !!detailNiche.bookPdfUrl;
+                                                return (
+                                                    <div className="space-y-1.5">
+                                                        <button
+                                                            onClick={() => {
+                                                                if (hasPdf) {
+                                                                    const link = document.createElement("a");
+                                                                    link.href = detailNiche.bookPdfUrl!;
+                                                                    link.download = `${detailNiche.name.replace(/\s+/g, "-").toLowerCase()}.pdf`;
+                                                                    link.target = "_blank";
+                                                                    link.click();
+                                                                }
+                                                                window.open("https://gelato.com/dashboard", "_blank");
+                                                            }}
+                                                            disabled={!hasPdf}
+                                                            className="w-full h-10 px-4 rounded-xl border border-orange-500/40 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 text-sm font-black flex items-center justify-center gap-2 transition-all disabled:opacity-40">
+                                                            <ExternalLink size={12} /> {hasPdf ? "Descargar PDF + Abrir Gelato" : "Subir a Gelato"}
+                                                        </button>
+                                                        {!hasPdf && <p className="text-xs text-neutral-600 px-1">Falta el PDF del libro</p>}
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
 
                                         {/* Royalties */}

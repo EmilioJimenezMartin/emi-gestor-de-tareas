@@ -7,7 +7,7 @@ import type { Agenda } from "agenda";
 import { loadEnv } from "./lib/env.js";
 import { getMongoStatus, startMongo } from "./lib/mongo.js";
 import { initAgenda, startAgenda } from "./lib/agenda.js";
-import { scheduleWatchdog, scheduleRadarRules } from "./jobs/index.js";
+import { scheduleWatchdog, scheduleRadarRules, scheduleAlerts } from "./jobs/index.js";
 import { registerSocket } from "./lib/socket.js";
 import { registerItemRoutes } from "./routes/items.js";
 import { registerTaskRoutes } from "./routes/tasks.js";
@@ -29,6 +29,8 @@ import { registerIntegrationRoutes } from "./routes/integrations.js";
 import { registerPatternRoutes } from "./routes/patterns.js";
 import { registerDatasetRoutes } from "./routes/datasets.js";
 import { registerAutoPilotRoutes } from "./routes/autopilot.js";
+import { registerKdpSalesRoutes } from "./routes/kdp-sales.js";
+import { registerPipelineRoutes } from "./routes/pipeline.js";
 import { startTelegramPolling } from "./lib/telegram-polling.js";
 import { Settings } from "./models/settings.js";
 
@@ -67,6 +69,8 @@ await registerIntegrationRoutes(app);
 await registerPatternRoutes(app);
 await registerDatasetRoutes(app);
 await registerAutoPilotRoutes(app, deps);
+await registerKdpSalesRoutes(app);
+await registerPipelineRoutes(app);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {
@@ -256,6 +260,7 @@ const startAgendaOnce = async () => {
     app.log.info("Agenda started.");
     scheduleWatchdog(agenda).catch(e => app.log.error(e, "Failed to schedule catalog watchdog"));
     scheduleRadarRules(agenda).catch(e => app.log.error(e, "Failed to schedule radar rules"));
+    scheduleAlerts(agenda).catch(e => app.log.error(e, "Failed to schedule pipeline alerts"));
   } catch (e) {
     app.log.error(e, "Agenda failed to start");
   }

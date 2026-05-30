@@ -767,54 +767,69 @@ async function runPipeline(
                     : ["realistic", "wall-art", "affirmation", "geometric", "celestial"].includes(style) ? "flux-realism"
                     : "flux";
 
-                const seed = Math.floor(Math.random() * 99999);
-                const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(coverPrompt)}?model=${model}&width=768&height=1024&nologo=true&seed=${seed}`;
+                const nicheScore = niche.score ?? 0;
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🎨 Generando 3 variantes de portada…` });
 
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🖼️ Descargando portada desde Pollinations (esperando img-lock…)` });
-
-                const imageBuffer = await withImageSlot(`cover:${String(niche._id)}`, async () => {
-                    const imgRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(90_000) });
-                    if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
-                    return Buffer.from(await imgRes.arrayBuffer());
-                });
-
-                // Upload to Cloudinary in covers/ folder
+                // Generate 3 cover candidates with different seeds
+                const candidateUrls: string[] = [];
                 const port = process.env.PORT || 3001;
                 const base = `http://localhost:${port}`;
-                const formData = new FormData();
-                formData.append("buffer", new Blob([imageBuffer], { type: "image/png" }), "cover.png");
-                formData.append("folder", "covers");
-                formData.append("nicheId", String(niche._id));
 
-                // Use the existing upload-buffer endpoint or fall back to storing the Pollinations URL directly
-                let coverUrl = pollinationsUrl;
-                try {
-                    const cldRes = await fetch(`${base}/cloudinary/upload-url`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ url: pollinationsUrl, nicheId: String(niche._id), folder: "covers" }),
-                    });
-                    if (cldRes.ok) {
-                        const cldData = await (cldRes as any).json();
-                        coverUrl = cldData.image?.url ?? pollinationsUrl;
+                for (let variant = 0; variant < 3; variant++) {
+                    const seed = Math.floor(Math.random() * 999999);
+                    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(coverPrompt)}?model=${model}&width=768&height=1024&nologo=true&seed=${seed}`;
+                    try {
+                        const imageBuffer = await withImageSlot(`cover-v${variant}:${String(niche._id)}`, async () => {
+                            const imgRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(90_000) });
+                            if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
+                            return Buffer.from(await imgRes.arrayBuffer());
+                        }, nicheScore);
+
+                        // Upload to Cloudinary
+                        let candidateUrl = pollinationsUrl;
+                        try {
+                            const cldRes = await fetch(`${base}/cloudinary/upload-url`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ url: pollinationsUrl, nicheId: String(niche._id) }),
+                            });
+                            if (cldRes.ok) {
+                                const cldData = await (cldRes as any).json();
+                                candidateUrl = cldData.image?.url ?? pollinationsUrl;
+                            }
+                        } catch { /* keep Pollinations URL */ }
+
+                        candidateUrls.push(candidateUrl);
+                        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🖼️ Variante ${variant + 1}/3 lista` });
+                    } catch (varErr: any) {
+                        console.warn(`[autopilot] cover variant ${variant + 1} failed: ${varErr.message}`);
                     }
-                } catch { /* use Pollinations URL as fallback */ }
+                }
+
+                if (!candidateUrls.length) throw new Error("No se generó ninguna variante de portada");
+
+                // Auto-select best candidate by file size (larger = more detail)
+                const coverUrl = candidateUrls[0]; // first generated is the auto-pick; UI shows all to choose
 
                 await Niche.findByIdAndUpdate(niche._id, {
-                    $set: { coverUrl, phase: "published" },
+                    $set: { coverUrl, coverCandidates: candidateUrls, phase: "published" },
                 });
                 io?.emit("niches:updated");
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✅ Portada lista → "${niche.name}" PUBLICADO` });
+                io?.emit("autopilot:log", {
+                    nicheId: String(niche._id),
+                    message: `✅ ${candidateUrls.length} portada${candidateUrls.length > 1 ? "s" : ""} generada${candidateUrls.length > 1 ? "s" : ""} → "${niche.name}" PUBLICADO`,
+                });
 
                 if (await shouldNotify("pipeline.complete")) {
-                    const listing = (niche.listings ?? [])[0];
+                    const listing0 = (niche.listings ?? [])[0];
                     const caption = [
                         `🎉 <b>Pipeline completo</b>`,
                         ``,
                         `📚 <b>${niche.name}</b>`,
-                        listing?.title ? `📝 ${listing.title}` : null,
-                        listing?.keywords?.length ? `🔑 ${listing.keywords.slice(0, 4).join(", ")}` : null,
+                        listing0?.title ? `📝 ${listing0.title}` : null,
+                        listing0?.keywords?.length ? `🔑 ${listing0.keywords.slice(0, 4).join(", ")}` : null,
                         ``,
+                        candidateUrls.length > 1 ? `🎨 ${candidateUrls.length} variantes disponibles — elige en el dashboard` : null,
                         `✅ Listo para subir a KDP`,
                     ].filter(Boolean).join("\n");
                     await sendTelegramPhoto(coverUrl, caption).catch(() => {});

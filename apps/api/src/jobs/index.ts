@@ -6,7 +6,8 @@ import { defineAutoPilotJob, AUTOPILOT_JOB_NAME } from "./autopilot.js";
 import { defineCatalogWatchdog, scheduleWatchdog } from "./catalog-watchdog.js";
 import { defineRadarScheduleJob, RADAR_SCHEDULE_JOB_NAME } from "./radar-schedule.js";
 import { defineKdpPublisherJob, KDP_PUBLISHER_JOB_NAME } from "./kdp-publisher.js";
-export { AUTOPILOT_JOB_NAME, KDP_PUBLISHER_JOB_NAME };
+import { defineAlertsJob, scheduleAlerts, ALERTS_JOB_NAME } from "./alerts.js";
+export { AUTOPILOT_JOB_NAME, KDP_PUBLISHER_JOB_NAME, ALERTS_JOB_NAME };
 
 export function defineJobs(agenda: Agenda, io?: any) {
     agenda.define("dummy-task", async (job: Job) => {
@@ -31,6 +32,7 @@ export function defineJobs(agenda: Agenda, io?: any) {
         defineCatalogWatchdog(agenda, io);
         defineRadarScheduleJob(agenda, io);
         defineKdpPublisherJob(agenda, io);
+        defineAlertsJob(agenda, io);
     }
 }
 
@@ -39,4 +41,4 @@ export async function scheduleRadarRules(agenda: Agenda): Promise<void> {
     await agenda.every("0 * * * *", RADAR_SCHEDULE_JOB_NAME);
 }
 
-export { scheduleWatchdog };
+export { scheduleWatchdog, scheduleAlerts };
