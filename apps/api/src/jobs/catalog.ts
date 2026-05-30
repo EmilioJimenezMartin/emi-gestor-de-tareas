@@ -7,9 +7,9 @@ import { sendTelegram, shouldNotify } from "../lib/telegram.js";
 import sharp from "sharp";
 
 const JOB_NAME = "generate-catalog-image";
-const LOCK_LIFETIME_MS = 12 * 60 * 1000; // 12 min per job execution
-const AXIOS_TIMEOUT_MS = 120_000; // 2 min — per-request axios timeout
-const HARD_ABORT_MS = 8 * 60 * 1000; // 8 min — auto-skip if image hangs this long
+const LOCK_LIFETIME_MS = 8 * 60 * 1000;  // 8 min per job execution
+const AXIOS_TIMEOUT_MS = 120_000;          // 2 min — per-request axios timeout
+const HARD_ABORT_MS = 5 * 60 * 1000;      // 5 min — auto-skip if image hangs this long
 
 type QualityResult = { ok: boolean; score: number; reason?: string };
 
@@ -257,7 +257,8 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 const seed = Math.floor(Math.random() * 999999);
                 const modelParam = catalog.aiModel.modelId?.trim() || "flux";
                 const negParam = finalNegativePrompt ? `&negative=${encodeURIComponent(finalNegativePrompt)}` : "";
-                const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=${catalog.width}&height=${catalog.height}&seed=${seed}&model=${encodeURIComponent(modelParam)}&nologo=true&enhance=false${negParam}`;
+                const enhance = productType === "coloring-book" ? "false" : "true";
+                const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=${catalog.width}&height=${catalog.height}&seed=${seed}&model=${encodeURIComponent(modelParam)}&nologo=true&enhance=${enhance}${negParam}`;
                 console.log(`${tag} Calling Pollinations model=${modelParam}`);
                 const abortCtrl = new AbortController();
                 const hardTimeout = setTimeout(() => abortCtrl.abort(), HARD_ABORT_MS);
@@ -475,10 +476,10 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 });
                 void checkAutoPilotContinue(tag, catalogId, freshCatalog.nicheIds ?? [], agenda, io);
             } else {
-                // Wait 2 minutes before trying the next image slot
-                console.log(`${tag} Scheduling next slot in 2 minutes`);
+                // Short wait before next slot so stuck images don't block the catalog
+                console.log(`${tag} Scheduling next slot in 30 seconds`);
                 try {
-                    await agenda.schedule("in 2 minutes", JOB_NAME, { catalogId });
+                    await agenda.schedule("in 30 seconds", JOB_NAME, { catalogId });
                 } catch (schedErr: any) {
                     const msg = `Error al programar siguiente slot: ${schedErr?.message ?? schedErr}`;
                     console.error(`${tag} ${msg}`);

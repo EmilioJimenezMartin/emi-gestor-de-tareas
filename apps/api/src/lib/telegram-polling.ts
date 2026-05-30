@@ -1,23 +1,28 @@
-import { getUpdates, answerCallbackQuery, editTelegramMessage, sendTelegram, pinTelegramMessage } from "./telegram.js";
+import { getUpdates, answerCallbackQuery, editTelegramMessage, sendTelegram, pinTelegramMessage, sendTelegramImageBinary } from "./telegram.js";
 import { TelegramAction } from "../models/telegram-action.js";
 import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
+import { activateNextQueued } from "./catalog-queue.js";
 
 // ── Command registry — add entries here to auto-include them in /ayuda ────────
 // Use &lt; &gt; instead of < > to avoid Telegram HTML parse errors
 const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { section: "📚 Nichos" },
-    { cmd: "/crear <code>nombre</code>",   desc: "Crea nicho. Prefijos: <code>printable</code>, <code>patron</code>, <code>libro de colorear</code>" },
+    { cmd: "/crear <code>nombre</code>",   desc: "Crea nicho. Prefijos: <code>printable</code> · <code>patron</code> · <code>ilustracion</code> · <code>foto</code> · <code>libro de colorear</code>" },
+    { cmd: "/img <code>prompt</code>",    desc: "Genera imagen de prueba. Prefijos: <code>anime</code> · <code>realista</code>. Ej: /img anime A fox in a forest" },
     { cmd: "/nichos",                      desc: "Lista nichos activos con ID corto" },
     { cmd: "/nicho <code>id</code>",       desc: "Detalle de un nicho por ID" },
     { cmd: "/pdf <code>id</code>",         desc: "Abre el PDF de un nicho en la app" },
     { section: "🖼️ Catálogos" },
     { cmd: "/catalogo",                    desc: "Lista catálogos recientes con ID corto" },
     { cmd: "/catalogo <code>id</code>",    desc: "Detalle de un catálogo por ID" },
+    { cmd: "/cat <code>id</code> [imgs] [prompt]",  desc: "Crea catálogo para un nicho. Ej: /cat a3b2 8 A dragon with thick outlines" },
+    { cmd: "/retry <code>id</code>",       desc: "Reintenta catálogos fallidos de un nicho" },
     { section: "⚙️ Pipeline" },
     { cmd: "/estado",                      desc: "Lista rápida: nicho + ID + fase actual" },
     { cmd: "/pipeline",                    desc: "Estado detallado con progreso de imágenes" },
     { cmd: "/run",                         desc: "Lanza Auto-Pilot ahora" },
+    { cmd: "/avanzar <code>id</code> [fase]", desc: "Avanza nicho a siguiente fase o a fase concreta. Fases: catalog libro seo cover published" },
     { cmd: "/parar",                       desc: "Detiene todo el pipeline" },
     { cmd: "/parar <code>id</code>",       desc: "Detiene solo ese nicho" },
     { cmd: "/cola",                        desc: "Cola de generación de catálogos" },
@@ -96,8 +101,9 @@ async function handleNicheDiscovery(
                 const styleCategory = n?.styleCategory ?? "generic";
                 const modelIds: Record<string, string> = {
                     anime: "flux-anime", realistic: "flux-realism",
-                    "wall-art": "flux-realism", affirmation: "flux-realism",
-                    geometric: "flux-realism", celestial: "flux-realism",
+                    illustration: "flux-realism", "wall-art": "flux-realism",
+                    affirmation: "flux-realism", geometric: "flux-realism",
+                    celestial: "flux-realism",
                 };
                 const modelId = modelIds[styleCategory] ?? "flux";
                 const aiModel = { id: `pollinations-${modelId}`, name: "FLUX (Pollinations)", provider: "Pollinations", modelId };
@@ -337,6 +343,23 @@ async function processUpdate(update: any): Promise<void> {
                 productType = "coloring-book";
                 styleCategory = "generic";
                 nicheName = rawArg.slice("libro de colorear ".length).trim();
+            } else if (argLower.startsWith("ilustracion 8k ") || argLower.startsWith("ilustración 8k ")) {
+                productType = "printable-poster";
+                styleCategory = "illustration";
+                const prefixLen = argLower.startsWith("ilustracion 8k ") ? "ilustracion 8k ".length : "ilustración 8k ".length;
+                nicheName = rawArg.slice(prefixLen).trim();
+            } else if (argLower.startsWith("ilustracion ") || argLower.startsWith("ilustración ")) {
+                productType = "printable-poster";
+                styleCategory = "illustration";
+                nicheName = rawArg.slice(argLower.startsWith("ilustracion ") ? "ilustracion ".length : "ilustración ".length).trim();
+            } else if (argLower.startsWith("foto ") || argLower.startsWith("fotografía ") || argLower.startsWith("fotografia ")) {
+                productType = "printable-poster";
+                styleCategory = "realistic";
+                nicheName = rawArg.slice(rawArg.indexOf(" ") + 1).trim();
+            } else if (argLower.startsWith("anime ")) {
+                productType = "coloring-book";
+                styleCategory = "anime";
+                nicheName = rawArg.slice("anime ".length).trim();
             }
             if (!nicheName) {
                 await sendTelegram("❌ Indica el nombre del nicho después del prefijo");
@@ -352,7 +375,12 @@ async function processUpdate(update: any): Promise<void> {
                 });
                 _io?.emit("niches:updated");
                 _io?.emit("telegram:notification", { message: `📚 Nuevo nicho creado desde Telegram · ${nicheName}`, type: "info" });
-                const typeTag = productType === "printable-poster" ? "🖼️ Póster imprimible" : productType === "seamless-pattern" ? "🔁 Patrón continuo" : "📚 Libro de colorear";
+                const typeTag = productType === "seamless-pattern" ? "🔁 Patrón continuo"
+                    : productType === "printable-poster" && styleCategory === "illustration" ? "🎨 Ilustración"
+                    : productType === "printable-poster" && styleCategory === "realistic" ? "📷 Fotografía / Realista"
+                    : productType === "printable-poster" ? "🖼️ Póster imprimible"
+                    : styleCategory === "anime" ? "✏️ Colorear · Anime"
+                    : "📚 Libro de colorear";
                 await sendTelegram(
                     `✅ <b>Nicho creado</b>\n${typeTag} · <b>${nicheName}</b>\n\n⏳ Iniciando discovery — recibirás la imagen de muestra en breve…`
                 );
@@ -366,6 +394,70 @@ async function processUpdate(update: any): Promise<void> {
             } catch (e: any) {
                 await sendTelegram(`❌ Error creando nicho: ${e.message}`);
             }
+            return;
+        }
+
+        if (text.startsWith("/img ") || text === "/img") {
+            const rawArg = normalized.slice(5).trim();
+            if (!rawArg) {
+                await sendTelegram(
+                    "❌ Uso: <code>/img prompt de la imagen</code>\n\n" +
+                    "Prefijos de modelo (opcional):\n" +
+                    "  <code>anime</code> · <code>realista</code> · <code>flux</code>\n\n" +
+                    "Ejemplos:\n" +
+                    "<code>/img A dragon breathing fire</code>\n" +
+                    "<code>/img anime A cute fox in a magical forest</code>\n" +
+                    "<code>/img realista Portrait of a woman in neon city lights</code>"
+                );
+                return;
+            }
+
+            const MODEL_ALIASES: Record<string, string> = {
+                anime: "flux-anime",
+                realista: "flux-realism",
+                realismo: "flux-realism",
+                realistic: "flux-realism",
+                flux: "flux",
+                turbo: "turbo",
+            };
+
+            const parts = rawArg.split(/\s+/);
+            let model = "flux-realism";
+            let prompt = rawArg;
+            const firstWord = parts[0].toLowerCase();
+            if (MODEL_ALIASES[firstWord]) {
+                model = MODEL_ALIASES[firstWord];
+                prompt = parts.slice(1).join(" ").trim();
+                if (!prompt) {
+                    await sendTelegram(`❌ Indica el prompt después del modelo: <code>/img ${firstWord} descripción aquí</code>`);
+                    return;
+                }
+            }
+
+            const seed = Math.floor(Math.random() * 99999);
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${model}&width=1024&height=1024&nologo=true&seed=${seed}&enhance=true`;
+
+            await sendTelegram(`🎨 <b>Generando imagen...</b>\n<code>${prompt.slice(0, 100)}${prompt.length > 100 ? "…" : ""}</code>\n<i>modelo: ${model}</i>`);
+
+            setImmediate(async () => {
+                try {
+                    const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(90_000) });
+                    if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
+                    const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+                    const msgId = await sendTelegramImageBinary(
+                        imgBuffer,
+                        `🖼️ <b>${prompt.slice(0, 100)}${prompt.length > 100 ? "…" : ""}</b>\n<i>modelo: ${model}</i>`
+                    );
+
+                    if (!msgId) {
+                        await sendTelegram(`🖼️ <b>Imagen lista</b>\n<a href="${imageUrl}">Ver imagen →</a>`).catch(() => {});
+                    }
+                } catch (e: any) {
+                    console.error("[telegram-poll /img] Error:", e.message);
+                    await sendTelegram(`🖼️ <b>Imagen lista</b>\n<a href="${imageUrl}">Ver imagen →</a>\n<i>${prompt.slice(0, 80)}${prompt.length > 80 ? "…" : ""}</i>`).catch(() => {});
+                }
+            });
             return;
         }
 
@@ -521,6 +613,216 @@ async function processUpdate(update: any): Promise<void> {
                     `🖼️ ${totalImages} imágenes de ${catalogs.length} catálogo${catalogs.length > 1 ? "s" : ""}\n\n` +
                     `<i>Abre la app para continuar con el editor de PDF</i>`
                 );
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        if (text.startsWith("/cat ") || text === "/cat") {
+            // Syntax: /cat <id> [imgs] [prompt text...]
+            // Second token is imgs only if it's a number; otherwise rest is prompt
+            const rawArgs = normalized.slice(5).trim();
+            const tokens = rawArgs.split(/\s+/);
+            const idArg = tokens[0] ?? "";
+            let imgsArg: number | null = null;
+            let customPrompt: string | null = null;
+
+            if (tokens.length > 1) {
+                const second = tokens[1];
+                const secondNum = parseInt(second);
+                if (!isNaN(secondNum) && secondNum > 0) {
+                    imgsArg = secondNum;
+                    if (tokens.length > 2) customPrompt = tokens.slice(2).join(" ");
+                } else {
+                    customPrompt = tokens.slice(1).join(" ");
+                }
+            }
+
+            if (!idArg) {
+                await sendTelegram(
+                    "❌ Uso: <code>/cat &lt;id_nicho&gt; [imgs] [prompt...]</code>\n\n" +
+                    "Ejemplos:\n" +
+                    "<code>/cat a3b2c1</code> — usa prompt del nicho\n" +
+                    "<code>/cat a3b2c1 8</code> — 8 imágenes\n" +
+                    "<code>/cat a3b2c1 5 A dragon with thick black outlines</code> — prompt personalizado\n" +
+                    "<i>Usa /nichos para ver los IDs</i>"
+                );
+                return;
+            }
+
+            try {
+                const { Catalog } = await import("../models/catalog.js");
+                const allNiches = await Niche.find()
+                    .select("name styleCategory productType generatedPrompt phase status")
+                    .lean();
+                const niche = (allNiches as any[]).find(n =>
+                    String(n._id).endsWith(idArg.toLowerCase()) || String(n._id) === idArg
+                );
+
+                if (!niche) {
+                    await sendTelegram(`❌ No encontré ningún nicho con ID <code>${idArg}</code>\n<i>Usa /nichos para ver los IDs</i>`);
+                    return;
+                }
+
+                const cfg = await getAutoPilotConfig();
+                const totalImages = (imgsArg && imgsArg > 0) ? Math.min(imgsArg, 25) : cfg.imagesPerCatalog;
+
+                const modelIds: Record<string, string> = {
+                    anime: "flux-anime", realistic: "flux-realism",
+                    illustration: "flux-realism", "wall-art": "flux-realism",
+                    affirmation: "flux-realism", geometric: "flux-realism",
+                    celestial: "flux-realism",
+                };
+                const modelId = modelIds[(niche as any).styleCategory ?? "generic"] ?? "flux";
+                const aiModel = {
+                    id: `pollinations-${modelId}`,
+                    name: "FLUX (Pollinations)",
+                    provider: "Pollinations",
+                    modelId,
+                };
+
+                // Count existing catalogs to name this one
+                const existingCount = await Catalog.countDocuments({ nicheIds: String((niche as any)._id) });
+                const port = process.env.PORT || 3001;
+                const res = await fetch(`http://localhost:${port}/catalogs`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        name: `${(niche as any).name} — v${existingCount + 1}`,
+                        prompt: customPrompt || (niche as any).generatedPrompt || (niche as any).name,
+                        totalImages,
+                        aiModel,
+                        nicheIds: [String((niche as any)._id)],
+                        productType: (niche as any).productType ?? "coloring-book",
+                    }),
+                });
+
+                if (res.ok) {
+                    _io?.emit("catalogs:updated");
+                    _io?.emit("niches:updated");
+                    _io?.emit("telegram:notification", {
+                        message: `🖼️ Catálogo creado desde Telegram · ${(niche as any).name}`,
+                        type: "info",
+                    });
+                    await sendTelegram(
+                        `✅ <b>Catálogo creado</b>\n` +
+                        `📚 Nicho: <b>${(niche as any).name}</b>\n` +
+                        `🖼️ ${totalImages} imágenes · modelo <code>${modelId}</code>\n\n` +
+                        `⚙️ Encolado — se generará automáticamente`
+                    );
+                } else {
+                    const err = await res.json().catch(() => ({})) as any;
+                    await sendTelegram(`❌ Error creando catálogo: ${err.error ?? res.status}`);
+                }
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        if (text.startsWith("/retry ") || text === "/retry") {
+            const idArg = normalized.slice(7).trim();
+
+            if (!idArg) {
+                await sendTelegram("❌ Uso: <code>/retry &lt;id_nicho&gt;</code>\n<i>Usa /nichos o /pipeline para ver los IDs</i>");
+                return;
+            }
+
+            try {
+                const { Catalog } = await import("../models/catalog.js");
+                const allNiches = await Niche.find().select("name phase").lean();
+                const niche = (allNiches as any[]).find(n =>
+                    String(n._id).endsWith(idArg.toLowerCase()) || String(n._id) === idArg
+                );
+
+                if (!niche) {
+                    await sendTelegram(`❌ No encontré ningún nicho con ID <code>${idArg}</code>`);
+                    return;
+                }
+
+                const { modifiedCount } = await Catalog.updateMany(
+                    { nicheIds: String((niche as any)._id), status: "failed" },
+                    { $set: { status: "queued" }, $unset: { lastError: "" } }
+                );
+
+                if (modifiedCount === 0) {
+                    const activeCats = await Catalog.countDocuments({
+                        nicheIds: String((niche as any)._id),
+                        status: { $in: ["running", "pending", "queued"] },
+                    });
+                    await sendTelegram(
+                        activeCats > 0
+                            ? `ℹ️ <b>${(niche as any).name}</b>\n${activeCats} catálogo${activeCats !== 1 ? "s" : ""} ya en cola, no hay fallidos que reintentar`
+                            : `ℹ️ <b>${(niche as any).name}</b>\nNo hay catálogos fallidos que reintentar`
+                    );
+                    return;
+                }
+
+                _io?.emit("catalogs:updated");
+
+                // Activate queued catalogs respecting the concurrency limit
+                if (_agenda) {
+                    await activateNextQueued(_agenda, _io).catch(() => {});
+                }
+
+                await sendTelegram(
+                    `🔄 <b>Reintentando catálogos</b>\n` +
+                    `📚 <b>${(niche as any).name}</b>\n` +
+                    `📦 ${modifiedCount} catálogo${modifiedCount !== 1 ? "s" : ""} reactivado${modifiedCount !== 1 ? "s" : ""}\n\n` +
+                    `<i>La cola retoma la generación automáticamente</i>`
+                );
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        if (text.startsWith("/avanzar ") || text === "/avanzar") {
+            const parts = normalized.slice(9).trim().split(/\s+/);
+            const idArg = parts[0] ?? "";
+            const faseArg = parts[1]?.toLowerCase();
+
+            if (!idArg) {
+                await sendTelegram(
+                    "❌ Uso: <code>/avanzar &lt;id&gt; [fase]</code>\n" +
+                    "Fases válidas: <code>catalog libro seo cover published</code>\n" +
+                    "Sin fase → avanza automáticamente a la siguiente\n" +
+                    "<i>Usa /pipeline para ver los IDs</i>"
+                );
+                return;
+            }
+
+            try {
+                const allNiches = await Niche.find().select("name phase").lean();
+                const niche = (allNiches as any[]).find(n =>
+                    String(n._id).endsWith(idArg.toLowerCase()) || String(n._id) === idArg
+                );
+
+                if (!niche) {
+                    await sendTelegram(`❌ No encontré ningún nicho con ID <code>${idArg}</code>\n<i>Usa /pipeline para ver los IDs</i>`);
+                    return;
+                }
+
+                const port = process.env.PORT || 3001;
+                const res = await fetch(`http://localhost:${port}/autopilot/niche/${String((niche as any)._id)}/advance`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(faseArg ? { phase: faseArg } : {}),
+                });
+
+                if (res.ok) {
+                    const data = await res.json() as any;
+                    await sendTelegram(
+                        `⏩ <b>Nicho avanzado</b>\n` +
+                        `📚 <b>${(niche as any).name}</b>\n` +
+                        `📍 <b>${(niche as any).phase ?? "niche"}</b> → <b>${data.phase}</b>\n\n` +
+                        `<i>Auto-Pilot retomará en 3 segundos</i>`
+                    );
+                } else {
+                    const err = await res.json().catch(() => ({})) as any;
+                    await sendTelegram(`❌ Error: ${err.error ?? res.status}`);
+                }
             } catch (e: any) {
                 await sendTelegram(`❌ Error: ${e.message}`);
             }
@@ -880,8 +1182,8 @@ async function processUpdate(update: any): Promise<void> {
                 }
 
                 const nowMs = Date.now();
-                // Threshold: catalog stuck if running but not updated in 12 min
-                const STUCK_MS = 12 * 60 * 1000;
+                // Threshold: catalog stuck if running but not updated in 7 min (images abort at 5 min + 30s skip delay)
+                const STUCK_MS = 7 * 60 * 1000;
                 const lines: string[] = [`⚙️ <b>Estado del pipeline</b> (${niches.length} nicho${niches.length !== 1 ? "s" : ""})`, ``];
 
                 for (const niche of niches as any[]) {
@@ -913,7 +1215,7 @@ async function processUpdate(update: any): Promise<void> {
                             const elapsedMs = nowMs - new Date(cat.updatedAt).getTime();
                             const elapsedMin = Math.floor(elapsedMs / 60_000);
                             const isStuck = elapsedMs > STUCK_MS;
-                            const healthIcon = isStuck ? "🔴" : elapsedMs > 6 * 60_000 ? "🟡" : "🟢";
+                            const healthIcon = isStuck ? "🔴" : elapsedMs > 4 * 60_000 ? "🟡" : "🟢";
                             const stuckNote = isStuck ? ` ⚠️ sin actividad ${elapsedMin}min` : "";
                             lines.push(`  ${healthIcon} ⚙️ ${cat.name.slice(0, 28)} — ${attempted}/${cat.totalImages} intentadas${stuckNote}`);
                         }

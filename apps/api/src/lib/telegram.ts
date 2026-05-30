@@ -103,6 +103,33 @@ export async function sendTelegramPhotoDiscovery(opts: {
     }
 }
 
+// Upload raw image bytes as a photo (avoids Telegram's URL-download timeout)
+export async function sendTelegramImageBinary(
+    buffer: Buffer,
+    caption: string,
+    mimeType = "image/jpeg"
+): Promise<number | null> {
+    const cfg = await getTelegramConfig();
+    if (!cfg) return null;
+    try {
+        const formData = new FormData();
+        formData.append("chat_id", cfg.chatId);
+        formData.append("photo", new Blob([buffer], { type: mimeType }), "image.jpg");
+        formData.append("caption", caption);
+        formData.append("parse_mode", "HTML");
+        const res = await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendPhoto`, {
+            method: "POST",
+            body: formData,
+        });
+        const data = await res.json() as any;
+        if (!data.ok) console.error("[Telegram] sendImageBinary error:", data.description ?? data);
+        return data?.result?.message_id ?? null;
+    } catch (e) {
+        console.error("[Telegram] sendImageBinary failed:", e);
+        return null;
+    }
+}
+
 // Send a photo without inline keyboard (e.g. pipeline completion notifications)
 export async function sendTelegramPhoto(imageUrl: string, caption: string): Promise<number | null> {
     const cfg = await getTelegramConfig();

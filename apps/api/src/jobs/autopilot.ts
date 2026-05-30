@@ -20,6 +20,7 @@ function styleToAiModel(styleCategory: string) {
     const modelIds: Record<string, string> = {
         anime: "flux-anime",
         realistic: "flux-realism",
+        illustration: "flux-realism",
         "wall-art": "flux-realism",
         affirmation: "flux-realism",
         geometric: "flux-realism",
@@ -65,7 +66,13 @@ function buildSampleUrl(nicheName: string, style: string, productType: string): 
     let prompt: string;
     let model = "flux";
 
-    if (productType === "printable-poster") {
+    if (productType === "printable-poster" && style === "illustration") {
+        prompt = `${nicheName} high quality digital illustration, 8K resolution, vibrant rich colors, fine detailed artwork, professional quality, no text, clean composition`;
+        model = "flux-realism";
+    } else if (productType === "printable-poster" && style === "realistic") {
+        prompt = `${nicheName} realistic photo, ultra sharp, 8K resolution, professional photography, vibrant colors, no text`;
+        model = "flux-realism";
+    } else if (productType === "printable-poster") {
         prompt = `${nicheName} printable wall art poster, colorful illustration, clean design, no text`;
         model = "flux-realism";
     } else if (productType === "seamless-pattern") {
