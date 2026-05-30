@@ -54,6 +54,15 @@ export async function sendTelegramPhotoDiscovery(opts: {
 }): Promise<number | null> {
     const cfg = await getTelegramConfig();
     if (!cfg) return null;
+
+    const reply_markup = {
+        inline_keyboard: [[
+            { text: "🚀 Continuar", callback_data: `continuar:${opts.actionId}` },
+            { text: "⏭️ Omitir", callback_data: `omitir:${opts.actionId}` },
+            { text: "🗑️ Descartar", callback_data: `descartar:${opts.actionId}` },
+        ]],
+    };
+
     try {
         const res = await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendPhoto`, {
             method: "POST",
@@ -63,20 +72,33 @@ export async function sendTelegramPhotoDiscovery(opts: {
                 photo: opts.imageUrl,
                 caption: opts.caption,
                 parse_mode: "HTML",
-                reply_markup: {
-                    inline_keyboard: [[
-                        { text: "🚀 Continuar", callback_data: `continuar:${opts.actionId}` },
-                        { text: "⏭️ Omitir", callback_data: `omitir:${opts.actionId}` },
-                        { text: "🗑️ Descartar", callback_data: `descartar:${opts.actionId}` },
-                    ]],
-                },
+                reply_markup,
+            }),
+            signal: AbortSignal.timeout(30_000),
+        });
+        const data = await res.json() as any;
+        if (data.ok) return data.result.message_id;
+        console.error("[Telegram] sendPhoto error (fallback to text):", data.description ?? data);
+    } catch (e) {
+        console.error("[Telegram] sendPhoto failed (fallback to text):", (e as Error).message);
+    }
+
+    // Fallback: text message with the same buttons when Telegram can't download the image
+    try {
+        const res = await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                chat_id: cfg.chatId,
+                text: opts.caption,
+                parse_mode: "HTML",
+                reply_markup,
             }),
         });
         const data = await res.json() as any;
-        if (!data.ok) console.error("[Telegram] sendPhoto error:", data);
         return data?.result?.message_id ?? null;
     } catch (e) {
-        console.error("[Telegram] sendPhoto failed:", e);
+        console.error("[Telegram] sendMessage fallback failed:", e);
         return null;
     }
 }

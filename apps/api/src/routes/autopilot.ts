@@ -157,6 +157,7 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ type: aiType, niche: (niche as any).name, productType, extras: style }),
+                        signal: AbortSignal.timeout(25_000),
                     });
                     if (aiRes.ok) {
                         const aiData = await aiRes.json() as any;
