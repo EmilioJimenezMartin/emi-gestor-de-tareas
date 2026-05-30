@@ -215,7 +215,7 @@ interface NicheFE {
     notes: string;
     generatedPrompt?: string;
     catalogIds?: string[];
-    phase?: "niche" | "catalog" | "seo" | "pdf" | "cover" | "published";
+    phase?: "niche" | "catalog" | "libro" | "seo" | "pdf" | "cover" | "published";
     publishedAt?: string;
     asin?: string;
     etsyUrl?: string;
@@ -1064,8 +1064,9 @@ export function KdpFactoryApp() {
     const [showCustomCatalogModal, setShowCustomCatalogModal] = useState(false);
     const [customCatalogName, setCustomCatalogName] = useState("");
     const [isCreatingCustomCatalog, setIsCreatingCustomCatalog] = useState(false);
-    // Feature: niche sort + AI score
-    const [nicheSortBy, setNicheSortBy] = useState<"score" | "date">("score");
+    // Feature: niche sort + filter + AI score
+    const [nicheSortBy, setNicheSortBy] = useState<"score" | "date" | "name" | "images">("score");
+    const [nicheSearch, setNicheSearch] = useState("");
     const [scoringNicheId, setScoringNicheId] = useState<string | null>(null);
     // Auto-Pilot config
     const [apCatalogsPer, setApCatalogsPer] = useState("5");
@@ -1733,6 +1734,32 @@ export function KdpFactoryApp() {
             toast.error(e.message ?? "Error al lanzar Auto-Pilot");
         }
         // apRunning is cleared by the autopilot:done socket event
+    };
+
+    const stopAutoPilot = async () => {
+        try {
+            await fetch(`${API_BASE_URL}/autopilot/stop`, { method: "POST" });
+            setApRunning(false);
+            toast.success("⛔ Señal de parada enviada al pipeline");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error deteniendo pipeline");
+        }
+    };
+
+    const forceAdvanceNiche = async (nicheId: string, targetPhase?: string) => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/autopilot/niche/${nicheId}/advance`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(targetPhase ? { phase: targetPhase } : {}),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            toast.success(`Nicho avanzado a fase "${data.phase}"`);
+            void fetchNiches();
+        } catch (e: any) {
+            toast.error(e.message ?? "Error forzando avance");
+        }
     };
 
     const buildCron = (): string => {
@@ -4542,6 +4569,7 @@ export function KdpFactoryApp() {
                                         {([
                                             { phase: "niche" as const, color: "bg-sky-500" },
                                             { phase: "catalog" as const, color: "bg-blue-500" },
+                                            { phase: "libro" as const, color: "bg-indigo-500" },
                                             { phase: "seo" as const, color: "bg-violet-500" },
                                             { phase: "cover" as const, color: "bg-fuchsia-500" },
                                             { phase: "published" as const, color: "bg-emerald-500" },
@@ -5673,6 +5701,67 @@ export function KdpFactoryApp() {
                         </div>
                     </Card>
                 </div>
+
+                {/* ─ Pipeline control ─ */}
+                {(() => {
+                    const PHASE_LABELS: Partial<Record<NonNullable<NicheFE["phase"]>, string>> = {
+                        libro: "📖 Libro PDF",
+                        seo:   "📝 SEO",
+                        cover: "🎨 Portada",
+                    };
+                    const stuckNiches = niches.filter(n =>
+                        n.autoPilotEnabled &&
+                        n.status === "active" &&
+                        ["libro", "seo", "cover"].includes(n.phase ?? "")
+                    );
+                    if (!apRunning && stuckNiches.length === 0) return null;
+                    return (
+                        <Card variant="outline" className="p-5 bg-white/[0.02] border-white/[0.08] space-y-4">
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm font-black text-white">Control del Pipeline</span>
+                                    {apRunning && (
+                                        <span className="relative flex h-2 w-2">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
+                                        </span>
+                                    )}
+                                </div>
+                                {apRunning && (
+                                    <button
+                                        onClick={() => void stopAutoPilot()}
+                                        className="flex items-center gap-1.5 h-7 px-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 transition-all text-[10px] font-black uppercase tracking-widest"
+                                    >
+                                        <StopCircle size={10} />
+                                        Detener
+                                    </button>
+                                )}
+                            </div>
+                            {stuckNiches.length > 0 ? (
+                                <div className="space-y-2">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Nichos en pipeline</p>
+                                    {stuckNiches.map(n => (
+                                        <div key={n._id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-[11px] font-black text-white truncate">{n.name}</p>
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">{PHASE_LABELS[n.phase as keyof typeof PHASE_LABELS] ?? n.phase}</p>
+                                            </div>
+                                            <button
+                                                onClick={() => void forceAdvanceNiche(n._id)}
+                                                title="Forzar avance a la siguiente fase"
+                                                className="h-6 px-2 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 hover:bg-sky-500/20 transition-all text-[10px] font-black uppercase tracking-widest shrink-0"
+                                            >
+                                                Forzar ›
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-[11px] text-neutral-700">Sin nichos en fases intermedias</p>
+                            )}
+                        </Card>
+                    );
+                })()}
 
                 {/* ─ Visual pipeline overview ─ */}
                 {(() => {
@@ -7395,30 +7484,6 @@ export function KdpFactoryApp() {
                         </div>
                     )}
 
-                    {/* Search + Niche filter */}
-                    {cloudinaryImages.length > 0 && (
-                        <div className="px-2 flex gap-2">
-                            <input
-                                value={cloudSearch}
-                                onChange={e => setCloudSearch(e.target.value)}
-                                placeholder="Buscar por nombre de archivo…"
-                                className="flex-1 h-8 bg-white/5 border border-white/10 rounded-xl px-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-cyan-500/40 transition-all"
-                            />
-                            <select
-                                value={cloudNicheFilter}
-                                onChange={e => setCloudNicheFilter(e.target.value)}
-                                className="h-8 bg-white/5 border border-white/10 rounded-xl px-2 text-xs text-neutral-400 focus:outline-none focus:border-cyan-500/40 transition-all max-w-[140px]"
-                            >
-                                <option value="all">Todos los nichos</option>
-                                <option value="linked">Vinculados</option>
-                                <option value="unlinked">Sin vincular</option>
-                                {niches.filter(n => n.status !== "archived").map(n => (
-                                    <option key={n._id} value={n._id}>{n.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-
                     {cloudinaryImages.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-10 text-center space-y-3 opacity-40">
                             <Cloud size={32} className="text-neutral-600" strokeWidth={1.5} />
@@ -7428,13 +7493,7 @@ export function KdpFactoryApp() {
                         </div>
                     ) : (
                         <div className="flex gap-4 overflow-x-auto pb-4 pt-2 no-scrollbar px-2">
-                            {cloudinaryImages.filter(img => {
-                                if (cloudSearch.trim() && !img.publicId.toLowerCase().includes(cloudSearch.toLowerCase())) return false;
-                                if (cloudNicheFilter === "linked") return !!img.nicheId;
-                                if (cloudNicheFilter === "unlinked") return !img.nicheId;
-                                if (cloudNicheFilter !== "all") return img.nicheId === cloudNicheFilter;
-                                return true;
-                            }).map((img, cldIdx) => {
+                            {cloudinaryImages.map((img, cldIdx) => {
                                 const isCloudSel = selectedCloudUrls.has(img.url);
                                 const isFav = favorites.has(img.url);
                                 const linkedNiche = img.nicheId ? niches.find(n => n._id === img.nicheId) : null;
@@ -8698,17 +8757,6 @@ export function KdpFactoryApp() {
                                 className="p-2.5 rounded-xl bg-white/5 border border-white/8 text-neutral-500 hover:text-sky-400 hover:border-sky-500/30 transition-all disabled:opacity-40">
                                 {isLoadingNiches ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                             </button>
-                            {/* View toggle */}
-                            {nicheViewMode === "kanban" && (
-                                <div className="flex p-0.5 bg-white/[0.04] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest">
-                                    {(["all", "coloring-book", "printable-poster", "seamless-pattern"] as const).map(f => (
-                                        <button key={f} onClick={() => setKanbanProductFilter(f)}
-                                            className={`px-2.5 h-7 rounded-[10px] transition-all whitespace-nowrap ${kanbanProductFilter === f ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                            {f === "all" ? "Todos" : f === "coloring-book" ? "Libros" : f === "printable-poster" ? "Pósters" : "Patrones"}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
                             <div className="flex p-1 bg-white/[0.04] border border-white/8 rounded-xl gap-0.5">
                                 <button onClick={() => setNicheViewMode("list")} title="Vista lista"
                                     className={`w-8 h-7 rounded-lg flex items-center justify-center transition-all ${nicheViewMode === "list" ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
@@ -8772,25 +8820,51 @@ export function KdpFactoryApp() {
                         );
                     })()}
 
-                    {/* ── Segmented filter ── */}
-                    <div className="flex p-1.5 bg-white/[0.03] border border-white/8 rounded-2xl gap-0.5">
+                    {/* ── Search + product type + sort ── */}
+                    <div className="flex gap-2 flex-wrap">
+                        <div className="relative flex-1 min-w-[140px]">
+                            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600 pointer-events-none" />
+                            <input
+                                value={nicheSearch}
+                                onChange={e => setNicheSearch(e.target.value)}
+                                placeholder="Buscar nicho…"
+                                className="w-full h-9 bg-white/[0.04] border border-white/[0.08] rounded-xl pl-8 pr-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 focus:bg-white/[0.06] transition-all"
+                            />
+                        </div>
+                        <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest shrink-0">
+                            {(["all", "coloring-book", "printable-poster", "seamless-pattern"] as const).map(f => (
+                                <button key={f} onClick={() => setKanbanProductFilter(f)}
+                                    className={`px-2.5 h-8 rounded-[10px] transition-all whitespace-nowrap ${kanbanProductFilter === f ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                    {f === "all" ? "Todos" : f === "coloring-book" ? "📚" : f === "printable-poster" ? "🖼" : "🔁"}
+                                    <span className="hidden sm:inline ml-1">{f === "all" ? "" : f === "coloring-book" ? "Libros" : f === "printable-poster" ? "Pósters" : "Patrones"}</span>
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            onClick={() => setNicheSortBy(p => p === "score" ? "date" : p === "date" ? "name" : p === "name" ? "images" : "score")}
+                            title={`Ordenar por: ${nicheSortBy === "score" ? "Puntuación" : nicheSortBy === "date" ? "Fecha" : nicheSortBy === "name" ? "Nombre" : "Imágenes"}`}
+                            className="h-9 px-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs font-black uppercase tracking-widest text-neutral-400 hover:text-white hover:border-white/20 transition-all shrink-0 flex items-center gap-1.5 whitespace-nowrap">
+                            <span>{nicheSortBy === "score" ? "★ Score" : nicheSortBy === "date" ? "↓ Fecha" : nicheSortBy === "name" ? "A→Z" : "🖼 Imgs"}</span>
+                        </button>
+                    </div>
+
+                    {/* ── Estado segmented filter ── */}
+                    <div className="flex p-1 bg-white/[0.03] border border-white/8 rounded-2xl gap-0.5 overflow-x-auto no-scrollbar">
                         {(["all", "found", "research", "active", "archived"] as const).map(s => {
-                            const cnt = s === "all" ? niches.length : niches.filter(n => n.status === s).length;
+                            const cnt = s === "all"
+                                ? niches.filter(n => (kanbanProductFilter === "all" || (n.productType ?? "coloring-book") === kanbanProductFilter) && (!nicheSearch.trim() || n.name.toLowerCase().includes(nicheSearch.toLowerCase()))).length
+                                : niches.filter(n => n.status === s && (kanbanProductFilter === "all" || (n.productType ?? "coloring-book") === kanbanProductFilter) && (!nicheSearch.trim() || n.name.toLowerCase().includes(nicheSearch.toLowerCase()))).length;
                             const isAct = nicheStatusFilter === s;
                             const dot: Record<string, string> = { found: "bg-sky-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
                             return (
                                 <button key={s} onClick={() => setNicheStatusFilter(s)}
-                                    className={`flex-1 h-8 rounded-xl text-sm font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${isAct ? "bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                    className={`flex-1 min-w-fit h-8 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1 px-2 ${isAct ? "bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]" : "text-neutral-600 hover:text-neutral-400"}`}>
                                     {s !== "all" && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot[s]}`} />}
                                     <span className="truncate">{s === "all" ? "Todos" : STATUS_LABELS[s].label}</span>
-                                    {cnt > 0 && <span className={`text-sm tabular-nums ${isAct ? "text-white/50" : "text-neutral-700"}`}>{cnt}</span>}
+                                    {cnt > 0 && <span className={`tabular-nums ${isAct ? "text-white/50" : "text-neutral-700"}`}>{cnt}</span>}
                                 </button>
                             );
                         })}
-                        <button onClick={() => setNicheSortBy(p => p === "score" ? "date" : "score")}
-                            className="ml-1 h-8 px-3 rounded-xl bg-white/5 border border-white/8 text-sm font-black uppercase text-neutral-500 hover:text-white transition-all shrink-0">
-                            {nicheSortBy === "score" ? "★" : "↓"}
-                        </button>
                     </div>
 
                     {/* ── Loading skeletons ── */}
@@ -8803,13 +8877,14 @@ export function KdpFactoryApp() {
                     {/* ── Kanban view ── */}
                     {!isLoadingNiches && nicheViewMode === "kanban" && niches.length > 0 && (() => {
                         const PHASES: { id: NicheFE["phase"]; label: string; accent: string; headerBg: string; colBg: string; dot: string; emptyText: string; glow: string; blob: string }[] = [
-                            { id: "niche",     label: "Nicho",     accent: "text-sky-400",     headerBg: "bg-sky-500/10",     colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-sky-400",     glow: "rgba(14,165,233,0.1)",   blob: "bg-sky-500/10",     emptyText: "Añade nichos para empezar" },
-                            { id: "catalog",   label: "Catálogos", accent: "text-blue-400",    headerBg: "bg-blue-500/10",    colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-blue-400",    glow: "rgba(59,130,246,0.1)",   blob: "bg-blue-500/10",    emptyText: "Genera catálogos de imágenes" },
-                            { id: "seo",       label: "SEO",       accent: "text-violet-400",  headerBg: "bg-violet-500/10",  colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-violet-400",  glow: "rgba(139,92,246,0.1)",   blob: "bg-violet-500/10",  emptyText: "Genera el listing SEO" },
-                            { id: "cover",     label: "Portada",   accent: "text-fuchsia-400", headerBg: "bg-fuchsia-500/10", colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-fuchsia-400", glow: "rgba(217,70,239,0.1)",   blob: "bg-fuchsia-500/10", emptyText: "Diseña la portada final" },
-                            { id: "published", label: "Publicado", accent: "text-emerald-400", headerBg: "bg-emerald-500/10", colBg: "border-emerald-500/10 bg-emerald-500/[0.02]", dot: "bg-emerald-400", glow: "rgba(16,185,129,0.1)",  blob: "bg-emerald-500/10", emptyText: "Aquí aparecen los publicados" },
+                            { id: "niche",     label: "Nicho",     accent: "text-sky-400",     headerBg: "bg-sky-500/10",     colBg: "border-white/[0.06] bg-white/[0.015]",        dot: "bg-sky-400",     glow: "rgba(14,165,233,0.1)",   blob: "bg-sky-500/10",     emptyText: "Añade nichos para empezar" },
+                            { id: "catalog",   label: "Catálogos", accent: "text-blue-400",    headerBg: "bg-blue-500/10",    colBg: "border-white/[0.06] bg-white/[0.015]",        dot: "bg-blue-400",    glow: "rgba(59,130,246,0.1)",   blob: "bg-blue-500/10",    emptyText: "Genera catálogos de imágenes" },
+                            { id: "libro",     label: "Libro PDF", accent: "text-indigo-400",  headerBg: "bg-indigo-500/10",  colBg: "border-white/[0.06] bg-white/[0.015]",        dot: "bg-indigo-400",  glow: "rgba(99,102,241,0.1)",   blob: "bg-indigo-500/10",  emptyText: "Generando PDF del libro" },
+                            { id: "seo",       label: "SEO",       accent: "text-violet-400",  headerBg: "bg-violet-500/10",  colBg: "border-white/[0.06] bg-white/[0.015]",        dot: "bg-violet-400",  glow: "rgba(139,92,246,0.1)",   blob: "bg-violet-500/10",  emptyText: "Genera el listing SEO" },
+                            { id: "cover",     label: "Portada",   accent: "text-fuchsia-400", headerBg: "bg-fuchsia-500/10", colBg: "border-white/[0.06] bg-white/[0.015]",        dot: "bg-fuchsia-400", glow: "rgba(217,70,239,0.1)",   blob: "bg-fuchsia-500/10", emptyText: "Diseña la portada final" },
+                            { id: "published", label: "Publicado", accent: "text-emerald-400", headerBg: "bg-emerald-500/10", colBg: "border-emerald-500/10 bg-emerald-500/[0.02]", dot: "bg-emerald-400", glow: "rgba(16,185,129,0.1)",   blob: "bg-emerald-500/10", emptyText: "Aquí aparecen los publicados" },
                         ];
-                        const phaseOrder = ["niche", "catalog", "seo", "cover", "published"] as const;
+                        const phaseOrder = ["niche", "catalog", "libro", "seo", "cover", "published"] as const;
                         const movePhase = async (nicheId: string, direction: 1 | -1) => {
                             const niche = niches.find(n => n._id === nicheId);
                             if (!niche) return;
@@ -8824,7 +8899,7 @@ export function KdpFactoryApp() {
                         const compColor: Record<string, string> = { low: "text-emerald-400", medium: "text-amber-400", high: "text-rose-400", unknown: "text-neutral-600" };
                         const totalRevenue = (n: NicheFE) => (n.royalties ?? []).reduce((s, r) => s + r.revenue, 0);
                         return (
-                            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 items-start">
+                            <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 items-start">
                                 {PHASES.map(col => {
                                     // "pdf" is the legacy name for "seo" — show both in the seo column
                                     const colNiches = niches.filter(n => {
@@ -9005,7 +9080,7 @@ export function KdpFactoryApp() {
                     })()}
 
                     {/* ── Empty state (list mode only) ── */}
-                    {!isLoadingNiches && nicheViewMode === "list" && (nicheStatusFilter === "all" ? niches : niches.filter(n => n.status === nicheStatusFilter)).length === 0 && (
+                    {!isLoadingNiches && nicheViewMode === "list" && niches.filter(n => (nicheStatusFilter === "all" || n.status === nicheStatusFilter) && (kanbanProductFilter === "all" || (n.productType ?? "coloring-book") === kanbanProductFilter) && (!nicheSearch.trim() || n.name.toLowerCase().includes(nicheSearch.toLowerCase()))).length === 0 && (
                         <div className="flex flex-col items-center gap-4 py-16 opacity-40">
                             <div className="w-16 h-16 rounded-3xl bg-white/5 border border-white/8 flex items-center justify-center">
                                 <Target size={28} strokeWidth={1.2} className="text-neutral-600" />
@@ -9017,12 +9092,27 @@ export function KdpFactoryApp() {
                     )}
 
                     {/* ── Niche cards grid (list mode) ── */}
-                    {!isLoadingNiches && nicheViewMode === "list" && (nicheStatusFilter === "all" ? niches : niches.filter(n => n.status === nicheStatusFilter)).length > 0 && (
+                    {!isLoadingNiches && nicheViewMode === "list" && (() => {
+                        const listNiches = niches
+                            .filter(n => nicheStatusFilter === "all" || n.status === nicheStatusFilter)
+                            .filter(n => kanbanProductFilter === "all" || (n.productType ?? "coloring-book") === kanbanProductFilter)
+                            .filter(n => !nicheSearch.trim() || n.name.toLowerCase().includes(nicheSearch.toLowerCase()))
+                            .slice()
+                            .sort((a, b) => {
+                                if (nicheSortBy === "score") return nicheScore(b) - nicheScore(a);
+                                if (nicheSortBy === "date") return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
+                                if (nicheSortBy === "name") return a.name.localeCompare(b.name, "es");
+                                if (nicheSortBy === "images") {
+                                    const ai = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).reduce((s, c) => s + c.images.length, 0);
+                                    const bi = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).reduce((s, c) => s + c.images.length, 0);
+                                    return bi - ai;
+                                }
+                                return 0;
+                            });
+                        if (listNiches.length === 0) return null;
+                        return (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            {(nicheStatusFilter === "all" ? niches : niches.filter(n => n.status === nicheStatusFilter))
-                                .slice()
-                                .sort((a, b) => nicheSortBy === "score" ? nicheScore(b) - nicheScore(a) : 0)
-                                .map(niche => {
+                            {listNiches.map(niche => {
                                     const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
                                     const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
                                     const statusDotMap: Record<NicheStatus, string> = { found: "bg-sky-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
@@ -9038,17 +9128,26 @@ export function KdpFactoryApp() {
 
                                                 {/* ─ Card header ─ */}
                                                 <div className="flex items-start gap-3">
-                                                    {/* Thumbnail */}
-                                                    {(niche.coverUrl || niche.sampleImageUrl) && (
-                                                        <div className="shrink-0 w-14 h-14 rounded-xl overflow-hidden border border-white/10 bg-white/5">
-                                                            <img
-                                                                src={niche.coverUrl || niche.sampleImageUrl}
-                                                                alt={niche.name}
-                                                                className="w-full h-full object-cover"
-                                                                loading="lazy"
-                                                            />
-                                                        </div>
-                                                    )}
+                                                    {/* Thumbnail — cover > sample > first catalog image */}
+                                                    {(() => {
+                                                        const thumb = niche.coverUrl || niche.sampleImageUrl ||
+                                                            linkedCats.find(c => c.images.length > 0)?.images[0]?.url;
+                                                        return thumb ? (
+                                                            <div className="shrink-0 w-14 h-14 rounded-xl overflow-hidden border border-white/10 bg-white/5 relative">
+                                                                <img
+                                                                    src={thumb}
+                                                                    alt={niche.name}
+                                                                    className="w-full h-full object-cover"
+                                                                    loading="lazy"
+                                                                />
+                                                                {!niche.coverUrl && !niche.sampleImageUrl && (
+                                                                    <div className="absolute bottom-0 right-0 w-4 h-4 bg-black/60 rounded-tl-lg flex items-center justify-center">
+                                                                        <span className="text-[7px] text-neutral-400">🖼</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ) : null;
+                                                    })()}
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 flex-wrap">
                                                             <p className="text-xl sm:text-2xl font-black text-white leading-tight tracking-tight">{niche.name}</p>
@@ -9160,12 +9259,13 @@ export function KdpFactoryApp() {
                                                     const PHASE_META: Record<NonNullable<NicheFE["phase"]>, { label: string; dot: string; active: string }> = {
                                                         niche:     { label: "Nicho",     dot: "bg-sky-400",      active: "border-sky-500/40 bg-sky-500/10 text-sky-300" },
                                                         catalog:   { label: "Catálogos", dot: "bg-blue-400",     active: "border-blue-500/40 bg-blue-500/10 text-blue-300" },
+                                                        libro:     { label: "Libro PDF", dot: "bg-indigo-400",   active: "border-indigo-500/40 bg-indigo-500/10 text-indigo-300" },
                                                         seo:       { label: "SEO",       dot: "bg-violet-400",   active: "border-violet-500/40 bg-violet-500/10 text-violet-300" },
                                                         pdf:       { label: "SEO",       dot: "bg-violet-400",   active: "border-violet-500/40 bg-violet-500/10 text-violet-300" },
                                                         cover:     { label: "Portada",   dot: "bg-fuchsia-400",  active: "border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-300" },
                                                         published: { label: "Publicado", dot: "bg-emerald-400",  active: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" },
                                                     };
-                                                    const phases = ["niche", "catalog", "seo", "cover", "published"] as NonNullable<NicheFE["phase"]>[];
+                                                    const phases = ["niche", "catalog", "libro", "seo", "cover", "published"] as NonNullable<NicheFE["phase"]>[];
                                                     return (
                                                         <div className="flex items-center gap-1 pt-2 border-t border-white/[0.04] flex-wrap">
                                                             {phases.map((p, i) => {
@@ -9427,7 +9527,8 @@ export function KdpFactoryApp() {
                                     );
                                 })}
                         </div>
-                    )}
+                        );
+                    })()}
 
                 </div>
             </div>

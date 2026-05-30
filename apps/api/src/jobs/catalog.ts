@@ -96,25 +96,51 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
     }
 }
 
-async function checkAutoPilotContinue(tag: string, catalogId: string, nicheIds: string[], agenda: Agenda): Promise<void> {
+async function checkAutoPilotContinue(tag: string, catalogId: string, nicheIds: string[], agenda: Agenda, io: any): Promise<void> {
     if (!nicheIds.length) return;
     try {
         const { Niche } = await import("../models/niche.js");
         for (const nicheId of nicheIds) {
             const niche = await Niche.findById(nicheId).lean();
             if (!(niche as any)?.autoPilotEnabled) continue;
-            // Only continue autopilot if niche is in "catalog" phase (waiting for catalogs to finish)
             if ((niche as any).phase !== "catalog") continue;
             const allCats = await Catalog.find({ nicheIds: nicheId }).lean();
             if (!allCats.length) continue;
             const allDone = allCats.every(
                 (c: any) => c.status === "completed" || c.status === "cancelled" || c.status === "failed"
             );
-            if (allDone) {
-                console.log(`${tag} All catalogs done for niche ${nicheId} — auto-triggering autopilot-run`);
-                await agenda.now("autopilot-run", {});
-                break;
+            if (!allDone) continue;
+
+            // Collect all images across catalogs and shuffle (random book order)
+            const allImages: string[] = [];
+            for (const cat of allCats) {
+                for (const img of (cat as any).images ?? []) {
+                    if (img.url) allImages.push(img.url as string);
+                }
             }
+            for (let i = allImages.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [allImages[i], allImages[j]] = [allImages[j], allImages[i]];
+            }
+
+            // Directly advance phase — don't depend on autopilot-run executing for this transition
+            await Niche.findByIdAndUpdate(nicheId, {
+                $set: { phase: "libro", catalogImageOrder: allImages },
+            });
+            io?.emit("niches:updated");
+            io?.emit("autopilot:log", {
+                nicheId,
+                message: `✅ ${allImages.length} imágenes en orden aleatorio → generando libro PDF`,
+            });
+            console.log(`${tag} All catalogs done for niche ${nicheId} — advanced to libro, ${allImages.length} images shuffled`);
+
+            // Schedule autopilot-run to handle SEO + cover (persisted in MongoDB, survives restarts)
+            try {
+                await agenda.schedule("in 5 seconds", "autopilot-run", {});
+            } catch (schedErr) {
+                console.error(`${tag} Failed to schedule follow-up autopilot-run:`, schedErr);
+            }
+            break;
         }
     } catch (e) {
         console.error(`${tag} checkAutoPilotContinue failed:`, e);
@@ -364,7 +390,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 shouldNotify("catalog.ready").then(ok => {
                     if (ok) sendTelegram(`🖼️ <b>Catálogo listo</b>\n"${freshCatalog.name}" — ${freshCatalog.images.length} imágenes generadas`).catch(() => {});
                 });
-                void checkAutoPilotContinue(tag, catalogId, freshCatalog.nicheIds ?? [], agenda);
+                void checkAutoPilotContinue(tag, catalogId, freshCatalog.nicheIds ?? [], agenda, io);
             } else {
                 console.log(`${tag} Scheduling next image in 90s`);
                 try {
@@ -426,7 +452,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 shouldNotify("catalog.ready").then(ok => {
                     if (ok) sendTelegram(`🖼️ <b>Catálogo listo</b>\n"${freshCatalog.name}" — ${freshCatalog.images.length} imágenes (${freshCatalog.skippedImages ?? 0} omitidas)`).catch(() => {});
                 });
-                void checkAutoPilotContinue(tag, catalogId, freshCatalog.nicheIds ?? [], agenda);
+                void checkAutoPilotContinue(tag, catalogId, freshCatalog.nicheIds ?? [], agenda, io);
             } else {
                 // Wait 2 minutes before trying the next image slot
                 console.log(`${tag} Scheduling next slot in 2 minutes`);

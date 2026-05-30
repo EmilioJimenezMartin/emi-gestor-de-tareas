@@ -310,13 +310,31 @@ async function runPipeline(
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🖼️ Lanzando ${cfg.catalogsPerNiche} catálogos para "${niche.name}"…` });
             try {
                 const aiModel = styleToAiModel(niche.styleCategory ?? "generic");
+
+                // Variation hints to differentiate each catalog visually
+                // while keeping theme and style consistent
+                const CATALOG_VARIATIONS = [
+                    "",
+                    "Feature a different main subject or character variation. Fresh composition and layout.",
+                    "Show a unique angle or scene. Alternate spatial arrangement and point of view.",
+                    "Use different props, accessories, or environmental details around the subject.",
+                    "Vary expressions, interactions, or activity. Show motion or a different moment.",
+                    "Close-up detail shot vs wide scene — vary the visual scale and framing.",
+                    "Incorporate seasonal or time-of-day atmosphere while keeping the core theme.",
+                    "Show a complementary subject or side character within the same thematic world.",
+                    "Emphasize pattern, texture, or decorative elements as focal point.",
+                ];
+
                 for (let i = 0; i < cfg.catalogsPerNiche; i++) {
+                    const basePrompt = niche.generatedPrompt || niche.name;
+                    const variation = CATALOG_VARIATIONS[i % CATALOG_VARIATIONS.length];
+                    const prompt = variation ? `${basePrompt}\n\n[Variation ${i + 1}: ${variation}]` : basePrompt;
                     const res = await fetch(`${base}/catalogs`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             name: `${niche.name} — v${i + 1}`,
-                            prompt: niche.generatedPrompt || niche.name,
+                            prompt,
                             totalImages: cfg.imagesPerCatalog,
                             aiModel,
                             nicheIds: [String(niche._id)],
@@ -404,22 +422,135 @@ async function runPipeline(
                 continue;
             }
 
-            // All terminal and at least some completed — advance to seo
-            const totalImages = linkedCats.reduce((s: number, c: any) => s + (c.images?.length ?? 0), 0);
-            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✅ Catálogos completos: ${totalImages} imágenes → avanzando a SEO` });
+            // All terminal and at least some completed — advance to libro (checkAutoPilotContinue handles this first; this is the fallback)
+            const allImages: string[] = [];
+            for (const cat of linkedCats) {
+                for (const img of (cat as any).images ?? []) {
+                    if (img.url) allImages.push(img.url as string);
+                }
+            }
+            if (allImages.length > 0 && !((niche as any).catalogImageOrder?.length)) {
+                // Shuffle only if not already set by checkAutoPilotContinue
+                for (let i = allImages.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [allImages[i], allImages[j]] = [allImages[j], allImages[i]];
+                }
+                await Niche.findByIdAndUpdate(niche._id, { $set: { catalogImageOrder: allImages } });
+            }
+            const totalImages = allImages.length;
+            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✅ Catálogos completos: ${totalImages} imágenes → generando libro PDF` });
 
-            await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "seo" } });
+            await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "libro" } });
             io?.emit("niches:updated");
 
             if (await shouldNotify("pipeline.complete")) {
                 await sendTelegram(
-                    `📦 <b>Catálogos listos</b>\n📚 <b>${niche.name}</b>\n🖼️ ${totalImages} imágenes en ${total} catálogos\n\n⚙️ Generando listing SEO automáticamente…`
+                    `📦 <b>Catálogos listos</b>\n📚 <b>${niche.name}</b>\n🖼️ ${totalImages} imágenes en ${total} catálogos\n\n📖 Generando libro PDF…`
                 ).catch(() => {});
             }
 
-            // Schedule a follow-up run to pick up the seo phase
-            setTimeout(() => { agenda?.now("autopilot-run", {}).catch(() => {}); }, 8_000);
+            await agenda.schedule("in 10 seconds", "autopilot-run", {}).catch((e: any) => console.error("[autopilot] catalog follow-up schedule failed:", e));
             processed++;
+            continue;
+        }
+
+        // ── libro → generate PDF book from shuffled catalog images ───────────
+        if ((phase as string) === "libro" && !(niche as any).bookPdfUrl) {
+            emitStage(io, "libro", String(niche._id), niche.name);
+            const imageUrls: string[] = (niche as any).catalogImageOrder ?? [];
+            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📖 Generando libro PDF para "${niche.name}" (${imageUrls.length} páginas)…` });
+
+            let advancedToSeo = false;
+            try {
+                if (imageUrls.length === 0) {
+                    // No images — skip libro and go directly to SEO
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Sin imágenes para el libro — saltando a SEO` });
+                    await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "seo" } });
+                    io?.emit("niches:updated");
+                    advancedToSeo = true;
+                } else {
+                    const { PDFDocument } = await import("pdf-lib");
+                    const sharp = await import("sharp");
+                    const pdfDoc = await PDFDocument.create();
+
+                    // KDP interior: 8.5" × 11" = 612 × 792 pts
+                    const PAGE_WIDTH = 612;
+                    const PAGE_HEIGHT = 792;
+
+                    let pagesAdded = 0;
+                    for (let imgIdx = 0; imgIdx < imageUrls.length; imgIdx++) {
+                        if (imgIdx % 5 === 0) {
+                            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📖 Procesando imagen ${imgIdx + 1}/${imageUrls.length}…` });
+                        }
+                        try {
+                            const imgRes = await fetch(imageUrls[imgIdx], { signal: AbortSignal.timeout(30_000) });
+                            if (!imgRes.ok) continue;
+                            const rawBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+                            // Convert to JPEG at 85% quality to keep PDF size manageable
+                            const jpegBuffer = await sharp.default(rawBuffer).jpeg({ quality: 85 }).toBuffer();
+
+                            const img = await pdfDoc.embedJpg(jpegBuffer);
+                            const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+                            const scaled = img.scaleToFit(PAGE_WIDTH, PAGE_HEIGHT);
+                            page.drawImage(img, {
+                                x: (PAGE_WIDTH - scaled.width) / 2,
+                                y: (PAGE_HEIGHT - scaled.height) / 2,
+                                width: scaled.width,
+                                height: scaled.height,
+                            });
+                            pagesAdded++;
+                        } catch (imgErr: any) {
+                            console.warn(`[autopilot] Skipping image ${imgIdx + 1} in libro: ${imgErr.message}`);
+                        }
+                    }
+
+                    if (pagesAdded === 0) throw new Error("No se pudieron insertar imágenes en el PDF");
+
+                    const pdfBytes = await pdfDoc.save();
+                    const base64 = Buffer.from(pdfBytes).toString("base64");
+                    const safeName = niche.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+                    const fileName = `${safeName}-libro.pdf`;
+
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📤 Subiendo libro a Cloudinary (${pagesAdded} páginas, ${Math.round(pdfBytes.byteLength / 1024)}KB)…` });
+
+                    const uploadRes = await fetch(`${base}/cloudinary/upload-pdf`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ base64, fileName }),
+                    });
+
+                    if (!uploadRes.ok) {
+                        const err = await uploadRes.json().catch(() => ({})) as any;
+                        throw new Error(`Error subiendo PDF: ${err.error ?? uploadRes.status}`);
+                    }
+
+                    const uploadData = await uploadRes.json() as any;
+                    const bookPdfUrl = uploadData.url;
+
+                    await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "seo", bookPdfUrl } });
+                    io?.emit("niches:updated");
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✅ Libro PDF listo (${pagesAdded} páginas) → generando listing SEO…` });
+
+                    if (await shouldNotify("pipeline.complete")) {
+                        await sendTelegram(`📖 <b>Libro generado</b>\n📚 <b>${niche.name}</b>\n📄 ${pagesAdded} páginas\n\n⚙️ Generando listing SEO…`).catch(() => {});
+                    }
+                    advancedToSeo = true;
+                }
+            } catch (e: any) {
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error generando libro: ${e.message} → saltando a SEO` });
+                consecutiveErrors++;
+                // Always advance to SEO even if libro fails — don't block the pipeline
+                await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "seo" } });
+                io?.emit("niches:updated");
+                advancedToSeo = true;
+            }
+
+            if (advancedToSeo && !abort.aborted) {
+                await agenda.schedule("in 10 seconds", "autopilot-run", {}).catch((e: any) => console.error("[autopilot] libro follow-up schedule failed:", e));
+                processed++;
+                stats.pipelineProcessed++;
+            }
             continue;
         }
 
@@ -427,6 +558,7 @@ async function runPipeline(
         if ((phase === "seo" || (phase as string) === "pdf") && (!niche.listings || niche.listings.length === 0)) {
             emitStage(io, "listing", String(niche._id), niche.name);
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📝 Generando listing KDP para "${niche.name}"…` });
+            let seoOk = false;
             try {
                 const res = await fetch(`${base}/ai/generate-text`, {
                     method: "POST",
@@ -456,7 +588,6 @@ async function runPipeline(
                     io?.emit("niches:updated");
                     io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ Listing SEO listo para "${niche.name}" → generando portada…` });
 
-                    // Advance to cover phase
                     await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "cover" } });
                     io?.emit("niches:updated");
 
@@ -474,12 +605,14 @@ async function runPipeline(
                     if (await shouldNotify("listing.generated")) {
                         await sendTelegram(notifText).catch(() => {});
                     }
-
-                    // Schedule a follow-up run to pick up the cover phase
-                    setTimeout(() => { agenda?.now("autopilot-run", {}).catch(() => {}); }, 8_000);
+                    seoOk = true;
+                } else {
+                    // Non-429 failure — log and let the follow-up retry
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error API listing (${res.status}) — reintentando en 60s` });
+                    consecutiveErrors++;
                 }
             } catch (e: any) {
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error generando listing: ${e.message}` });
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error generando listing: ${e.message} — reintentando en 60s` });
                 consecutiveErrors++;
                 if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
                     abort.aborted = true;
@@ -487,7 +620,13 @@ async function runPipeline(
                     io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⛔ ${abort.reason}. Deteniendo ciclo.` });
                 }
             }
-            if (!abort.aborted) { processed++; stats.pipelineProcessed++; }
+            if (!abort.aborted) {
+                processed++;
+                stats.pipelineProcessed++;
+                // Always schedule follow-up — on success (cover phase), on failure (retry seo)
+                const delay = seoOk ? "in 10 seconds" : "in 60 seconds";
+                await agenda.schedule(delay, "autopilot-run", {}).catch((e: any) => console.error("[autopilot] seo follow-up schedule failed:", e));
+            }
             continue;
         }
 
@@ -562,12 +701,15 @@ async function runPipeline(
                 }
 
             } catch (e: any) {
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error generando portada: ${e.message}` });
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error generando portada: ${e.message} — reintentando en 60s` });
                 consecutiveErrors++;
                 if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
                     abort.aborted = true;
                     abort.reason = `${MAX_CONSECUTIVE_ERRORS} errores consecutivos en generación de portada`;
                     io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⛔ ${abort.reason}. Deteniendo ciclo.` });
+                } else {
+                    // Retry cover after delay
+                    await agenda.schedule("in 60 seconds", "autopilot-run", {}).catch((e2: any) => console.error("[autopilot] cover retry schedule failed:", e2));
                 }
             }
             if (!abort.aborted) { processed++; stats.pipelineProcessed++; }
@@ -592,7 +734,7 @@ async function checkUserAbort(abort: AbortSignal): Promise<void> {
 
 export function defineAutoPilotJob(agenda: Agenda, io: any) {
     // concurrency: 1 ensures only one autopilot run at a time — extra triggers queue automatically
-    agenda.define(AUTOPILOT_JOB_NAME, { concurrency: 1, lockLifetime: 40 * 60 * 1000 }, async (_job: Job) => {
+    agenda.define(AUTOPILOT_JOB_NAME, { concurrency: 1, lockLifetime: 120 * 60 * 1000 }, async (_job: Job) => {
         const port = process.env.PORT || 3001;
         const base = `http://localhost:${port}`;
         const tag = "[autopilot]";

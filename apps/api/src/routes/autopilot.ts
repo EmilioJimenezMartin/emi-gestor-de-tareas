@@ -15,6 +15,58 @@ function ensureMongo(reply: any): boolean {
 }
 
 export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agenda?: any; io?: any }) {
+    // ── Stop running autopilot ───────────────────────────────────────────────
+    app.post("/autopilot/stop", async (_req, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            await Settings.findOneAndUpdate(
+                { key: "AUTOPILOT_ABORT" },
+                { key: "AUTOPILOT_ABORT", value: "1" },
+                { upsert: true }
+            );
+            deps.io?.emit("autopilot:log", { message: "⛔ Pipeline detenido manualmente desde la app" });
+            return reply.send({ ok: true, message: "Señal de parada enviada" });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // ── Force-advance a niche to the next pipeline phase ────────────────────
+    app.post("/autopilot/niche/:id/advance", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { id } = request.params as { id: string };
+            const { phase } = (request.body ?? {}) as { phase?: string };
+            const PHASE_ORDER = ["niche", "catalog", "libro", "seo", "cover", "published"] as const;
+            const niche = await Niche.findById(id).lean();
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+
+            let targetPhase: string;
+            if (phase) {
+                targetPhase = phase;
+            } else {
+                const currentIdx = PHASE_ORDER.indexOf((niche as any).phase as any);
+                if (currentIdx === -1 || currentIdx >= PHASE_ORDER.length - 1) {
+                    return reply.status(400).send({ error: `No hay siguiente fase para "${(niche as any).phase}"` });
+                }
+                targetPhase = PHASE_ORDER[currentIdx + 1];
+            }
+
+            await Niche.findByIdAndUpdate(id, { $set: { phase: targetPhase } });
+            deps.io?.emit("niches:updated");
+            deps.io?.emit("autopilot:log", { nicheId: id, message: `⏩ "${(niche as any).name}" forzado a fase "${targetPhase}"` });
+
+            // Trigger autopilot to pick up the new phase
+            if (deps.agenda) {
+                await deps.agenda.schedule("in 3 seconds", "autopilot-run", {}).catch(() => {});
+            }
+
+            return reply.send({ ok: true, nicheId: id, phase: targetPhase });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // ── Run autopilot now ────────────────────────────────────────────────────
     app.post("/autopilot/run", async (_req, reply) => {
         if (!ensureMongo(reply)) return;

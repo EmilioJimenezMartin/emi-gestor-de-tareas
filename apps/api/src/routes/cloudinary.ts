@@ -39,7 +39,7 @@ export async function initCloudinary(config: { cloudName: string; apiKey: string
 }
 
 export async function registerCloudinaryRoutes(app: FastifyInstance) {
-    // GET /cloudinary/images — list all images in the folder
+    // GET /cloudinary/images — list all images in the assets folder
     app.get("/cloudinary/images", async (_req, reply) => {
         try {
             const config = await getCloudinaryConfig();

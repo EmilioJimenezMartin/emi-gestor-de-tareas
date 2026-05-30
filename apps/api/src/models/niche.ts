@@ -27,7 +27,8 @@ export interface INiche extends Document {
     notes: string;
     generatedPrompt: string;
     catalogIds: string[];
-    phase: "niche" | "catalog" | "seo" | "cover" | "published";
+    phase: "niche" | "catalog" | "libro" | "seo" | "cover" | "published";
+    bookPdfUrl?: string;
     coverUrl?: string;
     publishedAt?: Date;
     asin?: string;
@@ -42,6 +43,7 @@ export interface INiche extends Document {
     scoredAt?: Date;
     autoPilotEnabled?: boolean;
     sampleImageUrl?: string;
+    catalogImageOrder?: string[];
     createdAt: Date;
     updatedAt: Date;
 }
@@ -60,7 +62,8 @@ const NicheSchema = new Schema<INiche>(
         notes: { type: String, default: "" },
         generatedPrompt: { type: String, default: "" },
         catalogIds: [{ type: String }],
-        phase: { type: String, enum: ["niche", "catalog", "seo", "cover", "published"], default: "niche" },
+        phase: { type: String, enum: ["niche", "catalog", "libro", "seo", "cover", "published"], default: "niche" },
+        bookPdfUrl: { type: String },
         coverUrl: { type: String },
         publishedAt: { type: Date },
         asin: { type: String, default: "" },
@@ -90,6 +93,7 @@ const NicheSchema = new Schema<INiche>(
         scoredAt: { type: Date },
         autoPilotEnabled: { type: Boolean, default: false },
         sampleImageUrl: { type: String },
+        catalogImageOrder: [{ type: String }],
     },
     { timestamps: true }
 );
