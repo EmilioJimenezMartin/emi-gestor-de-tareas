@@ -67,9 +67,12 @@ async function handleNicheDiscovery(
 ): Promise<string> {
     if (decision === "continuar") {
         const cfg = await getAutoPilotConfig();
-        await Niche.findByIdAndUpdate(tAction.nicheId, {
-            $set: { autoPilotEnabled: true, status: "active", phase: "niche" },
-        });
+        const niche = await Niche.findByIdAndUpdate(
+            tAction.nicheId,
+            { $set: { autoPilotEnabled: true, status: "active", phase: "catalog" } },
+            { new: true }
+        ).lean();
+
         _io?.emit("niches:updated");
         _io?.emit("telegram:notification", {
             message: `🚀 Pipeline lanzado desde Telegram · ${tAction.nicheName}`,
@@ -78,22 +81,65 @@ async function handleNicheDiscovery(
         await sendTelegram(
             `🚀 <b>Pipeline lanzado</b>\n` +
             `📚 <b>${tAction.nicheName}</b>\n\n` +
-            `Se generarán <b>${cfg.catalogsPerNiche} catálogos</b> × <b>${cfg.imagesPerCatalog} imágenes</b>\n` +
-            `El proceso puede tardar varios minutos.`
+            `Creando <b>${cfg.catalogsPerNiche} catálogos</b> × <b>${cfg.imagesPerCatalog} imágenes</b>…`
         );
-        // Trigger via agenda; HTTP fallback if agenda not available
+
+        // Directly create catalogs without relying on the autopilot scheduler
         setImmediate(async () => {
-            let launched = false;
             try {
-                if (_agenda) { await _agenda.now("autopilot-run", {}); launched = true; }
-            } catch (e) {
-                console.error("[telegram-poll] agenda.now failed:", e);
-            }
-            if (!launched) {
                 const port = process.env.PORT || 3001;
-                try { await fetch(`http://localhost:${port}/autopilot/run`, { method: "POST" }); } catch { /* non-critical */ }
+                const base = `http://localhost:${port}`;
+                const n = niche as any;
+
+                // Mirror the model selection from autopilot.ts styleToAiModel
+                const styleCategory = n?.styleCategory ?? "generic";
+                const modelIds: Record<string, string> = {
+                    anime: "flux-anime", realistic: "flux-realism",
+                    "wall-art": "flux-realism", affirmation: "flux-realism",
+                    geometric: "flux-realism", celestial: "flux-realism",
+                };
+                const modelId = modelIds[styleCategory] ?? "flux";
+                const aiModel = { id: `pollinations-${modelId}`, name: "FLUX (Pollinations)", provider: "Pollinations", modelId };
+
+                let created = 0;
+                for (let i = 0; i < cfg.catalogsPerNiche; i++) {
+                    try {
+                        const res = await fetch(`${base}/catalogs`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                name: `${tAction.nicheName} — v${i + 1}`,
+                                prompt: n?.generatedPrompt || tAction.nicheName,
+                                totalImages: cfg.imagesPerCatalog,
+                                aiModel,
+                                nicheIds: [String(tAction.nicheId)],
+                                productType: n?.productType ?? "coloring-book",
+                            }),
+                        });
+                        if (res.ok) created++;
+                    } catch { /* continue on error */ }
+                    // Small delay so catalogs queue up cleanly
+                    await new Promise(r => setTimeout(r, 300));
+                }
+
+                _io?.emit("niches:updated");
+                _io?.emit("catalogs:updated");
+                console.log(`[telegram-poll] Created ${created}/${cfg.catalogsPerNiche} catalogs for niche ${tAction.nicheName}`);
+
+                if (created > 0) {
+                    await sendTelegram(`🏭 <b>${tAction.nicheName}</b>\n🖼️ ${created} catálogos en generación · ${created * cfg.imagesPerCatalog} imágenes totales`).catch(() => {});
+                } else {
+                    // Fallback: schedule autopilot run to handle it
+                    try {
+                        if (_agenda) await _agenda.now("autopilot-run", {});
+                        else await fetch(`${base}/autopilot/run`, { method: "POST" });
+                    } catch { /* non-critical */ }
+                }
+            } catch (e) {
+                console.error("[telegram-poll] Error creating catalogs after approval:", e);
             }
         });
+
         return `✅ Lanzado — ${cfg.catalogsPerNiche} catálogos en producción`;
     }
 
@@ -264,23 +310,46 @@ async function processUpdate(update: any): Promise<void> {
         }
 
         if (text.startsWith("/crear ")) {
-            const nicheName = normalized.slice(7).trim();
-            if (!nicheName) {
+            const rawArg = normalized.slice(7).trim();
+            if (!rawArg) {
                 await sendTelegram("❌ Indica el nombre: <code>/crear nombre del nicho</code>");
+                return;
+            }
+            // Detect product type from prefix
+            let nicheName = rawArg;
+            let productType = "coloring-book";
+            let styleCategory = "generic";
+            const argLower = rawArg.toLowerCase();
+            if (argLower.startsWith("printable ")) {
+                productType = "printable-poster";
+                styleCategory = "wall-art";
+                nicheName = rawArg.slice("printable ".length).trim();
+            } else if (argLower.startsWith("libro para colorear ")) {
+                productType = "coloring-book";
+                styleCategory = "generic";
+                nicheName = rawArg.slice("libro para colorear ".length).trim();
+            } else if (argLower.startsWith("libro de colorear ")) {
+                productType = "coloring-book";
+                styleCategory = "generic";
+                nicheName = rawArg.slice("libro de colorear ".length).trim();
+            }
+            if (!nicheName) {
+                await sendTelegram("❌ Indica el nombre del nicho después del prefijo");
                 return;
             }
             try {
                 const niche = await Niche.create({
                     name: nicheName,
                     status: "found",
-                    productType: "coloring-book",
-                    styleCategory: "generic",
-                    styleCategories: ["generic"],
+                    productType: productType as "coloring-book" | "printable-poster",
+                    styleCategory: styleCategory as "generic" | "wall-art",
+                    styleCategories: [styleCategory as "generic" | "wall-art"],
                 });
                 _io?.emit("niches:updated");
                 _io?.emit("telegram:notification", { message: `📚 Nuevo nicho creado desde Telegram · ${nicheName}`, type: "info" });
+                const typeTag = productType === "printable-poster" ? "🖼️ Póster imprimible" : "📚 Libro de colorear";
                 await sendTelegram(
-                    `✅ <b>Nicho creado</b>\n📚 <b>${nicheName}</b>\n\n⏳ Iniciando discovery — recibirás la imagen de muestra en breve…`
+                    `✅ <b>Nicho creado</b>\n${typeTag} · <b>${nicheName}</b>\n\n⏳ Iniciando discovery — recibirás la imagen de muestra en breve…`
                 );
                 // Trigger single-niche discovery
                 const port = process.env.PORT || 3001;

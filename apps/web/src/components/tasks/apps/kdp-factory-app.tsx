@@ -229,6 +229,7 @@ interface NicheFE {
     scoredAt?: string;
     autoPilotEnabled?: boolean;
     sampleImageUrl?: string;
+    coverUrl?: string;
     createdAt: string;
     updatedAt?: string;
 }
@@ -912,6 +913,7 @@ export function KdpFactoryApp() {
     const [cloudinaryImages, setCloudinaryImages] = useState<CloudinaryImage[]>([]);
     const [linkingNicheForCloud, setLinkingNicheForCloud] = useState<string | null>(null); // publicId being linked
     const [isLoadingCloudinary, setIsLoadingCloudinary] = useState(false);
+    const [cloudinaryUsage, setCloudinaryUsage] = useState<{ usedBytes: number; limitBytes: number; usedPct: number | null } | null>(null);
     const [uploadingToCloud, setUploadingToCloud] = useState<number | null>(null);
     const [deletingFromCloud, setDeletingFromCloud] = useState<string | null>(null);
 
@@ -2401,10 +2403,18 @@ export function KdpFactoryApp() {
     const fetchCloudinaryImages = async () => {
         setIsLoadingCloudinary(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/cloudinary/images`);
-            if (!res.ok) return;
-            const data = await res.json();
-            setCloudinaryImages(data.images ?? []);
+            const [imagesRes, usageRes] = await Promise.all([
+                fetch(`${API_BASE_URL}/cloudinary/images`),
+                fetch(`${API_BASE_URL}/cloudinary/usage`).catch(() => null),
+            ]);
+            if (imagesRes.ok) {
+                const data = await imagesRes.json();
+                setCloudinaryImages(data.images ?? []);
+            }
+            if (usageRes?.ok) {
+                const uData = await usageRes.json();
+                setCloudinaryUsage({ usedBytes: uData.usedBytes, limitBytes: uData.limitBytes, usedPct: uData.usedPct });
+            }
         } catch {
             // silently ignore if not configured
         } finally {
@@ -2781,7 +2791,12 @@ export function KdpFactoryApp() {
     };
 
     const downloadNichePdfDirect = async (niche: NicheFE, linkedCats: typeof iaCatalogs) => {
-        const allImages = linkedCats.flatMap(c => c.images);
+        const catImages = linkedCats.flatMap(c => c.images);
+        const persistentCloudImgs = cloudinaryImages.filter(img => img.nicheId === niche._id);
+        const allImages = [
+            ...catImages,
+            ...persistentCloudImgs.map(img => ({ url: img.url, publicId: img.publicId, width: img.width, height: img.height, bytes: img.bytes, createdAt: img.createdAt ?? "" })),
+        ];
         if (!allImages.length) { toast.error("Este nicho no tiene imágenes aún"); return; }
         setDirectNichePdfId(niche._id);
         try {
@@ -6598,18 +6613,14 @@ export function KdpFactoryApp() {
                                     <>
                                         <Button
                                             onClick={() => handleGenerateImage()}
-                                            disabled={isGenerating || !imagePrompt.trim() || isCatalogActive}
+                                            disabled={isGenerating || !imagePrompt.trim()}
                                             className={`w-full h-14 rounded-2xl font-black uppercase tracking-widest text-sm transition-all duration-500 ${isGenerating
                                                 ? "bg-amber-500/15 text-amber-400 border border-amber-500/25"
-                                                : isCatalogActive
-                                                    ? "bg-white/4 text-neutral-500 border border-white/8 cursor-not-allowed"
-                                                    : "bg-amber-500 text-black hover:bg-amber-400 hover:scale-[1.02] active:scale-[0.98] shadow-[0_8px_30px_rgba(245,158,11,0.25)]"
+                                                : "bg-amber-500 text-black hover:bg-amber-400 hover:scale-[1.02] active:scale-[0.98] shadow-[0_8px_30px_rgba(245,158,11,0.25)]"
                                                 }`}
                                         >
                                             {isGenerating ? (
                                                 <><Loader2 size={18} className="mr-3 animate-spin" /> Procesando Activo Visual...</>
-                                            ) : isCatalogActive ? (
-                                                <><Layers size={18} className="mr-3" /> Catálogo en progreso...</>
                                             ) : (
                                                 <><Zap size={18} className="mr-3 fill-current" /> Lanzar Generación I.A.</>
                                             )}
@@ -7316,6 +7327,30 @@ export function KdpFactoryApp() {
                         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                     </div>
 
+                    {/* Storage usage bar */}
+                    {cloudinaryUsage && cloudinaryUsage.limitBytes > 0 && (
+                        <div className="mx-2 flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+                            <Cloud size={10} className="text-cyan-500/60 shrink-0" />
+                            <div className="flex-1 min-w-0 space-y-1">
+                                <div className="flex items-center justify-between text-[10px]">
+                                    <span className="font-black text-neutral-600 uppercase tracking-widest">Almacenamiento</span>
+                                    <span className={`font-black tabular-nums ${(cloudinaryUsage.usedPct ?? 0) >= 90 ? "text-red-400" : (cloudinaryUsage.usedPct ?? 0) >= 70 ? "text-amber-400" : "text-cyan-400"}`}>
+                                        {cloudinaryUsage.usedPct ?? "—"}%
+                                        <span className="text-neutral-700 font-normal ml-1">
+                                            ({(cloudinaryUsage.usedBytes / 1024 / 1024).toFixed(0)} MB / {(cloudinaryUsage.limitBytes / 1024 / 1024).toFixed(0)} MB)
+                                        </span>
+                                    </span>
+                                </div>
+                                <div className="h-1 bg-white/[0.04] rounded-full overflow-hidden">
+                                    <div
+                                        className={`h-full rounded-full transition-all duration-700 ${(cloudinaryUsage.usedPct ?? 0) >= 90 ? "bg-red-500" : (cloudinaryUsage.usedPct ?? 0) >= 70 ? "bg-amber-500" : "bg-cyan-500"}`}
+                                        style={{ width: `${Math.min(100, cloudinaryUsage.usedPct ?? 0)}%` }}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Selection action bar */}
                     {isCloudSelectMode && selectedCloudUrls.size > 0 && (
                         <div className="mx-2 flex items-center gap-3 px-4 py-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/20">
@@ -7633,26 +7668,6 @@ export function KdpFactoryApp() {
                                                         </span>
                                                     ) : null;
                                                 })}
-                                            </div>
-                                        )}
-                                        {/* Live mosaic */}
-                                        {catalog.images.length > 0 && (
-                                            <div className="grid gap-1" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(52px, 1fr))" }}>
-                                                {catalog.images.slice(-10).map((img) => (
-                                                    <div key={img.publicId} className="aspect-square overflow-hidden rounded-lg bg-white/5">
-                                                        <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                                                    </div>
-                                                ))}
-                                                {isActive && (
-                                                    <div className="aspect-square rounded-lg bg-white/5 border border-white/8 flex items-center justify-center">
-                                                        <Loader2 size={13} className="text-blue-400/60 animate-spin" />
-                                                    </div>
-                                                )}
-                                                {!isActive && catalog.images.length > 10 && (
-                                                    <div className="aspect-square rounded-lg bg-white/5 border border-white/8 flex items-center justify-center text-[10px] font-black text-neutral-600">
-                                                        +{catalog.images.length - 10}
-                                                    </div>
-                                                )}
                                             </div>
                                         )}
                                         {/* Error */}
@@ -8732,12 +8747,12 @@ export function KdpFactoryApp() {
 
                     {/* ── Kanban view ── */}
                     {!isLoadingNiches && nicheViewMode === "kanban" && niches.length > 0 && (() => {
-                        const PHASES: { id: NicheFE["phase"]; label: string; accent: string; headerBg: string; colBg: string; dot: string; emptyText: string }[] = [
-                            { id: "niche",     label: "Nicho",     accent: "text-sky-400",     headerBg: "bg-sky-500/10",     colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-sky-400",     emptyText: "Añade nichos para empezar" },
-                            { id: "catalog",   label: "Catálogos", accent: "text-blue-400",    headerBg: "bg-blue-500/10",    colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-blue-400",    emptyText: "Genera catálogos de imágenes" },
-                            { id: "seo",       label: "SEO",       accent: "text-violet-400",  headerBg: "bg-violet-500/10",  colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-violet-400",  emptyText: "Genera el listing SEO" },
-                            { id: "cover",     label: "Portada",   accent: "text-fuchsia-400", headerBg: "bg-fuchsia-500/10", colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-fuchsia-400", emptyText: "Diseña la portada final" },
-                            { id: "published", label: "Publicado", accent: "text-emerald-400", headerBg: "bg-emerald-500/10", colBg: "border-emerald-500/10 bg-emerald-500/[0.02]", dot: "bg-emerald-400", emptyText: "Aquí aparecen los publicados" },
+                        const PHASES: { id: NicheFE["phase"]; label: string; accent: string; headerBg: string; colBg: string; dot: string; emptyText: string; glow: string; blob: string }[] = [
+                            { id: "niche",     label: "Nicho",     accent: "text-sky-400",     headerBg: "bg-sky-500/10",     colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-sky-400",     glow: "rgba(14,165,233,0.1)",   blob: "bg-sky-500/10",     emptyText: "Añade nichos para empezar" },
+                            { id: "catalog",   label: "Catálogos", accent: "text-blue-400",    headerBg: "bg-blue-500/10",    colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-blue-400",    glow: "rgba(59,130,246,0.1)",   blob: "bg-blue-500/10",    emptyText: "Genera catálogos de imágenes" },
+                            { id: "seo",       label: "SEO",       accent: "text-violet-400",  headerBg: "bg-violet-500/10",  colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-violet-400",  glow: "rgba(139,92,246,0.1)",   blob: "bg-violet-500/10",  emptyText: "Genera el listing SEO" },
+                            { id: "cover",     label: "Portada",   accent: "text-fuchsia-400", headerBg: "bg-fuchsia-500/10", colBg: "border-white/[0.06] bg-white/[0.015]",      dot: "bg-fuchsia-400", glow: "rgba(217,70,239,0.1)",   blob: "bg-fuchsia-500/10", emptyText: "Diseña la portada final" },
+                            { id: "published", label: "Publicado", accent: "text-emerald-400", headerBg: "bg-emerald-500/10", colBg: "border-emerald-500/10 bg-emerald-500/[0.02]", dot: "bg-emerald-400", glow: "rgba(16,185,129,0.1)",  blob: "bg-emerald-500/10", emptyText: "Aquí aparecen los publicados" },
                         ];
                         const phaseOrder = ["niche", "catalog", "seo", "cover", "published"] as const;
                         const movePhase = async (nicheId: string, direction: 1 | -1) => {
@@ -8938,6 +8953,17 @@ export function KdpFactoryApp() {
 
                                                 {/* ─ Card header ─ */}
                                                 <div className="flex items-start gap-3">
+                                                    {/* Thumbnail */}
+                                                    {(niche.coverUrl || niche.sampleImageUrl) && (
+                                                        <div className="shrink-0 w-14 h-14 rounded-xl overflow-hidden border border-white/10 bg-white/5">
+                                                            <img
+                                                                src={niche.coverUrl || niche.sampleImageUrl}
+                                                                alt={niche.name}
+                                                                className="w-full h-full object-cover"
+                                                                loading="lazy"
+                                                            />
+                                                        </div>
+                                                    )}
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 flex-wrap">
                                                             <p className="text-xl sm:text-2xl font-black text-white leading-tight tracking-tight">{niche.name}</p>
@@ -12328,7 +12354,11 @@ export function KdpFactoryApp() {
                 const detailNiche = niches.find(n => n._id === nicheDetailId);
                 if (!detailNiche) return null;
                 const linkedCats = iaCatalogs.filter(c => c.nicheIds?.includes(nicheDetailId));
-                const allImgs = linkedCats.flatMap(c => c.images);
+                const linkedCloudImgs = cloudinaryImages.filter(img => img.nicheId === nicheDetailId);
+                const allImgs: { publicId: string; url: string; width?: number; height?: number }[] = [
+                    ...linkedCats.flatMap(c => c.images),
+                    ...linkedCloudImgs.map(img => ({ publicId: img.publicId, url: img.url, width: img.width, height: img.height })),
+                ];
                 const pipelineDraft = bookDrafts.find(d => d.id.startsWith(`pipeline-${nicheDetailId}`));
                 const TABS = [
                     { id: "images" as const, label: "Imágenes", icon: <ImageIcon size={11} />, count: allImgs.length },

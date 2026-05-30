@@ -197,6 +197,27 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
         }
     });
 
+    // GET /cloudinary/usage — return storage quota info
+    app.get("/cloudinary/usage", async (_req, reply) => {
+        try {
+            const config = await getCloudinaryConfig();
+            if (!config) return reply.status(503).send({ error: "Cloudinary no configurado." });
+            const cld = await initCloudinary(config);
+            const result = await cld.api.usage();
+            return reply.send({
+                usedBytes: result.storage?.usage ?? 0,
+                limitBytes: result.storage?.limit ?? 0,
+                usedPct: result.storage?.limit
+                    ? Math.round((result.storage.usage / result.storage.limit) * 100)
+                    : null,
+                credits: { used: result.credits?.usage ?? 0, limit: result.credits?.limit ?? 0 },
+                transformations: { used: result.transformations?.usage ?? 0, limit: result.transformations?.limit ?? 0 },
+            });
+        } catch (error: any) {
+            return reply.status(500).send({ error: "Error obteniendo uso de Cloudinary", message: error.message });
+        }
+    });
+
     // POST /cloudinary/delete — delete by publicId (POST avoids URL encoding issues with slashes)
     app.post("/cloudinary/delete", async (request: any, reply) => {
         try {
