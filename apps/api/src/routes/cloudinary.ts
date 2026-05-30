@@ -39,8 +39,8 @@ export async function initCloudinary(config: { cloudName: string; apiKey: string
 }
 
 export async function registerCloudinaryRoutes(app: FastifyInstance) {
-    // GET /cloudinary/images — list all images in the assets folder
-    app.get("/cloudinary/images", async (_req, reply) => {
+    // GET /cloudinary/images[?nicheId=xxx] — list assets; filter by nicheId when provided
+    app.get("/cloudinary/images", async (request: any, reply) => {
         try {
             const config = await getCloudinaryConfig();
             if (!config) {
@@ -48,15 +48,43 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
             }
 
             const cld = await initCloudinary(config);
-            const result = await cld.api.resources({
-                type: "upload",
-                prefix: `${FOLDER}/`,
-                max_results: 200,
-                direction: "desc",
-                context: true,
-            });
+            const filterNicheId: string | undefined = request.query?.nicheId;
 
-            const images = (result.resources as any[]).map((r) => ({
+            let resources: any[];
+
+            if (filterNicheId) {
+                // Efficient tag-based lookup: images uploaded with tag nicho:<id>
+                try {
+                    const tagResult = await cld.api.resources_by_tag(`nicho:${filterNicheId}`, {
+                        max_results: 500,
+                        context: true,
+                    });
+                    resources = tagResult.resources ?? [];
+                } catch {
+                    // Fallback: full scan + filter (Cloudinary free tier may not support tag search)
+                    const allResult = await cld.api.resources({
+                        type: "upload",
+                        prefix: `${FOLDER}/`,
+                        max_results: 500,
+                        direction: "desc",
+                        context: true,
+                    });
+                    resources = (allResult.resources ?? []).filter(
+                        (r: any) => r.context?.custom?.nicheId === filterNicheId
+                    );
+                }
+            } else {
+                const result = await cld.api.resources({
+                    type: "upload",
+                    prefix: `${FOLDER}/`,
+                    max_results: 200,
+                    direction: "desc",
+                    context: true,
+                });
+                resources = result.resources ?? [];
+            }
+
+            const images = (resources as any[]).map((r) => ({
                 publicId: r.public_id,
                 url: r.secure_url,
                 width: r.width,

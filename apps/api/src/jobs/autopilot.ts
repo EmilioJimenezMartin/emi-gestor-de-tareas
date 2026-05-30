@@ -506,7 +506,30 @@ async function runPipeline(
                 continue;
             }
             emitStage(io, "libro", String(niche._id), niche.name);
-            const imageUrls: string[] = (niche as any).catalogImageOrder ?? [];
+            const catalogUrls: string[] = (niche as any).catalogImageOrder ?? [];
+
+            // Also pull any images uploaded directly to the Cloudinary asset store for this niche
+            let cloudinaryUrls: string[] = [];
+            try {
+                const cldRes = await fetch(`${base}/cloudinary/images?nicheId=${String(niche._id)}`);
+                if (cldRes.ok) {
+                    const { images } = await (cldRes as any).json() as { images: Array<{ url: string }> };
+                    // Exclude the single discovery sample (usually first image, tagged "sample") — include the rest
+                    cloudinaryUrls = (images ?? [])
+                        .filter((img: any) => img.url && !img.publicId?.includes("sample"))
+                        .map((img: any) => img.url as string);
+                }
+            } catch { /* non-critical — continue with catalog images only */ }
+
+            // Merge: catalog images first, then any extra Cloudinary assets not already included
+            const catalogSet = new Set(catalogUrls);
+            const extraUrls = cloudinaryUrls.filter(u => !catalogSet.has(u));
+            const imageUrls: string[] = [...catalogUrls, ...extraUrls];
+
+            if (extraUrls.length > 0) {
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📦 +${extraUrls.length} imagen${extraUrls.length !== 1 ? "es" : ""} del almacén Cloudinary` });
+            }
+
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📖 Generando libro PDF para "${niche.name}" (${imageUrls.length} páginas)…` });
 
             let advancedToSeo = false;
