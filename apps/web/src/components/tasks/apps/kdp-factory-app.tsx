@@ -913,7 +913,7 @@ export function KdpFactoryApp() {
     const [cloudinaryImages, setCloudinaryImages] = useState<CloudinaryImage[]>([]);
     const [linkingNicheForCloud, setLinkingNicheForCloud] = useState<string | null>(null); // publicId being linked
     const [isLoadingCloudinary, setIsLoadingCloudinary] = useState(false);
-    const [cloudinaryUsage, setCloudinaryUsage] = useState<{ usedBytes: number; limitBytes: number; usedPct: number | null } | null>(null);
+    const [cloudinaryUsage, setCloudinaryUsage] = useState<{ usedBytes: number; limitBytes: number; usedPct: number | null; credits?: { used: number; limit: number } } | null>(null);
     const [uploadingToCloud, setUploadingToCloud] = useState<number | null>(null);
     const [deletingFromCloud, setDeletingFromCloud] = useState<string | null>(null);
 
@@ -2413,7 +2413,7 @@ export function KdpFactoryApp() {
             }
             if (usageRes?.ok) {
                 const uData = await usageRes.json();
-                setCloudinaryUsage({ usedBytes: uData.usedBytes, limitBytes: uData.limitBytes, usedPct: uData.usedPct });
+                setCloudinaryUsage({ usedBytes: uData.usedBytes, limitBytes: uData.limitBytes, usedPct: uData.usedPct, credits: uData.credits });
             }
         } catch {
             // silently ignore if not configured
@@ -7327,29 +7327,55 @@ export function KdpFactoryApp() {
                         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                     </div>
 
-                    {/* Storage usage bar */}
-                    {cloudinaryUsage && cloudinaryUsage.limitBytes > 0 && (
-                        <div className="mx-2 flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.02] border border-white/[0.06]">
-                            <Cloud size={10} className="text-cyan-500/60 shrink-0" />
-                            <div className="flex-1 min-w-0 space-y-1">
-                                <div className="flex items-center justify-between text-[10px]">
-                                    <span className="font-black text-neutral-600 uppercase tracking-widest">Almacenamiento</span>
-                                    <span className={`font-black tabular-nums ${(cloudinaryUsage.usedPct ?? 0) >= 90 ? "text-red-400" : (cloudinaryUsage.usedPct ?? 0) >= 70 ? "text-amber-400" : "text-cyan-400"}`}>
-                                        {cloudinaryUsage.usedPct ?? "—"}%
-                                        <span className="text-neutral-700 font-normal ml-1">
-                                            ({(cloudinaryUsage.usedBytes / 1024 / 1024).toFixed(0)} MB / {(cloudinaryUsage.limitBytes / 1024 / 1024).toFixed(0)} MB)
+                    {/* Storage / credits usage bar */}
+                    {cloudinaryUsage && (() => {
+                        const useMbDisplay = cloudinaryUsage.limitBytes > 0;
+                        const useCredits = !useMbDisplay && (cloudinaryUsage.credits?.limit ?? 0) > 0;
+                        if (!useMbDisplay && !useCredits && cloudinaryUsage.usedBytes === 0) return null;
+                        const creditPct = useCredits
+                            ? Math.round(((cloudinaryUsage.credits!.used) / cloudinaryUsage.credits!.limit) * 100)
+                            : null;
+                        const pct = useMbDisplay ? (cloudinaryUsage.usedPct ?? 0) : (creditPct ?? 0);
+                        const colorClass = pct >= 90 ? "text-red-400" : pct >= 70 ? "text-amber-400" : "text-cyan-400";
+                        const barClass = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-cyan-500";
+                        return (
+                            <div className="mx-2 flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+                                <Cloud size={10} className="text-cyan-500/60 shrink-0" />
+                                <div className="flex-1 min-w-0 space-y-1">
+                                    <div className="flex items-center justify-between text-[10px]">
+                                        <span className="font-black text-neutral-600 uppercase tracking-widest">
+                                            {useCredits ? "Créditos" : "Almacenamiento"}
                                         </span>
-                                    </span>
-                                </div>
-                                <div className="h-1 bg-white/[0.04] rounded-full overflow-hidden">
-                                    <div
-                                        className={`h-full rounded-full transition-all duration-700 ${(cloudinaryUsage.usedPct ?? 0) >= 90 ? "bg-red-500" : (cloudinaryUsage.usedPct ?? 0) >= 70 ? "bg-amber-500" : "bg-cyan-500"}`}
-                                        style={{ width: `${Math.min(100, cloudinaryUsage.usedPct ?? 0)}%` }}
-                                    />
+                                        <span className={`font-black tabular-nums ${colorClass}`}>
+                                            {useCredits ? (
+                                                <>
+                                                    {creditPct}%
+                                                    <span className="text-neutral-700 font-normal ml-1">
+                                                        ({cloudinaryUsage.credits!.used.toFixed(2)} / {cloudinaryUsage.credits!.limit} cr · {(cloudinaryUsage.usedBytes / 1024 / 1024).toFixed(0)} MB)
+                                                    </span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    {cloudinaryUsage.usedPct ?? "—"}%
+                                                    <span className="text-neutral-700 font-normal ml-1">
+                                                        ({(cloudinaryUsage.usedBytes / 1024 / 1024).toFixed(0)} MB / {(cloudinaryUsage.limitBytes / 1024 / 1024).toFixed(0)} MB)
+                                                    </span>
+                                                </>
+                                            )}
+                                        </span>
+                                    </div>
+                                    {(useMbDisplay || useCredits) && (
+                                        <div className="h-1 bg-white/[0.04] rounded-full overflow-hidden">
+                                            <div
+                                                className={`h-full rounded-full transition-all duration-700 ${barClass}`}
+                                                style={{ width: `${Math.min(100, pct)}%` }}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
 
                     {/* Selection action bar */}
                     {isCloudSelectMode && selectedCloudUrls.size > 0 && (
