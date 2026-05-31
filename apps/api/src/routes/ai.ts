@@ -689,35 +689,36 @@ Description: "${niche}"${extras ? `\nAdditional context: ${extras}` : ""}
 
 Generate the 4 optimized prompt fields for creating coloring book pages for this product.`,
 
-            "printable-particulars": `You are an expert at writing image generation prompts for printable wall art and digital art prints.
+            "printable-particulars": `You are an expert at writing richly detailed image generation prompts for printable wall art and digital art prints.
 Niche: "${niche}"${extras ? `\nVisual style: ${extras}` : ""}
 
-Write ONLY the "particulars" — 15-30 words of specific visual content for ONE print in this niche and style.
-Focus on: key subject, composition, mood, distinctive visual elements. Do NOT include technical specs or coloring instructions.
-The result will be combined with a professional print art prompt, so describe only the SUBJECT and SCENE.
+Write ONLY the "particulars" — 40-70 words describing ONE stunning print concept for this niche and style.
+Cover ALL of: main subject, composition/layout, color palette, lighting/mood, distinctive details, and emotional atmosphere.
+The result is fed directly to an image generator, so be specific and evocative — not generic.
 Examples:
-- Wall art / botanical: "lush monstera leaves cascading over a vintage ceramic pot, morning light filtering through, soft shadow details"
-- Celestial: "crescent moon surrounded by delicate constellation lines, scattered stars, tiny planets orbiting in golden ink style"
-- Geometric: "overlapping hexagons at different scales, gradient from deep navy to soft gold, precise tessellation pattern"
-- Retro: "1950s diner scene at sunset, chrome details, neon sign glow, stylized palm trees and classic convertible car"
-- Affirmation: "ornate botanical wreath of roses and eucalyptus branches framing an empty center area for inspirational text"
+- Botanical: "lush monstera leaves and trailing pothos cascading over a weathered terracotta pot, dappled morning light, muted sage and terracotta palette, delicate watercolor washes with ink outlines, tranquil and airy atmosphere"
+- Celestial: "crescent moon cradling a sleeping fox amid swirling constellation maps, deep indigo to dusty rose gradient sky, scattered gold foil stars, fine line art style, dreamy and mystical mood"
+- Geometric: "precise Penrose tessellation of triangles and rhombuses, deep navy to warm gold gradient, sharp vector edges, mathematically perfect symmetry, modernist aesthetic with luxurious metallic accent points"
+- Retro: "1950s American diner at sunset, chrome counter stools, jukebox glowing in corner, neon signs casting warm pink and turquoise light, stylized illustration with bold outlines, nostalgic and vibrant"
+- Affirmation: "ornate oval frame of intertwined roses, eucalyptus, and pampas grass, soft blush and ivory palette, hand-lettering style botanical illustration, elegant and timeless with a feminine editorial feel"
 
-Return ONLY a JSON object: {"particulars": "...15-30 words of visual specifics..."}`,
+Return ONLY a JSON object: {"particulars": "...40-70 words of vivid visual specifics..."}`,
 
-            "niche-particulars": `You are an expert at writing image generation prompts for KDP coloring books.
+            "niche-particulars": `You are an expert at writing richly detailed image generation prompts for KDP coloring books.
 Niche: "${niche}"${extras ? `\nStyle context: ${extras}` : ""}
 
-Write ONLY the "particulars" — 15-30 words of specific visual details for ONE coloring page scene from this niche.
-The niche may be about characters, animals, places, objects, or abstract themes — adapt accordingly.
-Focus on the most visually striking and specific elements: key subjects, composition, distinctive details, atmosphere.
-Do NOT include technical specs like line style or coloring instructions. Do NOT invent characters unrelated to the niche.
+Write ONLY the "particulars" — 40-70 words describing ONE visually compelling coloring page scene from this niche.
+Cover ALL of: main subject(s), scene composition, key decorative elements, background details, and mood/atmosphere.
+The niche may be about characters, animals, places, objects, or abstract themes — adapt creatively and specifically.
+Do NOT mention line style, coloring instructions, or output format. Do NOT invent elements unrelated to the niche.
+Make it feel like a real, imaginable scene — rich in detail, interesting to color.
 Examples:
-- Characters/animals niche: "fierce samurai fox mid-jump, sakura petals swirling, traditional torii gate silhouette in background"
-- Place/interior niche: "grand Victorian parlor with ornate fireplace, tall arched windows, elaborate chandelier, antique velvet armchairs"
-- Object/theme niche: "oversized vintage teapot overflowing with roses and ivy, surrounded by mismatched teacups and saucers"
-- Nature/abstract niche: "dense enchanted forest with giant twisted oaks, hidden fairy doors on trunks, glowing mushrooms at roots"
+- Characters/animals: "fierce samurai fox mid-leap between rooftops, sakura petals swirling in the wind, traditional wooden torii gate and lanterns in background, dynamic diagonal composition, epic and dramatic energy"
+- Interior/place: "grand Victorian parlor with an ornate carved fireplace, tall arched windows draped in velvet, intricate chandelier overhead, shelves of antique books and curiosities, cozy and atmospheric"
+- Object/theme: "oversized vintage teapot overflowing with climbing roses and ivy, surrounded by mismatched teacups, open books, and tiny snails, whimsical and densely detailed, fairy-tale cottage atmosphere"
+- Nature/fantasy: "dense enchanted forest floor with giant twisted oak roots, hidden fairy doors carved into trunks, glowing mushrooms, dewdrop-covered spiderwebs, and a tiny lantern-lit path winding into the distance"
 
-Return ONLY a JSON object: {"particulars": "...15-30 words of visual specifics..."}`,
+Return ONLY a JSON object: {"particulars": "...40-70 words of vivid visual specifics..."}`,
 
             titles: `${langInstruction} Generate 8 compelling titles for a "${productType}" KDP/Etsy product about "${niche}". ${extras ? `Additional context: ${extras}` : ""}
 Return ONLY a JSON array of strings: ["Title 1", "Title 2", ...]`,
@@ -1146,6 +1147,83 @@ Generate exactly 15 diverse, actionable trends. Focus on currently profitable an
     });
 
     // ── SEARCH QUERY SUGGESTION ───────────────────────────────────────────────
+    // ── AI niche discovery (no user input needed, fresh each call) ──────────
+    app.post("/ai/discover-niche", async (request: any, reply) => {
+        const { platform = "etsy" } = request.body as { platform?: "etsy" | "amazon" | "general" };
+
+        let googleKey = process.env.GOOGLE_API_KEY ?? "";
+        try {
+            const row = await Settings.findOne({ key: "GOOGLE_API_KEY" }).lean();
+            if ((row as any)?.value) googleKey = (row as any).value as string;
+        } catch {}
+        if (!googleKey) return reply.status(503).send({ error: "Google API key no configurada" });
+
+        const platformDescriptions: Record<string, string> = {
+            etsy: "Etsy (digital downloads, printables, wall art, coloring pages, journals)",
+            amazon: "Amazon KDP (coloring books, activity books, journals, low-content books)",
+            general: "Etsy or Amazon KDP",
+        };
+        const urlFormat = platform === "amazon"
+            ? "https://www.amazon.com/s?k=<search+term>"
+            : "https://www.etsy.com/search?q=<search+term>";
+
+        // Randomize the creative angle to avoid repetition across calls
+        const angles = [
+            "an emerging hobby or micro-community (e.g. van life, sourdough baking, cottagecore, dark academia)",
+            "an underserved demographic (e.g. neurodivergent adults, senior women, teen boys, non-binary kids)",
+            "a crossover niche combining two topics rarely seen together",
+            "a seasonal or holiday niche that is specific enough to avoid saturation",
+            "a cultural or geographic niche not well represented in English-language products",
+            "a therapeutic or wellness niche with growing search demand",
+            "a fandom or pop-culture adjacent niche with passionate buyers",
+            "a professional or occupational niche (e.g. nurses, teachers, software engineers)",
+        ];
+        const angle = angles[Math.floor(Math.random() * angles.length)];
+        const entropy = Math.random().toString(36).slice(2, 9);
+
+        const promptText = `Today: ${new Date().toISOString().slice(0, 10)} | seed: ${entropy}
+
+You are a product research strategist for passive-income sellers on ${platformDescriptions[platform]}.
+Find ONE niche that is currently UNDEREXPLORED — not the obvious ones (no "mandala coloring", no "affirmation journal", no generic animals).
+
+Creative angle to explore today: ${angle}
+
+Requirements:
+- Clear buyer intent — people are actually searching for this on ${platform}
+- Specific enough to not be oversaturated (avoid huge generic categories)
+- Products must be creatable as digital/print-on-demand items
+- Think fresh, timely, actionable — something a solo creator can realistically dominate
+
+${platform === "amazon" ? "For Amazon: use URL format " + urlFormat : "For Etsy: use URL format " + urlFormat} (properly URL-encoded)
+The search term should be 2-5 words, buyer-focused.
+
+Return ONLY a JSON object:
+{
+  "niche": "Niche name (3-6 words, catchy and specific)",
+  "url": "complete ready-to-use search URL",
+  "searchTerm": "the exact search term used",
+  "reasoning": "2 sentences in Spanish: why this niche has potential and why it's not yet saturated"
+}`;
+
+        try {
+            const { GoogleGenAI } = await import("@google/genai");
+            const ai = new GoogleGenAI({ apiKey: googleKey });
+            const response = await ai.models.generateContent({
+                model: "gemini-2.0-flash",
+                contents: promptText,
+                config: {
+                    responseMimeType: "application/json",
+                    thinkingConfig: { thinkingBudget: 0 } as any,
+                },
+            });
+            const raw = (response.text ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+            const parsed = JSON.parse(raw) as { niche: string; url: string; searchTerm: string; reasoning: string };
+            return reply.send(parsed);
+        } catch (e: any) {
+            return reply.status(500).send({ error: e?.message ?? "AI error" });
+        }
+    });
+
     app.post("/ai/suggest-search", async (request: any, reply) => {
         const { idea, platform = "etsy" } = request.body as {
             idea: string;

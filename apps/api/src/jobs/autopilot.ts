@@ -674,7 +674,7 @@ async function runPipeline(
                             productType: niche.productType ?? "coloring-book",
                             language: "en",
                         }),
-                        signal: AbortSignal.timeout(30_000),
+                        signal: AbortSignal.timeout(90_000),
                     })
                 );
                 if (res.status === 429) {

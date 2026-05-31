@@ -253,6 +253,29 @@ Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": st
         }
     });
 
+    // PATCH /niches/:id/listings/:listingId — edit a saved KDP listing
+    app.patch("/niches/:id/listings/:listingId", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { id, listingId } = request.params as { id: string; listingId: string };
+            const body = request.body as { title?: string; subtitle?: string; description?: string; keywords?: string[] };
+            const update: Record<string, any> = {};
+            if (body.title       !== undefined) update["listings.$.title"]       = body.title.trim();
+            if (body.subtitle    !== undefined) update["listings.$.subtitle"]    = body.subtitle.trim();
+            if (body.description !== undefined) update["listings.$.description"] = body.description.trim();
+            if (body.keywords    !== undefined) update["listings.$.keywords"]    = body.keywords.map((k: string) => k.trim()).filter(Boolean);
+            const niche = await Niche.findOneAndUpdate(
+                { _id: id, "listings._id": listingId },
+                { $set: update },
+                { new: true }
+            ).lean();
+            if (!niche) return reply.status(404).send({ error: "Listing no encontrado" });
+            return reply.send({ niche });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // DELETE /niches/:id/listings/:listingId — remove a saved KDP listing
     app.delete("/niches/:id/listings/:listingId", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;

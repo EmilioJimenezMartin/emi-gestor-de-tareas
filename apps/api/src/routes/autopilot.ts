@@ -216,26 +216,31 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: sampleUrl } });
             deps.io?.emit("niches:updated");
 
-            // Upload sample image to Cloudinary (fire-and-forget, ~10s delay for Pollinations to render)
+            // Wait for Pollinations to render the image, then upload to Cloudinary so Telegram
+            // receives a stable CDN URL (Pollinations URLs often aren't ready immediately)
             const port = process.env.PORT || 3001;
             const base = `http://localhost:${port}`;
-            setTimeout(async () => {
-                try {
-                    const cldRes = await fetch(`${base}/cloudinary/upload-url`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ url: sampleUrl, nicheId }),
-                    });
-                    if (cldRes.ok) {
-                        const cldData = await cldRes.json() as any;
-                        const cloudUrl = cldData.image?.url;
-                        if (cloudUrl) {
-                            await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: cloudUrl } });
-                            deps.io?.emit("niches:updated");
-                        }
+            let telegramImageUrl = sampleUrl;
+            try {
+                // Pre-fetch the Pollinations image to ensure it's rendered (up to 35s)
+                await fetch(sampleUrl, { signal: AbortSignal.timeout(35_000) });
+                // Upload to Cloudinary for a stable URL
+                const cldRes = await fetch(`${base}/cloudinary/upload-url`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url: sampleUrl, nicheId }),
+                    signal: AbortSignal.timeout(30_000),
+                });
+                if (cldRes.ok) {
+                    const cldData = await cldRes.json() as any;
+                    const cloudUrl = cldData.image?.url;
+                    if (cloudUrl) {
+                        telegramImageUrl = cloudUrl;
+                        await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: cloudUrl } });
+                        deps.io?.emit("niches:updated");
                     }
-                } catch { /* non-critical */ }
-            }, 10_000);
+                }
+            } catch { /* non-critical — fall back to raw Pollinations URL */ }
 
             // Create pending action and send Telegram
             const styleLabel: Record<string, string> = {
@@ -250,7 +255,7 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                 type: "niche-discovery",
                 nicheId,
                 nicheName: (niche as any).name,
-                imageUrl: sampleUrl,
+                imageUrl: telegramImageUrl,
                 autoApproveAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
             });
 
@@ -266,7 +271,7 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             ].filter(Boolean).join("\n");
 
             const msgId = await sendTelegramPhotoDiscovery({
-                imageUrl: sampleUrl,
+                imageUrl: telegramImageUrl,
                 caption,
                 actionId: String(action._id),
             });

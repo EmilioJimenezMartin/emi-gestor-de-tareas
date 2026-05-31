@@ -1021,6 +1021,7 @@ export function KdpFactoryApp() {
     const [isSavingNiche, setIsSavingNiche] = useState(false);
     const [nicheDeleteId, setNicheDeleteId] = useState<string | null>(null);
     const [nicheStatusFilter, setNicheStatusFilter] = useState<"all" | NicheStatus>("all");
+    const [nichePage, setNichePage] = useState(0);
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban">("list");
     const [kanbanProductFilter, setKanbanProductFilter] = useState<"all" | "coloring-book" | "printable-poster" | "seamless-pattern">("all");
     const [studioSubTab, setStudioSubTab] = useState<"niches" | "radar" | "pipeline">(() =>
@@ -1145,6 +1146,9 @@ export function KdpFactoryApp() {
     const [nicheDetailTab, setNicheDetailTab] = useState<"images" | "catalogs" | "seo" | "book" | "actions">("images");
     const [imagePromptSuggestion, setImagePromptSuggestion] = useState<string | null>(null);
     const [isGeneratingImagePrompt, setIsGeneratingImagePrompt] = useState(false);
+    const [editingListingId, setEditingListingId] = useState<string | null>(null);
+    const [editListingDraft, setEditListingDraft] = useState<{ title: string; subtitle: string; description: string; keywords: string }>({ title: "", subtitle: "", description: "", keywords: "" });
+    const [savingListingId, setSavingListingId] = useState<string | null>(null);
 
     // --- Pipeline dashboard state ---
     type PipelineNiche = {
@@ -1156,6 +1160,9 @@ export function KdpFactoryApp() {
     const [pipelineLoading, setPipelineLoading] = useState(false);
     const [pipelineSeoLoading, setPipelineSeoLoading] = useState<Record<string, boolean>>({});
     const [pipelineRetryLoading, setPipelineRetryLoading] = useState<Record<string, boolean>>({});
+    const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "columns">(() =>
+        (typeof window !== "undefined" && (localStorage.getItem("kdp-pipeline-view") as "list" | "columns")) || "list"
+    );
     const studioSubTabRef = useRef<"niches" | "radar" | "pipeline">("niches");
     // Keep ref in sync so socket handlers read current tab without stale closure
     studioSubTabRef.current = studioSubTab;
@@ -4392,6 +4399,31 @@ export function KdpFactoryApp() {
         }
     };
 
+    const saveListingEdit = async (nicheId: string, listingId: string) => {
+        setSavingListingId(listingId);
+        try {
+            const keywords = editListingDraft.keywords
+                .split(/[,\n]/).map(k => k.trim()).filter(Boolean);
+            const res = await fetch(`${API_BASE_URL}/niches/${nicheId}/listings/${listingId}`, {
+                method: "PATCH", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    title: editListingDraft.title,
+                    subtitle: editListingDraft.subtitle,
+                    description: editListingDraft.description,
+                    keywords,
+                }),
+            });
+            if (!res.ok) throw new Error((await res.json()).error ?? "Error guardando");
+            toast.success("Listing guardado");
+            setEditingListingId(null);
+            void fetchNiches();
+        } catch (e: any) {
+            toast.error(e.message ?? "Error guardando listing");
+        } finally {
+            setSavingListingId(null);
+        }
+    };
+
     const retryStuckNiche = async (nicheId: string) => {
         setPipelineRetryLoading(prev => ({ ...prev, [nicheId]: true }));
         try {
@@ -4476,29 +4508,38 @@ export function KdpFactoryApp() {
     }
 
     const renderPipeline = () => {
-        const FUNNEL_PHASES = [
-            { id: "niche",     label: "Nicho",     icon: Target,       text: "text-sky-400",     bg: "bg-sky-500/10",     border: "border-sky-500/20",    bar: "bg-sky-400/50"     },
-            { id: "catalog",   label: "Catálogo",  icon: Grid3x3,      text: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20",   bar: "bg-blue-400/50"    },
-            { id: "libro",     label: "Libro PDF", icon: BookOpen,     text: "text-violet-400",  bg: "bg-violet-500/10",  border: "border-violet-500/20", bar: "bg-violet-400/50"  },
-            { id: "seo",       label: "SEO",       icon: FileText,     text: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/20",  bar: "bg-amber-400/50"   },
-            { id: "cover",     label: "Portada",   icon: ImageIcon,    text: "text-orange-400",  bg: "bg-orange-500/10",  border: "border-orange-500/20", bar: "bg-orange-400/50"  },
-            { id: "published", label: "Publicado", icon: ShoppingBag,  text: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20",bar: "bg-emerald-400/50" },
+        const PHASES = [
+            { id: "niche",     label: "Nicho",     icon: Target,      text: "text-sky-400",     bg: "bg-sky-500/10",     border: "border-sky-500/20"    },
+            { id: "catalog",   label: "Catálogo",  icon: Grid3x3,     text: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20"   },
+            { id: "libro",     label: "Libro PDF", icon: BookOpen,    text: "text-violet-400",  bg: "bg-violet-500/10",  border: "border-violet-500/20" },
+            { id: "seo",       label: "SEO",       icon: FileText,    text: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/20"  },
+            { id: "cover",     label: "Portada",   icon: ImageIcon,   text: "text-orange-400",  bg: "bg-orange-500/10",  border: "border-orange-500/20" },
+            { id: "published", label: "Publicado", icon: ShoppingBag, text: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20"},
         ] as const;
 
         const byPhase: Record<string, PipelineNiche[]> = {};
-        FUNNEL_PHASES.forEach(p => { byPhase[p.id] = pipelineData?.niches.filter(n => n.phase === p.id) ?? []; });
-        const maxCount = Math.max(1, ...FUNNEL_PHASES.map(p => byPhase[p.id].length));
-        const totalActive = pipelineData?.niches.length ?? 0;
+        PHASES.forEach(p => { byPhase[p.id] = pipelineData?.niches.filter(n => n.phase === p.id) ?? []; });
+
+        const switchView = (v: "list" | "columns") => {
+            setPipelineViewMode(v);
+            localStorage.setItem("kdp-pipeline-view", v);
+        };
+
+        const phaseColor: Record<string, string> = {
+            niche: "text-sky-400", catalog: "text-blue-400", libro: "text-violet-400",
+            seo: "text-amber-400", cover: "text-orange-400", published: "text-emerald-400",
+        };
 
         return (
             <div className="space-y-5">
                 {/* Header */}
                 <div className="flex items-center justify-between flex-wrap gap-2">
                     <div>
-                        <h2 className="text-xl font-black text-white">Pipeline</h2>
-                        <p className="text-xs text-neutral-600">Estado en tiempo real · todos los nichos activos</p>
+                        <h2 className="text-xl font-black text-white">Pipeline en tiempo real</h2>
+                        <p className="text-xs text-neutral-600">Estado de todos los nichos activos</p>
                     </div>
                     <div className="flex items-center gap-2">
+                        {/* Semaphore dots */}
                         {pipelineData && [
                             { label: "IMG", s: pipelineData.semaphore.image, color: "sky" as const },
                             { label: "LLM", s: pipelineData.semaphore.llm,   color: "violet" as const },
@@ -4511,6 +4552,16 @@ export function KdpFactoryApp() {
                                 {s.busy && s.queueLength > 0 && <span className="text-[10px] text-amber-400/80 font-black">+{s.queueLength}</span>}
                             </div>
                         ))}
+                        {/* View toggle */}
+                        <div className="flex rounded-xl border border-white/10 overflow-hidden">
+                            {([["list", AlignLeft], ["columns", BarChart]] as const).map(([v, Icon]) => (
+                                <button key={v} onClick={() => switchView(v)}
+                                    className={`h-7 w-8 flex items-center justify-center transition-all
+                                        ${pipelineViewMode === v ? "bg-white/10 text-white" : "text-neutral-600 hover:text-neutral-400 hover:bg-white/[0.03]"}`}>
+                                    <Icon size={11} />
+                                </button>
+                            ))}
+                        </div>
                         <button onClick={fetchPipelineData} disabled={pipelineLoading}
                             className="h-7 w-7 rounded-lg border border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white transition-all flex items-center justify-center disabled:opacity-40">
                             {pipelineLoading ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
@@ -4520,7 +4571,7 @@ export function KdpFactoryApp() {
 
                 {!pipelineData && !pipelineLoading && (
                     <button onClick={fetchPipelineData} className="w-full py-12 rounded-2xl border border-dashed border-white/10 text-neutral-600 hover:text-neutral-400 transition-colors text-sm font-black flex items-center justify-center gap-2">
-                        <Zap size={14} /> Cargar pipeline
+                        <Zap size={14} /> Cargar estado del pipeline
                     </button>
                 )}
                 {pipelineLoading && (
@@ -4531,110 +4582,180 @@ export function KdpFactoryApp() {
 
                 {pipelineData && (
                     <div className="space-y-6">
-                        {/* ── FUNNEL ── */}
-                        <div className="space-y-1">
-                            {FUNNEL_PHASES.map((phase, idx) => {
-                                const nichos = byPhase[phase.id] ?? [];
-                                const count = nichos.length;
-                                const barPct = Math.max(3, (count / maxCount) * 100);
-                                const PhaseIcon = phase.icon;
 
-                                // Symmetric indentation creates the funnel shape.
-                                // Narrows from Nicho (0 indent) → Portada (max indent).
-                                // Publicado (idx 5) flares back to full width as the success exit.
-                                const MAX_INDENT = 40;
-                                const indentSteps = FUNNEL_PHASES.length - 2; // 4
-                                const indent = idx < FUNNEL_PHASES.length - 1
-                                    ? Math.round((idx / indentSteps) * MAX_INDENT)
-                                    : 0;
-
-                                return (
-                                    <div key={phase.id}
-                                        className={`rounded-2xl border overflow-hidden transition-all duration-300
-                                            ${count > 0 ? `${phase.bg} ${phase.border}` : "border-white/5 bg-white/[0.01]"}`}
-                                        style={{ marginLeft: `${indent}px`, marginRight: `${indent}px` }}>
-
-                                        {/* Stage header */}
-                                        <div className="flex items-center gap-3 px-4 py-3">
-                                            <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0
-                                                ${count > 0 ? `${phase.bg} border ${phase.border}` : "bg-white/[0.03] border border-white/8"}`}>
-                                                <PhaseIcon size={12} className={count > 0 ? phase.text : "text-neutral-700"} />
-                                            </div>
-                                            <span className={`text-[11px] font-black uppercase tracking-widest w-[4.5rem] shrink-0 ${count > 0 ? phase.text : "text-neutral-700"}`}>
-                                                {phase.label}
-                                            </span>
-                                            {/* Proportional bar */}
-                                            <div className="flex-1 h-2 bg-white/[0.04] rounded-full overflow-hidden">
-                                                {count > 0 && (
-                                                    <div className={`h-full rounded-full transition-all duration-700 ${phase.bar}`}
-                                                        style={{ width: `${barPct}%` }} />
-                                                )}
-                                            </div>
-                                            <span className={`text-lg font-black tabular-nums leading-none min-w-[1.5rem] text-right
-                                                ${count > 0 ? phase.text : "text-neutral-800"}`}>
-                                                {count}
-                                            </span>
+                        {/* ── LIST VIEW (original) ── */}
+                        {pipelineViewMode === "list" && <>
+                            <div className="grid grid-cols-2 gap-3">
+                                {[
+                                    { label: "Cola imágenes", s: pipelineData.semaphore.image, color: "sky" },
+                                    { label: "Cola LLM",      s: pipelineData.semaphore.llm,   color: "violet" },
+                                ].map(({ label, s, color }) => (
+                                    <Card key={label} variant="glass" className="p-4 border-white/5 bg-white/[0.01] space-y-1">
+                                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-neutral-500">
+                                            <div className={`w-2 h-2 rounded-full ${s.busy ? (color === "sky" ? "bg-sky-400 shadow-[0_0_6px_rgba(56,189,248,0.6)]" : "bg-violet-400 shadow-[0_0_6px_rgba(167,139,250,0.6)]") : "bg-neutral-700"}`} />
+                                            {label}
+                                            {s.busy  && <span className="ml-auto text-amber-400">OCUPADO</span>}
+                                            {!s.busy && <span className="ml-auto text-emerald-400">LIBRE</span>}
                                         </div>
+                                        {s.busy && <p className="text-[10px] text-neutral-500 truncate">{s.holder} · {fmtMs(s.heldMs)}</p>}
+                                        {s.queueLength > 0 && <p className="text-[10px] text-amber-400/70">{s.queueLength} en cola</p>}
+                                    </Card>
+                                ))}
+                            </div>
 
-                                        {/* Niche chips */}
-                                        {count > 0 && (
-                                            <div className="px-4 pb-3 flex flex-wrap gap-1.5">
+                            {pipelineData.niches.length === 0 && (
+                                <p className="text-sm text-neutral-600 text-center py-8">No hay nichos activos en el pipeline.</p>
+                            )}
+                            <div className="space-y-3">
+                                {pipelineData.niches.map(n => {
+                                    const isStuck = n.phaseMs > 4 * 3_600_000 && !["published", "niche"].includes(n.phase);
+                                    const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
+                                    const nicheRoyalties = salesData.filter(s => s.nicheId === n.id).reduce((sum, s) => sum + s.royaltiesUsd, 0);
+                                    const nicheUnits    = salesData.filter(s => s.nicheId === n.id).reduce((sum, s) => sum + s.unitsSold, 0);
+                                    return (
+                                        <Card key={n.id} variant="glass" className={`p-4 border-white/5 bg-white/[0.01] space-y-3 ${isStuck ? "border-amber-500/20 bg-amber-500/[0.02]" : ""}`}>
+                                            <div className="flex items-start gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="font-black text-white text-sm truncate">{n.name}</span>
+                                                        {n.score != null && (
+                                                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${n.score >= 70 ? "bg-emerald-500/15 text-emerald-400" : n.score >= 50 ? "bg-amber-500/15 text-amber-400" : "bg-neutral-500/15 text-neutral-500"}`}>
+                                                                {n.score}pts
+                                                            </span>
+                                                        )}
+                                                        {n.autoPilotEnabled && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400">AP</span>}
+                                                        {isStuck && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 flex items-center gap-0.5"><AlertTriangle size={8} /> ATASCADO</span>}
+                                                        {nicheRoyalties > 0 && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400">${nicheRoyalties.toFixed(2)} · {nicheUnits}u</span>}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                        <span className={`text-[10px] font-black uppercase ${phaseColor[n.phase] ?? "text-neutral-400"}`}>{n.phase}</span>
+                                                        <span className="text-[9px] text-neutral-600">{fmtMs(n.phaseMs)} en esta fase</span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    {["libro", "seo", "pdf"].includes(n.phase) && (
+                                                        <button onClick={() => void launchPipelineSeo(n.id)} disabled={pipelineSeoLoading[n.id]}
+                                                            title="Generar / regenerar SEO"
+                                                            className="flex items-center gap-1 h-7 px-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] font-black hover:bg-amber-500/25 transition-all disabled:opacity-50">
+                                                            {pipelineSeoLoading[n.id] ? <Loader2 size={9} className="animate-spin" /> : <FileText size={9} />} SEO
+                                                        </button>
+                                                    )}
+                                                    {(isStuck || !!n.lastError) && (
+                                                        <button onClick={() => void retryStuckNiche(n.id)} disabled={pipelineRetryLoading[n.id]}
+                                                            className="flex items-center gap-1 h-7 px-2.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-400 text-[10px] font-black hover:bg-rose-500/25 transition-all disabled:opacity-50">
+                                                            {pipelineRetryLoading[n.id] ? <Loader2 size={9} className="animate-spin" /> : <RefreshCw size={9} />} Retry
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            {n.phase === "catalog" && n.catalogs.total > 0 && (
+                                                <div className="space-y-1.5">
+                                                    <div className="flex items-center justify-between text-[10px]">
+                                                        <span className="text-neutral-600">{n.catalogs.imgsDone}/{n.catalogs.imgsTotal} imágenes · {n.catalogs.running} activo{n.catalogs.running !== 1 ? "s" : ""} · {n.catalogs.queued} en cola</span>
+                                                        <span className="text-neutral-500 font-black">{imgPct}%</span>
+                                                    </div>
+                                                    <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-gradient-to-r from-blue-500/60 to-sky-400/60 rounded-full transition-all duration-500" style={{ width: `${imgPct}%` }} />
+                                                    </div>
+                                                    {n.lastImageAt && (
+                                                        <p className="text-[9px] text-neutral-700">
+                                                            Última imagen: {fmtMs(Date.now() - new Date(n.lastImageAt).getTime())} atrás
+                                                            {Date.now() - new Date(n.lastImageAt).getTime() > 10 * 60_000 && <span className="text-amber-400 ml-1">⚠️</span>}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {n.lastError && (
+                                                <p className="text-[9px] text-rose-400/80 font-mono bg-rose-500/5 rounded-lg px-2 py-1 truncate" title={n.lastError}>{n.lastError}</p>
+                                            )}
+                                        </Card>
+                                    );
+                                })}
+                            </div>
+                        </>}
+
+                        {/* ── COLUMNS VIEW (kanban) ── */}
+                        {pipelineViewMode === "columns" && (
+                            <div className="overflow-x-auto pb-2 no-scrollbar -mx-1 px-1">
+                                <div className="flex gap-3" style={{ minWidth: `${PHASES.length * 188}px` }}>
+                                    {PHASES.map(phase => {
+                                        const nichos = byPhase[phase.id] ?? [];
+                                        const PhaseIcon = phase.icon;
+                                        return (
+                                            <div key={phase.id} className="flex-1 min-w-0 flex flex-col gap-2">
+                                                {/* Column header */}
+                                                <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${nichos.length > 0 ? `${phase.bg} ${phase.border}` : "border-white/5 bg-white/[0.01]"}`}>
+                                                    <PhaseIcon size={11} className={nichos.length > 0 ? phase.text : "text-neutral-700"} />
+                                                    <span className={`text-[10px] font-black uppercase tracking-widest flex-1 ${nichos.length > 0 ? phase.text : "text-neutral-700"}`}>
+                                                        {phase.label}
+                                                    </span>
+                                                    <span className={`text-sm font-black tabular-nums ${nichos.length > 0 ? phase.text : "text-neutral-800"}`}>
+                                                        {nichos.length}
+                                                    </span>
+                                                </div>
+                                                {/* Niche cards */}
                                                 {nichos.map(n => {
                                                     const isStuck = n.phaseMs > 4 * 3_600_000 && !["published", "niche"].includes(n.phase);
-                                                    const imgPct = n.catalogs.imgsTotal > 0
-                                                        ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
+                                                    const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
                                                     const royalties = salesData.filter(s => s.nicheId === n.id).reduce((sum, s) => sum + s.royaltiesUsd, 0);
                                                     return (
                                                         <div key={n.id} title={n.lastError ?? n.name}
-                                                            className={`group flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-black transition-all
-                                                                ${isStuck      ? "bg-amber-500/10 border-amber-500/30 text-amber-200" :
-                                                                  n.lastError  ? "bg-rose-500/10  border-rose-500/30  text-rose-200"  :
-                                                                                 "bg-black/20 border-white/10 text-white/80 hover:border-white/20 hover:text-white"}`}>
-
-                                                            {(isStuck || !!n.lastError) && (
-                                                                <AlertTriangle size={9} className={isStuck ? "text-amber-400 shrink-0" : "text-rose-400 shrink-0"} />
-                                                            )}
-                                                            <span className="max-w-[150px] truncate">{n.name}</span>
-                                                            <span className="opacity-40 text-[9px] font-normal">{fmtMs(n.phaseMs)}</span>
-
+                                                            className={`rounded-xl border p-3 space-y-2 transition-all
+                                                                ${isStuck     ? "bg-amber-500/[0.06] border-amber-500/25" :
+                                                                  n.lastError ? "bg-rose-500/[0.06]  border-rose-500/25"  :
+                                                                                "bg-white/[0.02] border-white/8"}`}>
+                                                            <p className="text-[11px] font-black text-white leading-tight line-clamp-2">{n.name}</p>
+                                                            <div className="flex items-center gap-1 flex-wrap">
+                                                                {isStuck && <span className="flex items-center gap-0.5 text-[9px] font-black text-amber-400"><AlertTriangle size={8} /> Atascado</span>}
+                                                                {n.lastError && !isStuck && <span className="flex items-center gap-0.5 text-[9px] font-black text-rose-400"><AlertTriangle size={8} /> Error</span>}
+                                                                {n.autoPilotEnabled && <span className="text-[9px] font-black text-sky-400">AP</span>}
+                                                                {royalties > 0 && <span className="text-[9px] font-black text-emerald-400">${royalties.toFixed(0)}</span>}
+                                                            </div>
+                                                            <p className="text-[9px] text-neutral-600">{fmtMs(n.phaseMs)}</p>
                                                             {phase.id === "catalog" && n.catalogs.imgsTotal > 0 && (
-                                                                <span className="text-[9px] text-blue-300 font-black">{imgPct}%</span>
+                                                                <div className="space-y-1">
+                                                                    <div className="flex justify-between text-[9px] text-neutral-600">
+                                                                        <span>{n.catalogs.imgsDone}/{n.catalogs.imgsTotal} imgs</span>
+                                                                        <span className="font-black">{imgPct}%</span>
+                                                                    </div>
+                                                                    <div className="h-0.5 bg-white/5 rounded-full overflow-hidden">
+                                                                        <div className="h-full bg-blue-400/50 rounded-full" style={{ width: `${imgPct}%` }} />
+                                                                    </div>
+                                                                </div>
                                                             )}
-                                                            {royalties > 0 && (
-                                                                <span className="text-[9px] text-emerald-400 font-black">${royalties.toFixed(0)}</span>
+                                                            {n.lastError && (
+                                                                <p className="text-[8px] text-rose-400/70 font-mono truncate" title={n.lastError}>{n.lastError}</p>
                                                             )}
-
-                                                            {/* SEO — show on hover */}
-                                                            {["libro", "seo"].includes(n.phase) && (
-                                                                <button onClick={e => { e.stopPropagation(); void launchPipelineSeo(n.id); }}
-                                                                    disabled={pipelineSeoLoading[n.id]}
-                                                                    className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 h-4 px-1.5 rounded bg-amber-500/25 text-amber-300 text-[9px] hover:bg-amber-500/40 transition-all disabled:opacity-50">
-                                                                    {pipelineSeoLoading[n.id] ? <Loader2 size={7} className="animate-spin" /> : <Sparkles size={7} />} SEO
-                                                                </button>
-                                                            )}
-                                                            {/* Retry — always visible when stuck/error */}
-                                                            {(isStuck || !!n.lastError) && (
-                                                                <button onClick={e => { e.stopPropagation(); void retryStuckNiche(n.id); }}
-                                                                    disabled={pipelineRetryLoading[n.id]}
-                                                                    className="flex items-center gap-0.5 h-4 px-1.5 rounded bg-rose-500/25 text-rose-300 text-[9px] hover:bg-rose-500/40 transition-all disabled:opacity-50">
-                                                                    {pipelineRetryLoading[n.id] ? <Loader2 size={7} className="animate-spin" /> : <RefreshCw size={7} />} Retry
-                                                                </button>
-                                                            )}
+                                                            <div className="flex gap-1 flex-wrap">
+                                                                {["libro", "seo", "pdf"].includes(n.phase) && (
+                                                                    <button onClick={() => void launchPipelineSeo(n.id)} disabled={pipelineSeoLoading[n.id]}
+                                                                        className="flex items-center gap-0.5 h-5 px-2 rounded bg-amber-500/15 border border-amber-500/25 text-amber-400 text-[9px] font-black hover:bg-amber-500/25 transition-all disabled:opacity-50">
+                                                                        {pipelineSeoLoading[n.id] ? <Loader2 size={7} className="animate-spin" /> : <Sparkles size={7} />} SEO
+                                                                    </button>
+                                                                )}
+                                                                {(isStuck || !!n.lastError) && (
+                                                                    <button onClick={() => void retryStuckNiche(n.id)} disabled={pipelineRetryLoading[n.id]}
+                                                                        className="flex items-center gap-0.5 h-5 px-2 rounded bg-rose-500/15 border border-rose-500/25 text-rose-400 text-[9px] font-black hover:bg-rose-500/25 transition-all disabled:opacity-50">
+                                                                        {pipelineRetryLoading[n.id] ? <Loader2 size={7} className="animate-spin" /> : <RefreshCw size={7} />} Retry
+                                                                    </button>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     );
                                                 })}
+                                                {nichos.length === 0 && (
+                                                    <div className="rounded-xl border border-dashed border-white/5 py-6 flex items-center justify-center">
+                                                        <span className="text-[10px] text-neutral-800 font-black">—</span>
+                                                    </div>
+                                                )}
                                             </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        {totalActive === 0 && (
-                            <p className="text-sm text-neutral-600 text-center py-4">No hay nichos activos en el pipeline.</p>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         )}
 
-                        {/* Prompt metrics */}
+                        {/* Prompt metrics (shared) */}
                         <div className="space-y-3">
                             <div className="flex items-center justify-between flex-wrap gap-2">
                                 <div>
@@ -4654,13 +4775,11 @@ export function KdpFactoryApp() {
                                     </button>
                                 </div>
                             </div>
-
                             {promptMetrics.length === 0 && !promptMetricsLoading && (
                                 <button onClick={() => void fetchPromptMetrics()} className="w-full py-8 rounded-2xl border border-dashed border-white/10 text-neutral-600 hover:text-neutral-400 transition-colors text-xs font-black">
                                     Cargar métricas
                                 </button>
                             )}
-
                             {promptMetrics.length > 0 && (
                                 <div className="space-y-1.5">
                                     {promptMetrics.map(m => (
@@ -9861,9 +9980,13 @@ export function KdpFactoryApp() {
                                 return 0;
                             });
                         if (listNiches.length === 0) return null;
+                        const NICHES_PER_PAGE = 12;
+                        const totalPages = Math.ceil(listNiches.length / NICHES_PER_PAGE);
+                        const safePage = Math.min(nichePage, totalPages - 1);
+                        const pagedNiches = listNiches.slice(safePage * NICHES_PER_PAGE, (safePage + 1) * NICHES_PER_PAGE);
                         return (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            {listNiches.map(niche => {
+                        <><div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {pagedNiches.map(niche => {
                                     const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
                                     const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
                                     const statusDotMap: Record<NicheStatus, string> = { found: "bg-sky-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
@@ -10311,6 +10434,32 @@ export function KdpFactoryApp() {
                                     );
                                 })}
                         </div>
+                        {totalPages > 1 && (
+                            <div className="flex items-center justify-center gap-2 pt-4">
+                                <button
+                                    onClick={() => setNichePage(p => Math.max(0, p - 1))}
+                                    disabled={safePage === 0}
+                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl border border-white/10 bg-white/[0.03] text-sm font-black text-neutral-400 hover:text-white hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                    ‹ Anterior
+                                </button>
+                                <div className="flex items-center gap-1">
+                                    {Array.from({ length: totalPages }, (_, i) => (
+                                        <button key={i} onClick={() => setNichePage(i)}
+                                            className={`w-7 h-7 rounded-lg text-sm font-black transition-all ${i === safePage ? "bg-sky-500/20 border border-sky-500/40 text-sky-300" : "text-neutral-600 hover:text-neutral-300 hover:bg-white/[0.05] border border-transparent"}`}>
+                                            {i + 1}
+                                        </button>
+                                    ))}
+                                </div>
+                                <button
+                                    onClick={() => setNichePage(p => Math.min(totalPages - 1, p + 1))}
+                                    disabled={safePage === totalPages - 1}
+                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl border border-white/10 bg-white/[0.03] text-sm font-black text-neutral-400 hover:text-white hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                    Siguiente ›
+                                </button>
+                                <span className="text-sm text-neutral-700 ml-1 tabular-nums">{listNiches.length} nichos</span>
+                            </div>
+                        )}
+                        </>
                         );
                     })()}
 
@@ -10342,123 +10491,8 @@ export function KdpFactoryApp() {
             {/* ══ PIPELINE EN TIEMPO REAL ══ */}
             {studioSubTab === "pipeline" && <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
                 <div className="h-px w-full bg-gradient-to-r from-violet-500/80 via-violet-400/40 to-transparent" />
-                <div className="p-6 space-y-4">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <SectionHeader icon={<Activity size={16} />} title="Pipeline en tiempo real" subtitle="Estado de todos los nichos activos en producción" color="violet" size="lg" />
-                        <button onClick={fetchPipelineData} disabled={pipelineLoading}
-                            className="flex items-center gap-1.5 h-8 px-4 rounded-xl border border-white/10 bg-white/[0.03] text-[11px] font-black text-neutral-500 hover:text-white transition-all disabled:opacity-40">
-                            {pipelineLoading ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Actualizar
-                        </button>
-                    </div>
-
-                    {!pipelineData && !pipelineLoading && (
-                        <button onClick={fetchPipelineData} className="w-full py-10 rounded-2xl border border-dashed border-white/10 text-neutral-600 hover:text-neutral-400 transition-colors text-xs font-black flex items-center justify-center gap-2">
-                            <Activity size={13} /> Cargar estado del pipeline
-                        </button>
-                    )}
-                    {pipelineLoading && <div className="flex justify-center py-10 text-neutral-700"><Loader2 size={18} className="animate-spin" /></div>}
-
-                    {pipelineData && (
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-3">
-                                {[{ label: "Cola imágenes", s: pipelineData.semaphore.image }, { label: "Cola LLM", s: pipelineData.semaphore.llm }].map(({ label, s }) => (
-                                    <Card key={label} variant="glass" className="p-3 border-white/5 bg-white/[0.01]">
-                                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-neutral-500">
-                                            <div className={`w-2 h-2 rounded-full ${s.busy ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)]" : "bg-emerald-500/60"}`} />
-                                            {label}
-                                            <span className={`ml-auto font-black ${s.busy ? "text-amber-400" : "text-emerald-400"}`}>{s.busy ? "OCUPADO" : "LIBRE"}</span>
-                                        </div>
-                                        {s.busy && <p className="text-[9px] text-neutral-600 mt-1 truncate">{s.holder} · {fmtMs(s.heldMs)}</p>}
-                                        {s.queueLength > 0 && <p className="text-[9px] text-amber-400/70">{s.queueLength} esperando</p>}
-                                    </Card>
-                                ))}
-                            </div>
-
-                            {pipelineData.niches.length === 0 && <p className="text-xs text-neutral-600 text-center py-4">No hay nichos activos en el pipeline.</p>}
-                            <div className="space-y-2">
-                                {pipelineData.niches.map(n => {
-                                    const phaseColor: Record<string, string> = {
-                                        niche: "text-sky-400", catalog: "text-blue-400", libro: "text-violet-400",
-                                        seo: "text-amber-400", cover: "text-orange-400", published: "text-emerald-400",
-                                    };
-                                    const isStuck = n.phaseMs > 4 * 3_600_000 && !["published", "niche"].includes(n.phase);
-                                    const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
-                                    const nicheRoyalties = salesData.filter(s => s.nicheId === n.id).reduce((sum, s) => sum + s.royaltiesUsd, 0);
-                                    const nicheUnits = salesData.filter(s => s.nicheId === n.id).reduce((sum, s) => sum + s.unitsSold, 0);
-                                    return (
-                                        <Card key={n.id} variant="glass" className={`p-3 border-white/5 bg-white/[0.01] space-y-2 ${isStuck ? "border-amber-500/20 bg-amber-500/[0.02]" : ""}`}>
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <span className="font-black text-white text-sm flex-1 truncate">{n.name}</span>
-                                                {n.score != null && <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${n.score >= 70 ? "bg-emerald-500/15 text-emerald-400" : "bg-neutral-500/15 text-neutral-500"}`}>{n.score}pts</span>}
-                                                {n.autoPilotEnabled && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400">AP</span>}
-                                                {isStuck && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 flex items-center gap-0.5"><AlertTriangle size={8} /> ATASCADO</span>}
-                                                {nicheRoyalties > 0 && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400">${nicheRoyalties.toFixed(2)} · {nicheUnits}u</span>}
-                                                <span className={`text-[10px] font-black uppercase ${phaseColor[n.phase] ?? "text-neutral-400"}`}>{n.phase}</span>
-                                                <span className="text-[9px] text-neutral-600">{fmtMs(n.phaseMs)}</span>
-                                                {n.phase === "libro" && (
-                                                    <button onClick={() => void launchPipelineSeo(n.id)} disabled={pipelineSeoLoading[n.id]}
-                                                        className="flex items-center gap-1 h-6 px-2 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[9px] font-black hover:bg-amber-500/25 transition-all disabled:opacity-50">
-                                                        {pipelineSeoLoading[n.id] ? <Loader2 size={8} className="animate-spin" /> : <FileText size={8} />} SEO
-                                                    </button>
-                                                )}
-                                                {(isStuck || !!n.lastError) && (
-                                                    <button onClick={() => void retryStuckNiche(n.id)} disabled={pipelineRetryLoading[n.id]}
-                                                        className="flex items-center gap-1 h-6 px-2 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-400 text-[9px] font-black hover:bg-rose-500/25 transition-all disabled:opacity-50">
-                                                        {pipelineRetryLoading[n.id] ? <Loader2 size={8} className="animate-spin" /> : <RefreshCw size={8} />} Retry
-                                                    </button>
-                                                )}
-                                            </div>
-                                            {n.phase === "catalog" && n.catalogs.total > 0 && (
-                                                <div className="space-y-1">
-                                                    <div className="flex justify-between text-[9px] text-neutral-600">
-                                                        <span>{n.catalogs.imgsDone}/{n.catalogs.imgsTotal} imgs · {n.catalogs.running} activo{n.catalogs.running !== 1 ? "s" : ""}</span>
-                                                        <span className="font-black">{imgPct}%</span>
-                                                    </div>
-                                                    <div className="h-0.5 bg-white/5 rounded-full overflow-hidden">
-                                                        <div className="h-full bg-gradient-to-r from-violet-500/60 to-violet-400/60 rounded-full" style={{ width: `${imgPct}%` }} />
-                                                    </div>
-                                                </div>
-                                            )}
-                                            {n.lastError && <p className="text-[9px] text-rose-400/70 font-mono truncate bg-rose-500/5 rounded px-2 py-0.5" title={n.lastError}>{n.lastError}</p>}
-                                        </Card>
-                                    );
-                                })}
-                            </div>
-
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5"><Star size={10} /> Métricas de prompts</p>
-                                    <div className="flex items-center gap-1.5">
-                                        {["coloring-book", "printable-poster"].map(pt => (
-                                            <button key={pt} onClick={() => { setPromptMetricsProductType(pt); void fetchPromptMetrics(pt); }}
-                                                className={`px-2 py-0.5 rounded-lg border text-[9px] font-black transition-all ${promptMetricsProductType === pt ? "bg-violet-500/20 border-violet-500/40 text-violet-400" : "border-white/10 text-neutral-600"}`}>
-                                                {pt === "coloring-book" ? "Coloring" : "Poster"}
-                                            </button>
-                                        ))}
-                                        <button onClick={() => void fetchPromptMetrics()} disabled={promptMetricsLoading} className="h-5 w-5 rounded border border-white/10 text-neutral-600 hover:text-white flex items-center justify-center disabled:opacity-40">
-                                            {promptMetricsLoading ? <Loader2 size={8} className="animate-spin" /> : <RefreshCw size={8} />}
-                                        </button>
-                                    </div>
-                                </div>
-                                {promptMetrics.length === 0 && !promptMetricsLoading && (
-                                    <button onClick={() => void fetchPromptMetrics()} className="w-full py-4 rounded-xl border border-dashed border-white/10 text-neutral-600 text-xs font-black">
-                                        Cargar métricas
-                                    </button>
-                                )}
-                                {promptMetrics.slice(0, 8).map(m => (
-                                    <div key={m._id} className="flex items-center gap-3 px-3 py-2 rounded-xl border border-white/5 bg-white/[0.01]">
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-[9px] text-neutral-500 truncate">{m.promptPreview}</p>
-                                        </div>
-                                        <div className="shrink-0 text-right">
-                                            <span className={`text-sm font-black ${m.successRate >= 80 ? "text-emerald-400" : m.successRate >= 60 ? "text-amber-400" : "text-rose-400"}`}>{m.successRate}%</span>
-                                            <p className="text-[8px] text-neutral-600">{m.successes}/{m.attempts}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+                <div className="p-6">
+                    {renderPipeline()}
                 </div>
             </div>}
 
@@ -13581,27 +13615,103 @@ export function KdpFactoryApp() {
                                                     Regenerar SEO
                                                 </button>
                                             </div>
-                                            {detailNiche.listings!.map((listing, i) => (
-                                            <div key={listing._id ?? i} className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-2.5">
-                                                <div className="flex items-start justify-between gap-2">
-                                                    <p className="text-sm font-black text-white leading-tight">{listing.title}</p>
-                                                    <button onClick={() => { navigator.clipboard.writeText([listing.title, listing.subtitle, listing.description.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim(), listing.keywords.join(", ")].filter(Boolean).join("\n\n")); toast.success("Copiado"); }} className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all shrink-0"><Copy size={11} /></button>
+                                            {detailNiche.listings!.map((listing, i) => {
+                                                const lid = listing._id ?? String(i);
+                                                const isEditing = editingListingId === lid;
+                                                return (
+                                                <div key={lid} className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-2.5">
+                                                    {isEditing ? (
+                                                        /* ── EDIT MODE ── */
+                                                        <div className="space-y-3">
+                                                            <div className="space-y-1">
+                                                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Título</label>
+                                                                <input
+                                                                    value={editListingDraft.title}
+                                                                    onChange={e => setEditListingDraft(d => ({ ...d, title: e.target.value }))}
+                                                                    className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-amber-500/40"
+                                                                    placeholder="Título SEO"
+                                                                />
+                                                                <p className="text-[10px] text-neutral-700 text-right">{editListingDraft.title.length}/200</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Subtítulo</label>
+                                                                <input
+                                                                    value={editListingDraft.subtitle}
+                                                                    onChange={e => setEditListingDraft(d => ({ ...d, subtitle: e.target.value }))}
+                                                                    className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-amber-500/40"
+                                                                    placeholder="Subtítulo"
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Descripción (HTML)</label>
+                                                                <textarea
+                                                                    value={editListingDraft.description}
+                                                                    onChange={e => setEditListingDraft(d => ({ ...d, description: e.target.value }))}
+                                                                    rows={8}
+                                                                    className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-amber-500/40 font-mono resize-y"
+                                                                    placeholder="<p>Descripción HTML…</p>"
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Keywords (separadas por coma o línea)</label>
+                                                                <textarea
+                                                                    value={editListingDraft.keywords}
+                                                                    onChange={e => setEditListingDraft(d => ({ ...d, keywords: e.target.value }))}
+                                                                    rows={3}
+                                                                    className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:border-amber-500/40"
+                                                                    placeholder="keyword 1, keyword 2, …"
+                                                                />
+                                                            </div>
+                                                            <div className="flex gap-2 pt-1">
+                                                                <button
+                                                                    onClick={() => void saveListingEdit(detailNiche._id, lid)}
+                                                                    disabled={savingListingId === lid}
+                                                                    className="flex items-center gap-1.5 h-8 px-4 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[11px] font-black hover:bg-amber-500/25 transition-all disabled:opacity-50">
+                                                                    {savingListingId === lid ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />} Guardar
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setEditingListingId(null)}
+                                                                    className="h-8 px-4 rounded-xl border border-white/10 text-neutral-500 text-[11px] font-black hover:text-white transition-all">
+                                                                    Cancelar
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        /* ── VIEW MODE ── */
+                                                        <>
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <p className="text-sm font-black text-white leading-tight">{listing.title}</p>
+                                                            <div className="flex items-center gap-1 shrink-0">
+                                                                <button onClick={() => {
+                                                                    setEditListingDraft({
+                                                                        title: listing.title ?? "",
+                                                                        subtitle: listing.subtitle ?? "",
+                                                                        description: listing.description ?? "",
+                                                                        keywords: (listing.keywords ?? []).join(", "),
+                                                                    });
+                                                                    setEditingListingId(lid);
+                                                                }} className="p-1.5 rounded-lg text-neutral-600 hover:text-amber-400 hover:bg-amber-500/10 transition-all" title="Editar"><Pencil size={11} /></button>
+                                                                <button onClick={() => { navigator.clipboard.writeText([listing.title, listing.subtitle, listing.description.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim(), listing.keywords.join(", ")].filter(Boolean).join("\n\n")); toast.success("Copiado"); }} className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Copy size={11} /></button>
+                                                            </div>
+                                                        </div>
+                                                        {listing.subtitle && <p className="text-sm text-neutral-500">{listing.subtitle}</p>}
+                                                        {listing.description && (
+                                                            <div className="text-sm text-neutral-400 leading-relaxed [&_p]:mb-1.5 [&_ul]:list-disc [&_ul]:pl-3 [&_li]:mb-0.5 [&_strong]:text-amber-300"
+                                                                dangerouslySetInnerHTML={{ __html: listing.description }} />
+                                                        )}
+                                                        {listing.keywords.length > 0 && (
+                                                            <div className="flex flex-wrap gap-1 pt-1">
+                                                                {listing.keywords.map((kw, j) => (
+                                                                    <span key={j} className="text-sm px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300">{kw}</span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        <p className="text-sm text-neutral-700">{new Date(listing.generatedAt).toLocaleDateString("es-ES")}</p>
+                                                        </>
+                                                    )}
                                                 </div>
-                                                {listing.subtitle && <p className="text-sm text-neutral-500">{listing.subtitle}</p>}
-                                                {listing.description && (
-                                                    <div className="text-sm text-neutral-400 leading-relaxed [&_p]:mb-1.5 [&_ul]:list-disc [&_ul]:pl-3 [&_li]:mb-0.5 [&_strong]:text-amber-300"
-                                                        dangerouslySetInnerHTML={{ __html: listing.description }} />
-                                                )}
-                                                {listing.keywords.length > 0 && (
-                                                    <div className="flex flex-wrap gap-1 pt-1">
-                                                        {listing.keywords.map((kw, j) => (
-                                                            <span key={j} className="text-sm px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300">{kw}</span>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                                <p className="text-sm text-neutral-700">{new Date(listing.generatedAt).toLocaleDateString("es-ES")}</p>
-                                            </div>
-                                        ))}
+                                                );
+                                            })}
                                             </>
                                         )}
                                     </div>

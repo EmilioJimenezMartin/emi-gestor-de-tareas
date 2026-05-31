@@ -223,14 +223,20 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
     const config = await getConfig();
 
     if (config.provider === "google" && config.googleKey) {
-        const { GoogleGenerativeAI } = await import("@google/generative-ai");
-        const genAI = new GoogleGenerativeAI(config.googleKey);
-        const model = genAI.getGenerativeModel({
+        // Use the new SDK with thinking disabled so responses arrive in seconds, not minutes
+        const { GoogleGenAI } = await import("@google/genai");
+        const ai = new GoogleGenAI({ apiKey: config.googleKey });
+        const response = await ai.models.generateContent({
             model: config.model || "gemini-2.5-flash",
-            systemInstruction: systemPrompt,
+            contents: userPrompt,
+            config: {
+                systemInstruction: systemPrompt,
+                thinkingConfig: { thinkingBudget: 0 },
+                maxOutputTokens: 1500,
+                temperature: 0.4,
+            } as any,
         });
-        const result = await model.generateContent(userPrompt);
-        return result.response.text().trim();
+        return (response.text ?? "").trim();
     }
 
     if (config.provider === "groq" && config.groqKey) {

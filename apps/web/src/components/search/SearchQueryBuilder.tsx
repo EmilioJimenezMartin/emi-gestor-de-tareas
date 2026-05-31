@@ -103,6 +103,8 @@ export function SearchQueryBuilder({
     const [aiIdea, setAiIdea] = useState("");
     const [aiLoading, setAiLoading] = useState(false);
     const [aiReasoning, setAiReasoning] = useState("");
+    const [discoverLoading, setDiscoverLoading] = useState(false);
+    const [discoverResult, setDiscoverResult] = useState<{ niche: string; reasoning: string } | null>(null);
 
     const accent = accentClasses[PLATFORM_ACCENT[platform]];
 
@@ -157,6 +159,28 @@ export function SearchQueryBuilder({
         }
     };
 
+    const handleDiscover = async () => {
+        setDiscoverLoading(true);
+        setDiscoverResult(null);
+        try {
+            const res = await fetch(`${apiUrl}/ai/discover-niche`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ platform }),
+            });
+            if (!res.ok) throw new Error(`Error ${res.status}`);
+            const data = await res.json() as { niche: string; url: string; searchTerm: string; reasoning: string };
+            setUrl(data.url);
+            setDiscoverResult({ niche: data.niche, reasoning: data.reasoning });
+            setShowAi(false);
+            emit(platform, data.url, `Discover: ${data.searchTerm}`);
+        } catch {
+            // silently ignore
+        } finally {
+            setDiscoverLoading(false);
+        }
+    };
+
     const platformIcon = platform === "etsy" ? <ShoppingCart size={11} /> : platform === "amazon" ? <ShoppingBag size={11} /> : <Globe size={11} />;
 
     return (
@@ -202,13 +226,36 @@ export function SearchQueryBuilder({
             {/* Presets */}
             <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                    <span className="text-[8px] font-black uppercase tracking-widest text-neutral-700">Búsquedas predefinidas</span>
+                    <span className="text-[8px] font-black uppercase tracking-widest text-neutral-400">Búsquedas predefinidas</span>
                     <button
-                        onClick={() => { setShowAi(v => !v); setAiReasoning(""); }}
-                        className={`flex items-center gap-1.5 h-6 px-2.5 rounded-lg border text-[8px] font-black uppercase tracking-widest transition-all ${showAi ? accent.ai : "border-white/8 text-neutral-700 hover:text-neutral-400 hover:border-white/15"}`}>
-                        <Sparkles size={9} /> IA
+                        onClick={() => { setShowAi(v => !v); setAiReasoning(""); setDiscoverResult(null); }}
+                        className={`flex items-center gap-1.5 h-6 px-2.5 rounded-lg border text-[8px] font-black uppercase tracking-widest transition-all ${showAi ? accent.ai : "border-white/8 text-neutral-500 hover:text-neutral-300 hover:border-white/15"}`}>
+                        <Sparkles size={9} /> Idea IA
                     </button>
                 </div>
+
+                {/* AI discover button — always visible at top of presets */}
+                {!showAi && (
+                    <button
+                        onClick={() => void handleDiscover()}
+                        disabled={discoverLoading}
+                        className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-all text-[9px] font-black uppercase tracking-wide ${accent.ai} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                        {discoverLoading
+                            ? <Loader2 size={10} className="animate-spin shrink-0" />
+                            : <Wand2 size={10} className="shrink-0" />}
+                        <span>{discoverLoading ? "Buscando nicho…" : "Sugerencia IA"}</span>
+                        {!discoverLoading && <span className="font-normal normal-case text-[8px] opacity-70 truncate flex-1">nicho con potencial sin explorar</span>}
+                    </button>
+                )}
+
+                {/* Discovery result card */}
+                {discoverResult && !showAi && (
+                    <div className={`rounded-xl border ${accent.ai.includes("sky") ? "border-sky-500/20 bg-sky-500/[0.04]" : accent.ai.includes("orange") ? "border-orange-500/20 bg-orange-500/[0.04]" : "border-amber-500/20 bg-amber-500/[0.04]"} p-2.5 space-y-1`}>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-white/60">Nicho sugerido</p>
+                        <p className="text-[11px] font-black text-white">{discoverResult.niche}</p>
+                        <p className="text-[9px] text-neutral-500 leading-relaxed">{discoverResult.reasoning}</p>
+                    </div>
+                )}
 
                 {showAi ? (
                     <div className="space-y-2 rounded-2xl border border-violet-500/20 bg-violet-500/[0.04] p-3">
@@ -242,15 +289,15 @@ export function SearchQueryBuilder({
                 ) : (
                     <div className="flex flex-col gap-1">
                         {presetsForPlatform.map(p => (
-                            <button key={p.label} onClick={() => handlePreset(p)}
+                            <button key={p.label} onClick={() => { handlePreset(p); setDiscoverResult(null); }}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-all text-[9px] font-black uppercase ${url === p.url
                                     ? accent.preset
-                                    : `bg-white/[0.02] border-white/8 text-neutral-600 ${accent.presetHover}`
+                                    : `bg-white/[0.02] border-white/8 text-neutral-500 ${accent.presetHover}`
                                     }`}>
                                 {platformIcon}
                                 {p.label} ↗
                                 {p.hint && (
-                                    <span className="font-normal text-neutral-700 normal-case truncate flex-1 text-[8px]">{p.hint}</span>
+                                    <span className="font-normal text-neutral-600 normal-case truncate flex-1 text-[8px]">{p.hint}</span>
                                 )}
                             </button>
                         ))}
