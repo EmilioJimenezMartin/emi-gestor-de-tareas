@@ -199,19 +199,24 @@ async function handleNicheDiscovery(
                 }
             } catch { /* non-critical */ }
 
-            // Remove entry from radar settings
+            // Remove entry from radar settings and notify frontend table
             if ((niche as any).sourceTitulo) {
                 try {
-                    const radarKeys = ["RADAR_ETSY_RESULT", "RADAR_AMAZON_RESULT", "RADAR_GENERAL_RESULT"];
+                    const radarKeys = ["RADAR_ETSY_RESULT", "RADAR_AMAZON_RESULT", "RADAR_GENERAL_RESULT", "RADAR_TRENDS_RESULT"];
                     for (const key of radarKeys) {
                         const row = await Settings.findOne({ key }).lean();
                         if (row?.value) {
                             const saved = JSON.parse(row.value as string);
                             if (Array.isArray(saved?.nichos_detectados)) {
+                                const before = saved.nichos_detectados.length;
                                 saved.nichos_detectados = saved.nichos_detectados.filter(
                                     (r: any) => r.titulo_producto !== (niche as any).sourceTitulo
                                 );
-                                await Settings.findOneAndUpdate({ key }, { $set: { value: JSON.stringify(saved) } });
+                                if (saved.nichos_detectados.length !== before) {
+                                    await Settings.findOneAndUpdate({ key }, { $set: { value: JSON.stringify(saved) } });
+                                    // Tell the frontend RadarResultsTable to remove this row immediately
+                                    _io?.emit("radar:row-deleted", { storageKey: key, titulo_producto: (niche as any).sourceTitulo });
+                                }
                             }
                         }
                     }

@@ -26,6 +26,7 @@ type ServerToClientEvents = {
   "radar:result": (payload: { jobId?: string; data: Record<string, any> }) => void;
   "radar:done": (payload: { jobId?: string }) => void;
   "radar:error": (payload: { jobId?: string; message: string }) => void;
+  "radar:row-deleted": (payload: { storageKey: string; titulo_producto: string }) => void;
   "pattern:log": (payload: { jobId: string; level: string; message: string; timestamp: string }) => void;
   "pattern:complete": (payload: { jobId: string; prompt: string; seed: number }) => void;
   "pattern:error": (payload: { jobId: string; message: string }) => void;

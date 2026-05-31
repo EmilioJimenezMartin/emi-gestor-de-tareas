@@ -152,6 +152,15 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
             }).catch(() => {});
         });
 
+        // Niche rejected from Telegram — remove its row immediately without waiting for a reload
+        socket.on("radar:row-deleted", (data: { storageKey: string; titulo_producto: string }) => {
+            if (data.storageKey !== storageKey) return;
+            setEtsyResult(prev => {
+                if (!prev) return prev;
+                return { ...prev, nichos_detectados: prev.nichos_detectados.filter(r => r.titulo_producto !== data.titulo_producto) };
+            });
+        });
+
         return () => { socket.disconnect(); };
     }, [apiUrl, storageKey]);
 
