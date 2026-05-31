@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
     ShoppingCart, ShoppingBag, Globe, Sparkles, Loader2,
     X, ChevronRight, Wand2, TrendingUp,
@@ -132,6 +132,14 @@ export function SearchQueryBuilder({
         if (typeof window !== "undefined") localStorage.setItem(storageKey, next ? "1" : "0");
         return next;
     });
+
+    // Sync internal platform state when the parent switches the lockPlatform tab
+    useEffect(() => {
+        if (lockPlatform && lockPlatform !== platform) {
+            setPlatform(lockPlatform);
+            setUrl("");
+        }
+    }, [lockPlatform]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const accent = accentClasses[PLATFORM_ACCENT[platform]];
 

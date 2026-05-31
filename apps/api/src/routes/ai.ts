@@ -1149,7 +1149,7 @@ Generate exactly 15 diverse, actionable trends. Focus on currently profitable an
     // ── SEARCH QUERY SUGGESTION ───────────────────────────────────────────────
     // ── AI niche discovery (no user input needed, fresh each call) ──────────
     app.post("/ai/discover-niche", async (request: any, reply) => {
-        const { platform = "etsy", productType = "" } = request.body as { platform?: "etsy" | "amazon" | "general"; productType?: string };
+        const { platform = "etsy", productType = "" } = request.body as { platform?: "etsy" | "amazon" | "general" | "trends"; productType?: string };
 
         let googleKey = process.env.GOOGLE_API_KEY ?? "";
         try {
@@ -1162,10 +1162,13 @@ Generate exactly 15 diverse, actionable trends. Focus on currently profitable an
             etsy: "Etsy (digital downloads, printables, wall art, coloring pages, journals)",
             amazon: "Amazon KDP (coloring books, activity books, journals, low-content books)",
             general: "Etsy or Amazon KDP",
+            trends: "Google Trends (discover rising search queries for KDP/Etsy products — coloring books, printables, wall art, journals)",
         };
         const urlFormat = platform === "amazon"
             ? "https://www.amazon.com/s?k=<search+term>"
-            : "https://www.etsy.com/search?q=<search+term>";
+            : platform === "trends"
+                ? "https://trends.google.com/trends/explore?q=<search+term>&geo=US"
+                : "https://www.etsy.com/search?q=<search+term>";
 
         // Highly specific creative angles — each forces a different, uncommon niche direction
         const angles = [
@@ -1220,8 +1223,8 @@ Self-check before answering — reject your first idea if:
 3. It would appear in "top 10 Etsy niches" listicles
 4. It resembles anything in the BANNED list
 
-${platform === "amazon" ? "For Amazon: use URL format " + urlFormat : "For Etsy: use URL format " + urlFormat} (properly URL-encoded)
-Search term: 2-5 words, exactly what a passionate buyer types.${styleHint}
+${platform === "amazon" ? "For Amazon: use URL format " + urlFormat : platform === "trends" ? "For Google Trends: use URL format " + urlFormat : "For Etsy: use URL format " + urlFormat} (properly URL-encoded, replace spaces with +)
+Search term: 2-5 words, exactly what a buyer or researcher would type.${styleHint}
 
 Return ONLY a JSON object:
 {
@@ -1256,7 +1259,7 @@ Return ONLY a JSON object:
     app.post("/ai/suggest-search", async (request: any, reply) => {
         const { idea, platform = "etsy" } = request.body as {
             idea: string;
-            platform?: "etsy" | "amazon" | "general";
+            platform?: "etsy" | "amazon" | "general" | "trends";
         };
         if (!idea?.trim()) return reply.status(400).send({ error: "idea required" });
 
@@ -1271,16 +1274,18 @@ Return ONLY a JSON object:
             etsy: "Etsy (handmade marketplace, focus on digital downloads, printables, wall art, coloring pages)",
             amazon: "Amazon KDP / Books (self-published books, coloring books, journals, activity books)",
             general: "any marketplace (Amazon, Etsy, or general web search)",
+            trends: "Google Trends (find rising search interest for KDP/Etsy product ideas)",
         };
 
         const promptText = `You are an expert at finding profitable niches on ${platformDescriptions[platform] ?? "Etsy"}.
 The user has this idea: "${idea.trim()}"
 
-Generate the BEST search URL for ${platform === "etsy" ? "Etsy" : platform === "amazon" ? "Amazon" : "the web"} to research this idea as a passive-income product niche.
+Generate the BEST search URL for ${platform === "etsy" ? "Etsy" : platform === "amazon" ? "Amazon" : platform === "trends" ? "Google Trends" : "the web"} to research this idea as a passive-income product niche.
 
 Rules:
 - For Etsy: use https://www.etsy.com/search?q=<search+term> (URL-encode the query)
 - For Amazon: use https://www.amazon.com/s?k=<search+term> (URL-encode the query)
+- For Google Trends: use https://trends.google.com/trends/explore?q=<search+term>&geo=US (URL-encode, replace spaces with +)
 - For general: pick the best platform (Amazon or Etsy) for this type of idea
 - The search term should be 2-5 words, specific but not overly narrow
 - Focus on what BUYERS search for, not sellers

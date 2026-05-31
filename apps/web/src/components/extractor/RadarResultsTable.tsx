@@ -328,15 +328,15 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                         <table className="w-full text-left">
                             <thead>
                                 <tr className="bg-white/[0.03] border-b border-white/8">
-                                    <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600">#</th>
-                                    <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600">Título</th>
-                                    <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-right">Precio</th>
-                                    <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-center">BS</th>
-                                    <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-right">Carrito</th>
-                                    <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-right">Reseñas</th>
-                                    <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600">Sub-nicho</th>
-                                    <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-center">Señal</th>
-                                    <th className="px-3 py-2 text-[8px] font-black uppercase tracking-widest text-neutral-600 text-center">Acción</th>
+                                    <th className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-white/70">#</th>
+                                    <th className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-white/70">Título</th>
+                                    <th className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-white/70 text-right">Precio</th>
+                                    <th className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-white/70 text-center">BS</th>
+                                    <th className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-white/70 text-right">Carrito</th>
+                                    <th className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-white/70 text-right">Reseñas</th>
+                                    <th className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-white/70">Sub-nicho</th>
+                                    <th className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-white/70 text-center">Señal</th>
+                                    <th className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-white/70 text-center">Acción</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -347,7 +347,7 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                         <tr key={i} className={`border-b border-white/5 last:border-0 transition-colors hover:bg-white/[0.02] ${row.bestseller ? "bg-amber-500/[0.03]" : ""}`}>
                                             <td className="px-3 py-2.5 text-[9px] text-neutral-700 tabular-nums font-black">{globalIndex + 1}</td>
                                             <td className="px-3 py-2.5 max-w-[220px]">
-                                                <p className="text-[10px] text-white font-semibold line-clamp-2 leading-snug">{row.titulo_producto}</p>
+                                                <p className="text-[12px] text-white font-bold line-clamp-2 leading-snug">{row.titulo_producto}</p>
                                                 <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                                     {row.fuente && (
                                                         <span className={`inline-flex items-center gap-0.5 text-[7px] font-black px-1.5 py-0.5 rounded-md border ${
@@ -508,7 +508,7 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                     <div className="flex items-center justify-between gap-3 flex-wrap pt-1">
                         {/* Page size selector */}
                         <div className="flex items-center gap-1.5">
-                            <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Mostrar</span>
+                            <span className="text-[9px] font-black uppercase tracking-widest text-white/70">Mostrar</span>
                             {PAGE_SIZES.map(s => (
                                 <button key={s} onClick={() => { setPageSize(s); setPage(0); }}
                                     className={`h-6 px-2.5 rounded-lg border text-[8px] font-black uppercase tracking-widest transition-all ${pageSize === s ? "bg-sky-500/15 border-sky-500/30 text-sky-300" : "border-white/8 text-neutral-600 hover:text-neutral-300 hover:border-white/15"}`}>

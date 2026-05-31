@@ -99,6 +99,100 @@ function pushLog(jobDoc: InstanceType<typeof RadarJob>, io: any, level: "info" |
     io?.emit("radar:log", entry);
 }
 
+const TRENDS_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://trends.google.com/",
+};
+
+async function fetchTrendsData(url: string): Promise<string> {
+    const urlObj = new URL(url);
+
+    // ── Trending searches → reliable RSS feed ────────────────────────────────
+    if (url.includes("trendingsearches")) {
+        const geo = urlObj.searchParams.get("geo") ?? "US";
+        const rssUrl = `https://trends.google.com/trends/trendingsearches/daily/rss?geo=${geo}`;
+        const res = await fetch(rssUrl, {
+            headers: { ...TRENDS_HEADERS, "Accept": "application/rss+xml, text/xml, */*" },
+            signal: AbortSignal.timeout(20_000),
+        });
+        if (!res.ok) throw new Error(`Google Trends RSS: HTTP ${res.status}`);
+        const xml = await res.text();
+        // Keep CDATA content readable for the AI
+        return xml
+            .replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s{2,}/g, " ")
+            .trim();
+    }
+
+    // ── Explore URL → 2-step undocumented API ────────────────────────────────
+    if (url.includes("/explore")) {
+        const query = urlObj.searchParams.get("q");
+        const geo = urlObj.searchParams.get("geo") ?? "US";
+
+        if (query) {
+            try {
+                // Step 1: get widget metadata + tokens
+                const req = encodeURIComponent(JSON.stringify({
+                    comparisonItem: [{ keyword: query, geo, time: "today 12-m" }],
+                    category: 0, property: "",
+                }));
+                const exploreRes = await fetch(
+                    `https://trends.google.com/trends/api/explore?hl=en-US&tz=0&req=${req}`,
+                    { headers: { ...TRENDS_HEADERS, "Accept": "application/json, */*" }, signal: AbortSignal.timeout(15_000) }
+                );
+                if (!exploreRes.ok) throw new Error(`explore API: ${exploreRes.status}`);
+                const exploreRaw = (await exploreRes.text()).replace(/^\)\]\}'\n/, "");
+                const { widgets = [] } = JSON.parse(exploreRaw) as { widgets: any[] };
+
+                // Step 2: fetch related queries (rising + top) using the widget token
+                const relWidget = widgets.find((w: any) => w.id === "RELATED_QUERIES");
+                let parts: string[] = [`Google Trends — Explore: "${query}" (${geo})\n`];
+
+                if (relWidget?.token) {
+                    const relReq = encodeURIComponent(JSON.stringify(relWidget.request));
+                    const relRes = await fetch(
+                        `https://trends.google.com/trends/api/widgetdata/relatedsearches?hl=en-US&tz=0&req=${relReq}&token=${encodeURIComponent(relWidget.token)}&geo=${geo}`,
+                        { headers: { ...TRENDS_HEADERS, "Accept": "application/json, */*" }, signal: AbortSignal.timeout(15_000) }
+                    );
+                    if (relRes.ok) {
+                        const relRaw = (await relRes.text()).replace(/^\)\]\}'\n/, "");
+                        const relData = JSON.parse(relRaw);
+                        const rising: any[] = relData?.default?.rankedList?.[1]?.rankedKeyword ?? [];
+                        const top: any[] = relData?.default?.rankedList?.[0]?.rankedKeyword ?? [];
+                        if (rising.length) parts.push("RISING QUERIES:\n" + rising.map((r: any) => `- ${r.query} (${r.formattedValue ?? "breakout"})`).join("\n"));
+                        if (top.length) parts.push("TOP QUERIES:\n" + top.map((r: any) => `- ${r.query} (${r.formattedValue ?? ""})`).join("\n"));
+                    }
+                }
+
+                // Also include related topics if available
+                const topicWidget = widgets.find((w: any) => w.id === "RELATED_TOPICS");
+                if (topicWidget) parts.push(`RELATED TOPICS: ${topicWidget.title?.query ?? query}`);
+
+                if (parts.length > 1) return parts.join("\n\n");
+            } catch { /* fall through to plain page fetch */ }
+        }
+
+        // Fallback: plain fetch of the explore page (less data but better than nothing)
+        const res = await fetch(url, {
+            headers: { ...TRENDS_HEADERS, "Accept": "text/html,application/xhtml+xml,*/*" },
+            signal: AbortSignal.timeout(20_000),
+        });
+        if (!res.ok) throw new Error(`Google Trends: HTTP ${res.status}`);
+        const html = await res.text();
+        return html
+            .replace(/<script[\s\S]*?<\/script>/gi, "")
+            .replace(/<style[\s\S]*?<\/style>/gi, "")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/&[a-z#0-9]+;/gi, " ")
+            .replace(/\s{2,}/g, " ")
+            .trim();
+    }
+
+    throw new Error("URL de Google Trends no reconocida. Usa trends.google.com/trends/explore?q=... o .../trendingsearches/daily");
+}
+
 export function defineRadarJob(agenda: Agenda, io: any) {
     agenda.define(RADAR_JOB_NAME, async (job: Job) => {
         const { jobId } = (job.attrs.data ?? {}) as { jobId: string };
@@ -110,6 +204,80 @@ export function defineRadarJob(agenda: Agenda, io: any) {
         let browser: any = null;
 
         try {
+            // ── Google Trends: skip Playwright entirely — direct HTTP avoids 429 ───
+            if (mode === "trends-niches") {
+                pushLog(jobDoc, io, "info", `[FETCH] Google Trends — descargando via API directa (sin navegador)...`);
+                await jobDoc.save();
+
+                const trendsText = await fetchTrendsData(url);
+
+                pushLog(jobDoc, io, "info", `[FETCH] ✓ ${trendsText.length.toLocaleString()} chars extraídos`);
+                await jobDoc.save();
+
+                const activeProvider = await getActiveProvider();
+                pushLog(jobDoc, io, "info", `[AI] Analizando tendencias con ${activeProvider}...`);
+                await jobDoc.save();
+
+                const systemPrompt = buildRadarSystemPrompt(mode, nicheName, context);
+                const data = await analyzePageForRadar(trendsText, systemPrompt, {
+                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                });
+
+                const count = (data?.nichos_detectados ?? []).length;
+                pushLog(jobDoc, io, "success", `[AI] ✓ ${count} tendencias detectadas`);
+
+                // Stamp source and date
+                if (data?.nichos_detectados) {
+                    const ts = new Date().toISOString();
+                    data.nichos_detectados = (data.nichos_detectados as any[]).map((n: any) => ({
+                        ...n, fecha_detectado: n.fecha_detectado ?? ts, fuente: n.fuente ?? "trends",
+                    }));
+                }
+
+                jobDoc.status = "completed";
+                jobDoc.result = data;
+                await jobDoc.save();
+
+                // Persist to settings and emit
+                let dataToEmit = data;
+                try {
+                    const { Settings } = await import("../models/settings.js");
+                    if (data?.nichos_detectados) {
+                        const existing = await Settings.findOne({ key: storageKey }).lean() as any;
+                        if (existing?.value) {
+                            try {
+                                const saved = JSON.parse(existing.value);
+                                if (saved?.nichos_detectados?.length) {
+                                    const incoming: any[] = data.nichos_detectados;
+                                    const incomingTitles = new Set(incoming.map((r: any) => r.titulo_producto));
+                                    const preserved = (saved.nichos_detectados as any[]).filter((r: any) => !incomingTitles.has(r.titulo_producto));
+                                    const merged = incoming.map((r: any) => ({
+                                        ...r,
+                                        _nichoCreado: (saved.nichos_detectados as any[]).find((s: any) => s.titulo_producto === r.titulo_producto)?._nichoCreado ?? r._nichoCreado,
+                                    }));
+                                    dataToEmit = { ...data, nichos_detectados: [...merged, ...preserved] };
+                                }
+                            } catch { /* keep dataToEmit = data */ }
+                        }
+                        await Settings.findOneAndUpdate({ key: storageKey }, { key: storageKey, value: JSON.stringify(dataToEmit) }, { upsert: true });
+                    }
+                } catch { /* non-critical */ }
+
+                io?.emit("radar:result", { jobId, mode, storageKey, data: dataToEmit });
+                io?.emit("radar:done", { jobId });
+
+                try {
+                    const { sendTelegram, shouldNotify } = await import("../lib/telegram.js");
+                    const count2 = (dataToEmit?.nichos_detectados ?? []).length;
+                    if (await shouldNotify("radar.found") && count2 > 0) {
+                        await sendTelegram(`📈 <b>Google Trends completado</b>\n\n<b>${count2}</b> tendencia${count2 !== 1 ? "s" : ""} detectada${count2 !== 1 ? "s" : ""}\n<b>URL:</b> ${url}`);
+                    }
+                } catch { /* Telegram not configured */ }
+
+                return; // Done — skip the Playwright branch below
+            }
+
+            // ── Normal Playwright flow for Etsy, Amazon, General ──────────────────
             pushLog(jobDoc, io, "info", `[BROWSER] Lanzando navegador headless (modo stealth)...`);
             await jobDoc.save();
 
@@ -171,7 +339,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 throw new Error(`Página bloqueada por anti-bot: "${pageTitle}". Intenta de nuevo en unos minutos.`);
             }
 
-            if (mode === "etsy-niches" || mode === "amazon-niches" || mode === "trends-niches") {
+            if (mode === "etsy-niches" || mode === "amazon-niches") {
                 pushLog(jobDoc, io, "info", `[FETCH] Scroll para cargar resultados lazy...`);
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)");
                 await page.waitForTimeout(1500);
