@@ -109,5 +109,6 @@ export function defineCatalogWatchdog(agenda: Agenda, io: any) {
 }
 
 export async function scheduleWatchdog(agenda: Agenda): Promise<void> {
+    await agenda.cancel({ name: JOB_NAME }).catch(() => {});
     await agenda.every("10 minutes", JOB_NAME);
 }

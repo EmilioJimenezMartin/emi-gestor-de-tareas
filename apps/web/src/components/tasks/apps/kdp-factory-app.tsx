@@ -230,6 +230,7 @@ interface NicheFE {
     autoPilotEnabled?: boolean;
     sampleImageUrl?: string;
     coverUrl?: string;
+    bookPdfUrl?: string;
     coverCandidates?: string[];
     createdAt: string;
     updatedAt?: string;
@@ -2238,7 +2239,7 @@ export function KdpFactoryApp() {
         setKdpTemplateOpen(true);
     };
 
-    const applyColoringBookTemplate = (titleText = "Mi Libro de Colorear", imageEntries?: { url: string; label: string }[], randomOrder = false) => {
+    const applyColoringBookTemplate = async (titleText = "Mi Libro de Colorear", imageEntries?: { url: string; label: string }[], randomOrder = false) => {
         let entries = imageEntries ?? [
             ...vaultImages.map(v => ({ url: v.url, label: v.model || "Vault" })),
             ...iaCatalogs
@@ -2278,9 +2279,8 @@ export function KdpFactoryApp() {
             if (!noBlankPages) pages.push({ id: genPageId(), type: "text", text: defaultTextStyle() }); // blank back
         }
 
-        setBookPages(pages);
-        setSelectedPageId(pages[0].id);
-        setBookEditorOpen(true);
+        const newDraft = { id: `template-${Date.now()}`, fileName: bookFileName, pages, savedAt: new Date().toISOString() };
+        await guardedLoadBookDraft(newDraft);
         const ownerNote = includeOwnerPage ? " + pág. propietario" : "";
         const blankNote = noBlankPages ? " · sin páginas en blanco" : "";
         toast.success(`Plantilla KDP · ${pages.length} páginas (${entries.length} imágenes${randomOrder ? " · orden aleatorio" : ""}${ownerNote}${blankNote})`);
@@ -2845,6 +2845,22 @@ export function KdpFactoryApp() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify([{ key: "kdp-book-drafts", value: updated }]),
             });
+
+            // If this draft originated from a niche pipeline, advance niche to "libro" phase
+            const nicheMatch = draftId.match(/^pipeline-([a-f0-9]{24})/);
+            if (nicheMatch) {
+                const nicheId = nicheMatch[1];
+                const niche = niches.find(n => n._id === nicheId);
+                if (niche && (niche.phase === "catalog" || niche.phase === "niche")) {
+                    await fetch(`${API_BASE_URL}/niches/${nicheId}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ phase: "libro" }),
+                    }).catch(() => {});
+                    setNiches(prev => prev.map(n => n._id === nicheId ? { ...n, phase: "libro" } : n));
+                }
+            }
+
             toast.success("Borrador guardado");
         } catch {
             toast.error("Error al guardar el borrador");
@@ -2872,7 +2888,26 @@ export function KdpFactoryApp() {
         } catch { /* silent */ }
     };
 
-    const loadBookDraft = (draft: { id: string; fileName: string; pages: BookPage[]; savedAt: string }) => {
+    // Auto-saves current pages before switching to another draft
+    const guardedLoadBookDraft = async (draft: { id: string; fileName: string; pages: BookPage[]; savedAt: string }) => {
+        if (bookPages.length > 0 && activeDraftId !== draft.id) {
+            // Persist current state silently before switching
+            const serializablePages = bookPages.map(p => ({
+                ...p,
+                image: p.image?.url.startsWith("blob:") ? undefined : p.image,
+            }));
+            const draftId = activeDraftId ?? `draft-${Date.now()}`;
+            const snapshotDraft = { id: draftId, fileName: bookFileName, pages: serializablePages, savedAt: new Date().toISOString() };
+            const updated = bookDrafts.some(d => d.id === draftId)
+                ? bookDrafts.map(d => d.id === draftId ? snapshotDraft : d)
+                : [...bookDrafts, snapshotDraft];
+            setBookDrafts(updated);
+            await fetch(`${API_BASE_URL}/settings`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify([{ key: "kdp-book-drafts", value: updated }]),
+            }).catch(() => {});
+        }
         setBookPages(draft.pages);
         setSelectedPageId(draft.pages[0]?.id ?? null);
         setBookFileName(draft.fileName);
@@ -3440,7 +3475,7 @@ export function KdpFactoryApp() {
             fn(data.message, { duration: 5000 });
         });
 
-        socket.on("kdp:status", (data: { nicheId: string; status: string; message?: string }) => {
+        (socket as any).on("kdp:status", (data: { nicheId: string; status: string; message?: string }) => {
             const s = data.status as "idle" | "queued" | "login" | "uploading-pdf" | "done" | "error";
             setKdpPublishStatus(prev => ({ ...prev, [data.nicheId]: s }));
             if (data.status === "error" && data.message) {
@@ -8472,7 +8507,11 @@ export function KdpFactoryApp() {
                                                 {catalog.images.length > 0 && (
                                                     <>
                                                         <button
-                                                            onClick={() => { const pages: BookPage[] = catalog.images.map((img, i) => ({ id: genPageId(), type: "image" as const, image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` }, text: defaultTextStyle() })); setBookPages(pages); setSelectedPageId(pages[0]?.id ?? null); setBookEditorOpen(true); }}
+                                                            onClick={() => {
+                                                                const pages: BookPage[] = catalog.images.map((img, i) => ({ id: genPageId(), type: "image" as const, image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` }, text: defaultTextStyle() }));
+                                                                const newDraft = { id: `catalog-${catalog._id}-${Date.now()}`, fileName: catalog.name, pages, savedAt: new Date().toISOString() };
+                                                                void guardedLoadBookDraft(newDraft);
+                                                            }}
                                                             title="Editar PDF en editor"
                                                             className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-sm font-black uppercase tracking-widest"
                                                         >
@@ -9234,7 +9273,7 @@ export function KdpFactoryApp() {
                                                     <p className="text-sm text-neutral-600">{draft.pages.length} pág · {new Date(draft.savedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
                                                 </div>
                                                 <div className="flex items-center gap-1 shrink-0">
-                                                    <button onClick={() => loadBookDraft(draft)}
+                                                    <button onClick={() => void guardedLoadBookDraft(draft)}
                                                         className="h-7 px-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-black transition-all text-sm font-black uppercase tracking-widest">
                                                         {activeDraftId === draft.id ? "Editando" : "Abrir"}
                                                     </button>
@@ -12741,7 +12780,7 @@ export function KdpFactoryApp() {
                                             .filter(c => kdpTemplateCatalogSel.has(c._id))
                                             .flatMap(c => c.images.map((img, i) => ({ url: img.url, label: `${c.name} #${i + 1}` })));
                                         setKdpTemplateOpen(false);
-                                        applyColoringBookTemplate(kdpTemplateTitle || "Mi Libro de Colorear", [...vaultEntries, ...cloudEntries, ...catalogEntries], kdpTemplateRandom);
+                                        void applyColoringBookTemplate(kdpTemplateTitle || "Mi Libro de Colorear", [...vaultEntries, ...cloudEntries, ...catalogEntries], kdpTemplateRandom);
                                     }}
                                     disabled={kdpTemplateVaultSel.size === 0 && kdpTemplateCatalogSel.size === 0 && kdpTemplateCloudSel.size === 0}
                                     className="flex-1 h-11 rounded-2xl bg-amber-500 text-black text-sm font-black hover:bg-amber-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(245,158,11,0.25)]"
@@ -13417,7 +13456,7 @@ export function KdpFactoryApp() {
                                                         <p className="text-sm text-neutral-600">{pipelineDraft.pages.length} páginas · {new Date(pipelineDraft.savedAt).toLocaleDateString("es-ES")}</p>
                                                     </div>
                                                 </div>
-                                                <button onClick={() => { loadBookDraft(pipelineDraft); setNicheDetailId(null); changeTab("creation"); toast.success("Borrador cargado en el editor PDF"); }}
+                                                <button onClick={() => { void guardedLoadBookDraft(pipelineDraft); setNicheDetailId(null); changeTab("creation"); toast.success("Borrador cargado en el editor PDF"); }}
                                                     className="w-full h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-sm font-black text-emerald-400 hover:bg-emerald-500/25 transition-all flex items-center justify-center gap-2">
                                                     <Library size={11} /> Abrir en editor PDF
                                                 </button>

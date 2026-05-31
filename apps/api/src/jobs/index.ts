@@ -38,6 +38,7 @@ export function defineJobs(agenda: Agenda, io?: any) {
 
 export async function scheduleRadarRules(agenda: Agenda): Promise<void> {
     // Fires at minute 0 of every hour — the job itself checks which rules match
+    await agenda.cancel({ name: RADAR_SCHEDULE_JOB_NAME }).catch(() => {});
     await agenda.every("0 * * * *", RADAR_SCHEDULE_JOB_NAME);
 }
 
