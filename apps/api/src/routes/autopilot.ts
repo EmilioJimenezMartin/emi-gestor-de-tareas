@@ -198,18 +198,20 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             // Build Pollinations sample image URL
             const style = (niche as any).styleCategory ?? "generic";
             const productType = (niche as any).productType ?? "coloring-book";
+            // Use the first line of the AI-generated prompt as scene description, fallback to niche name
+            const sceneDesc = (prompt?.split("\n")[0]?.trim()) || (niche as any).name;
             let samplePrompt: string;
             let sampleModel = "flux";
             if (productType === "printable-poster") {
-                samplePrompt = `${(niche as any).name} printable wall art poster, colorful illustration, clean design, no text`;
+                samplePrompt = `${sceneDesc}, professional printable wall art poster, vibrant cohesive color palette, premium illustration quality, balanced centered composition, suitable for A4 print, no text no watermarks`;
                 sampleModel = "flux-realism";
             } else if (style === "anime") {
-                samplePrompt = `Anime coloring page ${(niche as any).name}, ultra thick clean black outlines, white background, zero shading`;
+                samplePrompt = `${sceneDesc}, anime coloring page illustration, ultra thick crisp black outlines 4px weight, pure white background, zero shading zero grey tones, black and white line art only, high contrast, intricate detailed scene, professional adult coloring book quality`;
                 sampleModel = "flux-anime";
             } else if (style === "children") {
-                samplePrompt = `Cute children coloring page ${(niche as any).name}, thick clean black outlines, white background, simple shapes`;
+                samplePrompt = `${sceneDesc}, children's coloring page, thick clean black outlines, pure white background, simple friendly rounded shapes, cute kawaii style, zero shading zero grey tones, professional coloring book illustration`;
             } else {
-                samplePrompt = `Coloring page ${(niche as any).name}, ultra thick clean black outlines, white background, zero shading`;
+                samplePrompt = `${sceneDesc}, professional adult coloring page illustration, ultra thick crisp black outlines 3-4px weight, pure white background, zero grey tones zero shading, black and white line art only, high contrast, intricate detailed scene, masterful illustration quality`;
             }
             const seed = Math.floor(Math.random() * 99999);
             const sampleUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(samplePrompt)}?model=${sampleModel}&width=1024&height=1024&nologo=true&seed=${seed}`;

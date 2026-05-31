@@ -129,7 +129,7 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
         socket.on("radar:result", (data: any) => {
             // Only process results that belong to this table's storageKey
             if (data.storageKey !== storageKey) return;
-            if (data.mode !== "etsy-niches" && !data.data?.nichos_detectados) return;
+            if (data.mode !== "etsy-niches" && data.mode !== "amazon-niches" && data.mode !== "trends-niches" && !data.data?.nichos_detectados) return;
 
             const incoming: EtsyListing[] = data.data?.nichos_detectados ?? [];
             const existing: EtsyListing[] = etsyResultRef.current?.nichos_detectados ?? [];
@@ -346,9 +346,11 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                                                 ? "bg-orange-500/10 border-orange-500/20 text-orange-400"
                                                                 : row.fuente === "etsy"
                                                                 ? "bg-rose-500/10 border-rose-500/20 text-rose-400"
+                                                                : row.fuente === "trends"
+                                                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
                                                                 : "bg-neutral-500/10 border-neutral-500/20 text-neutral-500"
                                                         }`}>
-                                                            {row.fuente === "amazon" ? "🛒" : row.fuente === "etsy" ? "🏪" : "🌐"} {row.fuente}
+                                                            {row.fuente === "amazon" ? "🛒" : row.fuente === "etsy" ? "🏪" : row.fuente === "trends" ? "📈" : "🌐"} {row.fuente}
                                                         </span>
                                                     )}
                                                     <span className="inline-flex items-center gap-1 text-[7px] text-neutral-500">

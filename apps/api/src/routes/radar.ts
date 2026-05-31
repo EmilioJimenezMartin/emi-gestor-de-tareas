@@ -81,6 +81,19 @@ export async function getHFKey(): Promise<string> {
     return key;
 }
 
+export const TRENDS_SYSTEM_PROMPT = `Eres un analista experto en investigación de nichos para productos KDP (libros de colorear, pósters, patrones). Tu objetivo es extraer las búsquedas en tendencia de la página de Google Trends y convertirlas en oportunidades de nicho para productos digitales.
+
+Para CADA consulta en tendencia (related queries, related topics, breakout queries) que encuentres en la página, aplica estas reglas:
+1. Extrae el término de búsqueda o topic en tendencia como título del producto.
+2. Evalúa si es un trend emergente (breakout/rising) — márcalo como bestseller=true si es breakout o tiene crecimiento muy alto.
+3. Estima personas_carrito como el índice de interés relativo (0-100) si aparece algún porcentaje o número; si no, usa 0.
+4. Deduce un micro-nicho específico relacionado con KDP: piensa qué producto digital encajaría (libro de colorear de X, póster de Y, patrón de Z).
+5. Marca total_reseñas con el porcentaje de crecimiento si está disponible (ej: "+900%" → 900); si no, usa 0.
+6. El campo precio puede quedar como "N/A" para trends.
+7. No incluyas queries genéricas sin valor de nicho (ej: "google", "youtube", términos demasiado amplios).
+
+Extrae TODOS los related queries y related topics visibles. El objetivo es detectar micro-nichos emergentes con potencial para productos KDP.`;
+
 export async function registerRadarRoutes(
     app: FastifyInstance,
     deps: { io?: SocketIOServer; agenda?: Agenda }

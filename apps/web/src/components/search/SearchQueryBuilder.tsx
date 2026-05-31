@@ -3,10 +3,10 @@
 import { useState } from "react";
 import {
     ShoppingCart, ShoppingBag, Globe, Sparkles, Loader2,
-    X, ChevronRight, Wand2,
+    X, ChevronRight, Wand2, TrendingUp,
 } from "lucide-react";
 
-export type SearchPlatform = "etsy" | "amazon" | "general";
+export type SearchPlatform = "etsy" | "amazon" | "general" | "trends";
 
 export interface SearchConfig {
     platform: SearchPlatform;
@@ -52,12 +52,22 @@ const GENERAL_PRESETS: { label: string; url: string; hint?: string }[] = [
     { label: "Google Trends", url: "https://trends.google.com/trends/explore?q=coloring+book", hint: "coloring book trends" },
 ];
 
-type AccentKey = "sky" | "orange" | "amber";
+const TRENDS_PRESETS: { label: string; url: string; hint?: string }[] = [
+    { label: "Coloring Books", url: "https://trends.google.com/trends/explore?q=coloring+book&geo=US", hint: "coloring book trends" },
+    { label: "Adult Coloring", url: "https://trends.google.com/trends/explore?q=adult+coloring+book&geo=US", hint: "adult coloring trend" },
+    { label: "Printables Etsy", url: "https://trends.google.com/trends/explore?q=printables+etsy&geo=US", hint: "printables etsy trend" },
+    { label: "Wall Art Print", url: "https://trends.google.com/trends/explore?q=wall+art+print&geo=US", hint: "wall art print trend" },
+    { label: "Trending Now", url: "https://trends.google.com/trends/trendingsearches/daily?geo=US", hint: "trending searches today" },
+    { label: "Rising Crafts", url: "https://trends.google.com/trends/explore?q=craft+printable&geo=US", hint: "craft printable rising" },
+];
+
+type AccentKey = "sky" | "orange" | "amber" | "emerald";
 
 const PLATFORM_ACCENT: Record<SearchPlatform, AccentKey> = {
     etsy: "sky",
     amazon: "orange",
     general: "amber",
+    trends: "emerald",
 };
 
 const accentClasses = {
@@ -84,6 +94,14 @@ const accentClasses = {
         input: "focus-within:border-amber-500/40",
         button: "bg-gradient-to-r from-amber-500 to-orange-500 shadow-amber-500/20 hover:from-amber-400 hover:to-orange-400",
         ai: "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20",
+    },
+    emerald: {
+        tab: "bg-emerald-500/15 border-emerald-500/25 text-emerald-300",
+        preset: "bg-emerald-500/15 border-emerald-500/25 text-emerald-300",
+        presetHover: "hover:text-emerald-400 hover:border-emerald-500/20",
+        input: "focus-within:border-emerald-500/40",
+        button: "bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-500/20 hover:from-emerald-400 hover:to-teal-400",
+        ai: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20",
     },
 };
 
@@ -121,7 +139,7 @@ export function SearchQueryBuilder({
     const amazonPresets = [...AMAZON_PRESETS, ...extraAmazonPresets];
     const generalPresets = [...GENERAL_PRESETS, ...extraGeneralPresets];
 
-    const presetsForPlatform = platform === "etsy" ? etsyPresets : platform === "amazon" ? amazonPresets : generalPresets;
+    const presetsForPlatform = platform === "etsy" ? etsyPresets : platform === "amazon" ? amazonPresets : platform === "trends" ? TRENDS_PRESETS : generalPresets;
 
     const emit = (newPlatform: SearchPlatform, newUrl: string, preset?: string) => {
         const term = newUrl.match(/[?&](?:q|k)=([^&]+)/)?.[1]?.replace(/\+/g, " ") ?? "";
@@ -197,9 +215,9 @@ export function SearchQueryBuilder({
             {/* Platform tabs */}
             {!lockPlatform && (
                 <div className="flex gap-1 p-1 bg-white/[0.03] border border-white/8 rounded-2xl w-fit">
-                    {(["etsy", "amazon", "general"] as const).map(p => {
-                        const icons = { etsy: <ShoppingCart size={11} />, amazon: <ShoppingBag size={11} />, general: <Globe size={11} /> };
-                        const labels = { etsy: "Etsy", amazon: "Amazon", general: "General" };
+                    {(["etsy", "amazon", "general", "trends"] as const).map(p => {
+                        const icons = { etsy: <ShoppingCart size={11} />, amazon: <ShoppingBag size={11} />, general: <Globe size={11} />, trends: <TrendingUp size={11} /> };
+                        const labels = { etsy: "Etsy", amazon: "Amazon", general: "General", trends: "Trends" };
                         const isActive = platform === p;
                         return (
                             <button key={p} onClick={() => handlePlatformChange(p)}
@@ -221,6 +239,7 @@ export function SearchQueryBuilder({
                     placeholder={
                         platform === "etsy" ? "https://www.etsy.com/search?q=..."
                         : platform === "amazon" ? "https://www.amazon.com/s?k=..."
+                        : platform === "trends" ? "https://trends.google.com/trends/explore?q=..."
                         : "https://..."
                     }
                     className="flex-1 bg-transparent text-[11px] text-white placeholder:text-neutral-700 focus:outline-none font-mono"

@@ -1,6 +1,6 @@
 import type { Agenda, Job } from "agenda";
 import { RadarJob } from "../models/radar-job.js";
-import { EtsyNicheResultSchema, NicheInsightSchema, ETSY_SYSTEM_PROMPT, AMAZON_SYSTEM_PROMPT } from "../routes/radar.js";
+import { EtsyNicheResultSchema, NicheInsightSchema, ETSY_SYSTEM_PROMPT, AMAZON_SYSTEM_PROMPT, TRENDS_SYSTEM_PROMPT } from "../routes/radar.js";
 import { analyzePageForRadar } from "../lib/ai.js";
 import { AUTOPILOT_JOB_NAME } from "./autopilot.js";
 
@@ -60,13 +60,14 @@ async function runWithRetry<T>(fn: () => Promise<T>, onWait: (secs: number, atte
 }
 
 function buildRadarSystemPrompt(mode: string, nicheName?: string, context?: string): string {
-    const isListingMode = mode === "etsy-niches" || mode === "amazon-niches";
+    const isListingMode = mode === "etsy-niches" || mode === "amazon-niches" || mode === "trends-niches";
     const schemaHint = isListingMode
         ? `{"nichos_detectados":[{"titulo_producto":"string","precio":"string","bestseller":true/false,"personas_carrito":number,"total_reseñas":number,"sub_nicho_estimado":"string","url_producto":"string|undefined"}]}`
         : `{"niche":"string","competition":"low|medium|high","demand":"low|medium|high","trend":"rising|stable|declining","topKeywords":["string"],"priceRange":"string","topCompetitors":["string"],"entryOpportunity":"string","buyerProfile":"string","summary":"string"}`;
 
     if (mode === "amazon-niches") return `${AMAZON_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     if (mode === "etsy-niches") return `${ETSY_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "trends-niches") return `${TRENDS_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     return [
         nicheName ? `Niche objetivo: "${nicheName}".` : "",
         context ? `Contexto adicional: ${context}.` : "",
@@ -170,7 +171,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 throw new Error(`Página bloqueada por anti-bot: "${pageTitle}". Intenta de nuevo en unos minutos.`);
             }
 
-            if (mode === "etsy-niches" || mode === "amazon-niches") {
+            if (mode === "etsy-niches" || mode === "amazon-niches" || mode === "trends-niches") {
                 pushLog(jobDoc, io, "info", `[FETCH] Scroll para cargar resultados lazy...`);
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)");
                 await page.waitForTimeout(1500);
@@ -223,8 +224,8 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 const scraper = new LLMScraper(google(geminiModel));
 
                 try {
-                    if (mode === "etsy-niches" || mode === "amazon-niches") {
-                        const systemPrompt = mode === "amazon-niches" ? AMAZON_SYSTEM_PROMPT : ETSY_SYSTEM_PROMPT;
+                    if (mode === "etsy-niches" || mode === "amazon-niches" || mode === "trends-niches") {
+                        const systemPrompt = mode === "amazon-niches" ? AMAZON_SYSTEM_PROMPT : mode === "trends-niches" ? TRENDS_SYSTEM_PROMPT : ETSY_SYSTEM_PROMPT;
                         const output = Output.object(EtsyNicheResultSchema as any);
                         const result = await runWithRetry(
                             () => scraper.run(page, output, { format: "markdown", system: systemPrompt }),
@@ -248,8 +249,8 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                     }
                     const count = (data?.nichos_detectados ?? []).length;
                     pushLog(jobDoc, io, "success",
-                        (mode === "etsy-niches" || mode === "amazon-niches")
-                            ? `[AI] ✓ Gemini · ${count} productos detectados`
+                        (mode === "etsy-niches" || mode === "amazon-niches" || mode === "trends-niches")
+                            ? `[AI] ✓ Gemini · ${count} ${mode === "trends-niches" ? "tendencias" : "productos"} detectados`
                             : `[AI] ✓ Gemini · análisis completado`
                     );
                 } catch (geminiErr: any) {
@@ -278,8 +279,8 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
             if (data) {
                 const count = (data?.nichos_detectados ?? []).length;
-                if (mode === "etsy-niches" || mode === "amazon-niches") {
-                    pushLog(jobDoc, io, "success", `[AI] ✓ ${count} productos detectados`);
+                if (mode === "etsy-niches" || mode === "amazon-niches" || mode === "trends-niches") {
+                    pushLog(jobDoc, io, "success", `[AI] ✓ ${count} ${mode === "trends-niches" ? "tendencias detectadas" : "productos detectados"}`);
                 } else {
                     pushLog(jobDoc, io, "success", `[AI] ✓ Análisis completado`);
                 }
@@ -288,7 +289,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             // Stamp detection date and source on every listing
             if (data?.nichos_detectados) {
                 const ts = new Date().toISOString();
-                const fuente = mode === "amazon-niches" ? "amazon" : mode === "etsy-niches" ? "etsy" : "general";
+                const fuente = mode === "amazon-niches" ? "amazon" : mode === "etsy-niches" ? "etsy" : mode === "trends-niches" ? "trends" : "general";
                 data.nichos_detectados = (data.nichos_detectados as any[]).map(n => ({ ...n, fecha_detectado: ts, fuente: n.fuente ?? fuente }));
             }
 
@@ -341,7 +342,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 const { sendTelegram, shouldNotify } = await import("../lib/telegram.js");
                 const newNiches = (data?.nichos_detectados ?? []).filter((n: any) => !n._nichoCreado);
                 const count = (dataToEmit?.nichos_detectados ?? []).length;
-                const modeLabel = mode === "etsy-niches" ? "Etsy" : mode === "amazon-niches" ? "Amazon" : "General";
+                const modeLabel = mode === "etsy-niches" ? "Etsy" : mode === "amazon-niches" ? "Amazon" : mode === "trends-niches" ? "Google Trends" : "General";
 
                 if (await shouldNotify("radar.found") && count > 0) {
                     await sendTelegram(
