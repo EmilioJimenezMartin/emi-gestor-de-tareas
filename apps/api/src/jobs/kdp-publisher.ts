@@ -2,7 +2,7 @@ import type { Agenda, Job } from "agenda";
 import { chromium } from "playwright";
 import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
-import { sendTelegram } from "../lib/telegram.js";
+import { sendTelegram, shouldNotify } from "../lib/telegram.js";
 import path from "path";
 import os from "os";
 import fs from "fs/promises";
@@ -62,22 +62,24 @@ export function defineKdpPublisherJob(agenda: Agenda, io: any): void {
         const listing = n.listings?.[0];
 
         if (!listing?.title) {
-            await sendTelegram(`❌ <b>KDP</b> · <b>${n.name}</b>\nFalta el listing SEO (título, descripción, keywords)`);
+            if (await shouldNotify("kdp.error")) await sendTelegram(`❌ <b>KDP</b> · <b>${n.name}</b>\nFalta el listing SEO (título, descripción, keywords)`);
             return;
         }
         if (!n.bookPdfUrl) {
-            await sendTelegram(`❌ <b>KDP</b> · <b>${n.name}</b>\nFalta el PDF del libro`);
+            if (await shouldNotify("kdp.error")) await sendTelegram(`❌ <b>KDP</b> · <b>${n.name}</b>\nFalta el PDF del libro`);
             return;
         }
 
         const cfg = await getKdpConfig();
         if (!cfg) {
-            await sendTelegram(
-                `❌ <b>KDP sin credenciales</b>\n` +
-                `Configura en Ajustes:\n` +
-                `<code>KDP_EMAIL</code> · <code>KDP_PASSWORD</code>\n` +
-                `<code>KDP_AUTHOR_NAME</code> · <code>KDP_DEFAULT_PRICE</code>`
-            );
+            if (await shouldNotify("kdp.error")) {
+                await sendTelegram(
+                    `❌ <b>KDP sin credenciales</b>\n` +
+                    `Configura en Ajustes:\n` +
+                    `<code>KDP_EMAIL</code> · <code>KDP_PASSWORD</code>\n` +
+                    `<code>KDP_AUTHOR_NAME</code> · <code>KDP_DEFAULT_PRICE</code>`
+                );
+            }
             return;
         }
 
@@ -86,7 +88,8 @@ export function defineKdpPublisherJob(agenda: Agenda, io: any): void {
 
         try {
             io?.emit("kdp:status", { nicheId, status: "starting" });
-            await sendTelegram(`⏳ <b>KDP Upload iniciado</b>\n📚 <b>${n.name}</b>\nDescargando archivos…`);
+            const notifyProgress = await shouldNotify("kdp.progress");
+            if (notifyProgress) await sendTelegram(`⏳ <b>KDP Upload iniciado</b>\n📚 <b>${n.name}</b>\nDescargando archivos…`);
 
             // ── Download PDF and cover to temp files ──────────────────────────
             const pdfPath  = path.join(os.tmpdir(), `kdp-${nicheId}-interior.pdf`);
@@ -123,7 +126,7 @@ export function defineKdpPublisherJob(agenda: Agenda, io: any): void {
             if (page.url().includes("signin") || page.url().includes("ap/signin")) {
                 console.log(`${tag} Logging in…`);
                 io?.emit("kdp:status", { nicheId, status: "login" });
-                await sendTelegram(`🔑 <b>KDP</b> · Iniciando sesión…`);
+                if (notifyProgress) await sendTelegram(`🔑 <b>KDP</b> · Iniciando sesión…`);
 
                 await page.locator("#ap_email").fill(cfg.email);
                 await page.locator("#continue").click();
@@ -135,6 +138,7 @@ export function defineKdpPublisherJob(agenda: Agenda, io: any): void {
                 // OTP / 2FA
                 const otpVisible = await page.locator("#auth-mfa-otpcode").isVisible().catch(() => false);
                 if (otpVisible) {
+                    // 2FA is always sent — user must receive this to proceed
                     await sendTelegram(
                         `🔐 <b>KDP requiere verificación 2FA</b>\n\n` +
                         `Envía el código con:\n<code>/kdpotp XXXXXX</code>\n\n` +
@@ -215,7 +219,7 @@ export function defineKdpPublisherJob(agenda: Agenda, io: any): void {
             const fileInputs = await page.locator("input[type='file']").all();
             if (fileInputs.length > 0) {
                 await fileInputs[0].setInputFiles(pdfPath);
-                await sendTelegram(`📤 <b>KDP</b> · Subiendo PDF interior…`);
+                if (notifyProgress) await sendTelegram(`📤 <b>KDP</b> · Subiendo PDF interior…`);
                 // Wait for upload progress to settle (up to 3 min for large PDFs)
                 await page.waitForTimeout(20_000);
                 try {
@@ -229,7 +233,7 @@ export function defineKdpPublisherJob(agenda: Agenda, io: any): void {
             const coverExists = await fs.stat(covPath).then(() => true).catch(() => false);
             if (coverExists && fileInputs.length > 1) {
                 await fileInputs[1].setInputFiles(covPath);
-                await sendTelegram(`🎨 <b>KDP</b> · Subiendo portada…`);
+                if (notifyProgress) await sendTelegram(`🎨 <b>KDP</b> · Subiendo portada…`);
                 await page.waitForTimeout(15_000);
             }
 
@@ -261,19 +265,21 @@ export function defineKdpPublisherJob(agenda: Agenda, io: any): void {
             io?.emit("niches:updated");
             io?.emit("kdp:status", { nicheId, status: "done" });
 
-            await sendTelegram(
-                `✅ <b>KDP borrador guardado</b>\n` +
-                `📚 <b>${n.name}</b>\n` +
-                `📝 ${listing.title}\n` +
-                (asin ? `🆔 ASIN: <code>${asin}</code>\n` : "") +
-                `\n🔗 <a href="https://kdp.amazon.com/en_US/bookshelf">Revisar y publicar →</a>`
-            );
+            if (await shouldNotify("kdp.done")) {
+                await sendTelegram(
+                    `✅ <b>KDP borrador guardado</b>\n` +
+                    `📚 <b>${n.name}</b>\n` +
+                    `📝 ${listing.title}\n` +
+                    (asin ? `🆔 ASIN: <code>${asin}</code>\n` : "") +
+                    `\n🔗 <a href="https://kdp.amazon.com/en_US/bookshelf">Revisar y publicar →</a>`
+                );
+            }
             console.log(`${tag} Done${asin ? ` — ASIN: ${asin}` : ""}`);
 
         } catch (e: any) {
             console.error(`${tag} Error:`, e.message);
             io?.emit("kdp:status", { nicheId, status: "error", message: e.message });
-            await sendTelegram(
+            if (await shouldNotify("kdp.error")) await sendTelegram(
                 `❌ <b>KDP error</b>\n📚 <b>${n.name}</b>\n\n` +
                 `<i>${e.message.slice(0, 300)}</i>\n\n` +
                 `Intenta de nuevo con <code>/kdp ${String(nicheId).slice(-8)}</code>`

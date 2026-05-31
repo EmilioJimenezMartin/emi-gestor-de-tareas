@@ -101,7 +101,7 @@ export function defineCatalogWatchdog(agenda: Agenda, io: any) {
             });
             await agenda.schedule("in 10 seconds", "generate-catalog-image", { catalogId });
 
-            await shouldNotify("catalog.ready").then(ok => {
+            await shouldNotify("watchdog.restart").then(ok => {
                 if (ok) sendTelegram(`🔄 <b>Catálogo reiniciado</b>\n"${(catalog as any).name}" — intento ${restartCount + 1}/${MAX_AUTO_RESTARTS}`).catch(() => {});
             });
         }

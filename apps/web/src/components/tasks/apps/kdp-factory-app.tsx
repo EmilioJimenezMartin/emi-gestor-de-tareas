@@ -1101,16 +1101,6 @@ export function KdpFactoryApp() {
     const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
     const [ruleDraft, setRuleDraft] = useState<Partial<APRule>>({ days: [1], hour: 9, platform: "etsy", query: "", mode: "niche-search", enabled: true });
     const [ruleSearchConfig, setRuleSearchConfig] = useState<SearchConfig>({ platform: "etsy", url: "" });
-    // Notification events
-    type NotifEvent = { id: string; label: string; desc: string; icon: string; enabled: boolean };
-    const [notifEvents, setNotifEvents] = useState<NotifEvent[]>([
-        { id: "pipeline.complete",   label: "Pipeline completado",      desc: "Un nicho avanza de fase: catálogos → PDF → publicado",          icon: "✅", enabled: true  },
-        { id: "scraping.summary",    label: "Resumen de scraping",      desc: "Resultado de cada búsqueda del radar de nichos",                 icon: "🔍", enabled: true  },
-        { id: "api.error.quota",     label: "Error API / cuota",        desc: "Límite excedido en Google, HF, Groq u OpenRouter",              icon: "⚠️", enabled: true  },
-        { id: "catalog.ready",       label: "Catálogo listo",           desc: "Todas las imágenes de un catálogo generadas con éxito",         icon: "🖼️", enabled: true  },
-        { id: "listing.generated",   label: "Listing SEO generado",     desc: "Título, keywords y descripción KDP listos para publicar",       icon: "📝", enabled: false },
-        { id: "autopilot.run",       label: "Ciclo Auto-Pilot",         desc: "Inicio y fin de cada ejecución programada del Auto-Pilot",      icon: "🤖", enabled: false },
-    ]);
     const catalogSocketRef = useRef<ReturnType<typeof createApiSocket> | null>(null);
     const catalogsListRef = useRef<HTMLDivElement>(null);
     const [collapsedCompleted, setCollapsedCompleted] = useState(true);
@@ -1178,14 +1168,35 @@ export function KdpFactoryApp() {
     const [isImportingSales, setIsImportingSales] = useState(false);
     const [salesPeriods, setSalesPeriods] = useState<string[]>([]);
 
-    // --- Alert settings state ---
+    // --- Alert settings state (hours only — enabled is controlled via NOTIFICATION_RULES) ---
     const [alertSettings, setAlertSettings] = useState({
-        ALERT_STUCK_PIPELINE_ENABLED: "true",
-        ALERT_STUCK_PIPELINE_HOURS: "4",
-        ALERT_STUCK_CATALOG_ENABLED: "true",
-        ALERT_STUCK_CATALOG_HOURS: "2",
+        ALERT_STUCK_PIPELINE_HOURS: "168",
+        ALERT_STUCK_CATALOG_HOURS: "168",
     });
     const [savingAlertSettings, setSavingAlertSettings] = useState(false);
+
+    // --- Notification rules ("Eventos del sistema") ---
+    const NOTIFICATION_EVENTS: { id: string; label: string; desc: string; group: string }[] = [
+        { id: "autopilot.run",         label: "Ciclo Auto-Pilot",             desc: "Inicio y resumen al completar cada ciclo",                          group: "Auto-Pilot" },
+        { id: "autopilot.discovery",   label: "Nicho descubierto",            desc: "Foto con botones de aprobación/descarte",                           group: "Auto-Pilot" },
+        { id: "autopilot.autoapprove", label: "Nicho auto-aprobado",          desc: "Cuando el score supera el umbral configurado",                      group: "Auto-Pilot" },
+        { id: "pipeline.complete",     label: "Avance de pipeline",           desc: "Catálogos iniciados y libro PDF generado",                          group: "Auto-Pilot" },
+        { id: "listing.generated",     label: "Listing SEO generado",         desc: "Título, keywords y descripción listos",                             group: "Auto-Pilot" },
+        { id: "cover.generated",       label: "Portada generada",             desc: "Foto de la portada final con variantes",                            group: "Auto-Pilot" },
+        { id: "catalog.ready",         label: "Catálogo completado",          desc: "Cuando un catálogo de imágenes termina de generarse",               group: "Catálogos" },
+        { id: "watchdog.restart",      label: "Catálogo reiniciado",          desc: "El watchdog relanzó un catálogo atascado",                          group: "Catálogos" },
+        { id: "kdp.progress",          label: "KDP: progreso",                desc: "Login, subida de PDF e interior mientras se publica",              group: "KDP" },
+        { id: "kdp.done",              label: "KDP: borrador guardado",       desc: "Confirmación cuando el borrador queda en Amazon KDP",              group: "KDP" },
+        { id: "kdp.error",             label: "KDP: error o datos faltantes", desc: "Error al publicar o cuando falta PDF/listing/credenciales",        group: "KDP" },
+        { id: "radar.found",           label: "Radar: nichos encontrados",    desc: "Resumen al completar una pasada de scraping",                      group: "Radar" },
+        { id: "api.error.quota",       label: "Error de cuota API",           desc: "Auto-Pilot detenido por límite de peticiones",                     group: "Sistema" },
+        { id: "alert.stuck_pipeline",  label: "Alerta: nicho atascado",       desc: "Nicho con Auto-Pilot sin avanzar de fase (umbral configurable, máx. 1×/día)", group: "Sistema" },
+        { id: "alert.stuck_catalog",   label: "Alerta: catálogo sin actividad",desc: "Catálogo en 'running' sin generar imágenes (umbral configurable, máx. 1×/día)", group: "Sistema" },
+    ];
+    const [notificationRules, setNotificationRules] = useState<Record<string, boolean>>(
+        Object.fromEntries(NOTIFICATION_EVENTS.map(e => [e.id, true]))
+    );
+    const [savingNotificationRules, setSavingNotificationRules] = useState(false);
 
     // --- KDP publish CTA state ---
     const [kdpPublishStatus, setKdpPublishStatus] = useState<Record<string, "idle" | "queued" | "login" | "uploading-pdf" | "done" | "error">>({});
@@ -1911,13 +1922,6 @@ export function KdpFactoryApp() {
         } catch {
             toast.error("Error al guardar");
         }
-    };
-
-    const saveNotifEvents = async (events: NotifEvent[]) => {
-        setNotifEvents(events);
-        await fetch(`${API_BASE_URL}/settings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: "NOTIFICATION_RULES", value: JSON.stringify(events) }) })
-            .then(r => { if (!r.ok) throw new Error("Error al guardar reglas"); })
-            .catch(e => toast.error(e.message));
     };
 
     const retryFailedSlots = async (catalogId: string) => {
@@ -3246,7 +3250,6 @@ export function KdpFactoryApp() {
                 const apRulesFound = (data.settings ?? []).find((s: any) => s.key === "AUTOPILOT_RULES");
                 if (apRulesFound?.value) { try { const r = JSON.parse(apRulesFound.value); if (Array.isArray(r)) setApRules(r); } catch { } }
                 const notifFound = (data.settings ?? []).find((s: any) => s.key === "NOTIFICATION_RULES");
-                if (notifFound?.value) { try { const n = JSON.parse(notifFound.value); if (Array.isArray(n) && n.length > 0) setNotifEvents(n); } catch { } }
 
                 // Autopilot numeric limits
                 const settingsMap = new Map<string, string>((data.settings ?? []).map((s: any) => [s.key, s.value]));
@@ -3280,12 +3283,23 @@ export function KdpFactoryApp() {
                     setApScheduled(false);
                 }
 
-                // Alert settings
-                const alertKeys = ["ALERT_STUCK_PIPELINE_ENABLED", "ALERT_STUCK_PIPELINE_HOURS", "ALERT_STUCK_CATALOG_ENABLED", "ALERT_STUCK_CATALOG_HOURS"];
+                // Alert settings (hours only)
                 const alertMap = new Map<string, string>((data.settings ?? []).map((s: any) => [s.key, String(s.value)]));
                 const newAlerts: typeof alertSettings = { ...alertSettings };
-                for (const k of alertKeys) { if (alertMap.has(k)) (newAlerts as any)[k] = alertMap.get(k)!; }
+                for (const k of Object.keys(alertSettings)) { if (alertMap.has(k)) (newAlerts as any)[k] = alertMap.get(k)!; }
                 setAlertSettings(newAlerts);
+
+                // Notification rules
+                if (notifFound?.value) {
+                    try {
+                        const rules = JSON.parse(notifFound.value) as Array<{ id: string; enabled: boolean }>;
+                        if (Array.isArray(rules)) {
+                            const map: Record<string, boolean> = Object.fromEntries(NOTIFICATION_EVENTS.map(e => [e.id, true]));
+                            for (const r of rules) map[r.id] = r.enabled;
+                            setNotificationRules(map);
+                        }
+                    } catch { /* keep defaults */ }
+                }
 
                 // Book drafts (multi-draft)
                 const draftsFound = (data.settings ?? []).find((s: any) => s.key === "kdp-book-drafts");
@@ -4352,8 +4366,20 @@ export function KdpFactoryApp() {
                 method: "PATCH", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(Object.entries(alertSettings).map(([key, value]) => ({ key, value }))),
             });
-            toast.success("Alertas guardadas");
+            toast.success("Umbrales guardados");
         } catch { toast.error("Error guardando alertas"); } finally { setSavingAlertSettings(false); }
+    };
+
+    const saveNotificationRules = async () => {
+        setSavingNotificationRules(true);
+        try {
+            const rules = NOTIFICATION_EVENTS.map(e => ({ id: e.id, enabled: notificationRules[e.id] ?? true }));
+            await fetch(`${API_BASE_URL}/settings`, {
+                method: "PATCH", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify([{ key: "NOTIFICATION_RULES", value: JSON.stringify(rules) }]),
+            });
+            toast.success("Eventos guardados");
+        } catch { toast.error("Error guardando eventos"); } finally { setSavingNotificationRules(false); }
     };
 
     function fmtMs(ms: number): string {
@@ -6730,85 +6756,72 @@ export function KdpFactoryApp() {
                 </div>
             </section>
 
-            {/* ══ REGLAS DE NOTIFICACIÓN ══════════════════════════════════ */}
+            {/* ── EVENTOS DEL SISTEMA ─────────────────────────────────────── */}
             <section className="space-y-4">
-                <div className="flex items-center justify-between gap-2">
-                    <SectionHeader icon={<Bell size={13} />} title="Reglas de notificación" subtitle="Qué eventos disparan un aviso en Telegram · configura el canal en Ajustes" color="sky" size="sm" />
-                </div>
-
-                {/* System event rules */}
+                <SectionHeader icon={<Bell size={13} />} title="Eventos del sistema" subtitle="Activa o desactiva cada tipo de mensaje de Telegram · desactivar no afecta al pipeline" color="amber" size="sm" />
                 <Card variant="outline" className="border-white/5 bg-white/[0.01] overflow-hidden">
-                    <div className="px-5 py-3 border-b border-white/[0.05]">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Eventos del sistema</p>
-                    </div>
                     <div className="divide-y divide-white/[0.04]">
-                        {notifEvents.map(ev => (
-                            <div key={ev.id} className={`flex items-center gap-4 px-5 py-3.5 transition-all ${ev.enabled ? "opacity-100" : "opacity-40"}`}>
-                                <span className="text-base shrink-0">{ev.icon}</span>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-black text-white">{ev.label}</p>
-                                    <p className="text-[11px] text-neutral-500 mt-0.5">{ev.desc}</p>
+                        {(() => {
+                            const groups = [...new Set(NOTIFICATION_EVENTS.map(e => e.group))];
+                            return groups.map(group => (
+                                <div key={group}>
+                                    <div className="px-5 py-2 bg-white/[0.02]">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-600">{group}</span>
+                                    </div>
+                                    {NOTIFICATION_EVENTS.filter(e => e.group === group).map(ev => {
+                                        const enabled = notificationRules[ev.id] ?? true;
+                                        return (
+                                            <div key={ev.id} className={`flex items-center gap-4 px-5 py-3.5 transition-all ${enabled ? "" : "opacity-40"}`}>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-black text-white">{ev.label}</p>
+                                                    <p className="text-[11px] text-neutral-500 mt-0.5">{ev.desc}</p>
+                                                </div>
+                                                <button
+                                                    onClick={() => setNotificationRules(prev => ({ ...prev, [ev.id]: !enabled }))}
+                                                    className={`relative shrink-0 w-9 h-5 rounded-full border transition-all duration-200 ${enabled ? "bg-amber-500/20 border-amber-500/40" : "bg-white/[0.04] border-white/10"}`}>
+                                                    <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-all duration-200 ${enabled ? "left-4 bg-amber-400" : "left-0.5 bg-neutral-600"}`} />
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                    {ev.enabled && <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">activo</span>}
-                                    <button
-                                        onClick={() => void saveNotifEvents(notifEvents.map(e => e.id === ev.id ? { ...e, enabled: !e.enabled } : e))}
-                                        className={`relative w-9 h-5 rounded-full border transition-all duration-200 ${ev.enabled ? "bg-emerald-500/20 border-emerald-500/40" : "bg-white/[0.04] border-white/10"}`}>
-                                        <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-all duration-200 ${ev.enabled ? "left-4 bg-emerald-400" : "left-0.5 bg-neutral-600"}`} />
-                                    </button>
+                            ));
+                        })()}
+                    </div>
+                </Card>
+                <button onClick={() => void saveNotificationRules()} disabled={savingNotificationRules}
+                    className="flex items-center gap-1.5 h-8 px-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm font-black text-amber-400 hover:bg-amber-500/20 transition-all disabled:opacity-40">
+                    {savingNotificationRules ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} Guardar eventos
+                </button>
+            </section>
+
+            {/* ── ALERTAS PROACTIVAS (umbrales) ──────────────────────────── */}
+            <section className="space-y-4">
+                <SectionHeader icon={<Bell size={13} />} title="Umbrales de alertas" subtitle="Tiempo sin actividad antes de que se dispare la alerta · máx. 1 aviso por nicho/día" color="amber" size="sm" />
+                <Card variant="outline" className="border-white/5 bg-white/[0.01] overflow-hidden">
+                    <div className="divide-y divide-white/[0.04]">
+                        {[
+                            { hoursKey: "ALERT_STUCK_PIPELINE_HOURS" as const, label: "Nicho atascado en pipeline", desc: "Horas sin avanzar de fase antes de avisar" },
+                            { hoursKey: "ALERT_STUCK_CATALOG_HOURS" as const, label: "Catálogo sin actividad",     desc: "Horas sin generar imágenes antes de avisar" },
+                        ].map(({ hoursKey, label, desc }) => (
+                            <div key={hoursKey} className="flex items-center gap-4 px-5 py-4">
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-black text-white">{label}</p>
+                                    <p className="text-[11px] text-neutral-500 mt-0.5">{desc}</p>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    <input type="number" min="1" max="720" value={alertSettings[hoursKey]}
+                                        onChange={e => setAlertSettings(prev => ({ ...prev, [hoursKey]: e.target.value }))}
+                                        className="w-16 h-7 px-2 rounded-lg border border-white/10 bg-white/[0.03] text-sm text-center text-white font-mono" />
+                                    <span className="text-xs text-neutral-600">horas</span>
                                 </div>
                             </div>
                         ))}
                     </div>
                 </Card>
-
-                <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-sky-500/[0.04] border border-sky-500/15">
-                    <Bell size={12} className="text-sky-500 shrink-0 mt-0.5" />
-                    <p className="text-[11px] text-neutral-500 leading-relaxed">
-                        Para recibir notificaciones configura el <span className="text-sky-400 font-black">Bot Token</span> y el <span className="text-sky-400 font-black">Chat ID</span> de Telegram en{" "}
-                        <span className="text-white font-black">Ajustes → Notificaciones</span>.
-                    </p>
-                </div>
-            </section>
-
-            {/* ── ALERTAS PROACTIVAS ──────────────────────────────────────── */}
-            <section className="space-y-4">
-                <SectionHeader icon={<Bell size={13} />} title="Alertas proactivas" subtitle="Telegram te avisa automáticamente cuando algo se atasca · se comprueban cada 30 min" color="amber" size="sm" />
-                <Card variant="outline" className="border-white/5 bg-white/[0.01] overflow-hidden">
-                    <div className="divide-y divide-white/[0.04]">
-                        {[
-                            { key: "ALERT_STUCK_PIPELINE_ENABLED", hoursKey: "ALERT_STUCK_PIPELINE_HOURS", label: "Nicho atascado en pipeline", desc: "Avisa si un nicho con autopilot lleva más de N horas sin avanzar de fase" },
-                            { key: "ALERT_STUCK_CATALOG_ENABLED", hoursKey: "ALERT_STUCK_CATALOG_HOURS", label: "Catálogo sin actividad", desc: "Avisa si un catálogo en generación lleva más de N horas sin producir imágenes" },
-                        ].map(({ key, hoursKey, label, desc }) => {
-                            const enabled = alertSettings[key as keyof typeof alertSettings] !== "false";
-                            const hours = alertSettings[hoursKey as keyof typeof alertSettings];
-                            return (
-                                <div key={key} className={`flex items-center gap-4 px-5 py-4 transition-all ${enabled ? "opacity-100" : "opacity-40"}`}>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-black text-white">{label}</p>
-                                        <p className="text-[11px] text-neutral-500 mt-0.5">{desc}</p>
-                                    </div>
-                                    <div className="flex items-center gap-3 shrink-0">
-                                        <div className="flex items-center gap-1">
-                                            <input type="number" min="1" max="48" value={hours}
-                                                onChange={e => setAlertSettings(prev => ({ ...prev, [hoursKey]: e.target.value }))}
-                                                className="w-12 h-6 px-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-xs text-center text-white" />
-                                            <span className="text-[10px] text-neutral-600">h</span>
-                                        </div>
-                                        <button
-                                            onClick={() => setAlertSettings(prev => ({ ...prev, [key]: enabled ? "false" : "true" }))}
-                                            className={`relative w-9 h-5 rounded-full border transition-all duration-200 ${enabled ? "bg-amber-500/20 border-amber-500/40" : "bg-white/[0.04] border-white/10"}`}>
-                                            <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-all duration-200 ${enabled ? "left-4 bg-amber-400" : "left-0.5 bg-neutral-600"}`} />
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </Card>
                 <button onClick={() => void saveAlertSettings()} disabled={savingAlertSettings}
                     className="flex items-center gap-1.5 h-8 px-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm font-black text-amber-400 hover:bg-amber-500/20 transition-all disabled:opacity-40">
-                    {savingAlertSettings ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} Guardar alertas
+                    {savingAlertSettings ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} Guardar umbrales
                 </button>
             </section>
 
@@ -9490,7 +9503,7 @@ export function KdpFactoryApp() {
                         const nicheChartData = niches
                             .map(n => {
                                 const cats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
-                                return { label: n.name.split(" ").slice(0, 3).join(" "), images: cats.reduce((s, c) => s + c.images.length, 0), catalogs: cats.length };
+                                return { label: n.name.split(" ").slice(0, 2).join(" "), images: cats.reduce((s, c) => s + c.images.length, 0), catalogs: cats.length };
                             });
                         return (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

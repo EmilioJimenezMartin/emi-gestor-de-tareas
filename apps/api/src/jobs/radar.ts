@@ -343,7 +343,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 const count = (dataToEmit?.nichos_detectados ?? []).length;
                 const modeLabel = mode === "etsy-niches" ? "Etsy" : mode === "amazon-niches" ? "Amazon" : "General";
 
-                if (await shouldNotify("scraping.summary") && count > 0) {
+                if (await shouldNotify("radar.found") && count > 0) {
                     await sendTelegram(
                         `🔍 <b>Radar completado — ${modeLabel}</b>\n\n` +
                         `<b>${count}</b> producto${count !== 1 ? "s" : ""} en el listado` +

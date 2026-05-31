@@ -210,10 +210,12 @@ async function runDiscovery(
             });
             io?.emit("niches:updated");
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🤖 Auto-aprobado (score ${(niche as any).score} ≥ ${autoThreshold}) → pipeline lanzado` });
-            await sendTelegram(
-                `🤖 <b>Auto-aprobado</b> (score <b>${(niche as any).score}</b> ≥ ${autoThreshold})\n` +
-                `📚 <b>${niche.name}</b> → pipeline lanzado automáticamente`
-            ).catch(() => {});
+            if (await shouldNotify("autopilot.autoapprove")) {
+                await sendTelegram(
+                    `🤖 <b>Auto-aprobado</b> (score <b>${(niche as any).score}</b> ≥ ${autoThreshold})\n` +
+                    `📚 <b>${niche.name}</b> → pipeline lanzado automáticamente`
+                ).catch(() => {});
+            }
             count++;
             stats.discovered++;
             await agenda.schedule("in 5 seconds", "autopilot-run", {}).catch(() => {});
@@ -254,11 +256,12 @@ async function runDiscovery(
             `<i>🚀 Continuar → lanza ${cfg.catalogsPerNiche} catálogos × ${cfg.imagesPerCatalog} imágenes</i>`,
         ].filter(Boolean).join("\n");
 
-        const msgId = await sendTelegramPhotoDiscovery({
+        const canDiscovery = await shouldNotify("autopilot.discovery");
+        const msgId = canDiscovery ? await sendTelegramPhotoDiscovery({
             imageUrl: sampleUrl,
             caption,
             actionId: String(action._id),
-        });
+        }) : null;
 
         if (msgId) { action.messageId = msgId; await action.save(); }
         io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📩 Esperando tu decisión en Telegram para "${niche.name}"` });
@@ -832,7 +835,9 @@ async function runPipeline(
                         candidateUrls.length > 1 ? `🎨 ${candidateUrls.length} variantes disponibles — elige en el dashboard` : null,
                         `✅ Listo para subir a KDP`,
                     ].filter(Boolean).join("\n");
-                    await sendTelegramPhoto(coverUrl, caption).catch(() => {});
+                    if (await shouldNotify("cover.generated")) {
+                        await sendTelegramPhoto(coverUrl, caption).catch(() => {});
+                    }
                 }
 
             } catch (e: any) {
