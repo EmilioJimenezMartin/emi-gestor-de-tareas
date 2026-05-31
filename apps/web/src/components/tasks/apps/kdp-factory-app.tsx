@@ -88,6 +88,7 @@ import { Modal } from "@/components/ui/modal";
 import { KdpStatCard } from "@/components/ui/kdp-stat-card";
 import { KdpVerticalBarChart } from "@/components/ui/kdp-vertical-bar-chart";
 import { SectionHeader } from "@/components/ui/section-header";
+import { KdpTabBar, type KdpTabDef } from "@/components/ui/kdp-tab-bar";
 import { toast } from "sonner";
 import { createApiSocket } from "@/lib/socket";
 import { NicheRadar } from "@/components/extractor/NicheRadar";
@@ -1022,8 +1023,8 @@ export function KdpFactoryApp() {
     const [nicheStatusFilter, setNicheStatusFilter] = useState<"all" | NicheStatus>("all");
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban">("list");
     const [kanbanProductFilter, setKanbanProductFilter] = useState<"all" | "coloring-book" | "printable-poster" | "seamless-pattern">("all");
-    const [studioSubTab, setStudioSubTab] = useState<"niches" | "radar">(() =>
-        (typeof window !== "undefined" && localStorage.getItem("kdp-studio-subtab") as "niches" | "radar") || "niches"
+    const [studioSubTab, setStudioSubTab] = useState<"niches" | "radar" | "pipeline">(() =>
+        (typeof window !== "undefined" && localStorage.getItem("kdp-studio-subtab") as "niches" | "radar" | "pipeline") || "niches"
     );
     const [nicheGeneratingId, setNicheGeneratingId] = useState<string | null>(null);
     const [nicheFormProductType, setNicheFormProductType] = useState<NicheProductType>("coloring-book");
@@ -1138,6 +1139,7 @@ export function KdpFactoryApp() {
     // Pipeline config
     const [pipelineConfig, setPipelineConfig] = useState({ catalogs: 5, imagesPerCatalog: 5 });
     const [showPipelineConfigId, setShowPipelineConfigId] = useState<string | null>(null);
+    const [configSection, setConfigSection] = useState<"autopilot" | "notificaciones" | "integraciones">("autopilot");
     // Niche detail modal
     const [nicheDetailId, setNicheDetailId] = useState<string | null>(null);
     const [nicheDetailTab, setNicheDetailTab] = useState<"images" | "catalogs" | "seo" | "book" | "actions">("images");
@@ -6116,11 +6118,22 @@ export function KdpFactoryApp() {
             active: "bg-emerald-500/15 border-emerald-500/30 text-emerald-400",
         };
 
+        const CONFIG_SECTIONS: KdpTabDef<"autopilot" | "notificaciones" | "integraciones">[] = [
+            { id: "autopilot",      icon: <Zap size={13} />,   label: "Auto-Pilot",     color: "text-amber-400",  activeBg: "bg-amber-500/10 border-amber-500/25 text-amber-300"  },
+            { id: "notificaciones", icon: <Bell size={13} />,  label: "Notificaciones", color: "text-violet-400", activeBg: "bg-violet-500/10 border-violet-500/25 text-violet-300" },
+            { id: "integraciones",  icon: <Store size={13} />, label: "Integraciones",  color: "text-indigo-400", activeBg: "bg-indigo-500/10 border-indigo-500/25 text-indigo-300" },
+        ];
+
         return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
+
+            <KdpTabBar tabs={CONFIG_SECTIONS} active={configSection} onChange={setConfigSection} />
+
+            {/* ── Content ── */}
+            <div className="space-y-8">
 
             {/* ── AUTO-PILOT ──────────────────────────────────────────────── */}
-            <section className="space-y-5">
+            {configSection === "autopilot" && <section className="space-y-5">
                 <SectionHeader icon={<Zap size={15} />} title="Auto-Pilot" subtitle="Automatiza el pipeline completo de producción" color="amber" size="sm" />
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -6779,41 +6792,43 @@ export function KdpFactoryApp() {
                         </div>
                     )}
                 </div>
-            </section>
+            </section>}
 
+            {configSection === "notificaciones" && <div className="space-y-8">
             {/* ── EVENTOS DEL SISTEMA ─────────────────────────────────────── */}
             <section className="space-y-4">
                 <SectionHeader icon={<Bell size={13} />} title="Eventos del sistema" subtitle="Activa o desactiva cada tipo de mensaje de Telegram · desactivar no afecta al pipeline" color="amber" size="sm" />
-                <Card variant="outline" className="border-white/5 bg-white/[0.01] overflow-hidden">
-                    <div className="divide-y divide-white/[0.04]">
-                        {(() => {
-                            const groups = [...new Set(NOTIFICATION_EVENTS.map(e => e.group))];
-                            return groups.map(group => (
-                                <div key={group}>
-                                    <div className="px-5 py-2 bg-white/[0.02]">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-neutral-600">{group}</span>
-                                    </div>
+                {/* 2-column event grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {(() => {
+                        const groups = [...new Set(NOTIFICATION_EVENTS.map(e => e.group))];
+                        return groups.map(group => (
+                            <Card key={group} variant="outline" className="border-white/5 bg-white/[0.01] overflow-hidden">
+                                <div className="px-4 py-2 border-b border-white/[0.05]">
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">{group}</span>
+                                </div>
+                                <div className="divide-y divide-white/[0.04]">
                                     {NOTIFICATION_EVENTS.filter(e => e.group === group).map(ev => {
                                         const enabled = notificationRules[ev.id] ?? true;
                                         return (
-                                            <div key={ev.id} className={`flex items-center gap-4 px-5 py-3.5 transition-all ${enabled ? "" : "opacity-40"}`}>
+                                            <div key={ev.id} className={`flex items-center gap-3 px-4 py-2.5 transition-all ${enabled ? "" : "opacity-35"}`}>
                                                 <div className="flex-1 min-w-0">
-                                                    <p className="text-sm font-black text-white">{ev.label}</p>
-                                                    <p className="text-[11px] text-neutral-500 mt-0.5">{ev.desc}</p>
+                                                    <p className="text-[11px] font-black text-white leading-tight">{ev.label}</p>
+                                                    <p className="text-[10px] text-neutral-600 mt-0.5 leading-tight">{ev.desc}</p>
                                                 </div>
                                                 <button
                                                     onClick={() => setNotificationRules(prev => ({ ...prev, [ev.id]: !enabled }))}
-                                                    className={`relative shrink-0 w-9 h-5 rounded-full border transition-all duration-200 ${enabled ? "bg-amber-500/20 border-amber-500/40" : "bg-white/[0.04] border-white/10"}`}>
-                                                    <span className={`absolute top-0.5 h-4 w-4 rounded-full transition-all duration-200 ${enabled ? "left-4 bg-amber-400" : "left-0.5 bg-neutral-600"}`} />
+                                                    className={`relative shrink-0 w-8 h-[18px] rounded-full border transition-all duration-200 ${enabled ? "bg-amber-500/20 border-amber-500/40" : "bg-white/[0.04] border-white/10"}`}>
+                                                    <span className={`absolute top-[1px] h-[14px] w-[14px] rounded-full transition-all duration-200 ${enabled ? "left-[14px] bg-amber-400" : "left-[2px] bg-neutral-600"}`} />
                                                 </button>
                                             </div>
                                         );
                                     })}
                                 </div>
-                            ));
-                        })()}
-                    </div>
-                </Card>
+                            </Card>
+                        ));
+                    })()}
+                </div>
                 <button onClick={() => void saveNotificationRules()} disabled={savingNotificationRules}
                     className="flex items-center gap-1.5 h-8 px-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm font-black text-amber-400 hover:bg-amber-500/20 transition-all disabled:opacity-40">
                     {savingNotificationRules ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} Guardar eventos
@@ -6822,36 +6837,36 @@ export function KdpFactoryApp() {
 
             {/* ── ALERTAS PROACTIVAS (umbrales) ──────────────────────────── */}
             <section className="space-y-4">
-                <SectionHeader icon={<Bell size={13} />} title="Umbrales de alertas" subtitle="Tiempo sin actividad antes de que se dispare la alerta · máx. 1 aviso por nicho/día" color="amber" size="sm" />
-                <Card variant="outline" className="border-white/5 bg-white/[0.01] overflow-hidden">
-                    <div className="divide-y divide-white/[0.04]">
-                        {[
-                            { hoursKey: "ALERT_STUCK_PIPELINE_HOURS" as const, label: "Nicho atascado en pipeline", desc: "Horas sin avanzar de fase antes de avisar" },
-                            { hoursKey: "ALERT_STUCK_CATALOG_HOURS" as const, label: "Catálogo sin actividad",     desc: "Horas sin generar imágenes antes de avisar" },
-                        ].map(({ hoursKey, label, desc }) => (
-                            <div key={hoursKey} className="flex items-center gap-4 px-5 py-4">
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-black text-white">{label}</p>
-                                    <p className="text-[11px] text-neutral-500 mt-0.5">{desc}</p>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                    <input type="number" min="1" max="720" value={alertSettings[hoursKey]}
-                                        onChange={e => setAlertSettings(prev => ({ ...prev, [hoursKey]: e.target.value }))}
-                                        className="w-16 h-7 px-2 rounded-lg border border-white/10 bg-white/[0.03] text-sm text-center text-white font-mono" />
-                                    <span className="text-xs text-neutral-600">horas</span>
-                                </div>
+                <SectionHeader icon={<Bell size={13} />} title="Umbrales de alertas" subtitle="Tiempo sin actividad antes de disparar la alerta · máx. 1 aviso por nicho/día" color="amber" size="sm" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[
+                        { hoursKey: "ALERT_STUCK_PIPELINE_HOURS" as const, label: "Nicho atascado", desc: "Horas sin avanzar de fase", icon: "⚠️" },
+                        { hoursKey: "ALERT_STUCK_CATALOG_HOURS" as const, label: "Catálogo sin actividad", desc: "Horas sin generar imágenes", icon: "🔴" },
+                    ].map(({ hoursKey, label, desc, icon }) => (
+                        <Card key={hoursKey} variant="outline" className="border-white/5 bg-white/[0.01] p-4 flex items-center gap-4">
+                            <span className="text-xl shrink-0">{icon}</span>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-black text-white">{label}</p>
+                                <p className="text-[10px] text-neutral-600 mt-0.5">{desc}</p>
                             </div>
-                        ))}
-                    </div>
-                </Card>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                                <input type="number" min="1" max="720" value={alertSettings[hoursKey]}
+                                    onChange={e => setAlertSettings(prev => ({ ...prev, [hoursKey]: e.target.value }))}
+                                    className="w-16 h-8 px-2 rounded-lg border border-white/10 bg-white/[0.03] text-sm text-center text-white font-mono focus:outline-none focus:border-amber-500/40" />
+                                <span className="text-[10px] text-neutral-600">h</span>
+                            </div>
+                        </Card>
+                    ))}
+                </div>
                 <button onClick={() => void saveAlertSettings()} disabled={savingAlertSettings}
                     className="flex items-center gap-1.5 h-8 px-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm font-black text-amber-400 hover:bg-amber-500/20 transition-all disabled:opacity-40">
                     {savingAlertSettings ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} Guardar umbrales
                 </button>
             </section>
+            </div>}
 
             {/* ── INTEGRACIONES ───────────────────────────────────────────── */}
-            {(() => {
+            {configSection === "integraciones" && (() => {
                 return (
                     <section className="space-y-3">
                         <div className="flex items-center justify-between gap-2">
@@ -6912,112 +6927,7 @@ export function KdpFactoryApp() {
                 );
             })()}
 
-            {/* ── PIPELINE EN TIEMPO REAL ─────────────────────────────────── */}
-            <section className="space-y-4">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <SectionHeader icon={<Zap size={13} />} title="Pipeline en tiempo real" subtitle="Estado de todos los nichos activos en producción" color="sky" size="sm" />
-                    <button onClick={fetchPipelineData} disabled={pipelineLoading}
-                        className="flex items-center gap-1.5 h-7 px-3 rounded-xl border border-white/10 bg-white/[0.03] text-[11px] font-black text-neutral-500 hover:text-white transition-all disabled:opacity-40">
-                        {pipelineLoading ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />} Actualizar
-                    </button>
-                </div>
-
-                {!pipelineData && !pipelineLoading && (
-                    <button onClick={fetchPipelineData} className="w-full py-8 rounded-2xl border border-dashed border-white/10 text-neutral-600 hover:text-neutral-400 transition-colors text-xs font-black flex items-center justify-center gap-2">
-                        <Zap size={12} /> Cargar estado del pipeline
-                    </button>
-                )}
-                {pipelineLoading && <div className="flex justify-center py-8 text-neutral-700"><Loader2 size={16} className="animate-spin" /></div>}
-
-                {pipelineData && (
-                    <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-3">
-                            {[{ label: "Cola imágenes", s: pipelineData.semaphore.image }, { label: "Cola LLM", s: pipelineData.semaphore.llm }].map(({ label, s }) => (
-                                <Card key={label} variant="glass" className="p-3 border-white/5 bg-white/[0.01]">
-                                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-neutral-500">
-                                        <div className={`w-2 h-2 rounded-full ${s.busy ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)]" : "bg-emerald-500/60"}`} />
-                                        {label}
-                                        <span className={`ml-auto font-black ${s.busy ? "text-amber-400" : "text-emerald-400"}`}>{s.busy ? "OCUPADO" : "LIBRE"}</span>
-                                    </div>
-                                    {s.busy && <p className="text-[9px] text-neutral-600 mt-1 truncate">{s.holder} · {fmtMs(s.heldMs)}</p>}
-                                    {s.queueLength > 0 && <p className="text-[9px] text-amber-400/70">{s.queueLength} esperando</p>}
-                                </Card>
-                            ))}
-                        </div>
-
-                        {pipelineData.niches.length === 0 && <p className="text-xs text-neutral-600 text-center py-4">No hay nichos activos en el pipeline.</p>}
-                        <div className="space-y-2">
-                            {pipelineData.niches.map(n => {
-                                const phaseColor: Record<string, string> = {
-                                    niche: "text-sky-400", catalog: "text-blue-400", libro: "text-violet-400",
-                                    seo: "text-amber-400", cover: "text-orange-400", published: "text-emerald-400",
-                                };
-                                const isStuck = n.phaseMs > 4 * 3_600_000 && !["published", "niche"].includes(n.phase);
-                                const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
-                                return (
-                                    <Card key={n.id} variant="glass" className={`p-3 border-white/5 bg-white/[0.01] space-y-2 ${isStuck ? "border-amber-500/20" : ""}`}>
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="font-black text-white text-sm flex-1 truncate">{n.name}</span>
-                                            {n.score != null && <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${n.score >= 70 ? "bg-emerald-500/15 text-emerald-400" : "bg-neutral-500/15 text-neutral-500"}`}>{n.score}pts</span>}
-                                            {n.autoPilotEnabled && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400">AP</span>}
-                                            {isStuck && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 flex items-center gap-0.5"><AlertTriangle size={8} /> ATASCADO</span>}
-                                            <span className={`text-[10px] font-black uppercase ${phaseColor[n.phase] ?? "text-neutral-400"}`}>{n.phase}</span>
-                                            <span className="text-[9px] text-neutral-600">{fmtMs(n.phaseMs)}</span>
-                                        </div>
-                                        {n.phase === "catalog" && n.catalogs.total > 0 && (
-                                            <div className="space-y-1">
-                                                <div className="flex justify-between text-[9px] text-neutral-600">
-                                                    <span>{n.catalogs.imgsDone}/{n.catalogs.imgsTotal} imgs · {n.catalogs.running} activo{n.catalogs.running !== 1 ? "s" : ""}</span>
-                                                    <span className="font-black">{imgPct}%</span>
-                                                </div>
-                                                <div className="h-0.5 bg-white/5 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-gradient-to-r from-blue-500/60 to-sky-400/60 rounded-full" style={{ width: `${imgPct}%` }} />
-                                                </div>
-                                            </div>
-                                        )}
-                                        {n.lastError && <p className="text-[9px] text-rose-400/70 font-mono truncate bg-rose-500/5 rounded px-2 py-0.5" title={n.lastError}>{n.lastError}</p>}
-                                    </Card>
-                                );
-                            })}
-                        </div>
-
-                        {/* Prompt metrics */}
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between gap-2 flex-wrap">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5"><Star size={10} /> Métricas de prompts</p>
-                                <div className="flex items-center gap-1.5">
-                                    {["coloring-book", "printable-poster"].map(pt => (
-                                        <button key={pt} onClick={() => { setPromptMetricsProductType(pt); void fetchPromptMetrics(pt); }}
-                                            className={`px-2 py-0.5 rounded-lg border text-[9px] font-black transition-all ${promptMetricsProductType === pt ? "bg-sky-500/20 border-sky-500/40 text-sky-400" : "border-white/10 text-neutral-600"}`}>
-                                            {pt === "coloring-book" ? "Coloring" : "Poster"}
-                                        </button>
-                                    ))}
-                                    <button onClick={() => void fetchPromptMetrics()} disabled={promptMetricsLoading} className="h-5 w-5 rounded border border-white/10 text-neutral-600 hover:text-white flex items-center justify-center disabled:opacity-40">
-                                        {promptMetricsLoading ? <Loader2 size={8} className="animate-spin" /> : <RefreshCw size={8} />}
-                                    </button>
-                                </div>
-                            </div>
-                            {promptMetrics.length === 0 && !promptMetricsLoading && (
-                                <button onClick={() => void fetchPromptMetrics()} className="w-full py-4 rounded-xl border border-dashed border-white/10 text-neutral-600 text-xs font-black">
-                                    Cargar métricas
-                                </button>
-                            )}
-                            {promptMetrics.slice(0, 8).map(m => (
-                                <div key={m._id} className="flex items-center gap-3 px-3 py-2 rounded-xl border border-white/5 bg-white/[0.01]">
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-[9px] text-neutral-500 truncate">{m.promptPreview}</p>
-                                    </div>
-                                    <div className="shrink-0 text-right">
-                                        <span className={`text-sm font-black ${m.successRate >= 80 ? "text-emerald-400" : m.successRate >= 60 ? "text-amber-400" : "text-rose-400"}`}>{m.successRate}%</span>
-                                        <p className="text-[8px] text-neutral-600">{m.successes}/{m.attempts}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </section>
-
+            </div>
         </div>
         );
     };
@@ -9452,25 +9362,19 @@ export function KdpFactoryApp() {
     };
 
     const renderStudio = () => {
-        const switchStudioTab = (t: "niches" | "radar") => {
+        const STUDIO_TABS: KdpTabDef<"niches" | "radar" | "pipeline">[] = [
+            { id: "niches",   label: "Nichos",   icon: <Target size={13} />,   color: "text-sky-400",    activeBg: "bg-sky-500/10 border-sky-500/25 text-sky-300"     },
+            { id: "radar",    label: "Radar",    icon: <Search size={13} />,   color: "text-amber-400",  activeBg: "bg-amber-500/10 border-amber-500/25 text-amber-300" },
+            { id: "pipeline", label: "Pipeline", icon: <Activity size={13} />, color: "text-violet-400", activeBg: "bg-violet-500/10 border-violet-500/25 text-violet-300" },
+        ];
+        const switchStudioTab = (t: "niches" | "radar" | "pipeline") => {
             setStudioSubTab(t);
             localStorage.setItem("kdp-studio-subtab", t);
         };
         return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6">
 
-            {/* ── Subnav ── */}
-            <div className="flex items-center gap-1.5 p-1 bg-white/[0.03] border border-white/8 rounded-2xl w-fit">
-                {([["niches", "Nichos", <Target size={12} key="t" />], ["radar", "Radar", <Search size={12} key="s" />]] as const).map(([id, label, icon]) => (
-                    <button
-                        key={id}
-                        onClick={() => switchStudioTab(id)}
-                        className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${studioSubTab === id ? "bg-white text-black shadow" : "text-neutral-500 hover:text-white"}`}
-                    >
-                        {icon}{label}
-                    </button>
-                ))}
-            </div>
+            <KdpTabBar tabs={STUDIO_TABS} active={studioSubTab} onChange={switchStudioTab} />
 
             {/* ══ MIS NICHOS ══ */}
             {studioSubTab === "niches" && <>
@@ -10319,6 +10223,114 @@ export function KdpFactoryApp() {
                             onCreate: async (row) => { await launchPipelineFromRow(row); },
                         }}
                     />
+                </div>
+            </div>}
+
+            {/* ══ PIPELINE EN TIEMPO REAL ══ */}
+            {studioSubTab === "pipeline" && <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                <div className="h-px w-full bg-gradient-to-r from-violet-500/80 via-violet-400/40 to-transparent" />
+                <div className="p-6 space-y-4">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <SectionHeader icon={<Activity size={16} />} title="Pipeline en tiempo real" subtitle="Estado de todos los nichos activos en producción" color="violet" size="lg" />
+                        <button onClick={fetchPipelineData} disabled={pipelineLoading}
+                            className="flex items-center gap-1.5 h-8 px-4 rounded-xl border border-white/10 bg-white/[0.03] text-[11px] font-black text-neutral-500 hover:text-white transition-all disabled:opacity-40">
+                            {pipelineLoading ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />} Actualizar
+                        </button>
+                    </div>
+
+                    {!pipelineData && !pipelineLoading && (
+                        <button onClick={fetchPipelineData} className="w-full py-10 rounded-2xl border border-dashed border-white/10 text-neutral-600 hover:text-neutral-400 transition-colors text-xs font-black flex items-center justify-center gap-2">
+                            <Activity size={13} /> Cargar estado del pipeline
+                        </button>
+                    )}
+                    {pipelineLoading && <div className="flex justify-center py-10 text-neutral-700"><Loader2 size={18} className="animate-spin" /></div>}
+
+                    {pipelineData && (
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-3">
+                                {[{ label: "Cola imágenes", s: pipelineData.semaphore.image }, { label: "Cola LLM", s: pipelineData.semaphore.llm }].map(({ label, s }) => (
+                                    <Card key={label} variant="glass" className="p-3 border-white/5 bg-white/[0.01]">
+                                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-neutral-500">
+                                            <div className={`w-2 h-2 rounded-full ${s.busy ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)]" : "bg-emerald-500/60"}`} />
+                                            {label}
+                                            <span className={`ml-auto font-black ${s.busy ? "text-amber-400" : "text-emerald-400"}`}>{s.busy ? "OCUPADO" : "LIBRE"}</span>
+                                        </div>
+                                        {s.busy && <p className="text-[9px] text-neutral-600 mt-1 truncate">{s.holder} · {fmtMs(s.heldMs)}</p>}
+                                        {s.queueLength > 0 && <p className="text-[9px] text-amber-400/70">{s.queueLength} esperando</p>}
+                                    </Card>
+                                ))}
+                            </div>
+
+                            {pipelineData.niches.length === 0 && <p className="text-xs text-neutral-600 text-center py-4">No hay nichos activos en el pipeline.</p>}
+                            <div className="space-y-2">
+                                {pipelineData.niches.map(n => {
+                                    const phaseColor: Record<string, string> = {
+                                        niche: "text-sky-400", catalog: "text-blue-400", libro: "text-violet-400",
+                                        seo: "text-amber-400", cover: "text-orange-400", published: "text-emerald-400",
+                                    };
+                                    const isStuck = n.phaseMs > 4 * 3_600_000 && !["published", "niche"].includes(n.phase);
+                                    const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
+                                    return (
+                                        <Card key={n.id} variant="glass" className={`p-3 border-white/5 bg-white/[0.01] space-y-2 ${isStuck ? "border-amber-500/20" : ""}`}>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="font-black text-white text-sm flex-1 truncate">{n.name}</span>
+                                                {n.score != null && <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${n.score >= 70 ? "bg-emerald-500/15 text-emerald-400" : "bg-neutral-500/15 text-neutral-500"}`}>{n.score}pts</span>}
+                                                {n.autoPilotEnabled && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400">AP</span>}
+                                                {isStuck && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 flex items-center gap-0.5"><AlertTriangle size={8} /> ATASCADO</span>}
+                                                <span className={`text-[10px] font-black uppercase ${phaseColor[n.phase] ?? "text-neutral-400"}`}>{n.phase}</span>
+                                                <span className="text-[9px] text-neutral-600">{fmtMs(n.phaseMs)}</span>
+                                            </div>
+                                            {n.phase === "catalog" && n.catalogs.total > 0 && (
+                                                <div className="space-y-1">
+                                                    <div className="flex justify-between text-[9px] text-neutral-600">
+                                                        <span>{n.catalogs.imgsDone}/{n.catalogs.imgsTotal} imgs · {n.catalogs.running} activo{n.catalogs.running !== 1 ? "s" : ""}</span>
+                                                        <span className="font-black">{imgPct}%</span>
+                                                    </div>
+                                                    <div className="h-0.5 bg-white/5 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-gradient-to-r from-violet-500/60 to-violet-400/60 rounded-full" style={{ width: `${imgPct}%` }} />
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {n.lastError && <p className="text-[9px] text-rose-400/70 font-mono truncate bg-rose-500/5 rounded px-2 py-0.5" title={n.lastError}>{n.lastError}</p>}
+                                        </Card>
+                                    );
+                                })}
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5"><Star size={10} /> Métricas de prompts</p>
+                                    <div className="flex items-center gap-1.5">
+                                        {["coloring-book", "printable-poster"].map(pt => (
+                                            <button key={pt} onClick={() => { setPromptMetricsProductType(pt); void fetchPromptMetrics(pt); }}
+                                                className={`px-2 py-0.5 rounded-lg border text-[9px] font-black transition-all ${promptMetricsProductType === pt ? "bg-violet-500/20 border-violet-500/40 text-violet-400" : "border-white/10 text-neutral-600"}`}>
+                                                {pt === "coloring-book" ? "Coloring" : "Poster"}
+                                            </button>
+                                        ))}
+                                        <button onClick={() => void fetchPromptMetrics()} disabled={promptMetricsLoading} className="h-5 w-5 rounded border border-white/10 text-neutral-600 hover:text-white flex items-center justify-center disabled:opacity-40">
+                                            {promptMetricsLoading ? <Loader2 size={8} className="animate-spin" /> : <RefreshCw size={8} />}
+                                        </button>
+                                    </div>
+                                </div>
+                                {promptMetrics.length === 0 && !promptMetricsLoading && (
+                                    <button onClick={() => void fetchPromptMetrics()} className="w-full py-4 rounded-xl border border-dashed border-white/10 text-neutral-600 text-xs font-black">
+                                        Cargar métricas
+                                    </button>
+                                )}
+                                {promptMetrics.slice(0, 8).map(m => (
+                                    <div key={m._id} className="flex items-center gap-3 px-3 py-2 rounded-xl border border-white/5 bg-white/[0.01]">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[9px] text-neutral-500 truncate">{m.promptPreview}</p>
+                                        </div>
+                                        <div className="shrink-0 text-right">
+                                            <span className={`text-sm font-black ${m.successRate >= 80 ? "text-emerald-400" : m.successRate >= 60 ? "text-amber-400" : "text-rose-400"}`}>{m.successRate}%</span>
+                                            <p className="text-[8px] text-neutral-600">{m.successes}/{m.attempts}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>}
 

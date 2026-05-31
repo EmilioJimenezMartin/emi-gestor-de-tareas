@@ -1,4 +1,4 @@
-import { getUpdates, answerCallbackQuery, editTelegramMessage, sendTelegram, pinTelegramMessage, sendTelegramImageBinary } from "./telegram.js";
+import { getUpdates, answerCallbackQuery, editTelegramMessage, sendTelegram, pinTelegramMessage, sendTelegramImageBinary, sendTelegramButtons } from "./telegram.js";
 import { TelegramAction } from "../models/telegram-action.js";
 import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
@@ -34,7 +34,7 @@ const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { cmd: "/kdp <code>id</code>",            desc: "Sube el libro a KDP (requiere PDF + SEO + credenciales)" },
     { cmd: "/kdpotp <code>XXXXXX</code>",     desc: "Envía código OTP si KDP solicita verificación 2FA" },
     { section: "❓ Ayuda" },
-    { cmd: "/ayuda",                       desc: "Este mensaje (fijado al chat)" },
+    { cmd: "/ayuda",                       desc: "Este mensaje de ayuda" },
 ];
 
 function formatElapsed(date: Date | string | undefined): string {
@@ -287,6 +287,47 @@ async function processUpdate(update: any): Promise<void> {
         const action = data.slice(0, colonIdx);
         const actionId = data.slice(colonIdx + 1);
 
+        // ── Quick niche picker for /cat ──────────────────────────────────────
+        if (action === "cat_niche") {
+            try {
+                const { Catalog } = await import("../models/catalog.js");
+                const niche = await Niche.findById(actionId).select("name styleCategory productType generatedPrompt").lean();
+                if (!niche) {
+                    await answerCallbackQuery(cq.id, "Nicho no encontrado");
+                    return;
+                }
+                const cfg = await getAutoPilotConfig();
+                const modelIds: Record<string, string> = {
+                    anime: "flux-anime", realistic: "flux-realism",
+                    illustration: "flux-realism", "wall-art": "flux-realism",
+                    affirmation: "flux-realism", geometric: "flux-realism", celestial: "flux-realism",
+                };
+                const modelId = modelIds[(niche as any).styleCategory ?? "generic"] ?? "flux";
+                const existingCount = await Catalog.countDocuments({ nicheIds: String((niche as any)._id) });
+                const port = process.env.PORT || 3001;
+                const res = await fetch(`http://localhost:${port}/catalogs`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        name: `${(niche as any).name} — v${existingCount + 1}`,
+                        prompt: (niche as any).generatedPrompt || (niche as any).name,
+                        totalImages: cfg.imagesPerCatalog,
+                        aiModel: { id: `pollinations-${modelId}`, name: "FLUX (Pollinations)", provider: "Pollinations", modelId },
+                        nicheIds: [String((niche as any)._id)],
+                        productType: (niche as any).productType ?? "coloring-book",
+                    }),
+                });
+                const msg = res.ok
+                    ? `✅ Catálogo creado para <b>${(niche as any).name}</b>`
+                    : `❌ Error al crear catálogo`;
+                await answerCallbackQuery(cq.id, res.ok ? "Catálogo creado" : "Error");
+                await sendTelegram(msg);
+            } catch (e) {
+                await answerCallbackQuery(cq.id, "Error interno");
+            }
+            return;
+        }
+
         const tAction = await TelegramAction.findById(actionId);
         if (!tAction || tAction.status !== "pending") {
             await answerCallbackQuery(cq.id, "Esta acción ya fue procesada");
@@ -330,8 +371,7 @@ async function processUpdate(update: any): Promise<void> {
         const text = normalized.toLowerCase();
 
         if (text === "/ayuda" || text === "/help" || text === "ayuda" || text === "help") {
-            const helpMsgId = await sendTelegram(buildHelpText());
-            if (helpMsgId) await pinTelegramMessage(helpMsgId);
+            await sendTelegram(buildHelpText());
             return;
         }
 
@@ -661,14 +701,25 @@ async function processUpdate(update: any): Promise<void> {
             }
 
             if (!idArg) {
-                await sendTelegram(
-                    "❌ Uso: <code>/cat &lt;id_nicho&gt; [imgs] [prompt...]</code>\n\n" +
-                    "Ejemplos:\n" +
-                    "<code>/cat a3b2c1</code> — usa prompt del nicho\n" +
-                    "<code>/cat a3b2c1 8</code> — 8 imágenes\n" +
-                    "<code>/cat a3b2c1 5 A dragon with thick black outlines</code> — prompt personalizado\n" +
-                    "<i>Usa /nichos para ver los IDs</i>"
-                );
+                const allNichesList = await Niche.find({ status: { $ne: "archived" } })
+                    .select("name status phase")
+                    .sort({ updatedAt: -1 })
+                    .limit(20)
+                    .lean() as any[];
+                if (allNichesList.length === 0) {
+                    await sendTelegram("❌ No hay nichos activos. Crea uno con /crear &lt;nombre&gt;");
+                    return;
+                }
+                const phaseEmoji: Record<string, string> = { niche: "🏭", catalog: "🖼️", libro: "📖", seo: "📝", cover: "🎨", published: "✅" };
+                const rows: { text: string; callback_data: string }[][] = [];
+                for (let i = 0; i < allNichesList.length; i += 2) {
+                    const row = [allNichesList[i], allNichesList[i + 1]].filter(Boolean).map(n => ({
+                        text: `${phaseEmoji[n.phase] ?? "📦"} ${n.name.slice(0, 25)}`,
+                        callback_data: `cat_niche:${String(n._id)}`,
+                    }));
+                    rows.push(row);
+                }
+                await sendTelegramButtons("🖼️ <b>Selecciona el nicho para crear un catálogo:</b>", rows);
                 return;
             }
 

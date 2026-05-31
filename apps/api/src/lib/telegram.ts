@@ -211,6 +211,32 @@ export async function pinTelegramMessage(messageId: number): Promise<void> {
     } catch { /* best-effort */ }
 }
 
+// Send text with a custom inline keyboard
+export async function sendTelegramButtons(
+    text: string,
+    rows: { text: string; callback_data: string }[][]
+): Promise<number | null> {
+    const cfg = await getTelegramConfig();
+    if (!cfg) return null;
+    try {
+        const res = await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                chat_id: cfg.chatId,
+                text,
+                parse_mode: "HTML",
+                reply_markup: { inline_keyboard: rows },
+            }),
+        });
+        const data = await res.json() as any;
+        return data?.result?.message_id ?? null;
+    } catch (e) {
+        console.error("[Telegram] sendButtons failed:", e);
+        return null;
+    }
+}
+
 // Answer a callback query (removes loading state from button)
 export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
     const cfg = await getTelegramConfig();
