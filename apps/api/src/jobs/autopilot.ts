@@ -6,6 +6,7 @@ import { AutopilotRun } from "../models/autopilot-run.js";
 import { sendTelegram, sendTelegramPhoto, sendTelegramPhotoDiscovery, shouldNotify } from "../lib/telegram.js";
 import { withImageSlot, withLlmSlot } from "../lib/ai-semaphore.js";
 import { buildCollage, buildHalfColored, pickCatalogImages, type CollageLayout } from "../lib/cover-collage.js";
+import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
 
 type RunStats = { discovered: number; pipelineProcessed: number; catalogsCreated: number };
 
@@ -354,25 +355,24 @@ async function runPipeline(
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🖼️ Lanzando ${cfg.catalogsPerNiche} catálogos para "${niche.name}"…` });
             try {
                 const aiModel = styleToAiModel(niche.styleCategory ?? "generic");
+                const productType = niche.productType ?? "coloring-book";
+                const style = niche.styleCategory ?? "generic";
+                const fallbackPrompt = niche.generatedPrompt || niche.name;
 
-                // Variation hints to differentiate each catalog visually
-                // while keeping theme and style consistent
-                const CATALOG_VARIATIONS = [
-                    "",
-                    "Feature a different main subject or character variation. Fresh composition and layout.",
-                    "Show a unique angle or scene. Alternate spatial arrangement and point of view.",
-                    "Use different props, accessories, or environmental details around the subject.",
-                    "Vary expressions, interactions, or activity. Show motion or a different moment.",
-                    "Close-up detail shot vs wide scene — vary the visual scale and framing.",
-                    "Incorporate seasonal or time-of-day atmosphere while keeping the core theme.",
-                    "Show a complementary subject or side character within the same thematic world.",
-                    "Emphasize pattern, texture, or decorative elements as focal point.",
-                ];
+                // Generate a unique AI image prompt for every catalog slot
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🤖 Generando ${cfg.catalogsPerNiche} prompts únicos por IA…` });
+                const catalogPrompts: string[] = [];
+                for (let i = 0; i < cfg.catalogsPerNiche; i++) {
+                    const generated = await withLlmSlot(`catalog-prompt-${i}:${String(niche._id)}`, () =>
+                        generateCatalogPrompt(base, niche.name, productType, style)
+                    );
+                    catalogPrompts.push((generated as string | null) || fallbackPrompt);
+                }
+                const aiCount = catalogPrompts.filter(p => p !== fallbackPrompt).length;
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ ${aiCount}/${cfg.catalogsPerNiche} prompts generados por IA` });
 
                 for (let i = 0; i < cfg.catalogsPerNiche; i++) {
-                    const basePrompt = niche.generatedPrompt || niche.name;
-                    const variation = CATALOG_VARIATIONS[i % CATALOG_VARIATIONS.length];
-                    const prompt = variation ? `${basePrompt}\n\n[Variation ${i + 1}: ${variation}]` : basePrompt;
+                    const prompt = catalogPrompts[i];
                     const res = await fetch(`${base}/catalogs`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },

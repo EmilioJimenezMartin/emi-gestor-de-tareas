@@ -4707,7 +4707,7 @@ export function KdpFactoryApp() {
                                                     const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
                                                     const royalties = salesData.filter(s => s.nicheId === n.id).reduce((sum, s) => sum + s.royaltiesUsd, 0);
                                                     return (
-                                                        <div key={n.id} title={n.lastError ?? n.name}
+                                                        <div key={n.id} title={n.lastError ?? nd(n)}
                                                             className={`rounded-xl border p-3 space-y-2 transition-all
                                                                 ${isStuck     ? "bg-amber-500/[0.06] border-amber-500/25" :
                                                                   n.lastError ? "bg-rose-500/[0.06]  border-rose-500/25"  :
@@ -5080,7 +5080,7 @@ export function KdpFactoryApp() {
                             <div className="relative">
                                 {topNiche ? (
                                     <div className="space-y-1">
-                                        <p className="text-xl font-black italic tracking-tighter text-white truncate">{topNiche.name}</p>
+                                        <p className="text-xl font-black italic tracking-tighter text-white truncate">{nd(topNiche)}</p>
                                         <p className="text-sm font-bold text-sky-400 uppercase tracking-widest">
                                             {topNicheImages > 0 ? `${topNicheImages} imágenes` : "Sin imágenes aún"}
                                         </p>
@@ -5226,32 +5226,32 @@ export function KdpFactoryApp() {
                             readyToPublish.length > 0 && {
                                 key: "ready", level: "ok" as const, icon: "✅",
                                 label: `${readyToPublish.length} libro${readyToPublish.length > 1 ? "s" : ""} listo${readyToPublish.length > 1 ? "s" : ""} para publicar`,
-                                items: readyToPublish.map(n => n.name), count: readyToPublish.length,
+                                items: readyToPublish.map(n => nd(n)), count: readyToPublish.length,
                             },
                             highScoreUnproduced.length > 0 && {
                                 key: "hiscore", level: "info" as const, icon: "⭐",
                                 label: `${highScoreUnproduced.length} nicho${highScoreUnproduced.length > 1 ? "s" : ""} con score ≥70 sin producir`,
-                                items: highScoreUnproduced.map(n => `${n.name} (${n.score})`), count: highScoreUnproduced.length,
+                                items: highScoreUnproduced.map(n => `${nd(n)} (${n.score})`), count: highScoreUnproduced.length,
                             },
                             imageStuck.length > 0 && {
                                 key: "imgstuck", level: "warn" as const, icon: "🖼️",
                                 label: `${imageStuck.length} nicho${imageStuck.length > 1 ? "s" : ""} con ≥5 imgs parado${imageStuck.length > 1 ? "s" : ""} +2d`,
-                                items: imageStuck.map(n => `${n.name} (${nicheImageCount(n)} imgs)`), count: imageStuck.length,
+                                items: imageStuck.map(n => `${nd(n)} (${nicheImageCount(n)} imgs)`), count: imageStuck.length,
                             },
                             catalogDoneStuck.length > 0 && {
                                 key: "catdone", level: "warn" as const, icon: "📦",
                                 label: `${catalogDoneStuck.length} nicho${catalogDoneStuck.length > 1 ? "s" : ""} con catálogos listos sin avanzar`,
-                                items: catalogDoneStuck.map(n => n.name), count: catalogDoneStuck.length,
+                                items: catalogDoneStuck.map(n => nd(n)), count: catalogDoneStuck.length,
                             },
                             pdfNoListing.length > 0 && {
                                 key: "pdflisting", level: "error" as const, icon: "📝",
                                 label: `${pdfNoListing.length} en PDF sin listing SEO +3d`,
-                                items: pdfNoListing.map(n => n.name), count: pdfNoListing.length,
+                                items: pdfNoListing.map(n => nd(n)), count: pdfNoListing.length,
                             },
                             autopilotStuck.length > 0 && {
                                 key: "apstuck", level: "error" as const, icon: "🤖",
                                 label: `${autopilotStuck.length} autopilot activo parado +2d`,
-                                items: autopilotStuck.map(n => `${n.name} (fase: ${n.phase ?? "niche"})`), count: autopilotStuck.length,
+                                items: autopilotStuck.map(n => `${nd(n)} (fase: ${n.phase ?? "niche"})`), count: autopilotStuck.length,
                             },
                             catalogGeneratingStuck.length > 0 && {
                                 key: "catgen", level: "error" as const, icon: "⚙️",
@@ -5261,12 +5261,12 @@ export function KdpFactoryApp() {
                             foundNeverDiscovered.length > 0 && {
                                 key: "undiscov", level: "warn" as const, icon: "🔍",
                                 label: `${foundNeverDiscovered.length} nicho${foundNeverDiscovered.length > 1 ? "s" : ""} found sin enviar a Telegram +2d`,
-                                items: foundNeverDiscovered.map(n => n.name), count: foundNeverDiscovered.length,
+                                items: foundNeverDiscovered.map(n => nd(n)), count: foundNeverDiscovered.length,
                             },
                             stalled.length > 0 && {
                                 key: "stalled", level: "warn" as const, icon: "⏳",
                                 label: `${stalled.length} nicho${stalled.length > 1 ? "s" : ""} sin contenido +${staleDays}d`,
-                                items: stalled.map(n => n.name), count: stalled.length,
+                                items: stalled.map(n => nd(n)), count: stalled.length,
                             },
                         ].filter(Boolean) as RuleEntry[];
 
@@ -5607,7 +5607,7 @@ export function KdpFactoryApp() {
                                                     : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"
                                                 }`}>
                                                 <Target size={8} />
-                                                {n.name}
+                                                {nd(n)}
                                                 {isSelected && <Check size={8} />}
                                             </button>
                                         );
@@ -5937,7 +5937,7 @@ export function KdpFactoryApp() {
                                                 >
                                                     <option value="">— Sin nicho —</option>
                                                     {niches.map(n => (
-                                                        <option key={n._id} value={n._id}>{n.name}</option>
+                                                        <option key={n._id} value={n._id}>{nd(n)}</option>
                                                     ))}
                                                 </select>
                                             )}
@@ -7385,7 +7385,7 @@ export function KdpFactoryApp() {
                                                 }`}
                                             >
                                                 <Target size={8} className="shrink-0" />
-                                                <span className="max-w-[150px] truncate">{niche.name}</span>
+                                                <span className="max-w-[150px] truncate">{nd(niche)}</span>
                                             </button>
                                         ))}
                                     </div>
@@ -7699,7 +7699,7 @@ export function KdpFactoryApp() {
                                                             onClick={() => setCatalogFormNicheId(isSelected ? null : n._id)}
                                                             className={`flex items-center gap-1 max-w-[220px] h-6 px-2.5 rounded-lg border text-sm font-black transition-all ${isSelected ? "border-sky-500/50 bg-sky-500/15 text-sky-300" : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"}`}>
                                                             <Target size={8} className="shrink-0" />
-                                                            <span className="truncate">{n.name}</span>
+                                                            <span className="truncate">{nd(n)}</span>
                                                             {isSelected && <Check size={8} className="shrink-0" />}
                                                         </button>
                                                     );
@@ -8418,7 +8418,7 @@ export function KdpFactoryApp() {
                                         {/* Niche badge (bottom, always visible if linked) */}
                                         {linkedNiche && (
                                             <div className="absolute bottom-0 left-0 right-0 px-2 py-2 bg-gradient-to-t from-black/80 to-transparent pointer-events-none">
-                                                <span className="text-[10px] font-bold text-cyan-300 truncate block leading-tight">{linkedNiche.name}</span>
+                                                <span className="text-[10px] font-bold text-cyan-300 truncate block leading-tight">{nd(linkedNiche)}</span>
                                             </div>
                                         )}
 
@@ -8441,7 +8441,7 @@ export function KdpFactoryApp() {
                                                     >
                                                         <option value="">— Vincular nicho</option>
                                                         {niches.filter(n => n.status !== "archived").map(n => (
-                                                            <option key={n._id} value={n._id}>{n.name}</option>
+                                                            <option key={n._id} value={n._id}>{nd(n)}</option>
                                                         ))}
                                                         {img.nicheId && <option value="">✕ Desvincular</option>}
                                                     </select>
@@ -8640,7 +8640,7 @@ export function KdpFactoryApp() {
                                                     const n = niches.find(n => n._id === nid);
                                                     return n ? (
                                                         <span key={nid} className="flex items-center gap-1 px-2 h-5 rounded-full bg-sky-500/10 border border-sky-500/20 text-xs font-bold text-sky-400">
-                                                            <Target size={7} /> {n.name}
+                                                            <Target size={7} /> {nd(n)}
                                                         </span>
                                                     ) : null;
                                                 })}
@@ -8865,7 +8865,7 @@ export function KdpFactoryApp() {
                                                             <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${assigned ? "bg-sky-500 border-sky-400 shadow-[0_0_8px_rgba(14,165,233,0.4)]" : "border-neutral-700 bg-transparent"}`}>
                                                                 {assigned && <Check size={8} className="text-white" strokeWidth={3} />}
                                                             </div>
-                                                            <span className={`text-sm font-bold flex-1 truncate ${assigned ? "text-white" : "text-neutral-400"}`}>{n.name}</span>
+                                                            <span className={`text-sm font-bold flex-1 truncate ${assigned ? "text-white" : "text-neutral-400"}`}>{nd(n)}</span>
                                                             <div className="flex items-center gap-1.5 shrink-0">
                                                                 {catCount > 0 && <span className="text-sm font-black text-sky-400/60 bg-sky-500/10 border border-sky-500/15 px-1.5 py-0.5 rounded-full">{catCount} cat</span>}
                                                                 {n.status && <span className={`text-sm font-black uppercase px-1.5 py-0.5 rounded-full ${n.status === "active" ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/15" : "text-neutral-600 bg-white/5 border border-white/8"}`}>{n.status}</span>}
@@ -9672,7 +9672,7 @@ export function KdpFactoryApp() {
                         const nicheChartData = niches
                             .map(n => {
                                 const cats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
-                                return { label: n.name.split(" ").slice(0, 2).join(" "), images: cats.reduce((s, c) => s + c.images.length, 0), catalogs: cats.length };
+                                return { label: nd(n), images: cats.reduce((s, c) => s + c.images.length, 0), catalogs: cats.length };
                             });
                         return (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -10659,7 +10659,7 @@ export function KdpFactoryApp() {
                                         <select value={contentSaveNicheId} onChange={e => setContentSaveNicheId(e.target.value)}
                                             className="flex-1 h-8 bg-black/40 border border-white/10 rounded-lg px-2 text-sm text-white outline-none focus:border-amber-500/40 transition-all appearance-none cursor-pointer">
                                             <option value="">— Seleccionar nicho —</option>
-                                            {niches.map(n => <option key={n._id} value={n._id}>{n.name}{(n.listings?.length ?? 0) > 0 ? ` (${n.listings!.length})` : ""}</option>)}
+                                            {niches.map(n => <option key={n._id} value={n._id}>{nd(n)}{(n.listings?.length ?? 0) > 0 ? ` (${n.listings!.length})` : ""}</option>)}
                                         </select>
                                         <button onClick={() => void saveContentToNiche()} disabled={!contentSaveNicheId || savingContentListing}
                                             className="h-8 px-3 rounded-lg bg-amber-500/15 border border-amber-500/30 text-sm font-black text-amber-400 hover:bg-amber-500/25 transition-all disabled:opacity-40 flex items-center gap-1">
@@ -12533,36 +12533,40 @@ export function KdpFactoryApp() {
                             {/* Product Type */}
                             <div className="space-y-1.5">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Tipo de producto</label>
-                                <div className="flex gap-2">
+                                <div className="flex flex-wrap gap-1.5">
                                     {NICHE_PRODUCT_OPTIONS.map(opt => (
                                         <button key={opt.id} onClick={() => {
                                                 setNicheFormProductType(opt.id);
-                                                // Reset style to the first valid option for the new product type
                                                 if (opt.id === "printable-poster") setNicheFormStyles(["wall-art"]);
                                                 else if (opt.id === "coloring-book") setNicheFormStyles(["generic"]);
                                                 else setNicheFormStyles(["generic"]);
                                             }}
-                                            className={`flex-1 h-9 rounded-xl border text-sm font-black uppercase tracking-widest transition-all ${nicheFormProductType === opt.id ? "border-sky-500/40 bg-sky-500/10 text-sky-400 ring-1 ring-violet-500/20" : "border-white/10 bg-white/5 text-neutral-600 hover:text-white"}`}>
+                                            className={`h-7 px-3 rounded-lg border text-[10px] font-black uppercase tracking-wide transition-all ${nicheFormProductType === opt.id ? "border-sky-500/40 bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20" : "border-white/10 bg-white/5 text-neutral-500 hover:text-white hover:border-white/20"}`}>
                                             {opt.label}
                                         </button>
                                     ))}
                                 </div>
                             </div>
-                            {/* Style Category — multi-select, options depend on product type */}
+                            {/* Style Category — multi-select pills */}
                             <div className="space-y-1.5">
                                 <div className="flex items-center justify-between">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
                                         {nicheFormProductType === "printable-poster" ? "Estilo de print" : nicheFormProductType === "seamless-pattern" ? "Estilo de patrón" : "Estilo visual"}
                                     </label>
                                     {nicheFormStyles.length > 1 && (
-                                        <span className={`text-sm font-black ${nicheFormProductType === "printable-poster" ? "text-emerald-400" : nicheFormProductType === "seamless-pattern" ? "text-amber-400" : "text-sky-400"}`}>{nicheFormStyles.length} seleccionados</span>
+                                        <span className={`text-[10px] font-black ${nicheFormProductType === "printable-poster" ? "text-emerald-400" : nicheFormProductType === "seamless-pattern" ? "text-amber-400" : "text-sky-400"}`}>{nicheFormStyles.length} seleccionados</span>
                                     )}
                                 </div>
-                                <div className="grid grid-cols-2 gap-1.5">
+                                <div className="flex flex-wrap gap-1.5">
                                     {(nicheFormProductType === "printable-poster" ? PRINTABLE_STYLE_OPTIONS : nicheFormProductType === "seamless-pattern" ? SEAMLESS_STYLE_OPTIONS : NICHE_STYLE_OPTIONS).map(opt => {
                                         const active = nicheFormStyles.includes(opt.id);
                                         const isPrint = nicheFormProductType === "printable-poster";
                                         const isSeamless = nicheFormProductType === "seamless-pattern";
+                                        const activeClass = isPrint
+                                            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20"
+                                            : isSeamless
+                                            ? "border-amber-500/40 bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20"
+                                            : "border-sky-500/40 bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20";
                                         return (
                                             <button key={opt.id} onClick={() => {
                                                 setNicheFormStyles(prev => {
@@ -12573,25 +12577,20 @@ export function KdpFactoryApp() {
                                                     return [...prev, opt.id];
                                                 });
                                             }}
-                                                className={`py-2 rounded-xl border px-2.5 text-left transition-all flex items-start gap-1.5 ${active ? (isPrint ? "border-emerald-500/40 bg-emerald-500/10 ring-1 ring-emerald-500/20" : isSeamless ? "border-amber-500/40 bg-amber-500/10 ring-1 ring-amber-500/20" : "border-sky-500/40 bg-sky-500/10 ring-1 ring-violet-500/20") : "border-white/8 bg-white/[0.02] hover:bg-white/5"}`}>
-                                                <div className={`mt-0.5 w-3 h-3 rounded-sm border-2 flex items-center justify-center shrink-0 transition-all ${active ? (isPrint ? "bg-emerald-500 border-emerald-500" : isSeamless ? "bg-amber-500 border-amber-500" : "bg-sky-500 border-violet-500") : "border-neutral-600"}`}>
-                                                    {active && <Check size={7} className="text-white" strokeWidth={3} />}
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <span className={`block text-[10px] font-black uppercase tracking-wide leading-tight ${active ? (isPrint ? "text-emerald-400" : isSeamless ? "text-amber-400" : "text-sky-400") : "text-neutral-400"}`}>
-                                                        {"emoji" in opt ? `${opt.emoji} ` : ""}{opt.label}
-                                                    </span>
-                                                    <span className="block text-[9px] text-neutral-600 leading-tight truncate">{opt.desc}</span>
-                                                </div>
+                                                title={opt.desc}
+                                                className={`h-7 px-3 rounded-lg border text-[10px] font-black uppercase tracking-wide transition-all flex items-center gap-1.5 ${active ? activeClass : "border-white/10 bg-white/5 text-neutral-500 hover:text-white hover:border-white/20"}`}>
+                                                {"emoji" in opt && <span className="text-[11px]">{(opt as any).emoji}</span>}
+                                                <span>{opt.label}</span>
+                                                {active && <Check size={8} strokeWidth={3} />}
                                             </button>
                                         );
                                     })}
                                 </div>
                                 {nicheFormProductType === "printable-poster" && (
-                                    <p className="text-[10px] text-neutral-700 italic mt-1">Genera prints a color listos para Etsy · KDP · Redbubble · Gelato</p>
+                                    <p className="text-[10px] text-neutral-700 italic">Genera prints a color listos para Etsy · KDP · Redbubble · Gelato</p>
                                 )}
                                 {nicheFormProductType === "seamless-pattern" && (
-                                    <p className="text-[10px] text-neutral-700 italic mt-1">Patrones tileable listos para Redbubble · Spoonflower · Society6 · Merch by Amazon AOP</p>
+                                    <p className="text-[10px] text-neutral-700 italic">Patrones tileable listos para Redbubble · Spoonflower · Society6 · Merch by Amazon AOP</p>
                                 )}
                             </div>
                             {/* Competition + Demand */}
@@ -12835,7 +12834,7 @@ export function KdpFactoryApp() {
                                                         {allSel ? <Check size={14} className="text-white" strokeWidth={3} /> : <Target size={14} className="text-neutral-500" />}
                                                     </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <p className={`text-sm font-black truncate ${allSel ? "text-sky-300" : "text-neutral-300"}`}>{n.name}</p>
+                                                        <p className={`text-sm font-black truncate ${allSel ? "text-sky-300" : "text-neutral-300"}`}>{nd(n)}</p>
                                                         <p className="text-sm text-neutral-600">{nicheCats.length} cat. · {nicheImgs} imgs completadas</p>
                                                     </div>
                                                 </button>
@@ -12860,7 +12859,7 @@ export function KdpFactoryApp() {
                                                     {niches.map(n => (
                                                         <button key={n._id} onClick={() => setKdpTemplateNicheFilter(kdpTemplateNicheFilter === n._id ? null : n._id)}
                                                             className={`px-2 h-5 rounded-full border text-sm font-bold transition-all truncate max-w-[100px] ${kdpTemplateNicheFilter === n._id ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "border-white/10 text-neutral-700 hover:text-neutral-400"}`}>
-                                                            {n.name}
+                                                            {nd(n)}
                                                         </button>
                                                     ))}
                                                 </>
@@ -13146,7 +13145,7 @@ export function KdpFactoryApp() {
                                                 })}
                                                 className={`shrink-0 h-6 px-2.5 rounded-full text-sm font-black border transition-all flex items-center gap-1.5 ${allAdded ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300" : "bg-white/[0.03] border-white/8 text-neutral-500 hover:text-white hover:border-white/20"}`}>
                                                 {allAdded ? <Check size={9} strokeWidth={3} /> : <Plus size={9} />}
-                                                {n.name}
+                                                {nd(n)}
                                                 <span className="text-sm opacity-60">{nicheImgs.length}</span>
                                             </button>
                                         );
@@ -13406,7 +13405,7 @@ export function KdpFactoryApp() {
                                                             className="flex-1 h-8 bg-black/40 border border-white/10 rounded-lg px-2 text-sm text-white outline-none focus:border-amber-500/40 transition-all appearance-none cursor-pointer">
                                                             <option value="">— Seleccionar nicho —</option>
                                                             {niches.map(n => (
-                                                                <option key={n._id} value={n._id}>{n.name}{(n.listings?.length ?? 0) > 0 ? ` (${n.listings!.length})` : ""}</option>
+                                                                <option key={n._id} value={n._id}>{nd(n)}{(n.listings?.length ?? 0) > 0 ? ` (${n.listings!.length})` : ""}</option>
                                                             ))}
                                                         </select>
                                                         <button
@@ -13522,7 +13521,7 @@ export function KdpFactoryApp() {
                                 <div className="flex items-start justify-between gap-4">
                                     <div className="space-y-1">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                            <h2 className="text-xl font-black text-white">{detailNiche.name}</h2>
+                                            <h2 className="text-xl font-black text-white">{nd(detailNiche)}</h2>
                                             <span className="text-sm font-black uppercase tracking-widest px-2 py-0.5 rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-300">{detailNiche.phase ?? "niche"}</span>
                                             <span className="text-sm font-black uppercase tracking-widest px-2 py-0.5 rounded-full border border-white/10 text-neutral-500">{detailNiche.status}</span>
                                         </div>

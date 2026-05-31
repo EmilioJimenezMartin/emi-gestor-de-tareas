@@ -4,6 +4,7 @@ import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
 import { activateNextQueued } from "./catalog-queue.js";
 import { withImageSlot } from "./ai-semaphore.js";
+import { generateCatalogPrompt } from "./catalog-prompt.js";
 
 // ── Command registry — add entries here to auto-include them in /ayuda ────────
 // Use &lt; &gt; instead of < > to avoid Telegram HTML parse errors
@@ -313,12 +314,21 @@ async function processUpdate(update: any): Promise<void> {
                 const modelId = modelIds[(niche as any).styleCategory ?? "generic"] ?? "flux";
                 const existingCount = await Catalog.countDocuments({ nicheIds: String((niche as any)._id) });
                 const port = process.env.PORT || 3001;
-                const res = await fetch(`http://localhost:${port}/catalogs`, {
+                const base = `http://localhost:${port}`;
+
+                // Always generate a fresh AI prompt
+                const productType = (niche as any).productType ?? "coloring-book";
+                const style = (niche as any).styleCategory ?? "generic";
+                const catalogPrompt = await generateCatalogPrompt(base, (niche as any).name, productType, style)
+                    ?? (niche as any).generatedPrompt
+                    ?? (niche as any).name;
+
+                const res = await fetch(`${base}/catalogs`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         name: `${(niche as any).name} — v${existingCount + 1}`,
-                        prompt: (niche as any).generatedPrompt || (niche as any).name,
+                        prompt: catalogPrompt,
                         totalImages: cfg.imagesPerCatalog,
                         aiModel: { id: `pollinations-${modelId}`, name: "FLUX (Pollinations)", provider: "Pollinations", modelId },
                         nicheIds: [String((niche as any)._id)],
@@ -852,12 +862,24 @@ async function processUpdate(update: any): Promise<void> {
                 // Count existing catalogs to name this one
                 const existingCount = await Catalog.countDocuments({ nicheIds: String((niche as any)._id) });
                 const port = process.env.PORT || 3001;
-                const res = await fetch(`http://localhost:${port}/catalogs`, {
+                const base = `http://localhost:${port}`;
+
+                // Generate a fresh AI prompt unless the user supplied one explicitly
+                let catalogPrompt = customPrompt;
+                if (!catalogPrompt) {
+                    const productType = (niche as any).productType ?? "coloring-book";
+                    const style = (niche as any).styleCategory ?? "generic";
+                    catalogPrompt = await generateCatalogPrompt(base, (niche as any).name, productType, style)
+                        ?? (niche as any).generatedPrompt
+                        ?? (niche as any).name;
+                }
+
+                const res = await fetch(`${base}/catalogs`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         name: `${(niche as any).name} — v${existingCount + 1}`,
-                        prompt: customPrompt || (niche as any).generatedPrompt || (niche as any).name,
+                        prompt: catalogPrompt,
                         totalImages,
                         aiModel,
                         nicheIds: [String((niche as any)._id)],
