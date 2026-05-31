@@ -1,4 +1,4 @@
-import { getUpdates, answerCallbackQuery, editTelegramMessage, sendTelegram, pinTelegramMessage, sendTelegramImageBinary, sendTelegramButtons } from "./telegram.js";
+import { getUpdates, answerCallbackQuery, editTelegramMessage, sendTelegram, pinTelegramMessage, sendTelegramImageBinary, sendTelegramImageWithButtons, sendTelegramButtons } from "./telegram.js";
 import { TelegramAction } from "../models/telegram-action.js";
 import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
@@ -433,6 +433,73 @@ async function processUpdate(update: any): Promise<void> {
             return;
         }
 
+        // ── Accept test image → assign to first active niche ─────────────────
+        if (action === "img_add_niche") {
+            await answerCallbackQuery(cq.id, "Añadiendo imagen…");
+            try {
+                const tAction = await TelegramAction.findById(actionId);
+                if (!tAction || tAction.status !== "pending" || tAction.type !== "img-test") {
+                    await sendTelegram("⚠️ Acción no disponible o ya procesada");
+                    return;
+                }
+                const imageUrl = tAction.imageUrl;
+                if (!imageUrl) { await sendTelegram("❌ No hay URL de imagen"); return; }
+
+                // Find first active niche in pipeline
+                const niche = await Niche.findOne({ status: "active" })
+                    .sort({ createdAt: 1 })
+                    .select("_id name phase")
+                    .lean();
+                if (!niche) { await sendTelegram("❌ No hay nichos activos"); return; }
+
+                const nicheId = String((niche as any)._id);
+                const port = process.env.PORT || 3001;
+                const base = `http://localhost:${port}`;
+
+                // Upload to Cloudinary tagged with this niche
+                let cloudUrl = imageUrl;
+                try {
+                    const cldRes = await fetch(`${base}/cloudinary/upload-url`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ url: imageUrl, nicheId }),
+                    });
+                    if (cldRes.ok) {
+                        const cldData = await (cldRes as any).json();
+                        cloudUrl = cldData.image?.url ?? imageUrl;
+                    }
+                } catch { /* keep original URL */ }
+
+                // Create a 1-image completed catalog for this niche
+                await fetch(`${base}/catalogs/from-cloudinary`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        name: `Imagen prueba /img`,
+                        nicheIds: [nicheId],
+                        images: [{ url: cloudUrl, width: 1024, height: 1024 }],
+                    }),
+                });
+
+                // Also push to catalogImageOrder so it's picked up in the next PDF build
+                const { Niche: NicheModel } = await import("../models/niche.js");
+                await NicheModel.findByIdAndUpdate(nicheId, { $addToSet: { catalogImageOrder: cloudUrl } });
+
+                tAction.status = "approved";
+                tAction.resolvedAt = new Date();
+                await tAction.save();
+
+                _io?.emit("niches:updated");
+                _io?.emit("catalogs:updated");
+                await sendTelegram(
+                    `✅ <b>Imagen añadida</b>\n📚 <b>${(niche as any).name}</b>\n🖼️ La imagen ya forma parte del catálogo de este nicho`
+                );
+            } catch (e: any) {
+                await sendTelegram(`❌ Error añadiendo imagen: ${e.message}`);
+            }
+            return;
+        }
+
         const tAction = await TelegramAction.findById(actionId);
         if (!tAction || tAction.status !== "pending") {
             await answerCallbackQuery(cq.id, "Esta acción ya fue procesada");
@@ -611,13 +678,40 @@ async function processUpdate(update: any): Promise<void> {
                         return Buffer.from(await imgRes.arrayBuffer());
                     });
 
-                    const msgId = await sendTelegramImageBinary(
-                        imgBuffer,
-                        `🖼️ <b>${prompt.slice(0, 100)}${prompt.length > 100 ? "…" : ""}</b>\n<i>modelo: ${model}</i>`
-                    );
+                    // Upload to Cloudinary so the URL is stable when the user accepts
+                    const port = process.env.PORT || 3001;
+                    const base = `http://localhost:${port}`;
+                    let stableUrl = imageUrl;
+                    try {
+                        const dataUrl = `data:image/jpeg;base64,${imgBuffer.toString("base64")}`;
+                        const cldRes = await fetch(`${base}/cloudinary/upload`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ dataUrl }),
+                        });
+                        if (cldRes.ok) {
+                            const cldData = await (cldRes as any).json();
+                            stableUrl = cldData.image?.url ?? imageUrl;
+                        }
+                    } catch { /* keep Pollinations URL */ }
+
+                    // Store action so the Accept callback can find the URL
+                    const tAction = await TelegramAction.create({
+                        type: "img-test",
+                        nicheId: "",
+                        nicheName: prompt.slice(0, 120),
+                        imageUrl: stableUrl,
+                        status: "pending",
+                        autoApproveAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                    });
+
+                    const caption = `🖼️ <b>${prompt.slice(0, 100)}${prompt.length > 100 ? "…" : ""}</b>\n<i>modelo: ${model}</i>`;
+                    const msgId = await sendTelegramImageWithButtons(imgBuffer, caption, [
+                        [{ text: "➕ Añadir al primer nicho", callback_data: `img_add_niche:${tAction._id}` }],
+                    ]);
 
                     if (!msgId) {
-                        await sendTelegram(`🖼️ <b>Imagen lista</b>\n<a href="${imageUrl}">Ver imagen →</a>`).catch(() => {});
+                        await sendTelegram(`🖼️ <b>Imagen lista</b>\n<a href="${stableUrl}">Ver imagen →</a>`).catch(() => {});
                     }
                 } catch (e: any) {
                     console.error("[telegram-poll /img] Error:", e.message);

@@ -130,6 +130,34 @@ export async function sendTelegramImageBinary(
     }
 }
 
+export async function sendTelegramImageWithButtons(
+    buffer: Buffer,
+    caption: string,
+    rows: { text: string; callback_data: string }[][],
+    mimeType = "image/jpeg"
+): Promise<number | null> {
+    const cfg = await getTelegramConfig();
+    if (!cfg) return null;
+    try {
+        const formData = new FormData();
+        formData.append("chat_id", cfg.chatId);
+        formData.append("photo", new Blob([buffer], { type: mimeType }), "image.jpg");
+        formData.append("caption", caption);
+        formData.append("parse_mode", "HTML");
+        formData.append("reply_markup", JSON.stringify({ inline_keyboard: rows }));
+        const res = await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendPhoto`, {
+            method: "POST",
+            body: formData,
+        });
+        const data = await res.json() as any;
+        if (!data.ok) console.error("[Telegram] sendImageWithButtons error:", data.description ?? data);
+        return data?.result?.message_id ?? null;
+    } catch (e) {
+        console.error("[Telegram] sendImageWithButtons failed:", e);
+        return null;
+    }
+}
+
 // Send a photo without inline keyboard (e.g. pipeline completion notifications)
 export async function sendTelegramPhoto(imageUrl: string, caption: string): Promise<number | null> {
     const cfg = await getTelegramConfig();

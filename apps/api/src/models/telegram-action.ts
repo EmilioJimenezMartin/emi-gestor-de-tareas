@@ -1,7 +1,7 @@
 import mongoose, { Schema, model } from "mongoose";
 
 export interface ITelegramAction {
-    type: "niche-discovery" | "phase-approve";
+    type: "niche-discovery" | "phase-approve" | "img-test";
     nicheId: string;
     nicheName: string;
     targetPhase?: string;

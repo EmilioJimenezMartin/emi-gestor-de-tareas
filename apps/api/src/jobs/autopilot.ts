@@ -512,27 +512,8 @@ async function runPipeline(
             emitStage(io, "libro", String(niche._id), niche.name);
             const catalogUrls: string[] = (niche as any).catalogImageOrder ?? [];
 
-            // Also pull any images uploaded directly to the Cloudinary asset store for this niche
-            let cloudinaryUrls: string[] = [];
-            try {
-                const cldRes = await fetch(`${base}/cloudinary/images?nicheId=${String(niche._id)}`);
-                if (cldRes.ok) {
-                    const { images } = await (cldRes as any).json() as { images: Array<{ url: string }> };
-                    // Exclude the single discovery sample (usually first image, tagged "sample") — include the rest
-                    cloudinaryUrls = (images ?? [])
-                        .filter((img: any) => img.url && !img.publicId?.includes("sample"))
-                        .map((img: any) => img.url as string);
-                }
-            } catch { /* non-critical — continue with catalog images only */ }
-
-            // Merge: catalog images first, then any extra Cloudinary assets not already included
-            const catalogSet = new Set(catalogUrls);
-            const extraUrls = cloudinaryUrls.filter(u => !catalogSet.has(u));
-            const imageUrls: string[] = [...catalogUrls, ...extraUrls];
-
-            if (extraUrls.length > 0) {
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📦 +${extraUrls.length} imagen${extraUrls.length !== 1 ? "es" : ""} del almacén Cloudinary` });
-            }
+            // Deduplicate — same URL can appear more than once if catalogs overlap
+            const imageUrls: string[] = [...new Set(catalogUrls)];
 
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📖 Generando libro PDF para "${niche.name}" (${imageUrls.length} páginas)…` });
 
@@ -865,25 +846,14 @@ async function runPipeline(
                     const seed = Math.floor(Math.random() * 999999);
                     const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(coverPrompt)}?model=${model}&width=768&height=1024&nologo=true&seed=${seed}`;
                     try {
-                        await withImageSlot(`cover-v${variant}:${nicheIdStr}`, async () => {
+                        const imgBuf = await withImageSlot(`cover-v${variant}:${nicheIdStr}`, async () => {
                             const imgRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(90_000) });
                             if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
                             return Buffer.from(await imgRes.arrayBuffer());
                         }, nicheScore);
 
-                        let candidateUrl = pollinationsUrl;
-                        try {
-                            const cldRes = await fetch(`${base}/cloudinary/upload-url`, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ url: pollinationsUrl, nicheId: nicheIdStr }),
-                            });
-                            if (cldRes.ok) {
-                                const cldData = await (cldRes as any).json();
-                                candidateUrl = cldData.image?.url ?? pollinationsUrl;
-                            }
-                        } catch { /* keep Pollinations URL */ }
-
+                        // Upload the buffer directly — avoids a second Pollinations round-trip
+                        const candidateUrl = await uploadBuffer(imgBuf, `ai-cover-${variant}`) ?? pollinationsUrl;
                         candidateUrls.push(candidateUrl);
                         io?.emit("autopilot:log", { nicheId: nicheIdStr, message: `🖼️ Variante IA ${variant + 1}/${aiVariantsNeeded} lista` });
                     } catch (varErr: any) {
