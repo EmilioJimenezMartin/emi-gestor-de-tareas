@@ -87,6 +87,7 @@ import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Modal } from "@/components/ui/modal";
 import { KdpStatCard } from "@/components/ui/kdp-stat-card";
 import { KdpVerticalBarChart } from "@/components/ui/kdp-vertical-bar-chart";
+import { KdpRingChart } from "@/components/ui/kdp-ring-chart";
 import { SectionHeader } from "@/components/ui/section-header";
 import { KdpTabBar, type KdpTabDef } from "@/components/ui/kdp-tab-bar";
 import { toast } from "sonner";
@@ -5216,6 +5217,43 @@ export function KdpFactoryApp() {
                         </Card>
                     ))}
                 </div>
+
+                {/* ── Procedencia + tipo de producto ── */}
+                {niches.length > 0 && (() => {
+                    const amazon  = niches.filter(n => !!(n as any).sourceTitulo && !(n as any).etsyUrl).length;
+                    const etsy    = niches.filter(n => !!(n as any).etsyUrl).length;
+                    const manual  = niches.filter(n => !(n as any).sourceTitulo && !(n as any).etsyUrl).length;
+
+                    const byType  = [
+                        { id: "coloring-book",    label: "Libro colorear", stroke: "#38bdf8", glow: "rgba(56,189,248,0.4)" },
+                        { id: "printable-poster", label: "Printable",      stroke: "#a78bfa", glow: "rgba(167,139,250,0.4)" },
+                        { id: "seamless-pattern", label: "Patrón",         stroke: "#f59e0b", glow: "rgba(245,158,11,0.4)"  },
+                        { id: "other",            label: "Otro",           stroke: "#6b7280", glow: undefined },
+                    ].map(t => ({ ...t, color: "", value: niches.filter(n => (n.productType ?? "coloring-book") === t.id).length }));
+
+                    return (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <KdpRingChart
+                                title="Nichos por procedencia"
+                                subtitle="Origen de descubrimiento de cada nicho"
+                                icon={<Globe size={13} />}
+                                centerLabel="Total"
+                                segments={[
+                                    { label: "Amazon KDP",  value: amazon, color: "", stroke: "#f97316", glow: "rgba(249,115,22,0.5)" },
+                                    { label: "Etsy",        value: etsy,   color: "", stroke: "#10b981", glow: "rgba(16,185,129,0.5)" },
+                                    { label: "Manual",      value: manual, color: "", stroke: "#6366f1", glow: "rgba(99,102,241,0.4)" },
+                                ]}
+                            />
+                            <KdpRingChart
+                                title="Nichos por tipo de producto"
+                                subtitle="Distribución por categoría de producto KDP"
+                                icon={<Layers size={13} />}
+                                centerLabel="Total"
+                                segments={byType.filter(t => t.value > 0)}
+                            />
+                        </div>
+                    );
+                })()}
 
                 {/* ── Pipeline alerts ── */}
                 <div className="grid grid-cols-1 gap-4">
