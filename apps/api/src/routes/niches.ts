@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { Niche } from "../models/niche.js";
 import { getMongoStatus } from "../lib/mongo.js";
+import { getAgenda } from "../lib/agenda.js";
 
 function ensureMongo(reply: any): boolean {
     if (getMongoStatus() !== "connected") {
@@ -109,12 +110,20 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             if (generatedPrompt !== undefined) update.generatedPrompt = generatedPrompt;
             if (Array.isArray(catalogIds)) update.catalogIds = catalogIds;
             if (request.body.phase) update.phase = request.body.phase;
+            if (request.body.autoPilotEnabled !== undefined) update.autoPilotEnabled = Boolean(request.body.autoPilotEnabled);
             if (request.body.publishedAt !== undefined) update.publishedAt = request.body.publishedAt ? new Date(request.body.publishedAt) : null;
             if (request.body.asin !== undefined) update.asin = request.body.asin;
             if (request.body.etsyUrl !== undefined) update.etsyUrl = request.body.etsyUrl;
             if (request.body.gumroadUrl !== undefined) update.gumroadUrl = request.body.gumroadUrl;
             const niche = await Niche.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+            // When autopilot is enabled on a niche that's already past the catalog phase, kick off autopilot-run
+            if (update.autoPilotEnabled === true) {
+                const phase = (niche as any).phase ?? "niche";
+                if (["catalog", "libro", "seo", "cover"].includes(phase)) {
+                    getAgenda()?.schedule("in 5 seconds", "autopilot-run", {}).catch(() => {});
+                }
+            }
             return reply.send({ niche });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });

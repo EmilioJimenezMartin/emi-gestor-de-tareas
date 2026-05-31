@@ -4166,9 +4166,9 @@ export function KdpFactoryApp() {
                 await fetch(`${API_BASE_URL}/niches/${niche._id}`, {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ catalogIds: allNewCatalogIds, phase: "catalog" }),
+                    body: JSON.stringify({ catalogIds: allNewCatalogIds, phase: "catalog", autoPilotEnabled: true, status: "active" }),
                 });
-                setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, catalogIds: allNewCatalogIds, phase: "catalog" } : n));
+                setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, catalogIds: allNewCatalogIds, phase: "catalog", autoPilotEnabled: true, status: "active" } : n));
             }
 
             // Generate KDP listing and save as product draft
