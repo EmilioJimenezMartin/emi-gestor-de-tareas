@@ -453,7 +453,6 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                                                             setCreatingRowTitle(`pipeline::${key}`);
                                                                             try {
                                                                                 await pipelineAction.onCreate(row);
-                                                                                removeRowSilent(key);
                                                                             }
                                                                             catch (e: any) { toast.error(e.message ?? "Error"); }
                                                                             finally { setCreatingRowTitle(null); }
@@ -494,7 +493,6 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                                                         if (pipelineAction) {
                                                                             setCreatingRowTitle(`pipeline::${key}`);
                                                                             await pipelineAction.onCreate(row);
-                                                                            removeRowSilent(key);
                                                                         } else {
                                                                             setCreatedNicheRows(prev => new Set([...prev, key]));
                                                                         }

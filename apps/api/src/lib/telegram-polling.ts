@@ -113,6 +113,29 @@ async function handleNicheDiscovery(
             `Creando <b>${cfg.catalogsPerNiche} catálogos</b> × <b>${cfg.imagesPerCatalog} imágenes</b>…`
         );
 
+        // Remove this niche's row from all radar tables so it disappears from the UI immediately
+        if ((niche as any)?.sourceTitulo) {
+            try {
+                const radarKeys = ["RADAR_ETSY_RESULT", "RADAR_AMAZON_RESULT", "RADAR_GENERAL_RESULT", "RADAR_TRENDS_RESULT"];
+                for (const radarKey of radarKeys) {
+                    const radarRow = await Settings.findOne({ key: radarKey }).lean();
+                    if (radarRow?.value) {
+                        const saved = JSON.parse(radarRow.value as string);
+                        if (Array.isArray(saved?.nichos_detectados)) {
+                            const before = saved.nichos_detectados.length;
+                            saved.nichos_detectados = saved.nichos_detectados.filter(
+                                (r: any) => r.titulo_producto !== (niche as any).sourceTitulo
+                            );
+                            if (saved.nichos_detectados.length !== before) {
+                                await Settings.findOneAndUpdate({ key: radarKey }, { $set: { value: JSON.stringify(saved) } });
+                                _io?.emit("radar:row-deleted", { storageKey: radarKey, titulo_producto: (niche as any).sourceTitulo });
+                            }
+                        }
+                    }
+                }
+            } catch { /* non-critical */ }
+        }
+
         // Directly create catalogs without relying on the autopilot scheduler
         setImmediate(async () => {
             try {

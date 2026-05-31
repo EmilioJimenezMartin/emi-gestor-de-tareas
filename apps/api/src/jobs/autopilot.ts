@@ -512,23 +512,42 @@ async function runPipeline(
                 continue;
             }
             emitStage(io, "libro", String(niche._id), niche.name);
+
+            // Catalog images (already shuffled by checkAutoPilotContinue or runPipeline catalog phase)
             const catalogUrls: string[] = (niche as any).catalogImageOrder ?? [];
 
-            // Deduplicate — same URL can appear more than once if catalogs overlap
-            const imageUrls: string[] = [...new Set(catalogUrls)];
+            // Standalone cloudinary images: tagged to this niche but not part of any catalog
+            let standaloneUrls: string[] = [];
+            try {
+                const cldRes = await fetch(`${base}/cloudinary/images?nicheId=${String(niche._id)}`);
+                if (cldRes.ok) {
+                    const cldData = await cldRes.json() as any;
+                    const catalogSet = new Set(catalogUrls);
+                    standaloneUrls = (cldData.images ?? [])
+                        .map((img: any) => img.url as string)
+                        .filter((u: string) => u && !catalogSet.has(u));
+                }
+            } catch { /* non-critical */ }
 
-            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📖 Generando libro PDF para "${niche.name}" (${imageUrls.length} páginas)…` });
+            // Combine: catalog images (shuffled) + standalone images, deduplicated
+            const allUrls = [...new Set([...catalogUrls, ...standaloneUrls])];
+            // Final shuffle so standalone images are distributed randomly
+            for (let i = allUrls.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [allUrls[i], allUrls[j]] = [allUrls[j], allUrls[i]];
+            }
+
+            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📖 Generando libro PDF para "${niche.name}" (${allUrls.length} imágenes, ${standaloneUrls.length} standalone)…` });
 
             let advancedToSeo = false;
             try {
-                if (imageUrls.length === 0) {
-                    // No images — skip libro and go directly to SEO
+                if (allUrls.length === 0) {
                     io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Sin imágenes para el libro — saltando a SEO` });
                     await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "seo" } });
                     io?.emit("niches:updated");
                     advancedToSeo = true;
                 } else {
-                    const { PDFDocument } = await import("pdf-lib");
+                    const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
                     const sharp = await import("sharp");
                     const pdfDoc = await PDFDocument.create();
 
@@ -536,21 +555,86 @@ async function runPipeline(
                     const PAGE_WIDTH = 612;
                     const PAGE_HEIGHT = 792;
 
+                    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+                    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+                    // ── 1. Copyright / Owner page ────────────────────────────────
+                    {
+                        const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+                        const year = new Date().getFullYear();
+                        const copyrightLines = [
+                            `Copyright © ${year}`,
+                            `All rights reserved.`,
+                            ``,
+                            `No part of this publication may be reproduced,`,
+                            `distributed, or transmitted in any form or by any means,`,
+                            `including photocopying, recording, or other electronic`,
+                            `or mechanical methods, without the prior written`,
+                            `permission of the publisher.`,
+                            ``,
+                            `Printed in the United States of America`,
+                        ];
+                        let cy = PAGE_HEIGHT / 2 + 80;
+                        for (const line of copyrightLines) {
+                            if (line === "") { cy -= 12; continue; }
+                            const w = font.widthOfTextAtSize(line, 10);
+                            page.drawText(line, { x: (PAGE_WIDTH - w) / 2, y: cy, font, size: 10, color: rgb(0, 0, 0) });
+                            cy -= 16;
+                        }
+                    }
+
+                    // ── 2. Title page ────────────────────────────────────────────
+                    {
+                        const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+                        const productType = niche.productType ?? "coloring-book";
+                        const subtitleText = productType === "seamless-pattern" ? "Seamless Pattern Collection"
+                            : productType === "printable-poster" ? "Printable Art Collection"
+                            : "Coloring Book";
+
+                        // Fit title: try 28pt, fall back to 20pt if too wide
+                        let titleSize = 28;
+                        const titleText = niche.name;
+                        if (fontBold.widthOfTextAtSize(titleText, titleSize) > PAGE_WIDTH - 80) titleSize = 20;
+                        if (fontBold.widthOfTextAtSize(titleText, titleSize) > PAGE_WIDTH - 80) titleSize = 16;
+
+                        page.drawText(titleText, {
+                            x: 40,
+                            y: PAGE_HEIGHT / 2 + 20,
+                            font: fontBold,
+                            size: titleSize,
+                            color: rgb(0, 0, 0),
+                            maxWidth: PAGE_WIDTH - 80,
+                            lineHeight: titleSize * 1.3,
+                        });
+                        const subW = font.widthOfTextAtSize(subtitleText, 14);
+                        page.drawText(subtitleText, {
+                            x: (PAGE_WIDTH - subW) / 2,
+                            y: PAGE_HEIGHT / 2 - 40,
+                            font,
+                            size: 14,
+                            color: rgb(0.45, 0.45, 0.45),
+                        });
+                    }
+
+                    // ── 3. Blank page after title ────────────────────────────────
+                    pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+
+                    // ── 4. Image pages + blank after each ────────────────────────
                     let pagesAdded = 0;
-                    for (let imgIdx = 0; imgIdx < imageUrls.length; imgIdx++) {
+                    const isColoringBook = (niche.productType ?? "coloring-book") === "coloring-book";
+
+                    for (let imgIdx = 0; imgIdx < allUrls.length; imgIdx++) {
                         if (imgIdx % 5 === 0) {
-                            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📖 Procesando imagen ${imgIdx + 1}/${imageUrls.length}…` });
+                            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📖 Procesando imagen ${imgIdx + 1}/${allUrls.length}…` });
                         }
                         try {
-                            const imgRes = await fetch(imageUrls[imgIdx], { signal: AbortSignal.timeout(30_000) });
+                            const imgRes = await fetch(allUrls[imgIdx], { signal: AbortSignal.timeout(30_000) });
                             if (!imgRes.ok) continue;
                             const rawBuffer = Buffer.from(await imgRes.arrayBuffer());
 
-                            // Force pure white background (grey/off-white → #FFFFFF) for coloring books
                             let cleanBuffer = rawBuffer;
-                            if ((niche.productType ?? "coloring-book") === "coloring-book") {
+                            if (isColoringBook) {
                                 try {
-                                    // Greyscale (strips colour) + pure-white background
                                     const { data: px, info: pxi } = await sharp.default(rawBuffer)
                                         .flatten({ background: { r: 255, g: 255, b: 255 } })
                                         .removeAlpha()
@@ -566,19 +650,19 @@ async function runPipeline(
                                 } catch { /* keep original if processing fails */ }
                             }
 
-                            // Convert to JPEG at 85% quality to keep PDF size manageable
                             const jpegBuffer = await sharp.default(cleanBuffer).jpeg({ quality: 85 }).toBuffer();
-
                             const img = await pdfDoc.embedJpg(jpegBuffer);
-                            const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+                            const imgPage = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
                             const scaled = img.scaleToFit(PAGE_WIDTH, PAGE_HEIGHT);
-                            page.drawImage(img, {
+                            imgPage.drawImage(img, {
                                 x: (PAGE_WIDTH - scaled.width) / 2,
                                 y: (PAGE_HEIGHT - scaled.height) / 2,
                                 width: scaled.width,
                                 height: scaled.height,
                             });
                             pagesAdded++;
+                            // Blank page after each image (KDP coloring book standard)
+                            pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
                         } catch (imgErr: any) {
                             console.warn(`[autopilot] Skipping image ${imgIdx + 1} in libro: ${imgErr.message}`);
                         }
@@ -590,8 +674,9 @@ async function runPipeline(
                     const base64 = Buffer.from(pdfBytes).toString("base64");
                     const safeName = niche.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
                     const fileName = `${safeName}-libro.pdf`;
+                    const totalPdfPages = pdfDoc.getPageCount();
 
-                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📤 Subiendo libro a Cloudinary (${pagesAdded} páginas, ${Math.round(pdfBytes.byteLength / 1024)}KB)…` });
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📤 Subiendo libro a Cloudinary (${pagesAdded} imgs, ${totalPdfPages} páginas totales, ${Math.round(pdfBytes.byteLength / 1024)}KB)…` });
 
                     const uploadRes = await fetch(`${base}/cloudinary/upload-pdf`, {
                         method: "POST",
@@ -609,10 +694,10 @@ async function runPipeline(
 
                     await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "seo", bookPdfUrl } });
                     io?.emit("niches:updated");
-                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✅ Libro PDF listo (${pagesAdded} páginas) → generando listing SEO…` });
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✅ Libro PDF listo (${pagesAdded} imágenes, ${totalPdfPages} páginas) → generando listing SEO…` });
 
                     if (await shouldNotify("pipeline.complete")) {
-                        await sendTelegram(`📖 <b>Libro generado</b>\n📚 <b>${niche.name}</b>\n📄 ${pagesAdded} páginas\n\n⚙️ Generando listing SEO…`).catch(() => {});
+                        await sendTelegram(`📖 <b>Libro generado</b>\n📚 <b>${niche.name}</b>\n📄 ${pagesAdded} imágenes · ${totalPdfPages} páginas totales\n\n⚙️ Generando listing SEO…`).catch(() => {});
                     }
                     advancedToSeo = true;
                 }
