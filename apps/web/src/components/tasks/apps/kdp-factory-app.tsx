@@ -2745,7 +2745,7 @@ export function KdpFactoryApp() {
     const previewH = selectedSizeConfig.h;
     const previewMargin = selectedSizeConfig.margin;
 
-    const [bookDrafts, setBookDrafts] = useState<{ id: string; fileName: string; pages: BookPage[]; savedAt: string }[]>([]);
+    const [bookDrafts, setBookDrafts] = useState<{ id: string; fileName: string; pages: BookPage[]; savedAt: string; nicheId?: string }[]>([]);
     const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
     const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState<string | null>(null);
     const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
@@ -2838,7 +2838,11 @@ export function KdpFactoryApp() {
             }));
             const draftId = activeDraftId ?? `draft-${Date.now()}`;
             const savedAt = new Date().toISOString();
-            const draft = { id: draftId, fileName: bookFileName, pages: serializablePages, savedAt };
+            // Carry existing nicheId if set, or detect from pipeline- prefix
+            const existingNicheId = bookDrafts.find(d => d.id === draftId)?.nicheId;
+            const prefixMatch = draftId.match(/^pipeline-([a-f0-9]{24})/);
+            const linkedNicheId = existingNicheId ?? prefixMatch?.[1];
+            const draft = { id: draftId, fileName: bookFileName, pages: serializablePages, savedAt, ...(linkedNicheId ? { nicheId: linkedNicheId } : {}) };
             const updated = bookDrafts.some(d => d.id === draftId)
                 ? bookDrafts.map(d => d.id === draftId ? draft : d)
                 : [...bookDrafts, draft];
@@ -2850,18 +2854,16 @@ export function KdpFactoryApp() {
                 body: JSON.stringify([{ key: "kdp-book-drafts", value: updated }]),
             });
 
-            // If this draft originated from a niche pipeline, advance niche to "libro" phase
-            const nicheMatch = draftId.match(/^pipeline-([a-f0-9]{24})/);
-            if (nicheMatch) {
-                const nicheId = nicheMatch[1];
-                const niche = niches.find(n => n._id === nicheId);
+            // If this draft is linked to a niche, advance to "libro" phase
+            if (linkedNicheId) {
+                const niche = niches.find(n => n._id === linkedNicheId);
                 if (niche && (niche.phase === "catalog" || niche.phase === "niche")) {
-                    await fetch(`${API_BASE_URL}/niches/${nicheId}`, {
+                    await fetch(`${API_BASE_URL}/niches/${linkedNicheId}`, {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ phase: "libro" }),
                     }).catch(() => {});
-                    setNiches(prev => prev.map(n => n._id === nicheId ? { ...n, phase: "libro" } : n));
+                    setNiches(prev => prev.map(n => n._id === linkedNicheId ? { ...n, phase: "libro" } : n));
                 }
             }
 
@@ -4195,27 +4197,50 @@ export function KdpFactoryApp() {
                 }
             } catch { /* listing failure is non-blocking */ }
 
-            // ── Auto-build KDP book draft from niche images ──────────────────
+            // ── Auto-build KDP book draft from niche images (catalog + Cloudinary) ──
             try {
-                const allNicheCats = iaCatalogs.filter(c => c.nicheIds?.includes(niche._id) && c.status === "completed");
-                const allImgs = allNicheCats.flatMap(c => c.images);
+                const catImgs = iaCatalogs
+                    .filter(c => c.nicheIds?.includes(niche._id) && c.status === "completed")
+                    .flatMap(c => c.images.map(img => ({ url: img.url, publicId: img.publicId })));
+                const cloudImgs = cloudinaryImages
+                    .filter(img => img.nicheId === niche._id)
+                    .map(img => ({ url: img.url, publicId: img.publicId }));
+                const allImgs = [...catImgs, ...cloudImgs];
                 if (allImgs.length > 0) {
                     const shuffled = [...allImgs].sort(() => Math.random() - 0.5);
+                    const ts = Date.now();
                     const pages: BookPage[] = [];
-                    // Owner page first
-                    pages.push({ id: `pipe-owner-${Date.now()}`, type: "owner", text: defaultTextStyle() });
-                    // Image pages with color-test (owner) page every IMAGES_PER_CATALOG images
+                    // p1: copyright/owner
+                    pages.push({ id: `pipe-owner-${ts}`, type: "owner", text: defaultTextStyle() });
+                    // p2: title page
+                    const titleStyle = defaultTextStyle();
+                    titleStyle.content = niche.name || "Mi Libro de Colorear";
+                    titleStyle.fontSize = 24;
+                    titleStyle.bold = true;
+                    titleStyle.verticalAlign = "middle";
+                    titleStyle.align = "center";
+                    pages.push({ id: `pipe-title-${ts}`, type: "text", text: titleStyle });
+                    // p3: blank back of title
+                    pages.push({ id: `pipe-titleback-${ts}`, type: "text", text: defaultTextStyle() });
+                    // p4+: image + blank (alternating), color-test every N images
                     shuffled.forEach((img, i) => {
-                        pages.push({ id: `pipe-img-${i}-${Date.now()}`, type: "image", image: { url: img.url, scale: 1, label: `${niche.name} #${i + 1}` }, text: defaultTextStyle() });
-                        pages.push({ id: `pipe-blank-${i}-${Date.now()}`, type: "text", text: defaultTextStyle() });
+                        pages.push({ id: `pipe-img-${i}-${ts}`, type: "image", image: { url: img.url, scale: 1, label: `${niche.name} #${i + 1}` }, text: defaultTextStyle() });
+                        pages.push({ id: `pipe-blank-${i}-${ts}`, type: "text", text: defaultTextStyle() });
                         if ((i + 1) % IMAGES_PER_CATALOG === 0 && i + 1 < shuffled.length) {
-                            pages.push({ id: `pipe-ct-${i}-${Date.now()}`, type: "owner", text: defaultTextStyle() });
+                            pages.push({ id: `pipe-ct-${i}-${ts}`, type: "owner", text: defaultTextStyle() });
                         }
                     });
-                    const draftId = `pipeline-${niche._id}-${Date.now()}`;
-                    const newDraft = { id: draftId, fileName: `${niche.name} — Pipeline Draft`, pages, savedAt: new Date().toISOString() };
-                    setBookDrafts(prev => [newDraft, ...prev.filter(d => !d.id.startsWith(`pipeline-${niche._id}`))]);
-                    toast.success(`Borrador de libro listo · ${shuffled.length} imágenes · ábrelo en el tab PDF`);
+                    const draftId = `pipeline-${niche._id}-${ts}`;
+                    const newDraft = { id: draftId, fileName: `${niche.name} — Pipeline Draft`, pages, savedAt: new Date().toISOString(), nicheId: niche._id };
+                    const updatedDrafts = [newDraft, ...bookDrafts.filter(d => !d.id.startsWith(`pipeline-${niche._id}`) && d.nicheId !== niche._id)];
+                    setBookDrafts(updatedDrafts);
+                    // Persist draft + advance niche to "libro" immediately
+                    await Promise.all([
+                        fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "kdp-book-drafts", value: updatedDrafts }]) }),
+                        fetch(`${API_BASE_URL}/niches/${niche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro" }) }),
+                    ]).catch(() => {});
+                    setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase: "libro" } : n));
+                    toast.success(`Borrador listo · ${shuffled.length} imágenes (${catImgs.length} catálogo + ${cloudImgs.length} almacén)`);
                 }
             } catch { /* non-blocking */ }
 
@@ -13291,12 +13316,12 @@ export function KdpFactoryApp() {
                     ...linkedCats.flatMap(c => c.images),
                     ...linkedCloudImgs.map(img => ({ publicId: img.publicId, url: img.url, width: img.width, height: img.height })),
                 ];
-                const pipelineDraft = bookDrafts.find(d => d.id.startsWith(`pipeline-${nicheDetailId}`));
+                const pipelineDraft = bookDrafts.find(d => d.id.startsWith(`pipeline-${nicheDetailId}`) || d.nicheId === nicheDetailId);
                 const TABS = [
                     { id: "images" as const, label: "Imágenes", icon: <ImageIcon size={11} />, count: allImgs.length },
                     { id: "catalogs" as const, label: "Catálogos", icon: <Grid3x3 size={11} />, count: linkedCats.length },
-                    { id: "seo" as const, label: "SEO / Listing", icon: <FileText size={11} />, count: detailNiche.listings?.length ?? 0 },
                     { id: "book" as const, label: "Libro KDP", icon: <Library size={11} />, count: pipelineDraft ? 1 : 0 },
+                    { id: "seo" as const, label: "SEO / Listing", icon: <FileText size={11} />, count: detailNiche.listings?.length ?? 0 },
                     { id: "actions" as const, label: "Acciones", icon: <Settings size={11} />, count: 0 },
                 ];
                 return createPortal(
@@ -13475,14 +13500,87 @@ export function KdpFactoryApp() {
                                                 </button>
                                             </div>
                                         ) : (
-                                            <div className="flex flex-col items-center justify-center py-16 gap-3">
-                                                <Library size={32} strokeWidth={1} className="text-neutral-700 opacity-40" />
-                                                <p className="text-sm font-black uppercase tracking-widest text-neutral-600 text-center">Sin borrador de libro — lanza el pipeline para generar uno automáticamente</p>
-                                                <button onClick={() => { setNicheDetailId(null); void runNichePipeline(detailNiche); }}
-                                                    disabled={nicheGeneratingId === nicheDetailId}
-                                                    className="mt-2 h-9 px-6 rounded-xl bg-violet-500/15 border border-violet-500/30 text-sm font-black text-violet-300 hover:bg-violet-500/25 transition-all flex items-center gap-2 disabled:opacity-40">
-                                                    <Play size={10} /> Lanzar pipeline ahora
-                                                </button>
+                                            <div className="space-y-4">
+                                                {/* Link an existing draft */}
+                                                {bookDrafts.filter(d => !d.nicheId && d.pages.length > 0).length > 0 && (
+                                                    <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-2">
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Vincular borrador existente</p>
+                                                        <p className="text-[11px] text-neutral-600">Selecciona un libro ya creado para asociarlo a este nicho</p>
+                                                        <div className="space-y-1 max-h-48 overflow-y-auto">
+                                                            {bookDrafts.filter(d => !d.nicheId && d.pages.length > 0).map(d => (
+                                                                <button key={d.id}
+                                                                    onClick={async () => {
+                                                                        const linked = { ...d, nicheId: nicheDetailId! };
+                                                                        const updatedDrafts = bookDrafts.map(x => x.id === d.id ? linked : x);
+                                                                        setBookDrafts(updatedDrafts);
+                                                                        await Promise.all([
+                                                                            fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "kdp-book-drafts", value: updatedDrafts }]) }),
+                                                                            fetch(`${API_BASE_URL}/niches/${nicheDetailId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro" }) }),
+                                                                        ]).catch(() => {});
+                                                                        setNiches(prev => prev.map(n => n._id === nicheDetailId ? { ...n, phase: "libro" } : n));
+                                                                        toast.success(`Borrador "${d.fileName}" vinculado`);
+                                                                    }}
+                                                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05] hover:border-indigo-500/30 transition-all text-left group">
+                                                                    <Library size={12} className="text-neutral-600 group-hover:text-indigo-400 shrink-0" />
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <p className="text-sm font-black text-white truncate">{d.fileName}</p>
+                                                                        <p className="text-[10px] text-neutral-600">{d.pages.length} páginas · {new Date(d.savedAt).toLocaleDateString("es-ES")}</p>
+                                                                    </div>
+                                                                    <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest opacity-0 group-hover:opacity-100">Vincular</span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                <div className="flex flex-col items-center justify-center py-6 gap-4">
+                                                    <Library size={28} strokeWidth={1} className="text-neutral-700 opacity-40" />
+                                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-600 text-center">Sin borrador de libro</p>
+                                                    <div className="flex flex-col gap-2 w-full max-w-xs">
+                                                        {(() => {
+                                                            const catImgs = linkedCats.filter(c => c.status === "completed").flatMap(c => c.images.map(img => ({ url: img.url, publicId: img.publicId })));
+                                                            const cloudImgsSrc = linkedCloudImgs.map(img => ({ url: img.url, publicId: img.publicId }));
+                                                            const nicheImgs = [...catImgs, ...cloudImgsSrc];
+                                                            if (nicheImgs.length === 0) return null;
+                                                            return (
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        const ts = Date.now();
+                                                                        const shuffled = [...nicheImgs].sort(() => Math.random() - 0.5);
+                                                                        const pages: BookPage[] = [];
+                                                                        pages.push({ id: `pipe-owner-${ts}`, type: "owner", text: defaultTextStyle() });
+                                                                        const titleStyle = defaultTextStyle();
+                                                                        titleStyle.content = detailNiche.name || "Mi Libro de Colorear";
+                                                                        titleStyle.fontSize = 24; titleStyle.bold = true; titleStyle.verticalAlign = "middle"; titleStyle.align = "center";
+                                                                        pages.push({ id: `pipe-title-${ts}`, type: "text", text: titleStyle });
+                                                                        pages.push({ id: `pipe-titleback-${ts}`, type: "text", text: defaultTextStyle() });
+                                                                        shuffled.forEach((img, i) => {
+                                                                            pages.push({ id: `pipe-img-${i}-${ts}`, type: "image", image: { url: img.url, scale: 1, label: `${detailNiche.name} #${i + 1}` }, text: defaultTextStyle() });
+                                                                            pages.push({ id: `pipe-blank-${i}-${ts}`, type: "text", text: defaultTextStyle() });
+                                                                        });
+                                                                        const draftId = `pipeline-${nicheDetailId}-${ts}`;
+                                                                        const newDraft = { id: draftId, fileName: `${detailNiche.name} — Libro`, pages, savedAt: new Date().toISOString(), nicheId: nicheDetailId! };
+                                                                        const updatedDrafts = [newDraft, ...bookDrafts.filter(d => !d.id.startsWith(`pipeline-${nicheDetailId}`) && d.nicheId !== nicheDetailId)];
+                                                                        setBookDrafts(updatedDrafts);
+                                                                        await Promise.all([
+                                                                            fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "kdp-book-drafts", value: updatedDrafts }]) }),
+                                                                            fetch(`${API_BASE_URL}/niches/${nicheDetailId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro" }) }),
+                                                                        ]).catch(() => {});
+                                                                        setNiches(prev => prev.map(n => n._id === nicheDetailId ? { ...n, phase: "libro" } : n));
+                                                                        toast.success(`Libro creado · ${shuffled.length} imágenes (${catImgs.length} catálogo + ${cloudImgsSrc.length} almacén)`);
+                                                                    }}
+                                                                    className="h-9 px-4 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-sm font-black text-emerald-400 hover:bg-emerald-500/25 transition-all flex items-center justify-center gap-2">
+                                                                    <Library size={11} /> Crear libro ({nicheImgs.length} imágenes)
+                                                                </button>
+                                                            );
+                                                        })()}
+                                                        <button onClick={() => { setNicheDetailId(null); void runNichePipeline(detailNiche); }}
+                                                            disabled={nicheGeneratingId === nicheDetailId}
+                                                            className="h-9 px-6 rounded-xl bg-violet-500/15 border border-violet-500/30 text-sm font-black text-violet-300 hover:bg-violet-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-40">
+                                                            <Play size={10} /> Lanzar pipeline completo
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
