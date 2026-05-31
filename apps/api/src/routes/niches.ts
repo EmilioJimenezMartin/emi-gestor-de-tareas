@@ -90,9 +90,10 @@ export async function registerNicheRoutes(app: FastifyInstance) {
         if (!ensureMongo(reply)) return;
         try {
             const { id } = request.params as { id: string };
-            const { name, description, tags, status, competition, demand, productType, styleCategory, styleCategories, notes, generatedPrompt, catalogIds } = request.body as any;
+            const { name, nickname, description, tags, status, competition, demand, productType, styleCategory, styleCategories, notes, generatedPrompt, catalogIds } = request.body as any;
             const update: Record<string, any> = {};
             if (name?.trim()) update.name = name.trim();
+            if (nickname !== undefined) update.nickname = nickname.trim();
             if (description !== undefined) update.description = description.trim();
             if (Array.isArray(tags)) update.tags = tags.map((t: string) => t.trim()).filter(Boolean);
             if (status) update.status = status;

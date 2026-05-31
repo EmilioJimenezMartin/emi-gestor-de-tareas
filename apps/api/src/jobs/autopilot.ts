@@ -661,10 +661,10 @@ async function runPipeline(
                 continue;
             }
             emitStage(io, "listing", String(niche._id), niche.name);
-            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📝 Generando listing KDP para "${niche.name}"…` });
+            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📝 Generando listings KDP (EN + ES) para "${niche.name}"…` });
             let seoOk = false;
             try {
-                const res = await withLlmSlot(`seo:${String(niche._id)}`, () =>
+                const fetchListing = (lang: string) => withLlmSlot(`seo-${lang}:${String(niche._id)}`, () =>
                     fetch(`${base}/ai/generate-text`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -672,54 +672,73 @@ async function runPipeline(
                             type: "full-listing",
                             niche: niche.name,
                             productType: niche.productType ?? "coloring-book",
-                            language: "en",
+                            language: lang,
                         }),
                         signal: AbortSignal.timeout(90_000),
                     })
                 );
-                if (res.status === 429) {
+                const [resEn, resEs] = await Promise.all([fetchListing("en"), fetchListing("es")]);
+
+                if (resEn.status === 429 || resEs.status === 429) {
                     abort.aborted = true;
                     abort.reason = "Cuota de IA agotada (429) durante generación de listing SEO";
-                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⛔ Límite de cuota alcanzado al generar listing. Deteniendo ciclo.` });
-                } else if (res.ok) {
-                    consecutiveErrors = 0;
-                    const data = await res.json() as any;
-                    const listing = {
-                        title: data.result?.title ?? "",
-                        subtitle: data.result?.subtitle ?? "",
-                        description: data.result?.description ?? "",
-                        keywords: data.result?.keywords ?? [],
-                        generatedAt: new Date(),
-                    };
-                    await Niche.findByIdAndUpdate(niche._id, { $push: { listings: listing } });
-                    io?.emit("niches:updated");
-                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ Listing SEO listo para "${niche.name}" → generando portada…` });
-
-                    await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "cover" } });
-                    io?.emit("niches:updated");
-
-                    const notifText = [
-                        `📝 <b>Listing KDP listo</b>`,
-                        ``,
-                        `📚 <b>${niche.name}</b>`,
-                        ``,
-                        `<b>Título:</b> ${listing.title}`,
-                        listing.keywords.length > 0 ? `<b>Keywords:</b> ${listing.keywords.slice(0, 4).join(", ")}…` : null,
-                        ``,
-                        `🎨 Generando portada automáticamente…`,
-                    ].filter(Boolean).join("\n");
-
-                    if (await shouldNotify("listing.generated")) {
-                        await sendTelegram(notifText).catch(() => {});
-                    }
-                    seoOk = true;
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⛔ Límite de cuota alcanzado al generar listings. Deteniendo ciclo.` });
                 } else {
-                    // Non-429 failure — log and let the follow-up retry
-                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error API listing (${res.status}) — reintentando en 60s` });
-                    consecutiveErrors++;
+                    const toSave: any[] = [];
+                    let titleEn = "";
+                    for (const [res, lang] of [[resEn, "en"], [resEs, "es"]] as [Response, string][]) {
+                        if (res.ok) {
+                            const data = await res.json() as any;
+                            const listing = {
+                                title: data.result?.title ?? "",
+                                subtitle: data.result?.subtitle ?? "",
+                                description: data.result?.description ?? "",
+                                keywords: data.result?.keywords ?? [],
+                                generatedAt: new Date(),
+                                language: lang,
+                            };
+                            toSave.push(listing);
+                            if (lang === "en") titleEn = listing.title;
+                        } else {
+                            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Listing ${lang.toUpperCase()} falló (${res.status}) — guardando los disponibles` });
+                        }
+                    }
+
+                    if (toSave.length > 0) {
+                        consecutiveErrors = 0;
+                        for (const listing of toSave) {
+                            await Niche.findByIdAndUpdate(niche._id, { $push: { listings: listing } });
+                        }
+                        io?.emit("niches:updated");
+                        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ ${toSave.length} listing${toSave.length > 1 ? "s" : ""} (${toSave.map(l => l.language.toUpperCase()).join(" + ")}) listos → generando portada…` });
+
+                        await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "cover" } });
+                        io?.emit("niches:updated");
+
+                        const mainListing = toSave.find(l => l.language === "en") ?? toSave[0];
+                        const notifText = [
+                            `📝 <b>Listings KDP listos</b>`,
+                            ``,
+                            `📚 <b>${niche.name}</b>`,
+                            `🌐 ${toSave.map(l => l.language.toUpperCase()).join(" + ")}`,
+                            ``,
+                            `<b>Título (EN):</b> ${titleEn || mainListing.title}`,
+                            mainListing.keywords.length > 0 ? `<b>Keywords:</b> ${mainListing.keywords.slice(0, 4).join(", ")}…` : null,
+                            ``,
+                            `🎨 Generando portada automáticamente…`,
+                        ].filter(Boolean).join("\n");
+
+                        if (await shouldNotify("listing.generated")) {
+                            await sendTelegram(notifText).catch(() => {});
+                        }
+                        seoOk = true;
+                    } else {
+                        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Todos los listings fallaron — reintentando en 60s` });
+                        consecutiveErrors++;
+                    }
                 }
             } catch (e: any) {
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error generando listing: ${e.message} — reintentando en 60s` });
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error generando listings: ${e.message} — reintentando en 60s` });
                 consecutiveErrors++;
                 if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
                     abort.aborted = true;

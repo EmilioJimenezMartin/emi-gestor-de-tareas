@@ -200,11 +200,13 @@ interface NicheKDPListing {
     description: string;
     keywords: string[];
     generatedAt: string;
+    language?: string;
 }
 
 interface NicheFE {
     _id: string;
     name: string;
+    nickname?: string;
     description: string;
     tags: string[];
     status: NicheStatus;
@@ -1010,6 +1012,7 @@ export function KdpFactoryApp() {
     const [nicheFormOpen, setNicheFormOpen] = useState(false);
     const [nicheEditTarget, setNicheEditTarget] = useState<NicheFE | null>(null);
     const [nicheFormName, setNicheFormName] = useState("");
+    const [nicheFormNickname, setNicheFormNickname] = useState("");
     const [nicheFormDesc, setNicheFormDesc] = useState("");
     const [nicheFormTags, setNicheFormTags] = useState("");
     const [nicheFormStatus, setNicheFormStatus] = useState<NicheStatus>("found");
@@ -1152,7 +1155,7 @@ export function KdpFactoryApp() {
 
     // --- Pipeline dashboard state ---
     type PipelineNiche = {
-        id: string; name: string; phase: string; score: number | null; autoPilotEnabled: boolean; phaseMs: number;
+        id: string; name: string; nickname?: string; phase: string; score: number | null; autoPilotEnabled: boolean; phaseMs: number;
         catalogs: { running: number; completed: number; queued: number; total: number; imgsDone: number; imgsTotal: number };
         lastImageAt: string | null; lastError: string | null; updatedAt: string;
     };
@@ -1522,6 +1525,7 @@ export function KdpFactoryApp() {
         if (niche) {
             setNicheEditTarget(niche);
             setNicheFormName(niche.name);
+            setNicheFormNickname(niche.nickname ?? "");
             setNicheFormDesc(niche.description);
             setNicheFormTags(niche.tags.join(", "));
             setNicheFormStatus(niche.status);
@@ -1535,6 +1539,7 @@ export function KdpFactoryApp() {
         } else {
             setNicheEditTarget(null);
             setNicheFormName("");
+            setNicheFormNickname("");
             setNicheFormDesc("");
             setNicheFormTags("");
             setNicheFormStatus("found");
@@ -1714,6 +1719,7 @@ export function KdpFactoryApp() {
         try {
             const body = {
                 name: nicheFormName.trim(),
+                nickname: nicheFormNickname.trim(),
                 description: nicheFormDesc.trim(),
                 tags: nicheFormTags.split(",").map(t => t.trim()).filter(Boolean),
                 status: nicheFormStatus,
@@ -1756,6 +1762,8 @@ export function KdpFactoryApp() {
             toast.error("Error al eliminar nicho");
         }
     };
+
+    const nd = (n: { name: string; nickname?: string }) => n.nickname?.trim() || n.name;
 
     const nicheScore = (n: NicheFE): number => {
         if (n.score != null) return n.score;
@@ -4617,7 +4625,7 @@ export function KdpFactoryApp() {
                                             <div className="flex items-start gap-3">
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-2 flex-wrap">
-                                                        <span className="font-black text-white text-sm truncate">{n.name}</span>
+                                                        <span className="font-black text-white text-sm truncate">{nd(n)}</span>
                                                         {n.score != null && (
                                                             <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${n.score >= 70 ? "bg-emerald-500/15 text-emerald-400" : n.score >= 50 ? "bg-amber-500/15 text-amber-400" : "bg-neutral-500/15 text-neutral-500"}`}>
                                                                 {n.score}pts
@@ -4704,7 +4712,7 @@ export function KdpFactoryApp() {
                                                                 ${isStuck     ? "bg-amber-500/[0.06] border-amber-500/25" :
                                                                   n.lastError ? "bg-rose-500/[0.06]  border-rose-500/25"  :
                                                                                 "bg-white/[0.02] border-white/8"}`}>
-                                                            <p className="text-[11px] font-black text-white leading-tight line-clamp-2">{n.name}</p>
+                                                            <p className="text-[11px] font-black text-white leading-tight line-clamp-2">{nd(n)}</p>
                                                             <div className="flex items-center gap-1 flex-wrap">
                                                                 {isStuck && <span className="flex items-center gap-0.5 text-[9px] font-black text-amber-400"><AlertTriangle size={8} /> Atascado</span>}
                                                                 {n.lastError && !isStuck && <span className="flex items-center gap-0.5 text-[9px] font-black text-rose-400"><AlertTriangle size={8} /> Error</span>}
@@ -4902,7 +4910,7 @@ export function KdpFactoryApp() {
                                                 <td className="py-2 pr-3 text-neutral-500">{r.period}</td>
                                                 <td className="py-2 pr-3 max-w-[200px]">
                                                     <div className="truncate text-neutral-300">{r.title || "—"}</div>
-                                                    {niche && <div className="text-[9px] text-sky-400 truncate">{niche.name}</div>}
+                                                    {niche && <div className="text-[9px] text-sky-400 truncate">{nd(niche)}</div>}
                                                 </td>
                                                 <td className="py-2 pr-3 font-mono text-neutral-500">{r.asin}</td>
                                                 <td className="py-2 pr-3 text-right font-black text-white">{r.unitsSold}</td>
@@ -5446,7 +5454,7 @@ export function KdpFactoryApp() {
                                     <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-emerald-500 via-emerald-400 to-cyan-400 opacity-40 group-hover:opacity-100 transition-all duration-300" />
                                     <div className="flex items-start justify-between gap-2">
                                         <div className="space-y-0.5">
-                                            <p className="text-sm font-black text-white">{n.name}</p>
+                                            <p className="text-sm font-black text-white">{nd(n)}</p>
                                             <div className="flex items-center gap-3 text-sm">
                                                 <span className="text-neutral-600">{(n.royalties ?? []).length} entradas</span>
                                                 <span className="font-black text-emerald-400 tabular-nums">{totalRevenue.toLocaleString("es-ES", { minimumFractionDigits: 2 })} €</span>
@@ -6308,7 +6316,7 @@ export function KdpFactoryApp() {
                                                 <td className="py-1.5 pr-3 text-neutral-500">{r.period}</td>
                                                 <td className="py-1.5 pr-3 max-w-[180px]">
                                                     <div className="truncate text-neutral-400">{r.title || "—"}</div>
-                                                    {niche && <div className="text-[8px] text-sky-400 truncate">{niche.name}</div>}
+                                                    {niche && <div className="text-[8px] text-sky-400 truncate">{nd(niche)}</div>}
                                                 </td>
                                                 <td className="py-1.5 pr-3 font-mono text-[9px] text-neutral-600">{r.asin}</td>
                                                 <td className="py-1.5 pr-3 text-right font-black text-white">{r.unitsSold}</td>
@@ -6583,7 +6591,7 @@ export function KdpFactoryApp() {
                                     {stuckNiches.map(n => (
                                         <div key={n._id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
                                             <div className="flex-1 min-w-0">
-                                                <p className="text-[11px] font-black text-white truncate">{n.name}</p>
+                                                <p className="text-[11px] font-black text-white truncate">{nd(n)}</p>
                                                 <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">{PHASE_LABELS[n.phase as keyof typeof PHASE_LABELS] ?? n.phase}</p>
                                             </div>
                                             <button
@@ -9820,7 +9828,7 @@ export function KdpFactoryApp() {
                                                             {/* Card body */}
                                                             <div className="p-3 space-y-2.5 relative">
                                                                 <div className="flex items-start gap-1.5">
-                                                                    <p className="text-[13px] font-black text-white leading-snug line-clamp-2 flex-1">{niche.name}</p>
+                                                                    <p className="text-[13px] font-black text-white leading-snug line-clamp-2 flex-1">{nd(niche)}</p>
                                                                     {niche.score != null && (
                                                                         <span className={`shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full border ${niche.score >= 70 ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400" : niche.score >= 40 ? "bg-amber-500/15 border-amber-500/30 text-amber-400" : "bg-rose-500/15 border-rose-500/30 text-rose-400"}`}>
                                                                             {niche.score}
@@ -10024,7 +10032,7 @@ export function KdpFactoryApp() {
                                                     })()}
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 flex-wrap">
-                                                            <p className="text-xl sm:text-2xl font-black text-white leading-tight tracking-tight">{niche.name}</p>
+                                                            <p className="text-xl sm:text-2xl font-black text-white leading-tight tracking-tight">{nd(niche)}</p>
                                                             {niche.score != null ? (
                                                                 <button onClick={() => void scoreNicheWithAI(niche)} disabled={scoringNicheId === niche._id} title={niche.scoreReason ?? "Puntuación IA — click para recalcular"}
                                                                     className={`shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border transition-all ${niche.score >= 70 ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25" : niche.score >= 40 ? "bg-amber-500/15 border-amber-500/30 text-amber-400 hover:bg-amber-500/25" : "bg-rose-500/15 border-rose-500/30 text-rose-400 hover:bg-rose-500/25"}`}>
@@ -10708,7 +10716,7 @@ export function KdpFactoryApp() {
                                                 <Target size={14} className="text-amber-400" />
                                             </div>
                                             <div>
-                                                <p className="text-sm font-black text-white">{n.name}</p>
+                                                <p className="text-sm font-black text-white">{nd(n)}</p>
                                                 <p className="text-sm text-neutral-600">{n.listings!.length} listing{n.listings!.length !== 1 ? "s" : ""}</p>
                                             </div>
                                         </div>
@@ -10732,6 +10740,7 @@ export function KdpFactoryApp() {
                                                         >
                                                             <ChevronDown size={12} className={`shrink-0 text-neutral-600 transition-transform ${isOpen ? "rotate-180" : ""}`} />
                                                             <span className="text-sm font-black text-white truncate leading-tight">{listing.title || "Sin título"}</span>
+                                                            {listing.language && <span className={`shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded border uppercase tracking-wider ${listing.language === "es" ? "bg-amber-500/10 border-amber-500/20 text-amber-400" : "bg-sky-500/10 border-sky-500/20 text-sky-400"}`}>{listing.language}</span>}
                                                             <span className="text-xs text-neutral-700 shrink-0 ml-auto pl-2">
                                                                 {new Date(listing.generatedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
                                                             </span>
@@ -11235,7 +11244,7 @@ export function KdpFactoryApp() {
                                                     }`}
                                                 >
                                                     <Target size={8} />
-                                                    {niche.name}
+                                                    {nd(niche)}
                                                     {isSelected && <Check size={8} />}
                                                 </button>
                                             );
@@ -12486,6 +12495,12 @@ export function KdpFactoryApp() {
                                 <input value={nicheFormName} onChange={e => setNicheFormName(e.target.value)} placeholder="Ej: Mandalas zen para adultos"
                                     className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all" />
                             </div>
+                            {/* Nickname */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Nickname <span className="text-neutral-600 normal-case">(apodo corto para las cards)</span></label>
+                                <input value={nicheFormNickname} onChange={e => setNicheFormNickname(e.target.value)} placeholder="Ej: Mandalas Zen, Funkos, Einstein…"
+                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 transition-all" />
+                            </div>
                             {/* Description */}
                             <div className="space-y-1.5">
                                 <div className="flex items-center justify-between gap-2">
@@ -13680,7 +13695,10 @@ export function KdpFactoryApp() {
                                                         /* ── VIEW MODE ── */
                                                         <>
                                                         <div className="flex items-start justify-between gap-2">
-                                                            <p className="text-sm font-black text-white leading-tight">{listing.title}</p>
+                                                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                                <p className="text-sm font-black text-white leading-tight truncate">{listing.title}</p>
+                                                                {listing.language && <span className={`shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded border uppercase tracking-wider ${listing.language === "es" ? "bg-amber-500/10 border-amber-500/20 text-amber-400" : "bg-sky-500/10 border-sky-500/20 text-sky-400"}`}>{listing.language}</span>}
+                                                            </div>
                                                             <div className="flex items-center gap-1 shrink-0">
                                                                 <button onClick={() => {
                                                                     setEditListingDraft({

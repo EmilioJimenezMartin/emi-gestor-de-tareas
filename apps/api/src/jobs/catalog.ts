@@ -194,10 +194,11 @@ async function checkAutoPilotContinue(tag: string, catalogId: string, nicheIds: 
 
 export function defineCatalogJob(agenda: Agenda, io: any) {
     const handler = async (job: Job) => {
-        const { catalogId, retryCount = 0, overridePrompt } = (job.attrs.data ?? {}) as {
+        const { catalogId, retryCount = 0, overridePrompt, overrideModel } = (job.attrs.data ?? {}) as {
             catalogId: string;
             retryCount?: number;
             overridePrompt?: string;
+            overrideModel?: { id: string; modelId: string; name: string; provider: string };
         };
         const tag = `[catalog-job][${catalogId}]${retryCount > 0 ? `[retry${retryCount}]` : ""}`;
 
@@ -305,9 +306,10 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             // Generate image
             let imageBuffer: Buffer;
 
-            if (catalog.aiModel.provider === "Pollinations") {
+            const activeModel = overrideModel ?? catalog.aiModel;
+            if (activeModel.provider === "Pollinations") {
                 const seed = Math.floor(Math.random() * 999999);
-                const modelParam = catalog.aiModel.modelId?.trim() || "flux";
+                const modelParam = activeModel.modelId?.trim() || "flux";
                 const negParam = finalNegativePrompt ? `&negative=${encodeURIComponent(finalNegativePrompt)}` : "";
                 const enhance = productType === "coloring-book" ? "false" : "true";
                 const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=${catalog.width}&height=${catalog.height}&seed=${seed}&model=${encodeURIComponent(modelParam)}&nologo=true&enhance=${enhance}${negParam}`;
@@ -344,7 +346,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 });
             } else {
                 const port = process.env.PORT || 3001;
-                console.log(`${tag} Calling proxy: provider=${catalog.aiModel.provider} model=${catalog.aiModel.modelId} (waiting for img-lock… priority=${nicheScore})`);
+                console.log(`${tag} Calling proxy: provider=${activeModel.provider} model=${activeModel.modelId} (waiting for img-lock… priority=${nicheScore})`);
                 imageBuffer = await withImageSlot(`catalog-proxy:${catalogId}:${imageSlot}`, async () => {
                     const abortCtrl = new AbortController();
                     const hardTimeout = setTimeout(() => abortCtrl.abort(), HARD_ABORT_MS);
@@ -353,13 +355,13 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                             `http://localhost:${port}/ai/generate-image`,
                             {
                                 prompt: finalPrompt,
-                                modelId: catalog.aiModel.modelId,
-                                provider: catalog.aiModel.provider,
+                                modelId: activeModel.modelId,
+                                provider: activeModel.provider,
                                 width: catalog.width,
                                 height: catalog.height,
                                 advancedParams: {
                                     ...(finalNegativePrompt ? { negativePrompt: finalNegativePrompt } : {}),
-                                    ...(catalog.aiModel.provider === "Ideogram" ? { style: "ILLUSTRATION" } : {}),
+                                    ...(activeModel.provider === "Ideogram" ? { style: "ILLUSTRATION" } : {}),
                                 },
                             },
                             { responseType: "arraybuffer", timeout: AXIOS_TIMEOUT_MS, signal: abortCtrl.signal }

@@ -75,6 +75,7 @@ export default function AjustesPage() {
     // Telegram
     const [telegramToken, setTelegramToken] = useState("");
     const [telegramChatId, setTelegramChatId] = useState("");
+    const [weeklyDigestEnabled, setWeeklyDigestEnabled] = useState(true);
     const [showTelegramToken, setShowTelegramToken] = useState(false);
     const [testingTelegram, setTestingTelegram] = useState(false);
 
@@ -113,6 +114,7 @@ export default function AjustesPage() {
                 if (map.has("HUGGINGFACE_USERNAME")) setHfUsername(map.get("HUGGINGFACE_USERNAME"));
                 if (map.has("TELEGRAM_BOT_TOKEN")) setTelegramToken(map.get("TELEGRAM_BOT_TOKEN"));
                 if (map.has("TELEGRAM_CHAT_ID")) setTelegramChatId(map.get("TELEGRAM_CHAT_ID"));
+                if (map.has("TELEGRAM_WEEKLY_DIGEST")) setWeeklyDigestEnabled(map.get("TELEGRAM_WEEKLY_DIGEST") !== "false");
             } catch (err) {
                 console.error(err);
                 toast.error("Error de red conectando con la API");
@@ -157,6 +159,7 @@ export default function AjustesPage() {
                 { key: "HUGGINGFACE_USERNAME", value: hfUsername },
                 { key: "TELEGRAM_BOT_TOKEN", value: telegramToken },
                 { key: "TELEGRAM_CHAT_ID", value: telegramChatId },
+                { key: "TELEGRAM_WEEKLY_DIGEST", value: weeklyDigestEnabled ? "true" : "false" },
             ];
             const res = await fetch(`${apiUrl}/settings`, {
                 method: "PATCH",
@@ -1076,6 +1079,29 @@ export default function AjustesPage() {
                                         placeholder="-1001234567890"
                                     />
                                 </div>
+                            </div>
+
+                            {/* Weekly digest toggle */}
+                            <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-white/8 bg-white/[0.02]">
+                                <div>
+                                    <p className="text-xs font-black text-white">Resumen semanal</p>
+                                    <p className="text-[10px] text-neutral-500 mt-0.5">Cada lunes a las 9:00 · pipeline, royalties y catálogos atascados</p>
+                                </div>
+                                <button
+                                    onClick={async () => {
+                                        const next = !weeklyDigestEnabled;
+                                        setWeeklyDigestEnabled(next);
+                                        await fetch(`${apiUrl}/settings`, {
+                                            method: "PATCH",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify([{ key: "TELEGRAM_WEEKLY_DIGEST", value: next ? "true" : "false" }]),
+                                        });
+                                        toast.success(next ? "Resumen semanal activado" : "Resumen semanal desactivado");
+                                    }}
+                                    className={`relative w-11 h-6 rounded-full transition-all duration-200 ${weeklyDigestEnabled ? "bg-sky-500" : "bg-white/10"}`}
+                                >
+                                    <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${weeklyDigestEnabled ? "left-[22px]" : "left-0.5"}`} />
+                                </button>
                             </div>
 
                             <div className="flex flex-col sm:flex-row items-center gap-3 border-t border-white/5 pt-4">

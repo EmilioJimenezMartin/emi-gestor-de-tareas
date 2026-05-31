@@ -12,6 +12,7 @@ export interface IKDPListing {
     description: string;
     keywords: string[];
     generatedAt: Date;
+    language?: string;
 }
 
 export interface INiche extends Document {
@@ -34,6 +35,7 @@ export interface INiche extends Document {
     asin?: string;
     etsyUrl?: string;
     gumroadUrl?: string;
+    nickname?: string;
     sourceTitulo?: string;
     royalties?: IRoyaltyEntry[];
     listings?: IKDPListing[];
@@ -70,6 +72,7 @@ const NicheSchema = new Schema<INiche>(
         asin: { type: String, default: "" },
         etsyUrl: { type: String, default: "" },
         gumroadUrl: { type: String, default: "" },
+        nickname: { type: String, default: "" },
         sourceTitulo: { type: String, default: "" },
         royalties: [{
             month: { type: String, required: true },
@@ -82,6 +85,7 @@ const NicheSchema = new Schema<INiche>(
             description: { type: String, default: "" },
             keywords: [{ type: String }],
             generatedAt: { type: Date, default: Date.now },
+            language: { type: String, default: "en" },
         }],
         score: { type: Number },
         scoreBreakdown: {

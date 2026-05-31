@@ -8,7 +8,7 @@ export async function registerPipelineRoutes(app: FastifyInstance) {
     // GET /pipeline/status — full pipeline overview
     app.get("/pipeline/status", async (_req, reply) => {
         try {
-            const niches = await Niche.find({ status: "active" }).lean();
+            const niches = await Niche.find({}).lean();
             const catalogs = await Catalog.find({
                 status: { $in: ["running", "queued", "pending", "completed"] },
             }).lean();
@@ -48,6 +48,7 @@ export async function registerPipelineRoutes(app: FastifyInstance) {
                 return {
                     id: nid,
                     name: (n as any).name,
+                    nickname: (n as any).nickname || undefined,
                     phase: (n as any).phase,
                     score: (n as any).score ?? null,
                     autoPilotEnabled: (n as any).autoPilotEnabled ?? false,
