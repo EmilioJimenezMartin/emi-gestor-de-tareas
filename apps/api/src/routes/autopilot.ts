@@ -67,6 +67,34 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
         }
     });
 
+    // ── Retry a stuck niche (reset failed catalogs + re-trigger autopilot) ───
+    app.post("/autopilot/niche/:id/retry", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { id } = request.params as { id: string };
+            const niche = await Niche.findById(id).lean();
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+
+            const { Catalog } = await import("../models/catalog.js");
+            const { modifiedCount } = await (Catalog as any).updateMany(
+                { nicheIds: id, status: { $in: ["failed", "error"] } },
+                { $set: { status: "queued" }, $unset: { lastError: "" } }
+            );
+
+            deps.io?.emit("catalogs:updated");
+            deps.io?.emit("niches:updated");
+            deps.io?.emit("autopilot:log", { nicheId: id, message: `🔄 "${(niche as any).name}" reintentando (${modifiedCount} catálogos reactivados)` });
+
+            if (deps.agenda) {
+                await deps.agenda.schedule("in 2 seconds", "autopilot-run", {}).catch(() => {});
+            }
+
+            return reply.send({ ok: true, nicheId: id, reactivated: modifiedCount });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // ── Run autopilot now ────────────────────────────────────────────────────
     app.post("/autopilot/run", async (_req, reply) => {
         if (!ensureMongo(reply)) return;

@@ -185,19 +185,41 @@ export async function registerNicheRoutes(app: FastifyInstance) {
 
                 const { generateTextWithLLM } = await import("../lib/ai.js");
 
-                const KDP_SYSTEM = `Eres un especialista en SEO y copywriting para Amazon KDP. Genera metadatos de alta conversión para un libro de colorear/actividades.
+                const pt = (niche as any).productType ?? "coloring-book";
+                const KDP_SYSTEM = pt === "coloring-book"
+                    ? `Eres un especialista en SEO y copywriting para Amazon KDP. Genera metadatos de alta conversión para un LIBRO DE COLOREAR (coloring book).
 Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": string, "description": string, "keywords": string[] }
-- title: 50-80 chars, empieza por la keyword de mayor volumen. Atractivo y orientado a la conversión, NO simple lista de keywords. Formato: "[Keyword]: [Beneficio emocional] for [Audiencia]"
+- title: 50-80 chars. Formato: "[Keyword principal] Coloring Book: [Beneficio emocional] for [Audiencia]". Empieza por la keyword de mayor volumen de búsqueda en Amazon, NO hagas una simple lista de palabras.
+- subtitle: 60-90 chars. Menciona nº de páginas únicas (ej. "50 Unique Designs"), nivel de detalle (intricate / simple), y audiencia específica. No repitas palabras del título.
+- description: HTML para Amazon KDP. Estructura: (1) <p> hook emocional con <strong> en 2-3 keywords clave, (2) <ul><li> 4-5 beneficios concretos (alivio de estrés, mindfulness, regalo perfecto, horas de entretenimiento, páginas de una sola cara), (3) <p> llamada a la acción + para quién es ideal (adultos, niños, aficionados al arte, etc.). 450-650 chars visibles.
+- keywords: exactamente 7 frases de cola larga (2-5 palabras c/u) que NO repitan palabras del título. Combina: temática específica + audiencia + ocasión de regalo + "coloring pages" / "stress relief" / "adult coloring" / "activity book" según corresponda.`
+                    : pt === "printable-poster"
+                    ? `Eres un especialista en SEO y copywriting para productos digitales imprimibles en Etsy y Gumroad. Genera metadatos de alta conversión para un IMPRIMIBLE DIGITAL (printable).
+Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": string, "description": string, "keywords": string[] }
+- title: 50-80 chars. Formato: "[Keyword principal] Printable Wall Art — Instant Download". Empieza por la keyword de mayor volumen, destaca que es descarga instantánea, NO hagas lista de keywords.
+- subtitle: 60-90 chars. Menciona los formatos incluidos (ej. "A4, US Letter & 8×10" PDF + PNG"), el uso decorativo (home decor, nursery, office) y que no se necesita suscripción. No repitas palabras del título.
+- description: HTML para Etsy/Gumroad. Estructura: (1) <p> hook con <strong> en 2-3 keywords de decoración/regalo, (2) <ul><li> 4-5 puntos: descarga instantánea, formatos incluidos, resolución de impresión (300 DPI), uso permitido (personal/comercial), ideas de regalo; (3) <p> llamada a la acción + instrucciones de uso (descarga, imprime en casa o en imprenta). 450-650 chars visibles.
+- keywords: exactamente 7 frases de cola larga (2-5 palabras c/u) que NO repitan palabras del título. Combina: "printable wall art" + "instant download" + temática + habitación destino (nursery, bedroom, kitchen) + ocasión (birthday gift, housewarming) + "digital print" / "digital download".`
+                    : pt === "seamless-pattern"
+                    ? `Eres un especialista en SEO y copywriting para patrones digitales sin costura (seamless patterns) para Etsy, Creative Market y Spoonflower. Genera metadatos de alta conversión.
+Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": string, "description": string, "keywords": string[] }
+- title: 50-80 chars. Formato: "[Keyword] Seamless Pattern — Digital Download". Empieza por la keyword con mayor volumen, incluye "seamless pattern", NO hagas lista de keywords.
+- subtitle: 60-90 chars. Menciona archivos incluidos (ej. "PNG Tile 12×12" at 300 DPI + SVG"), usos (fabric, wallpaper, scrapbooking, POD). No repitas palabras del título.
+- description: HTML. Estructura: (1) <p> hook con <strong> en el estilo/temática + uso principal, (2) <ul><li> 4-5 puntos: tile size, DPI, formatos, licencia de uso (POD permitido / no comercial), instrucciones de repeat; (3) <p> llamada a la acción + plataformas compatibles (Spoonflower, Printful, Redbubble). 450-650 chars visibles.
+- keywords: exactamente 7 frases de cola larga (2-5 palabras c/u) que NO repitan palabras del título. Combina: "seamless pattern" + temática + estilo (watercolor, boho, minimalist) + material destino (fabric, wallpaper, gift wrap) + "digital paper" / "scrapbooking" / "surface design".`
+                    : `Eres un especialista en SEO y copywriting para Amazon KDP y productos digitales. Genera metadatos de alta conversión.
+Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": string, "description": string, "keywords": string[] }
+- title: 50-80 chars, empieza por la keyword de mayor volumen. Atractivo y orientado a la conversión. Formato: "[Keyword]: [Beneficio emocional] for [Audiencia]"
 - subtitle: 60-90 chars, keywords secundarias no repetidas del título, menciona cantidad de páginas/diseños y audiencia
-- description: HTML para Amazon KDP. Estructura: (1) <p> hook emocional con <strong> en 2-3 keywords, (2) <ul><li> 4-5 beneficios concretos, (3) <p> llamada a la acción + para quién es ideal. 450-650 chars visibles
-- keywords: exactamente 7 frases de cola larga (2-5 palabras c/u), sin repetir palabras del título, mezcla temática + audiencia + regalo + uso`;
+- description: HTML. Estructura: (1) <p> hook emocional con <strong> en 2-3 keywords, (2) <ul><li> 4-5 beneficios concretos, (3) <p> llamada a la acción. 450-650 chars visibles.
+- keywords: exactamente 7 frases de cola larga (2-5 palabras c/u), sin repetir palabras del título.`;
 
                 const context = [
-                    `Nicho: ${niche.name}`,
-                    niche.productType === "coloring-book" ? "Tipo: Libro de colorear KDP" : `Tipo: ${niche.productType}`,
-                    (niche.tags as string[]).length > 0 ? `Tags: ${(niche.tags as string[]).join(", ")}` : "",
-                    niche.styleCategory && niche.styleCategory !== "generic" ? `Estilo: ${niche.styleCategory}` : "",
-                    niche.description ? `Descripción: ${niche.description}` : "",
+                    `Nicho: ${(niche as any).name}`,
+                    `Tipo de producto: ${pt}`,
+                    ((niche as any).tags as string[]).length > 0 ? `Tags: ${((niche as any).tags as string[]).join(", ")}` : "",
+                    (niche as any).styleCategory && (niche as any).styleCategory !== "generic" ? `Estilo visual: ${(niche as any).styleCategory}` : "",
+                    (niche as any).description ? `Descripción del nicho: ${(niche as any).description}` : "",
                 ].filter(Boolean).join("\n");
 
                 const text = await generateTextWithLLM(KDP_SYSTEM, context);
