@@ -53,12 +53,13 @@ const GENERAL_PRESETS: { label: string; url: string; hint?: string }[] = [
 ];
 
 const TRENDS_PRESETS: { label: string; url: string; hint?: string }[] = [
-    { label: "Coloring Books", url: "https://trends.google.com/trends/explore?q=coloring+book&geo=US", hint: "coloring book trends" },
-    { label: "Adult Coloring", url: "https://trends.google.com/trends/explore?q=adult+coloring+book&geo=US", hint: "adult coloring trend" },
-    { label: "Printables Etsy", url: "https://trends.google.com/trends/explore?q=printables+etsy&geo=US", hint: "printables etsy trend" },
-    { label: "Wall Art Print", url: "https://trends.google.com/trends/explore?q=wall+art+print&geo=US", hint: "wall art print trend" },
-    { label: "Trending Now", url: "https://trends.google.com/trends/trendingsearches/daily?geo=US", hint: "trending searches today" },
-    { label: "Rising Crafts", url: "https://trends.google.com/trends/explore?q=craft+printable&geo=US", hint: "craft printable rising" },
+    // Root + Modifier comparisons — the most powerful technique
+    { label: "Compare Formatos", url: "https://trends.google.com/trends/explore?q=coloring+book+adults,activity+book+adults,coloring+book+seniors&geo=US&date=today+5-y", hint: "Compara 3 formatos · 5 años" },
+    { label: "Stress / Mindful", url: "https://trends.google.com/trends/explore?q=stress+relief+coloring,mindfulness+coloring+book,anxiety+coloring+book&geo=US&date=today+5-y", hint: "Nichos salud mental · rising" },
+    { label: "Seniors & Memory", url: "https://trends.google.com/trends/explore?q=coloring+book+seniors,memory+activity+book,cognitive+activity+book&geo=US&date=today+5-y", hint: "Mercado senior · crecimiento" },
+    { label: "Hobbies en Auge", url: "https://trends.google.com/trends/explore?q=urban+gardening+coloring,astrology+coloring+book,cottagecore+printable&geo=US&date=today+5-y", hint: "Hobbies + formato KDP" },
+    { label: "Estacional 5a", url: "https://trends.google.com/trends/explore?q=christmas+coloring+book,halloween+coloring+book,valentine+coloring+book&geo=US&date=today+5-y", hint: "Picos estacionales · planifica con antelación" },
+    { label: "Trending Hoy", url: "https://trends.google.com/trends/trendingsearches/daily?geo=US", hint: "Búsquedas virales del día" },
 ];
 
 type AccentKey = "sky" | "orange" | "amber" | "emerald";

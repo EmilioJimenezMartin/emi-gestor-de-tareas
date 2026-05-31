@@ -1162,7 +1162,7 @@ Generate exactly 15 diverse, actionable trends. Focus on currently profitable an
             etsy: "Etsy (digital downloads, printables, wall art, coloring pages, journals)",
             amazon: "Amazon KDP (coloring books, activity books, journals, low-content books)",
             general: "Etsy or Amazon KDP",
-            trends: "Google Trends (discover rising search queries for KDP/Etsy products — coloring books, printables, wall art, journals)",
+            trends: "Google Trends (detect rising adoption curves for KDP/Etsy products before saturation — apply root+modifier technique)",
         };
         const urlFormat = platform === "amazon"
             ? "https://www.amazon.com/s?k=<search+term>"
@@ -1207,9 +1207,11 @@ Generate exactly 15 diverse, actionable trends. Focus on currently profitable an
             ? `\nFor the style field, ${styleHints[productType]}.`
             : "";
 
+        const isTrends = platform === "trends";
+
         const promptText = `Today: ${new Date().toISOString().slice(0, 10)} | seed: ${entropy}
 
-You are an advanced passive-income product strategist specializing in long-tail niche research for ${platformDescriptions[platform]}.
+You are an advanced passive-income product strategist specializing in long-tail niche research for ${platformDescriptions[platform] ?? "Etsy"}.
 Find ONE niche a solo creator can REALISTICALLY dominate because it has real demand but is NOT yet crowded.${productConstraint}
 
 BANNED (oversaturated — never suggest): ${banned}
@@ -1217,13 +1219,19 @@ BANNED (oversaturated — never suggest): ${banned}
 Today's creative angle — you MUST follow this direction: ${picked.angle}
 Example directions (do NOT copy, be more original): ${picked.examples}
 
-Self-check before answering — reject your first idea if:
+${isTrends ? `GOOGLE TRENDS STRATEGY — apply the "Root + Modifier" technique:
+- ROOT: a hobby, lifestyle or identity topic currently showing rising interest (NOT a generic term)
+- MODIFIER: a KDP/Etsy product format (e.g. "coloring book adults", "activity book seniors", "for stress relief", "mindfulness printable", "pattern seamless")
+- RESULT: ROOT + MODIFIER = specific, searchable, unsaturated niche (e.g. "Urban Foraging Activity Book", "Stave Church Architecture Coloring Book", "Axolotl Mindfulness Coloring Adults")
+- The Google Trends URL should use "Compare" mode with 3 related variants so we can see which sub-niche has the strongest rising curve.
+- Bonus: prefer niches with strong seasonal patterns (pico predecible) — flag it in the reasoning.
+` : ""}Self-check before answering — reject your first idea if:
 1. The niche is broader than 2-3 specific words
 2. A generic creator would think of it in under 5 seconds
 3. It would appear in "top 10 Etsy niches" listicles
 4. It resembles anything in the BANNED list
 
-${platform === "amazon" ? "For Amazon: use URL format " + urlFormat : platform === "trends" ? "For Google Trends: use URL format " + urlFormat : "For Etsy: use URL format " + urlFormat} (properly URL-encoded, replace spaces with +)
+${platform === "amazon" ? "For Amazon: use URL format " + urlFormat : platform === "trends" ? "For Google Trends: use URL format " + urlFormat + " — ideally compare 3 variants: ROOT+modifier1, ROOT+modifier2, ROOT+modifier3 (comma-separated in the q= parameter)" : "For Etsy: use URL format " + urlFormat} (properly URL-encoded, replace spaces with +)
 Search term: 2-5 words, exactly what a buyer or researcher would type.${styleHint}
 
 Return ONLY a JSON object:
