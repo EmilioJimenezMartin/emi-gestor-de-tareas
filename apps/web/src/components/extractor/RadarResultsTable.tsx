@@ -174,6 +174,18 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
         }).catch(() => {});
     }, [apiUrl, storageKey]);
 
+    const removeRowSilent = useCallback((titulo_producto: string) => {
+        const updated = etsyResultRef.current
+            ? { ...etsyResultRef.current, nichos_detectados: etsyResultRef.current.nichos_detectados.filter(r => r.titulo_producto !== titulo_producto) }
+            : null;
+        setEtsyResult(updated);
+        fetch(`${apiUrl}/radar/etsy-row`, {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ titulo_producto, key: storageKey }),
+        }).catch(() => {});
+    }, [apiUrl, storageKey]);
+
     const deleteRow = (row: EtsyListing) => {
         setConfirmModal({
             title: "Eliminar producto",
@@ -439,7 +451,10 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                                                     <button
                                                                         onClick={async () => {
                                                                             setCreatingRowTitle(`pipeline::${key}`);
-                                                                            try { await pipelineAction.onCreate(row); }
+                                                                            try {
+                                                                                await pipelineAction.onCreate(row);
+                                                                                removeRowSilent(key);
+                                                                            }
                                                                             catch (e: any) { toast.error(e.message ?? "Error"); }
                                                                             finally { setCreatingRowTitle(null); }
                                                                         }}
@@ -479,8 +494,10 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                                                         if (pipelineAction) {
                                                                             setCreatingRowTitle(`pipeline::${key}`);
                                                                             await pipelineAction.onCreate(row);
+                                                                            removeRowSilent(key);
+                                                                        } else {
+                                                                            setCreatedNicheRows(prev => new Set([...prev, key]));
                                                                         }
-                                                                        setCreatedNicheRows(prev => new Set([...prev, key]));
                                                                     } catch (e: any) {
                                                                         toast.error(e.message ?? "Error");
                                                                     } finally {
