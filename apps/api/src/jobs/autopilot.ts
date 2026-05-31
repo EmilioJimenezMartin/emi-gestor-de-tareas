@@ -5,6 +5,7 @@ import { TelegramAction } from "../models/telegram-action.js";
 import { AutopilotRun } from "../models/autopilot-run.js";
 import { sendTelegram, sendTelegramPhoto, sendTelegramPhotoDiscovery, shouldNotify } from "../lib/telegram.js";
 import { withImageSlot, withLlmSlot } from "../lib/ai-semaphore.js";
+import { buildCollage, buildHalfColored, pickCatalogImages, type CollageLayout } from "../lib/cover-collage.js";
 
 type RunStats = { discovered: number; pipelineProcessed: number; catalogsCreated: number };
 
@@ -790,30 +791,92 @@ async function runPipeline(
                     : "flux";
 
                 const nicheScore = niche.score ?? 0;
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🎨 Generando 3 variantes de portada…` });
-
-                // Generate 3 cover candidates with different seeds
+                const nicheIdStr = String(niche._id);
                 const candidateUrls: string[] = [];
                 const port = process.env.PORT || 3001;
                 const base = `http://localhost:${port}`;
+                const isColoringBook = (niche.productType ?? "coloring-book") === "coloring-book";
 
-                for (let variant = 0; variant < 3; variant++) {
+                // Helper: upload a local buffer to Cloudinary, returns URL
+                const uploadBuffer = async (buf: Buffer, label: string): Promise<string | null> => {
+                    try {
+                        const dataUrl = `data:image/jpeg;base64,${buf.toString("base64")}`;
+                        const r = await fetch(`${base}/cloudinary/upload`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ dataUrl }),
+                        });
+                        if (!r.ok) return null;
+                        const d = await (r as any).json();
+                        return d.image?.url ?? null;
+                    } catch {
+                        console.warn(`[autopilot] cover uploadBuffer failed for ${label}`);
+                        return null;
+                    }
+                };
+
+                // ── Strategy 1: Collage from catalog images (coloring-books only) ──
+                if (isColoringBook) {
+                    io?.emit("autopilot:log", { nicheId: nicheIdStr, message: `🖼️ Generando collages con imágenes del catálogo…` });
+                    try {
+                        const catalogUrls = await pickCatalogImages(nicheIdStr, 8);
+                        if (catalogUrls.length >= 2) {
+                            const layouts: CollageLayout[] = catalogUrls.length >= 4
+                                ? ["grid2x2", "triptych", "hero-sidebar"]
+                                : ["triptych", "hero-sidebar"];
+
+                            for (const layout of layouts) {
+                                try {
+                                    const buf = await buildCollage(catalogUrls, layout);
+                                    const url = await uploadBuffer(buf, `collage-${layout}`);
+                                    if (url) {
+                                        candidateUrls.push(url);
+                                        io?.emit("autopilot:log", { nicheId: nicheIdStr, message: `✅ Collage "${layout}" listo` });
+                                    }
+                                } catch (layoutErr: any) {
+                                    console.warn(`[autopilot] collage ${layout} failed: ${layoutErr.message}`);
+                                }
+                            }
+
+                            // Half-colored variant from the first catalog image
+                            if (catalogUrls.length >= 1) {
+                                try {
+                                    const buf = await buildHalfColored(catalogUrls[0]);
+                                    const url = await uploadBuffer(buf, "half-colored");
+                                    if (url) {
+                                        candidateUrls.push(url);
+                                        io?.emit("autopilot:log", { nicheId: nicheIdStr, message: `✅ Portada "mitad coloreada" lista` });
+                                    }
+                                } catch (hcErr: any) {
+                                    console.warn(`[autopilot] half-colored failed: ${hcErr.message}`);
+                                }
+                            }
+                        }
+                    } catch (collageErr: any) {
+                        console.warn(`[autopilot] collage phase failed: ${collageErr.message}`);
+                    }
+                }
+
+                // ── Strategy 2: AI-generated variants ──────────────────────────────
+                const aiVariantsNeeded = isColoringBook ? 2 : 3;
+                io?.emit("autopilot:log", { nicheId: nicheIdStr, message: `🤖 Generando ${aiVariantsNeeded} variante${aiVariantsNeeded > 1 ? "s" : ""} IA…` });
+
+                for (let variant = 0; variant < aiVariantsNeeded; variant++) {
                     const seed = Math.floor(Math.random() * 999999);
                     const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(coverPrompt)}?model=${model}&width=768&height=1024&nologo=true&seed=${seed}`;
                     try {
-                        const imageBuffer = await withImageSlot(`cover-v${variant}:${String(niche._id)}`, async () => {
+                        await withImageSlot(`cover-v${variant}:${nicheIdStr}`, async () => {
                             const imgRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(90_000) });
                             if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
                             return Buffer.from(await imgRes.arrayBuffer());
                         }, nicheScore);
 
-                        // Upload to Cloudinary
                         let candidateUrl = pollinationsUrl;
                         try {
                             const cldRes = await fetch(`${base}/cloudinary/upload-url`, {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ url: pollinationsUrl, nicheId: String(niche._id) }),
+                                body: JSON.stringify({ url: pollinationsUrl, nicheId: nicheIdStr }),
                             });
                             if (cldRes.ok) {
                                 const cldData = await (cldRes as any).json();
@@ -822,9 +885,9 @@ async function runPipeline(
                         } catch { /* keep Pollinations URL */ }
 
                         candidateUrls.push(candidateUrl);
-                        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🖼️ Variante ${variant + 1}/3 lista` });
+                        io?.emit("autopilot:log", { nicheId: nicheIdStr, message: `🖼️ Variante IA ${variant + 1}/${aiVariantsNeeded} lista` });
                     } catch (varErr: any) {
-                        console.warn(`[autopilot] cover variant ${variant + 1} failed: ${varErr.message}`);
+                        console.warn(`[autopilot] cover AI variant ${variant + 1} failed: ${varErr.message}`);
                     }
                 }
 

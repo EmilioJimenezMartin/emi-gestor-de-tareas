@@ -13746,12 +13746,21 @@ export function KdpFactoryApp() {
                                                 <div className="grid grid-cols-3 gap-2">
                                                     {detailNiche.coverCandidates!.map((url, idx) => {
                                                         const isActive = detailNiche.coverUrl === url;
+                                                        const total = detailNiche.coverCandidates!.length;
+                                                        // Heuristic: for coloring-books, first (total-2) are collage/half-colored, last 2 are AI
+                                                        const aiCount = detailNiche.productType === "coloring-book" ? 2 : total;
+                                                        const collageCount = total - aiCount;
+                                                        let typeLabel = `IA ${idx - collageCount + 1}`;
+                                                        if (idx < collageCount) {
+                                                            const collageLabels = ["Grid 2×2", "Triptych", "Hero", "½ Color"];
+                                                            typeLabel = collageLabels[idx] ?? `Collage ${idx + 1}`;
+                                                        }
                                                         return (
                                                             <div key={idx} className={`relative rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${isActive ? "border-fuchsia-500 shadow-[0_0_12px_rgba(217,70,239,0.3)]" : "border-transparent hover:border-white/20"}`}
                                                                 onClick={async () => {
                                                                     await fetch(`${API_BASE_URL}/niches/${detailNiche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ coverUrl: url }) });
                                                                     void fetchNiches();
-                                                                    toast.success(`Variante ${idx + 1} seleccionada`);
+                                                                    toast.success(`"${typeLabel}" seleccionada`);
                                                                 }}>
                                                                 <img src={url} alt={`Variante ${idx + 1}`} className="w-full object-cover" style={{ aspectRatio: "3/4" }} />
                                                                 {isActive && (
@@ -13759,7 +13768,7 @@ export function KdpFactoryApp() {
                                                                         <Check size={10} className="text-white" />
                                                                     </div>
                                                                 )}
-                                                                <div className="absolute bottom-0 inset-x-0 bg-black/50 text-center text-[9px] font-black text-white/70 py-0.5">{idx + 1}</div>
+                                                                <div className="absolute bottom-0 inset-x-0 bg-black/50 text-center text-[9px] font-black text-white/70 py-0.5">{typeLabel}</div>
                                                             </div>
                                                         );
                                                     })}
