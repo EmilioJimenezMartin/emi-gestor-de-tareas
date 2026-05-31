@@ -30,6 +30,9 @@ const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { cmd: "/config",                        desc: "Ver configuración del Auto-Pilot" },
     { cmd: "/config <code>cats imgs [nichos]</code>", desc: "Ej: /config 1 1 1 (prueba) · /config 8 5 3 (prod)" },
     { cmd: "/status",                      desc: "Acciones de Telegram pendientes" },
+    { section: "🔮 Descubrimiento" },
+    { cmd: "/sugerir",                       desc: "IA sugiere un nicho con potencial no explorado (cualquier tipo)" },
+    { cmd: "/sugerir <code>tipo</code>",     desc: "Sugiere para un tipo concreto: <code>colorear</code> · <code>poster</code> · <code>patron</code>" },
     { section: "📦 KDP" },
     { cmd: "/kdp <code>id</code>",            desc: "Sube el libro a KDP (requiere PDF + SEO + credenciales)" },
     { cmd: "/kdpotp <code>XXXXXX</code>",     desc: "Envía código OTP si KDP solicita verificación 2FA" },
@@ -324,6 +327,93 @@ async function processUpdate(update: any): Promise<void> {
                 await sendTelegram(msg);
             } catch (e) {
                 await answerCallbackQuery(cq.id, "Error interno");
+            }
+            return;
+        }
+
+        // ── "Otra sugerencia" from /sugerir ──────────────────────────────────
+        if (action === "sug_again") {
+            await answerCallbackQuery(cq.id, "Generando nueva sugerencia…");
+            // Re-run discover with the stored productType
+            try {
+                const port = process.env.PORT || 3001;
+                const res = await fetch(`http://localhost:${port}/ai/discover-niche`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ platform: "etsy", productType: actionId }),
+                    signal: AbortSignal.timeout(30_000),
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json() as {
+                    niche: string; productType?: string; style?: string;
+                    url: string; searchTerm: string; competition?: string; reasoning: string;
+                };
+                const finalType = data.productType || actionId || "coloring-book";
+                const finalStyle = data.style || "generic";
+                const competitionIcon = data.competition === "baja" ? "🟢" : data.competition === "media" ? "🟡" : "🔴";
+                const typeIcon = finalType === "printable-poster" ? "🖼️" : finalType === "seamless-pattern" ? "🔁" : "📚";
+                const typeNameLabel = finalType === "printable-poster" ? "Póster imprimible" : finalType === "seamless-pattern" ? "Patrón seamless" : "Libro de colorear";
+                const msgLines = [
+                    `💡 <b>Nicho sugerido por IA</b>`,
+                    ``,
+                    `🎯 <b>${data.niche}</b>`,
+                    `${typeIcon} ${typeNameLabel} · 🎨 ${finalStyle}`,
+                    `${competitionIcon} Competencia ${data.competition ?? "?"}`,
+                    ``,
+                    `📝 ${data.reasoning}`,
+                    ``,
+                    `🔍 <a href="${data.url}">Ver en Etsy →</a>`,
+                    ``,
+                    `<i>Pulsa el botón para crear este nicho directamente</i>`,
+                ].join("\n");
+                const callbackPayload = `${finalType}|${finalStyle}|${data.niche}`;
+                const callbackData = `sug_create:${callbackPayload}`;
+                if (callbackData.length <= 64) {
+                    await sendTelegramButtons(msgLines, [
+                        [{ text: "✅ Crear este nicho", callback_data: callbackData }],
+                        [{ text: "🔄 Otra sugerencia", callback_data: `sug_again:${actionId}` }],
+                    ]);
+                } else {
+                    await sendTelegram(msgLines);
+                }
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message ?? "Error desconocido"}`);
+            }
+            return;
+        }
+
+        // ── Create niche from /sugerir inline button ─────────────────────────
+        if (action === "sug_create") {
+            // actionId encodes "productType|style|niche name" (pipe-separated)
+            const parts = actionId.split("|");
+            const sugProductType = parts[0] ?? "coloring-book";
+            const sugStyle = parts[1] ?? "generic";
+            const sugName = parts.slice(2).join("|").trim();
+            if (!sugName) {
+                await answerCallbackQuery(cq.id, "Datos de sugerencia inválidos");
+                return;
+            }
+            try {
+                await answerCallbackQuery(cq.id, "Creando nicho…");
+                const niche = await Niche.create({
+                    name: sugName,
+                    status: "found",
+                    productType: sugProductType as "coloring-book" | "printable-poster" | "seamless-pattern",
+                    styleCategory: sugStyle as any,
+                    styleCategories: [sugStyle as any],
+                });
+                _io?.emit("niches:updated");
+                _io?.emit("telegram:notification", { message: `📚 Nicho creado desde sugerencia IA · ${sugName}`, type: "info" });
+                await sendTelegram(
+                    `✅ <b>Nicho creado</b>\n📚 <b>${sugName}</b>\n\n⏳ Iniciando discovery — recibirás la imagen de muestra en breve…`
+                );
+                const port = process.env.PORT || 3001;
+                setImmediate(async () => {
+                    try { await fetch(`http://localhost:${port}/autopilot/discover/${niche._id}`, { method: "POST" }); }
+                    catch { /* non-critical */ }
+                });
+            } catch (e: any) {
+                await sendTelegram(`❌ Error creando nicho: ${e.message}`);
             }
             return;
         }
@@ -1456,6 +1546,81 @@ async function processUpdate(update: any): Promise<void> {
                 );
             } catch (e: any) {
                 await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        if (text === "/sugerir" || text.startsWith("/sugerir ")) {
+            const typeArg = normalized.slice(9).trim().toLowerCase();
+            let productType = "";
+            let typeLabel = "cualquier tipo";
+
+            if (["colorear", "color", "libro", "coloring"].some(t => typeArg === t || typeArg.startsWith(t + " "))) {
+                productType = "coloring-book";
+                typeLabel = "📚 Libro de colorear";
+            } else if (["poster", "póster", "printable", "print", "imprimible", "cartel"].some(t => typeArg === t || typeArg.startsWith(t + " "))) {
+                productType = "printable-poster";
+                typeLabel = "🖼️ Póster imprimible";
+            } else if (["patron", "patrón", "seamless", "pattern", "tela"].some(t => typeArg === t || typeArg.startsWith(t + " "))) {
+                productType = "seamless-pattern";
+                typeLabel = "🔁 Patrón seamless";
+            }
+
+            await sendTelegram(`🔮 <b>Consultando a la IA…</b>\nBuscando nicho con potencial · <i>${typeLabel}</i>`);
+
+            try {
+                const port = process.env.PORT || 3001;
+                const res = await fetch(`http://localhost:${port}/ai/discover-niche`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ platform: "etsy", productType }),
+                    signal: AbortSignal.timeout(30_000),
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json() as {
+                    niche: string; productType?: string; style?: string;
+                    url: string; searchTerm: string; competition?: string; reasoning: string;
+                };
+
+                const finalType = data.productType || productType || "coloring-book";
+                const finalStyle = data.style || "generic";
+                const competitionIcon = data.competition === "baja" ? "🟢" : data.competition === "media" ? "🟡" : "🔴";
+                const typeIcon = finalType === "printable-poster" ? "🖼️" : finalType === "seamless-pattern" ? "🔁" : "📚";
+                const typeNameLabel = finalType === "printable-poster" ? "Póster imprimible" : finalType === "seamless-pattern" ? "Patrón seamless" : "Libro de colorear";
+
+                const msgLines = [
+                    `💡 <b>Nicho sugerido por IA</b>`,
+                    ``,
+                    `🎯 <b>${data.niche}</b>`,
+                    `${typeIcon} ${typeNameLabel} · 🎨 ${finalStyle}`,
+                    `${competitionIcon} Competencia ${data.competition ?? "?"}`,
+                    ``,
+                    `📝 ${data.reasoning}`,
+                    ``,
+                    `🔍 <a href="${data.url}">Ver en Etsy →</a>`,
+                    ``,
+                    `<i>Pulsa el botón para crear este nicho directamente</i>`,
+                ].join("\n");
+
+                // Encode creation data in callback (max 64 bytes total)
+                // Format: sug_create:{productType}|{style}|{name}
+                const callbackPayload = `${finalType}|${finalStyle}|${data.niche}`;
+                const callbackData = `sug_create:${callbackPayload}`;
+
+                if (callbackData.length <= 64) {
+                    await sendTelegramButtons(msgLines, [
+                        [{ text: "✅ Crear este nicho", callback_data: callbackData }],
+                        [{ text: "🔄 Otra sugerencia", callback_data: `sug_again:${productType}` }],
+                    ]);
+                } else {
+                    // Name too long for inline button — show without buttons
+                    await sendTelegram(msgLines + `\n\nPara crearlo: <code>/crear ${
+                        finalType === "printable-poster" ? "printable " :
+                        finalType === "seamless-pattern" ? "patron " : ""
+                    }${data.niche}</code>`);
+                }
+            } catch (e: any) {
+                await sendTelegram(`❌ Error generando sugerencia: ${e.message ?? "Error desconocido"}`);
             }
             return;
         }

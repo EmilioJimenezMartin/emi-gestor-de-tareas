@@ -1149,7 +1149,7 @@ Generate exactly 15 diverse, actionable trends. Focus on currently profitable an
     // ── SEARCH QUERY SUGGESTION ───────────────────────────────────────────────
     // ── AI niche discovery (no user input needed, fresh each call) ──────────
     app.post("/ai/discover-niche", async (request: any, reply) => {
-        const { platform = "etsy" } = request.body as { platform?: "etsy" | "amazon" | "general" };
+        const { platform = "etsy", productType = "" } = request.body as { platform?: "etsy" | "amazon" | "general"; productType?: string };
 
         let googleKey = process.env.GOOGLE_API_KEY ?? "";
         try {
@@ -1167,42 +1167,71 @@ Generate exactly 15 diverse, actionable trends. Focus on currently profitable an
             ? "https://www.amazon.com/s?k=<search+term>"
             : "https://www.etsy.com/search?q=<search+term>";
 
-        // Randomize the creative angle to avoid repetition across calls
+        // Highly specific creative angles — each forces a different, uncommon niche direction
         const angles = [
-            "an emerging hobby or micro-community (e.g. van life, sourdough baking, cottagecore, dark academia)",
-            "an underserved demographic (e.g. neurodivergent adults, senior women, teen boys, non-binary kids)",
-            "a crossover niche combining two topics rarely seen together",
-            "a seasonal or holiday niche that is specific enough to avoid saturation",
-            "a cultural or geographic niche not well represented in English-language products",
-            "a therapeutic or wellness niche with growing search demand",
-            "a fandom or pop-culture adjacent niche with passionate buyers",
-            "a professional or occupational niche (e.g. nurses, teachers, software engineers)",
+            { angle: "a specific neurodivergent or mental health community (ADHD, autism, anxiety, OCD) that buys products for coping or self-expression", examples: "ADHD adult coloring, autism sensory patterns, anxiety cat journal" },
+            { angle: "a hyper-specific pet niche beyond dogs/cats (axolotls, ferrets, hairless cats, capybaras, bearded dragons, hedgehogs)", examples: "axolotl lover wall art, ferret coloring book, capybara digital print" },
+            { angle: "a profession that is overlooked despite having a passionate identity community (maritime workers, zookeepers, librarians, welders, wildfire fighters)", examples: "librarian wall art, zookeeper humor coloring, trucker journal" },
+            { angle: "a very specific age or life-stage transition (retirement women, newly divorced adults, empty nesters, first-time grandparents, turning 40/50/60)", examples: "retirement women coloring, grandma first year journal, empty nester wall art" },
+            { angle: "a cultural or diaspora identity not well represented in POD (Filipino mythology, Slavic folklore, Yoruba symbols, Sámi art, Andean textiles)", examples: "Filipino mythology coloring, Yoruba adinkra pattern, Slavic folk art poster" },
+            { angle: "a micro-hobby with a passionate niche community but almost no merch (urban foraging, sourdough artistry, competitive jigsaw, fountain pen collecting, film photography revival)", examples: "sourdough bread art print, fountain pen botanical, film photography journal" },
+            { angle: "a sport or physical activity that is growing fast but underserved in KDP/Etsy (pickleball, padel, indoor climbing, freediving, disc golf, roller derby, kitesurfing)", examples: "pickleball humor journal, indoor climbing hold pattern, disc golf mandala" },
+            { angle: "a crossover of two very specific unexpected topics (gothic gardening, cottagecore bodybuilding, kawaii true crime, dark academia cooking, punk birdwatching)", examples: "gothic gardening poster, cottagecore weightlifting, kawaii mystery coloring" },
+            { angle: "a food or drink micro-niche with visual/aesthetic appeal (bento art, ugly vegetable beauty, elaborate cocktail garnishes, mushroom foraging, artisan bread shaping)", examples: "bento art print, mushroom foraging coloring, artisan bread baker journal" },
+            { angle: "a gaming or tabletop niche specific enough to avoid saturation (cozy gaming aesthetic, solo board gaming, OSR dungeon maps, specific retro console era, LARPing community)", examples: "cozy gaming wall art, solo board game journal, retro SNES pixel art poster" },
+            { angle: "a seasonal niche that is very specific and NOT Christmas/Halloween (hummingbird migration, spring equinox, firefly season, strawberry moon, autumn mushroom season)", examples: "hummingbird migration print, firefly summer coloring, strawberry moon poster" },
+            { angle: "a spiritual or esoteric niche that is specific and not mainstream (green witchcraft, Norse runes, secular ceremony, plant parenthood spirituality, animism modern practice)", examples: "green witch botanical coloring, Norse rune wall art, plant parenthood journal" },
         ];
-        const angle = angles[Math.floor(Math.random() * angles.length)];
+        const picked = angles[Math.floor(Math.random() * angles.length)];
         const entropy = Math.random().toString(36).slice(2, 9);
+
+        const banned = "mandala, affirmation quotes, generic sunflowers, generic cats, generic dogs, unicorns, mermaids, generic butterflies, generic flowers, zodiac (generic), chakras (generic), paw prints, generic watercolor, boho (generic), farmhouse (generic), Christmas (generic), Halloween (generic), adult coloring (generic), gratitude journal (generic)";
+
+        const productTypeDescriptions: Record<string, string> = {
+            "coloring-book": "KDP coloring books (printable/physical, thick line art, themed scenes)",
+            "printable-poster": "Etsy printable wall art / digital download posters",
+            "seamless-pattern": "seamless repeat patterns for POD (Spoonflower, Redbubble, fabric)",
+        };
+        const productConstraint = productType && productTypeDescriptions[productType]
+            ? `\nProduct type constraint: the niche MUST be for ${productTypeDescriptions[productType]}.`
+            : "";
+        const styleHints: Record<string, string> = {
+            "coloring-book": "also suggest a styleCategory from: generic, anime, children, watercolor, realistic, abstract",
+            "printable-poster": "also suggest a styleCategory from: wall-art, botanical, celestial, geometric, retro, affirmation, illustration",
+            "seamless-pattern": "also suggest a styleCategory from: geometric, botanical, abstract, celestial, retro",
+        };
+        const styleHint = productType && styleHints[productType]
+            ? `\nFor the style field, ${styleHints[productType]}.`
+            : "";
 
         const promptText = `Today: ${new Date().toISOString().slice(0, 10)} | seed: ${entropy}
 
-You are a product research strategist for passive-income sellers on ${platformDescriptions[platform]}.
-Find ONE niche that is currently UNDEREXPLORED — not the obvious ones (no "mandala coloring", no "affirmation journal", no generic animals).
+You are an advanced passive-income product strategist specializing in long-tail niche research for ${platformDescriptions[platform]}.
+Find ONE niche a solo creator can REALISTICALLY dominate because it has real demand but is NOT yet crowded.${productConstraint}
 
-Creative angle to explore today: ${angle}
+BANNED (oversaturated — never suggest): ${banned}
 
-Requirements:
-- Clear buyer intent — people are actually searching for this on ${platform}
-- Specific enough to not be oversaturated (avoid huge generic categories)
-- Products must be creatable as digital/print-on-demand items
-- Think fresh, timely, actionable — something a solo creator can realistically dominate
+Today's creative angle — you MUST follow this direction: ${picked.angle}
+Example directions (do NOT copy, be more original): ${picked.examples}
+
+Self-check before answering — reject your first idea if:
+1. The niche is broader than 2-3 specific words
+2. A generic creator would think of it in under 5 seconds
+3. It would appear in "top 10 Etsy niches" listicles
+4. It resembles anything in the BANNED list
 
 ${platform === "amazon" ? "For Amazon: use URL format " + urlFormat : "For Etsy: use URL format " + urlFormat} (properly URL-encoded)
-The search term should be 2-5 words, buyer-focused.
+Search term: 2-5 words, exactly what a passionate buyer types.${styleHint}
 
 Return ONLY a JSON object:
 {
-  "niche": "Niche name (3-6 words, catchy and specific)",
+  "niche": "Niche name (3-6 words, specific and memorable — not generic)",
+  "productType": "${productType || "coloring-book|printable-poster|seamless-pattern — pick the most natural fit"}",
+  "style": "suggested style category",
   "url": "complete ready-to-use search URL",
   "searchTerm": "the exact search term used",
-  "reasoning": "2 sentences in Spanish: why this niche has potential and why it's not yet saturated"
+  "competition": "baja|media|alta",
+  "reasoning": "2-3 sentences in Spanish: WHO specifically buys this, WHAT makes it unsaturated right now, and WHY it fits the creative angle"
 }`;
 
         try {

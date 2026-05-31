@@ -92,6 +92,7 @@ function exportCSV(rows: EtsyListing[]) {
 export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCreated, rowAction, pipelineAction }: Props) {
     const [etsyResult, setEtsyResult] = useState<EtsyNicheResult | null>(null);
     const [createdNicheRows, setCreatedNicheRows] = useState<Set<string>>(new Set());
+    const [omittedRows, setOmittedRows] = useState<Set<string>>(new Set());
     const [creatingRowTitle, setCreatingRowTitle] = useState<string | null>(null);
     const [sortKey, setSortKey] = useState<SortKey>("personas_carrito");
     const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -389,81 +390,78 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                                 </span>
                                             </td>
                                             <td className="px-3 py-2.5">
-                                                <div className="flex items-center gap-1 justify-center">
-                                                    {/* Action button — custom rowAction or default nicho */}
-                                                    {rowAction ? (() => {
-                                                        const created = rowAction.isCreated(row);
-                                                        const creating = creatingRowTitle === row.titulo_producto;
-                                                        const scheme = rowAction.colorScheme ?? "violet";
-                                                        const activeClass = scheme === "indigo"
-                                                            ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/20"
-                                                            : "bg-violet-500/10 border-violet-500/20 text-violet-400 hover:bg-violet-500/20";
+                                                {(() => {
+                                                    const key = row.titulo_producto;
+                                                    const omitted = omittedRows.has(key);
+                                                    const accepted = createdNicheRows.has(key) || niches.some(n => n.sourceTitulo === key) || (rowAction ? rowAction.isCreated(row) : false);
+                                                    const busy = creatingRowTitle === key || creatingRowTitle === `pipeline::${key}`;
+
+                                                    if (omitted) {
                                                         return (
+                                                            <div className="flex items-center justify-center">
+                                                                <span className="inline-flex items-center gap-1 h-6 px-2 rounded-lg text-[8px] font-black uppercase border border-neutral-700/40 bg-neutral-800/30 text-neutral-600">
+                                                                    ⏭ Omitido
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    if (accepted) {
+                                                        return (
+                                                            <div className="flex items-center justify-center">
+                                                                <span className="inline-flex items-center gap-1 h-6 px-2 rounded-lg text-[8px] font-black uppercase border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
+                                                                    <CheckCircle2 size={8} /> Lanzado
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    }
+
+                                                    return (
+                                                        <div className="flex items-center gap-1 justify-center">
+                                                            {/* Descartar */}
+                                                            <button
+                                                                onClick={() => deleteRow(row)}
+                                                                title="Descartar y eliminar de la tabla"
+                                                                className="inline-flex items-center gap-1 h-6 px-1.5 rounded-lg text-[8px] font-black uppercase border border-rose-500/20 bg-rose-500/5 text-rose-500/60 hover:text-rose-400 hover:bg-rose-500/15 hover:border-rose-500/30 transition-all">
+                                                                <Trash2 size={8} /> <span className="hidden sm:inline">Descartar</span>
+                                                            </button>
+                                                            {/* Omitir */}
+                                                            <button
+                                                                onClick={() => setOmittedRows(prev => new Set([...prev, key]))}
+                                                                title="Omitir — marcar sin hacer nada"
+                                                                className="inline-flex items-center gap-1 h-6 px-1.5 rounded-lg text-[8px] font-black uppercase border border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-300 hover:border-white/20 transition-all">
+                                                                ⏭ <span className="hidden sm:inline">Omitir</span>
+                                                            </button>
+                                                            {/* Continuar */}
                                                             <button
                                                                 onClick={async () => {
-                                                                    if (created || creating) return;
-                                                                    setCreatingRowTitle(row.titulo_producto);
-                                                                    try { await rowAction.onCreate(row); }
-                                                                    catch (e: any) { toast.error(e.message ?? "Error"); }
-                                                                    finally { setCreatingRowTitle(null); }
+                                                                    setCreatingRowTitle(key);
+                                                                    try {
+                                                                        if (rowAction) {
+                                                                            await rowAction.onCreate(row);
+                                                                        } else {
+                                                                            await createNicheFromRow(row);
+                                                                        }
+                                                                        if (pipelineAction) {
+                                                                            setCreatingRowTitle(`pipeline::${key}`);
+                                                                            await pipelineAction.onCreate(row);
+                                                                        }
+                                                                        setCreatedNicheRows(prev => new Set([...prev, key]));
+                                                                    } catch (e: any) {
+                                                                        toast.error(e.message ?? "Error");
+                                                                    } finally {
+                                                                        setCreatingRowTitle(null);
+                                                                    }
                                                                 }}
-                                                                disabled={created || creating}
-                                                                title={created ? `${rowAction.label} ya creado` : `Crear ${rowAction.label}: ${row.sub_nicho_estimado}`}
-                                                                className={`inline-flex items-center gap-1 h-6 px-2 rounded-lg text-[8px] font-black uppercase transition-all border ${created ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 cursor-default" : `${activeClass} disabled:opacity-50`}`}
-                                                            >
-                                                                {creating ? <Loader2 size={8} className="animate-spin" /> : created ? <CheckCircle2 size={9} /> : <Plus size={8} />}
-                                                                {created ? "✓" : rowAction.label}
+                                                                disabled={busy}
+                                                                title="Continuar — crear nicho y lanzar pipeline"
+                                                                className="inline-flex items-center gap-1 h-6 px-2 rounded-lg text-[8px] font-black uppercase border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+                                                                {busy ? <Loader2 size={8} className="animate-spin" /> : <span>▶</span>}
+                                                                {busy ? "…" : "Continuar"}
                                                             </button>
-                                                        );
-                                                    })() : (() => {
-                                                        const created = createdNicheRows.has(row.titulo_producto) || niches.some(n => n.sourceTitulo === row.titulo_producto);
-                                                        const creating = creatingRowTitle === row.titulo_producto;
-                                                        return (
-                                                            <button
-                                                                onClick={() => void createNicheFromRow(row)}
-                                                                disabled={created || creating}
-                                                                title={created ? "Nicho ya creado" : `Crear nicho: ${row.sub_nicho_estimado}`}
-                                                                className={`inline-flex items-center gap-1 h-6 px-2 rounded-lg text-[8px] font-black uppercase transition-all border ${created ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 cursor-default" : "bg-violet-500/10 border-violet-500/20 text-violet-400 hover:bg-violet-500/20 disabled:opacity-50"}`}
-                                                            >
-                                                                {creating ? <Loader2 size={8} className="animate-spin" /> : created ? <CheckCircle2 size={9} /> : <Plus size={8} />}
-                                                                {created ? "✓" : "Nicho"}
-                                                            </button>
-                                                        );
-                                                    })()}
-                                                    {/* Pipeline action (optional second button) */}
-                                                    {pipelineAction && (() => {
-                                                        const ready = pipelineAction.isCreated(row);
-                                                        const launching = creatingRowTitle === `pipeline::${row.titulo_producto}`;
-                                                        const scheme = pipelineAction.colorScheme ?? "amber";
-                                                        const cls = scheme === "sky" ? "bg-sky-500/10 border-sky-500/20 text-sky-400 hover:bg-sky-500/20"
-                                                            : "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20";
-                                                        return (
-                                                            <button
-                                                                onClick={async () => {
-                                                                    if (launching) return;
-                                                                    setCreatingRowTitle(`pipeline::${row.titulo_producto}`);
-                                                                    try { await pipelineAction.onCreate(row); }
-                                                                    catch (e: any) { toast.error(e.message ?? "Error"); }
-                                                                    finally { setCreatingRowTitle(null); }
-                                                                }}
-                                                                disabled={launching}
-                                                                title={ready ? "Pipeline ya iniciado" : `Lanzar pipeline: ${row.sub_nicho_estimado}`}
-                                                                className={`inline-flex items-center gap-1 h-6 px-2 rounded-lg text-[8px] font-black uppercase transition-all border ${ready ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 cursor-default" : `${cls} disabled:opacity-50`}`}
-                                                            >
-                                                                {launching ? <Loader2 size={8} className="animate-spin" /> : ready ? <CheckCircle2 size={9} /> : <span>▶</span>}
-                                                                {ready ? "✓" : pipelineAction.label}
-                                                            </button>
-                                                        );
-                                                    })()}
-                                                    {/* Delete */}
-                                                    <button
-                                                        onClick={() => deleteRow(row)}
-                                                        title="Eliminar de la tabla"
-                                                        className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-white/[0.03] border border-white/8 text-neutral-700 hover:text-rose-400 hover:border-rose-500/25 hover:bg-rose-500/10 transition-all"
-                                                    >
-                                                        <Trash2 size={8} />
-                                                    </button>
-                                                </div>
+                                                        </div>
+                                                    );
+                                                })()}
                                             </td>
                                         </tr>
                                     );
