@@ -297,8 +297,8 @@ export function NicheRadar({
                 {([
                     { id: "etsy-niches" as Mode, platform: "etsy" as const, label: modeLabels?.etsy ?? "Nichos Etsy", icon: ShoppingCart, active: "bg-sky-500/15 border border-sky-500/25 text-sky-300" },
                     { id: "amazon-niches" as Mode, platform: "amazon" as const, label: "Amazon KDP", icon: ShoppingBag, active: "bg-orange-500/15 border border-orange-500/25 text-orange-300" },
-                    { id: "general" as Mode, platform: "general" as const, label: modeLabels?.general ?? "Análisis General", icon: BarChart3, active: "bg-amber-500/15 border border-amber-500/25 text-amber-300" },
                     { id: "trends-niches" as Mode, platform: "trends" as const, label: "Google Trends", icon: TrendingUp, active: "bg-emerald-500/15 border border-emerald-500/25 text-emerald-300" },
+                    { id: "general" as Mode, platform: "general" as const, label: modeLabels?.general ?? "Análisis General", icon: BarChart3, active: "bg-amber-500/15 border border-amber-500/25 text-amber-300" },
                 ] as const).map(tab => {
                     const Icon = tab.icon;
                     const isActive = mode === tab.id;

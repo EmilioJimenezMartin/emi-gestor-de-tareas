@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
     CheckCircle2, Download, RefreshCw, Flame, TrendingUp, Lightbulb,
-    Star, ShoppingCart, ArrowUpDown, Plus, Loader2, Trash2, Calendar, X,
+    Star, ShoppingCart, ArrowUpDown, Plus, Loader2, Trash2, Calendar, X, Send,
 } from "lucide-react";
 import { createApiSocket } from "@/lib/socket";
 import { Modal } from "@/components/ui/modal";
@@ -407,19 +407,48 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                                     const accepted = createdNicheRows.has(key) || niches.some(n => n.sourceTitulo === key) || (rowAction ? rowAction.isCreated(row) : false);
                                                     const busy = creatingRowTitle === key || creatingRowTitle === `pipeline::${key}`;
 
+                                                    // Delete is always available regardless of state
+                                                    const deleteBtn = (
+                                                        <button
+                                                            onClick={() => deleteRow(row)}
+                                                            title="Eliminar de la tabla"
+                                                            className="inline-flex items-center justify-center w-6 h-6 rounded-lg text-[8px] border border-rose-500/20 bg-rose-500/5 text-rose-500/50 hover:text-rose-400 hover:bg-rose-500/15 hover:border-rose-500/30 transition-all shrink-0">
+                                                            <Trash2 size={8} />
+                                                        </button>
+                                                    );
+
                                                     if (omitted) {
                                                         return (
-                                                            <div className="flex items-center justify-center">
-                                                                <span className="inline-flex items-center gap-1 h-6 px-2 rounded-lg text-[8px] font-black uppercase border border-neutral-700/40 bg-neutral-800/30 text-neutral-600">
-                                                                    ⏭ Omitido
-                                                                </span>
+                                                            <div className="flex items-center gap-1 justify-center">
+                                                                {deleteBtn}
+                                                                <button
+                                                                    onClick={() => setOmittedRows(prev => { const next = new Set(prev); next.delete(key); return next; })}
+                                                                    title="Reactivar"
+                                                                    className="inline-flex items-center gap-1 h-6 px-2 rounded-lg text-[8px] font-black uppercase border border-neutral-700/40 bg-neutral-800/30 text-neutral-600 hover:text-neutral-300 hover:border-white/20 transition-all">
+                                                                    ↩ Omitido
+                                                                </button>
                                                             </div>
                                                         );
                                                     }
 
                                                     if (accepted) {
                                                         return (
-                                                            <div className="flex items-center justify-center">
+                                                            <div className="flex items-center gap-1 justify-center">
+                                                                {deleteBtn}
+                                                                {pipelineAction && (
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            setCreatingRowTitle(`pipeline::${key}`);
+                                                                            try { await pipelineAction.onCreate(row); }
+                                                                            catch (e: any) { toast.error(e.message ?? "Error"); }
+                                                                            finally { setCreatingRowTitle(null); }
+                                                                        }}
+                                                                        disabled={busy}
+                                                                        title="Enviar a Telegram para revisión"
+                                                                        className="inline-flex items-center justify-center w-6 h-6 rounded-lg border border-sky-500/25 bg-sky-500/8 text-sky-400/70 hover:text-sky-300 hover:bg-sky-500/20 hover:border-sky-500/40 disabled:opacity-40 transition-all shrink-0">
+                                                                        {busy ? <Loader2 size={8} className="animate-spin" /> : <Send size={8} />}
+                                                                    </button>
+                                                                )}
                                                                 <span className="inline-flex items-center gap-1 h-6 px-2 rounded-lg text-[8px] font-black uppercase border border-emerald-500/20 bg-emerald-500/10 text-emerald-400">
                                                                     <CheckCircle2 size={8} /> Lanzado
                                                                 </span>
@@ -429,13 +458,7 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
 
                                                     return (
                                                         <div className="flex items-center gap-1 justify-center">
-                                                            {/* Descartar */}
-                                                            <button
-                                                                onClick={() => deleteRow(row)}
-                                                                title="Descartar y eliminar de la tabla"
-                                                                className="inline-flex items-center gap-1 h-6 px-1.5 rounded-lg text-[8px] font-black uppercase border border-rose-500/20 bg-rose-500/5 text-rose-500/60 hover:text-rose-400 hover:bg-rose-500/15 hover:border-rose-500/30 transition-all">
-                                                                <Trash2 size={8} /> <span className="hidden sm:inline">Descartar</span>
-                                                            </button>
+                                                            {deleteBtn}
                                                             {/* Omitir */}
                                                             <button
                                                                 onClick={() => setOmittedRows(prev => new Set([...prev, key]))}
@@ -443,7 +466,7 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                                                 className="inline-flex items-center gap-1 h-6 px-1.5 rounded-lg text-[8px] font-black uppercase border border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-300 hover:border-white/20 transition-all">
                                                                 ⏭ <span className="hidden sm:inline">Omitir</span>
                                                             </button>
-                                                            {/* Continuar */}
+                                                            {/* Continuar → crea nicho y envía a Telegram */}
                                                             <button
                                                                 onClick={async () => {
                                                                     setCreatingRowTitle(key);
@@ -465,10 +488,10 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                                                     }
                                                                 }}
                                                                 disabled={busy}
-                                                                title="Continuar — crear nicho y lanzar pipeline"
+                                                                title="Crear nicho y enviar a Telegram"
                                                                 className="inline-flex items-center gap-1 h-6 px-2 rounded-lg text-[8px] font-black uppercase border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
-                                                                {busy ? <Loader2 size={8} className="animate-spin" /> : <span>▶</span>}
-                                                                {busy ? "…" : "Continuar"}
+                                                                {busy ? <Loader2 size={8} className="animate-spin" /> : <Send size={8} />}
+                                                                {busy ? "…" : <span className="hidden sm:inline">Telegram</span>}
                                                             </button>
                                                         </div>
                                                     );
