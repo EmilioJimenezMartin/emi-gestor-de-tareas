@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
     CheckCircle2, Download, RefreshCw, Flame, TrendingUp, Lightbulb,
-    Star, ShoppingCart, ArrowUpDown, Plus, Loader2, Trash2, Calendar,
+    Star, ShoppingCart, ArrowUpDown, Plus, Loader2, Trash2, Calendar, X,
 } from "lucide-react";
 import { createApiSocket } from "@/lib/socket";
 import { Modal } from "@/components/ui/modal";
@@ -48,15 +48,20 @@ interface Props {
     pipelineAction?: RowAction;
 }
 
-type SortKey = keyof EtsyListing;
+type SortKey = keyof EtsyListing | "score";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function demandSignal(row: EtsyListing): { label: string; cls: string; icon: "hot" | "mid" | "new" } {
-    const score =
+function rowScore(row: EtsyListing): number {
+    return (
         (row.bestseller ? 3 : 0) +
         (row.personas_carrito >= 20 ? 3 : row.personas_carrito >= 10 ? 2 : row.personas_carrito > 0 ? 1 : 0) +
-        (row.total_reseñas >= 1000 ? 3 : row.total_reseñas >= 100 ? 2 : row.total_reseñas > 0 ? 1 : 0);
+        (row.total_reseñas >= 1000 ? 3 : row.total_reseñas >= 100 ? 2 : row.total_reseñas > 0 ? 1 : 0)
+    );
+}
+
+function demandSignal(row: EtsyListing): { label: string; cls: string; icon: "hot" | "mid" | "new" } {
+    const score = rowScore(row);
     if (score >= 5) return { label: "Alta", cls: "text-rose-400 bg-rose-500/10 border-rose-500/20", icon: "hot" };
     if (score >= 2) return { label: "Media", cls: "text-amber-400 bg-amber-500/10 border-amber-500/20", icon: "mid" };
     return { label: "Nueva", cls: "text-sky-400 bg-sky-500/10 border-sky-500/15", icon: "new" };
@@ -90,6 +95,8 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
     const [creatingRowTitle, setCreatingRowTitle] = useState<string | null>(null);
     const [sortKey, setSortKey] = useState<SortKey>("personas_carrito");
     const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+    const [page, setPage] = useState(0);
+    const [pageSize, setPageSize] = useState(10);
     const [confirmModal, setConfirmModal] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
     const etsyResultRef = useRef<EtsyNicheResult | null>(null);
 
@@ -205,22 +212,48 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
     const toggleSort = (key: SortKey) => {
         if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
         else { setSortKey(key); setSortDir("desc"); }
+        setPage(0);
     };
 
     const sortedRows = etsyResult ? [...etsyResult.nichos_detectados].sort((a, b) => {
-        const av = a[sortKey], bv = b[sortKey];
-        if (typeof av === "boolean" && typeof bv === "boolean") return sortDir === "desc" ? (bv ? 1 : 0) - (av ? 1 : 0) : (av ? 1 : 0) - (bv ? 1 : 0);
-        if (typeof av === "number" && typeof bv === "number") return sortDir === "desc" ? bv - av : av - bv;
-        return sortDir === "desc" ? String(bv).localeCompare(String(av)) : String(av).localeCompare(String(bv));
+        // m=1 → asc (smaller first), m=-1 → desc (larger first)
+        const m = sortDir === "asc" ? 1 : -1;
+        if (sortKey === "score") return m * (rowScore(a) - rowScore(b));
+        if (sortKey === "fecha_detectado") {
+            const da = a.fecha_detectado ? new Date(a.fecha_detectado).getTime() : 0;
+            const db = b.fecha_detectado ? new Date(b.fecha_detectado).getTime() : 0;
+            return m * (da - db);
+        }
+        if (sortKey === "precio") {
+            const pa = parseFloat(String(a.precio).replace(/[^0-9.]/g, "")) || 0;
+            const pb = parseFloat(String(b.precio).replace(/[^0-9.]/g, "")) || 0;
+            return m * (pa - pb);
+        }
+        if (sortKey === "bestseller") return m * ((a.bestseller ? 1 : 0) - (b.bestseller ? 1 : 0));
+        const av = a[sortKey as keyof EtsyListing];
+        const bv = b[sortKey as keyof EtsyListing];
+        if (typeof av === "number" && typeof bv === "number") return m * (av - bv);
+        return m * String(av ?? "").localeCompare(String(bv ?? ""));
     }) : [];
 
-    const SortBtn = ({ k, label }: { k: SortKey; label: string }) => (
-        <button onClick={() => toggleSort(k)}
-            className={`flex items-center gap-1 text-[8px] font-black uppercase tracking-widest transition-colors ${sortKey === k ? "text-sky-400" : "text-neutral-600 hover:text-neutral-400"}`}>
-            {label}
-            <ArrowUpDown size={8} className={sortKey === k ? "text-sky-400" : "text-neutral-700"} />
-        </button>
-    );
+    const totalPages = pageSize === 0 ? 1 : Math.ceil(sortedRows.length / pageSize);
+    const safePage = Math.min(page, Math.max(0, totalPages - 1));
+    const pagedRows = pageSize === 0 ? sortedRows : sortedRows.slice(safePage * pageSize, (safePage + 1) * pageSize);
+    const PAGE_SIZES = [10, 25, 50, 0] as const;
+
+    const SortBtn = ({ k, label }: { k: SortKey; label: string }) => {
+        const active = sortKey === k;
+        return (
+            <button onClick={() => toggleSort(k)}
+                className={`flex items-center gap-1 h-6 px-2 rounded-lg border text-[8px] font-black uppercase tracking-widest transition-all ${active ? "bg-sky-500/10 border-sky-500/25 text-sky-400" : "border-transparent text-neutral-600 hover:text-neutral-300 hover:border-white/10"}`}>
+                {label}
+                {active
+                    ? <span className="text-[9px] leading-none">{sortDir === "desc" ? "↓" : "↑"}</span>
+                    : <ArrowUpDown size={7} className="text-neutral-700" />
+                }
+            </button>
+        );
+    };
 
     if (!etsyResult) return null;
 
@@ -261,13 +294,23 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                     </div>
 
                     {/* Sort controls */}
-                    <div className="flex items-center gap-3 pb-1 border-b border-white/5 flex-wrap">
-                        <span className="text-[8px] uppercase tracking-widest text-neutral-700 font-black">Ordenar:</span>
+                    <div className="flex items-center gap-1.5 pb-2 border-b border-white/5 flex-wrap">
+                        <span className="text-[8px] uppercase tracking-widest text-neutral-600 font-black mr-1">Ordenar</span>
+                        <SortBtn k="score" label="Score" />
                         <SortBtn k="personas_carrito" label="Carrito" />
                         <SortBtn k="total_reseñas" label="Reseñas" />
                         <SortBtn k="bestseller" label="Bestseller" />
                         <SortBtn k="precio" label="Precio" />
+                        <SortBtn k="fecha_detectado" label="Fecha" />
+                        <SortBtn k="fuente" label="Fuente" />
                         <SortBtn k="sub_nicho_estimado" label="Sub-nicho" />
+                        {(sortKey !== "personas_carrito" || sortDir !== "desc") && (
+                            <button
+                                onClick={() => { setSortKey("personas_carrito"); setSortDir("desc"); setPage(0); }}
+                                className="flex items-center gap-1 h-6 px-2 rounded-lg border border-white/10 text-[8px] font-black uppercase tracking-widest text-neutral-500 hover:text-white hover:border-white/20 transition-all ml-1">
+                                <X size={8} /> Limpiar
+                            </button>
+                        )}
                     </div>
 
                     {/* Table */}
@@ -287,11 +330,12 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                 </tr>
                             </thead>
                             <tbody>
-                                {sortedRows.map((row, i) => {
+                                {pagedRows.map((row, i) => {
+                                const globalIndex = safePage * (pageSize || sortedRows.length) + i;
                                     const sig = demandSignal(row);
                                     return (
                                         <tr key={i} className={`border-b border-white/5 last:border-0 transition-colors hover:bg-white/[0.02] ${row.bestseller ? "bg-amber-500/[0.03]" : ""}`}>
-                                            <td className="px-3 py-2.5 text-[9px] text-neutral-700 tabular-nums font-black">{i + 1}</td>
+                                            <td className="px-3 py-2.5 text-[9px] text-neutral-700 tabular-nums font-black">{globalIndex + 1}</td>
                                             <td className="px-3 py-2.5 max-w-[220px]">
                                                 <p className="text-[10px] text-white font-semibold line-clamp-2 leading-snug">{row.titulo_producto}</p>
                                                 <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
@@ -426,6 +470,59 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                 })}
                             </tbody>
                         </table>
+                    </div>
+
+                    {/* Pagination */}
+                    <div className="flex items-center justify-between gap-3 flex-wrap pt-1">
+                        {/* Page size selector */}
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600">Mostrar</span>
+                            {PAGE_SIZES.map(s => (
+                                <button key={s} onClick={() => { setPageSize(s); setPage(0); }}
+                                    className={`h-6 px-2.5 rounded-lg border text-[8px] font-black uppercase tracking-widest transition-all ${pageSize === s ? "bg-sky-500/15 border-sky-500/30 text-sky-300" : "border-white/8 text-neutral-600 hover:text-neutral-300 hover:border-white/15"}`}>
+                                    {s === 0 ? "Todos" : s}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Page info + prev/next */}
+                        {pageSize !== 0 && totalPages > 1 && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-[8px] text-neutral-600 tabular-nums">
+                                    {safePage * pageSize + 1}–{Math.min((safePage + 1) * pageSize, sortedRows.length)} de {sortedRows.length}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                    <button onClick={() => setPage(0)} disabled={safePage === 0}
+                                        className="w-6 h-6 rounded-lg border border-white/8 text-[9px] text-neutral-600 hover:text-white hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                        «
+                                    </button>
+                                    <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={safePage === 0}
+                                        className="w-6 h-6 rounded-lg border border-white/8 text-[9px] text-neutral-600 hover:text-white hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                        ‹
+                                    </button>
+                                    {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                                        const idx = totalPages <= 7 ? i : Math.max(0, Math.min(safePage - 3, totalPages - 7)) + i;
+                                        return (
+                                            <button key={idx} onClick={() => setPage(idx)}
+                                                className={`w-6 h-6 rounded-lg border text-[8px] font-black transition-all ${idx === safePage ? "bg-sky-500/20 border-sky-500/35 text-sky-300" : "border-white/8 text-neutral-600 hover:text-neutral-300 hover:border-white/20"}`}>
+                                                {idx + 1}
+                                            </button>
+                                        );
+                                    })}
+                                    <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={safePage === totalPages - 1}
+                                        className="w-6 h-6 rounded-lg border border-white/8 text-[9px] text-neutral-600 hover:text-white hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                        ›
+                                    </button>
+                                    <button onClick={() => setPage(totalPages - 1)} disabled={safePage === totalPages - 1}
+                                        className="w-6 h-6 rounded-lg border border-white/8 text-[9px] text-neutral-600 hover:text-white hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                        »
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        {pageSize !== 0 && totalPages <= 1 && (
+                            <span className="text-[8px] text-neutral-700 tabular-nums">{sortedRows.length} resultados</span>
+                        )}
                     </div>
                 </div>
             </div>
