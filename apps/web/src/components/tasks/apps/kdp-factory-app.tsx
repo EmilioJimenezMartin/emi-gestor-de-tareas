@@ -1077,6 +1077,8 @@ export function KdpFactoryApp() {
     const [nicheSearch, setNicheSearch] = useState("");
     const [scoringNicheId, setScoringNicheId] = useState<string | null>(null);
     // Auto-Pilot config
+    const [qualityCheckEnabled, setQualityCheckEnabled] = useState(true);
+    const [weeklyDigestEnabled, setWeeklyDigestEnabled] = useState(true);
     const [apCatalogsPer, setApCatalogsPer] = useState("5");
     const [apImagesPerCatalog, setApImagesPerCatalog] = useState("5");
     const [apMaxNiches, setApMaxNiches] = useState("3");
@@ -3282,6 +3284,8 @@ export function KdpFactoryApp() {
                 if (settingsMap.has("AUTOPILOT_IMAGES_PER_CATALOG")) setApImagesPerCatalog(settingsMap.get("AUTOPILOT_IMAGES_PER_CATALOG")!);
                 if (settingsMap.has("AUTOPILOT_MAX_NICHES")) setApMaxNiches(settingsMap.get("AUTOPILOT_MAX_NICHES")!);
                 if (settingsMap.has("MAX_ACTIVE_CATALOGS")) setApMaxActiveCatalogs(settingsMap.get("MAX_ACTIVE_CATALOGS")!);
+                if (settingsMap.has("QUALITY_CHECK_ENABLED")) setQualityCheckEnabled(settingsMap.get("QUALITY_CHECK_ENABLED") !== "0" && settingsMap.get("QUALITY_CHECK_ENABLED") !== "false");
+                if (settingsMap.has("TELEGRAM_WEEKLY_DIGEST")) setWeeklyDigestEnabled(settingsMap.get("TELEGRAM_WEEKLY_DIGEST") !== "false");
 
                 // Autopilot schedule — restore cron UI state
                 const savedCron = settingsMap.get("AUTOPILOT_CRON") ?? "";
@@ -6501,6 +6505,7 @@ export function KdpFactoryApp() {
                         <button onClick={() => void saveAutoPilotSettings()} className="relative w-full h-8 rounded-xl bg-white/[0.03] border border-white/8 text-[10px] font-black uppercase tracking-widest text-neutral-500 hover:text-white hover:bg-white/8 transition-all">
                             Guardar límites
                         </button>
+
                     </Card>
 
                     {/* ─ Programación ─ */}
@@ -7073,7 +7078,7 @@ export function KdpFactoryApp() {
 
             {configSection === "notificaciones" && <div className="space-y-8">
             {/* ── EVENTOS DEL SISTEMA ─────────────────────────────────────── */}
-            <section className="space-y-4">
+            <section className="space-y-3">
                 <SectionHeader icon={<Bell size={13} />} title="Eventos del sistema" subtitle="Activa o desactiva cada tipo de mensaje de Telegram · desactivar no afecta al pipeline" color="amber" size="sm" />
                 {/* 2-column event grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -7088,15 +7093,15 @@ export function KdpFactoryApp() {
                                     {NOTIFICATION_EVENTS.filter(e => e.group === group).map(ev => {
                                         const enabled = notificationRules[ev.id] ?? true;
                                         return (
-                                            <div key={ev.id} className={`flex items-center gap-3 px-4 py-2.5 transition-all ${enabled ? "" : "opacity-35"}`}>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-[11px] font-black text-white leading-tight">{ev.label}</p>
-                                                    <p className="text-[10px] text-neutral-600 mt-0.5 leading-tight">{ev.desc}</p>
+                                            <div key={ev.id} className="flex items-center justify-between px-4 py-3">
+                                                <div>
+                                                    <p className="text-xs font-black text-white">{ev.label}</p>
+                                                    <p className="text-[10px] text-neutral-500 mt-0.5">{ev.desc}</p>
                                                 </div>
                                                 <button
                                                     onClick={() => setNotificationRules(prev => ({ ...prev, [ev.id]: !enabled }))}
-                                                    className={`relative shrink-0 w-8 h-[18px] rounded-full border transition-all duration-200 ${enabled ? "bg-amber-500/20 border-amber-500/40" : "bg-white/[0.04] border-white/10"}`}>
-                                                    <span className={`absolute top-[1px] h-[14px] w-[14px] rounded-full transition-all duration-200 ${enabled ? "left-[14px] bg-amber-400" : "left-[2px] bg-neutral-600"}`} />
+                                                    className={`relative shrink-0 w-11 h-6 rounded-full transition-all duration-200 ${enabled ? "bg-amber-500" : "bg-white/10"}`}>
+                                                    <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${enabled ? "left-[22px]" : "left-0.5"}`} />
                                                 </button>
                                             </div>
                                         );
@@ -7113,7 +7118,7 @@ export function KdpFactoryApp() {
             </section>
 
             {/* ── ALERTAS PROACTIVAS (umbrales) ──────────────────────────── */}
-            <section className="space-y-4">
+            <section className="space-y-3">
                 <SectionHeader icon={<Bell size={13} />} title="Umbrales de alertas" subtitle="Tiempo sin actividad antes de disparar la alerta · máx. 1 aviso por nicho/día" color="amber" size="sm" />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {[
@@ -7124,7 +7129,7 @@ export function KdpFactoryApp() {
                             <span className="text-xl shrink-0">{icon}</span>
                             <div className="flex-1 min-w-0">
                                 <p className="text-sm font-black text-white">{label}</p>
-                                <p className="text-[10px] text-neutral-600 mt-0.5">{desc}</p>
+                                <p className="text-[10px] text-neutral-500 mt-0.5">{desc}</p>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
                                 <input type="number" min="1" max="720" value={alertSettings[hoursKey]}
@@ -7139,6 +7144,55 @@ export function KdpFactoryApp() {
                     className="flex items-center gap-1.5 h-8 px-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm font-black text-amber-400 hover:bg-amber-500/20 transition-all disabled:opacity-40">
                     {savingAlertSettings ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} Guardar umbrales
                 </button>
+            </section>
+
+            {/* ── GENERAL ─────────────────────────────────────────────────── */}
+            <section className="space-y-3">
+                <SectionHeader icon={<Bell size={13} />} title="General" subtitle="Opciones globales de notificación y pipeline" color="amber" size="sm" />
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-white/8 bg-white/[0.02]">
+                        <div>
+                            <p className="text-xs font-black text-white">Resumen semanal</p>
+                            <p className="text-[10px] text-neutral-500 mt-0.5">Cada lunes a las 9:00 · pipeline, royalties y catálogos atascados</p>
+                        </div>
+                        <button
+                            onClick={async () => {
+                                const next = !weeklyDigestEnabled;
+                                setWeeklyDigestEnabled(next);
+                                await fetch(`${API_BASE_URL}/settings`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify([{ key: "TELEGRAM_WEEKLY_DIGEST", value: next ? "true" : "false" }]),
+                                });
+                                toast.success(next ? "Resumen semanal activado" : "Resumen semanal desactivado");
+                            }}
+                            className={`relative shrink-0 w-11 h-6 rounded-full transition-all duration-200 ${weeklyDigestEnabled ? "bg-sky-500" : "bg-white/10"}`}
+                        >
+                            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${weeklyDigestEnabled ? "left-[22px]" : "left-0.5"}`} />
+                        </button>
+                    </div>
+                    <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-white/8 bg-white/[0.02]">
+                        <div>
+                            <p className="text-xs font-black text-white">Control de calidad</p>
+                            <p className="text-[10px] text-neutral-500 mt-0.5">{qualityCheckEnabled ? "Filtra imágenes sin líneas o con colores incorrectos" : "Desactivado — acepta todas las imágenes sin filtrar"}</p>
+                        </div>
+                        <button
+                            onClick={async () => {
+                                const next = !qualityCheckEnabled;
+                                setQualityCheckEnabled(next);
+                                await fetch(`${API_BASE_URL}/settings`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify([{ key: "QUALITY_CHECK_ENABLED", value: next ? "1" : "0" }]),
+                                });
+                                toast.success(next ? "Control de calidad activado" : "Control de calidad desactivado");
+                            }}
+                            className={`relative shrink-0 w-11 h-6 rounded-full transition-all duration-200 ${qualityCheckEnabled ? "bg-amber-500" : "bg-white/10"}`}
+                        >
+                            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${qualityCheckEnabled ? "left-[22px]" : "left-0.5"}`} />
+                        </button>
+                    </div>
+                </div>
             </section>
             </div>}
 

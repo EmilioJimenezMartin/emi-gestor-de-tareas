@@ -2,11 +2,19 @@ import type { Agenda, Job } from "agenda";
 import axios from "axios";
 import { Catalog } from "../models/catalog.js";
 import { PromptMetric } from "../models/prompt-metric.js";
+import { Settings } from "../models/settings.js";
 import { getCloudinaryConfig, initCloudinary } from "../routes/cloudinary.js";
 import { activateNextQueued } from "../lib/catalog-queue.js";
 import { sendTelegram, shouldNotify } from "../lib/telegram.js";
 import { withImageSlot } from "../lib/ai-semaphore.js";
 import sharp from "sharp";
+
+async function isQualityCheckEnabled(): Promise<boolean> {
+    try {
+        const row = await Settings.findOne({ key: "QUALITY_CHECK_ENABLED" }).lean();
+        return (row as any)?.value !== "0" && (row as any)?.value !== "false";
+    } catch { return true; }
+}
 
 const JOB_NAME = "generate-catalog-image";
 const LOCK_LIFETIME_MS = 8 * 60 * 1000;  // 8 min per job execution
@@ -70,12 +78,11 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
         const pixelCount = raw.length / (channels > 3 ? 3 : channels);
 
         if (productType === "coloring-book") {
-            // Expected: mostly white background with black lines
-            // Count pixels by brightness and color saturation
-            let whitePixels = 0;   // R,G,B all > 220
-            let blackPixels = 0;   // R,G,B all < 60
-            let colorPixels = 0;   // high saturation — sign of non-line-art
-            let blankSuspect = 0;  // nearly solid white/gray (no lines)
+            // Expected: mostly white background with dark outlines (black OR dark grey)
+            let whitePixels = 0;     // R,G,B all > 220
+            let darkLinePixels = 0;  // max(R,G,B) < 100 — pure black AND dark-grey outlines
+            let colorPixels = 0;     // high saturation non-dark pixel — sign of full-color art
+            let blankSuspect = 0;    // near-white (> 240 brightness)
 
             const step = channels > 3 ? 4 : 3;
             for (let i = 0; i < raw.length; i += step) {
@@ -86,14 +93,14 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
                 const saturation = maxC > 0 ? (maxC - minC) / maxC : 0;
 
                 if (r > 220 && g > 220 && b > 220) whitePixels++;
-                else if (r < 60 && g < 60 && b < 60) blackPixels++;
-                else if (saturation > 0.3 && brightness < 220) colorPixels++;
+                else if (maxC < 100) darkLinePixels++;                      // dark grey or black
+                else if (saturation > 0.3 && brightness < 210) colorPixels++;
 
                 if (brightness > 240) blankSuspect++;
             }
 
             const whitePct = whitePixels / pixelCount;
-            const blackPct = blackPixels / pixelCount;
+            const darkLinePct = darkLinePixels / pixelCount;
             const colorPct = colorPixels / pixelCount;
             const blankPct = blankSuspect / pixelCount;
 
@@ -102,21 +109,20 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
                 return { ok: false, score: 0, reason: `Imagen en blanco (${(blankPct * 100).toFixed(0)}% píxeles blancos)` };
             }
 
-            // No black lines at all → wrong style
-            if (blackPct < 0.005) {
-                return { ok: false, score: 10, reason: `Sin líneas negras (${(blackPct * 100).toFixed(2)}%) — no es libro de colorear` };
+            // Essentially no dark lines → completely wrong style (very permissive to allow light line art)
+            if (darkLinePct < 0.003) {
+                return { ok: false, score: 10, reason: `Sin líneas (${(darkLinePct * 100).toFixed(2)}%) — no es libro de colorear` };
             }
 
-            // Too many color pixels → full color illustration, not line art
-            if (colorPct > 0.25) {
+            // Too many vivid color pixels → full-color illustration, not line art
+            if (colorPct > 0.30) {
                 return { ok: false, score: 20, reason: `Imagen a color (${(colorPct * 100).toFixed(0)}% píxeles coloreados) — se esperaba línea B&W` };
             }
 
-            // Score: higher is better. Ideal: lots of white + enough black + minimal color
             const score = Math.round(
-                Math.min(whitePct * 60, 60) +          // up to 60 pts for white background
-                Math.min(blackPct * 1000, 30) +         // up to 30 pts for black lines
-                Math.max(10 - colorPct * 100, 0)        // up to 10 pts penalized by color
+                Math.min(whitePct * 60, 60) +
+                Math.min(darkLinePct * 1000, 30) +
+                Math.max(10 - colorPct * 100, 0)
             );
 
             return { ok: true, score };
@@ -386,31 +392,32 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 });
             }
 
-            // Quality gate — analyze pixels before uploading
+            // Quality gate — analyze pixels before uploading (skipped when disabled in settings)
+            const qualityEnabled = await isQualityCheckEnabled();
             const quality = await analyzeImageQuality(imageBuffer, catalog.productType ?? "coloring-book");
-            console.log(`${tag} Quality: score=${quality.score} ok=${quality.ok}${quality.reason ? ` reason="${quality.reason}"` : ""}`);
-            if (!quality.ok) {
+            console.log(`${tag} Quality: score=${quality.score} ok=${quality.ok} enabled=${qualityEnabled}${quality.reason ? ` reason="${quality.reason}"` : ""}`);
+            if (qualityEnabled && !quality.ok) {
                 throw new Error(`Calidad insuficiente (score ${quality.score}): ${quality.reason}`);
             }
 
             // Force pure white background for coloring books (grey → #FFFFFF)
             if ((catalog.productType ?? "coloring-book") === "coloring-book") {
                 try {
+                    // Convert to greyscale (strips all colour) then push near-white to pure white
                     const { data: px, info: pxi } = await sharp(imageBuffer)
                         .flatten({ background: { r: 255, g: 255, b: 255 } })
                         .removeAlpha()
+                        .greyscale()
                         .raw()
                         .toBuffer({ resolveWithObject: true });
-                    for (let p = 0; p < px.length; p += 3) {
-                        if (px[p] > 200 && px[p + 1] > 200 && px[p + 2] > 200) {
-                            px[p] = 255; px[p + 1] = 255; px[p + 2] = 255;
-                        }
+                    for (let p = 0; p < px.length; p++) {
+                        if (px[p] > 215) px[p] = 255;   // near-white → pure white
                     }
                     imageBuffer = await sharp(px, {
-                        raw: { width: pxi.width, height: pxi.height, channels: 3 },
+                        raw: { width: pxi.width, height: pxi.height, channels: 1 },
                     }).png().toBuffer();
                 } catch (e: any) {
-                    console.warn(`${tag} Background whitening failed (using original): ${e.message}`);
+                    console.warn(`${tag} Coloring book conversion failed (using original): ${e.message}`);
                 }
             }
 

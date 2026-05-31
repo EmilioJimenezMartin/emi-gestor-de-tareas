@@ -158,13 +158,18 @@ async function handleNicheDiscovery(
 
                 if (created > 0) {
                     await sendTelegram(`🏭 <b>${tAction.nicheName}</b>\n🖼️ ${created} catálogos en generación · ${created * cfg.imagesPerCatalog} imágenes totales`).catch(() => {});
-                } else {
-                    // Fallback: schedule autopilot run to handle it
-                    try {
-                        if (_agenda) await _agenda.now("autopilot-run", {});
-                        else await fetch(`${base}/autopilot/run`, { method: "POST" });
-                    } catch { /* non-critical */ }
                 }
+                // Always schedule autopilot monitoring — needed to advance catalog→libro→seo→cover.
+                // checkAutoPilotContinue() provides the fast path on catalog completion but can fail silently;
+                // this 3-minute polling loop is the safety net that keeps the pipeline moving regardless.
+                try {
+                    if (_agenda) {
+                        await _agenda.now("autopilot-run", {});           // initial check
+                        await _agenda.schedule("in 3 minutes", "autopilot-run", {}); // first fallback poll
+                    } else {
+                        await fetch(`${base}/autopilot/run`, { method: "POST" });
+                    }
+                } catch { /* non-critical */ }
             } catch (e) {
                 console.error("[telegram-poll] Error creating catalogs after approval:", e);
             }

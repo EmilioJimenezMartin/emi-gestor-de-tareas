@@ -438,6 +438,8 @@ async function runPipeline(
 
             if (total === 0 || stillActive > 0) {
                 io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⏳ "${niche.name}": catálogos ${done}/${total} listos (${stillActive} activos)` });
+                // Self-reschedule so we keep checking without relying solely on checkAutoPilotContinue
+                await agenda.schedule("in 3 minutes", "autopilot-run", {}).catch(() => {});
                 continue;
             }
 
@@ -548,18 +550,18 @@ async function runPipeline(
                             let cleanBuffer = rawBuffer;
                             if ((niche.productType ?? "coloring-book") === "coloring-book") {
                                 try {
+                                    // Greyscale (strips colour) + pure-white background
                                     const { data: px, info: pxi } = await sharp.default(rawBuffer)
                                         .flatten({ background: { r: 255, g: 255, b: 255 } })
                                         .removeAlpha()
+                                        .greyscale()
                                         .raw()
                                         .toBuffer({ resolveWithObject: true });
-                                    for (let p = 0; p < px.length; p += 3) {
-                                        if (px[p] > 200 && px[p + 1] > 200 && px[p + 2] > 200) {
-                                            px[p] = 255; px[p + 1] = 255; px[p + 2] = 255;
-                                        }
+                                    for (let p = 0; p < px.length; p++) {
+                                        if (px[p] > 215) px[p] = 255;
                                     }
                                     cleanBuffer = await sharp.default(px, {
-                                        raw: { width: pxi.width, height: pxi.height, channels: 3 },
+                                        raw: { width: pxi.width, height: pxi.height, channels: 1 },
                                     }).png().toBuffer();
                                 } catch { /* keep original if processing fails */ }
                             }
