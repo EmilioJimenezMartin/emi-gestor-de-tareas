@@ -206,9 +206,17 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
         });
     };
 
+    const detectProductType = (titulo: string, subNicho = ""): "coloring-book" | "printable-poster" => {
+        const t = `${titulo} ${subNicho}`.toLowerCase();
+        const posterTerms = ["póster", "poster", "printable", "imprimible", "wall art", "wall print", "arte de pared", "digital print", "print wall"];
+        if (posterTerms.some(w => t.includes(w))) return "printable-poster";
+        return "coloring-book";
+    };
+
     const createNicheFromRow = async (row: EtsyListing) => {
         if (createdNicheRows.has(row.titulo_producto) || niches.some(n => n.sourceTitulo === row.titulo_producto)) return;
         setCreatedNicheRows(prev => new Set([...prev, row.titulo_producto]));
+        const productType = detectProductType(row.titulo_producto, row.sub_nicho_estimado);
         try {
             const res = await fetch(`${apiUrl}/niches`, {
                 method: "POST",
@@ -218,6 +226,7 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                     description: row.titulo_producto,
                     tags: row.sub_nicho_estimado.split(/[\s,]+/).filter(Boolean).slice(0, 5),
                     status: "found",
+                    productType,
                     etsyUrl: row.url_producto || `https://www.etsy.com/search?q=${encodeURIComponent(row.sub_nicho_estimado)}`,
                     _sourceTitulo: row.titulo_producto,
                 }),
@@ -479,13 +488,6 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                                     return (
                                                         <div className="flex items-center gap-1 justify-center">
                                                             {deleteBtn}
-                                                            {/* Omitir */}
-                                                            <button
-                                                                onClick={() => setOmittedRows(prev => new Set([...prev, key]))}
-                                                                title="Omitir — marcar sin hacer nada"
-                                                                className="inline-flex items-center gap-1 h-6 px-1.5 rounded-lg text-[8px] font-black uppercase border border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-300 hover:border-white/20 transition-all">
-                                                                ⏭ <span className="hidden sm:inline">Omitir</span>
-                                                            </button>
                                                             {/* Continuar → crea nicho y envía a Telegram */}
                                                             <button
                                                                 onClick={async () => {

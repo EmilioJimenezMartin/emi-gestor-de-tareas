@@ -1410,11 +1410,19 @@ export function KdpFactoryApp() {
         void fetchNiches();
     };
 
+    const detectProductType = (titulo: string, subNicho = ""): "coloring-book" | "printable-poster" => {
+        const t = `${titulo} ${subNicho}`.toLowerCase();
+        const posterTerms = ["póster", "poster", "printable", "imprimible", "wall art", "wall print", "arte de pared", "digital print", "print wall"];
+        if (posterTerms.some(w => t.includes(w))) return "printable-poster";
+        return "coloring-book";
+    };
+
     const launchPipelineFromRow = async (row: { titulo_producto: string; sub_nicho_estimado: string; bestseller: boolean; total_reseñas: number; precio: string }) => {
         // Create niche if it doesn't exist yet
         const existing = niches.find(n => n.sourceTitulo === row.titulo_producto);
         let niche = existing;
         if (!niche) {
+            const productType = detectProductType(row.titulo_producto, row.sub_nicho_estimado);
             const res = await fetch(`${API_BASE_URL}/niches`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1425,7 +1433,7 @@ export function KdpFactoryApp() {
                     status: "found",
                     competition: "unknown",
                     demand: row.bestseller || row.total_reseñas > 100 ? "high" : "medium",
-                    productType: "coloring-book",
+                    productType,
                     styleCategory: "generic",
                     _sourceTitulo: row.titulo_producto,
                 }),
