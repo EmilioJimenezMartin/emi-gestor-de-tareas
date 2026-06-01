@@ -234,6 +234,7 @@ interface NicheFE {
     autoPilotEnabled?: boolean;
     sampleImageUrl?: string;
     coverUrl?: string;
+    backCoverUrl?: string;
     bookPdfUrl?: string;
     coverCandidates?: string[];
     phaseChangedAt?: string;
@@ -1396,6 +1397,14 @@ export function KdpFactoryApp() {
             setNichePublishPanelId(niche._id);
         } else if (phase === "cover") {
             setSelectedCoverNicheId(niche._id);
+            // Pre-load existing cover images so they appear immediately for editing
+            setGeneratedCoverUrl(niche.coverUrl ?? null);
+            setGeneratedBackCoverUrl(niche.backCoverUrl ?? null);
+            const coverMap = NICHE_STYLE_TO_COVER[niche.styleCategory] ?? NICHE_STYLE_TO_COVER.generic;
+            setCoverTitle(niche.nickname?.trim() || niche.name);
+            setCoverStyle(coverMap.style);
+            setCoverColorTheme(coverMap.colorTheme);
+            setCoverModelId(NICHE_STYLE_MODEL[niche.styleCategory] ?? "pollinations-flux");
             setShowCoverModal(true);
         } else if (phase === "published") {
             toast.info("Nicho ya publicado. Puedes añadir royalties o crear una nueva edición.");
@@ -4376,6 +4385,52 @@ export function KdpFactoryApp() {
                 } catch { /* non-blocking */ }
             }
 
+            // ── Cover: generate AI cover and save to niche ──────────────────────────
+            try {
+                toast.info(`Portada: generando para "${niche.nickname?.trim() || niche.name}"…`);
+                const coverMap = NICHE_STYLE_TO_COVER[niche.styleCategory] ?? NICHE_STYLE_TO_COVER.generic;
+                const nicheContext = `${niche.name}${niche.description ? `, ${niche.description}` : ""}`;
+                const isColoringBook = (niche.productType ?? "coloring-book") === "coloring-book";
+                const coverPrompt = isColoringBook
+                    ? `KDP coloring book cover illustration: ${nicheContext}. Visual style: ${coverMap.style}. Color palette: ${coverMap.colorTheme}. Intricate detailed line art design, zentangle and mandala elements, beautiful decorative composition filling the entire frame, professional adult coloring book cover art, high contrast, no text, no letters, no words, purely illustrative`
+                    : `KDP printable poster cover: ${nicheContext}. Visual style: ${coverMap.style}. Color palette: ${coverMap.colorTheme}. Premium wall art illustration, beautiful decorative composition, professional quality, centered focal artwork, no text, no letters, no words`;
+                const coverModelId = NICHE_STYLE_MODEL[niche.styleCategory] ?? "pollinations-flux";
+                const coverModel = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
+                const imgRes = await fetch(`${API_BASE_URL}/ai/generate-image`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ prompt: coverPrompt, provider: coverModel.provider, modelId: coverModel.modelId, width: 1600, height: 2560 }),
+                });
+                if (imgRes.ok) {
+                    const blob = await imgRes.blob();
+                    // Convert to base64 for Cloudinary upload
+                    const dataUrl = await new Promise<string>((res, rej) => {
+                        const reader = new FileReader();
+                        reader.onload = () => res(reader.result as string);
+                        reader.onerror = rej;
+                        reader.readAsDataURL(blob);
+                    });
+                    const uploadRes = await fetch(`${API_BASE_URL}/cloudinary/upload`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ dataUrl }),
+                    });
+                    if (uploadRes.ok) {
+                        const uploadData = await uploadRes.json();
+                        const cloudUrl: string = uploadData.image?.url;
+                        if (cloudUrl) {
+                            await fetch(`${API_BASE_URL}/niches/${niche._id}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ coverUrl: cloudUrl, coverCandidates: [cloudUrl], phase: "cover" }),
+                            });
+                            setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, coverUrl: cloudUrl, coverCandidates: [cloudUrl], phase: "cover" } : n));
+                            toast.success(`Portada guardada para "${niche.nickname?.trim() || niche.name}"`);
+                        }
+                    }
+                }
+            } catch { /* cover generation is non-blocking */ }
+
             changeTab("creation");
 
         } catch (e: any) {
@@ -4624,12 +4679,12 @@ export function KdpFactoryApp() {
 
     const renderPipeline = () => {
         const PHASES = [
-            { id: "niche",     label: "Nicho",     icon: Target,      text: "text-sky-400",     bg: "bg-sky-500/10",     border: "border-sky-500/20"    },
-            { id: "catalog",   label: "Catálogo",  icon: Grid3x3,     text: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20"   },
-            { id: "libro",     label: "Libro PDF", icon: BookOpen,    text: "text-violet-400",  bg: "bg-violet-500/10",  border: "border-violet-500/20" },
-            { id: "seo",       label: "SEO",       icon: FileText,    text: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/20"  },
-            { id: "cover",     label: "Portada",   icon: ImageIcon,   text: "text-orange-400",  bg: "bg-orange-500/10",  border: "border-orange-500/20" },
-            { id: "published", label: "Publicado", icon: ShoppingBag, text: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20"},
+            { id: "niche",     label: "Encontrado", icon: Target,      text: "text-sky-400",     bg: "bg-sky-500/10",     border: "border-sky-500/20"    },
+            { id: "catalog",   label: "Catálogo",   icon: Grid3x3,     text: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20"   },
+            { id: "libro",     label: "PDF",        icon: BookOpen,    text: "text-violet-400",  bg: "bg-violet-500/10",  border: "border-violet-500/20" },
+            { id: "seo",       label: "SEO",        icon: FileText,    text: "text-amber-400",   bg: "bg-amber-500/10",   border: "border-amber-500/20"  },
+            { id: "cover",     label: "Portada",    icon: ImageIcon,   text: "text-orange-400",  bg: "bg-orange-500/10",  border: "border-orange-500/20" },
+            { id: "published", label: "Publicado",  icon: ShoppingBag, text: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20"},
         ] as const;
 
         // Derive pipeline data directly from live niches + iaCatalogs state (always in sync via sockets)
@@ -4650,17 +4705,38 @@ export function KdpFactoryApp() {
             const lastError = running.map(c => c.lastError).filter(Boolean).at(-1) ?? null;
             const phaseRef = n.phaseChangedAt ?? n.updatedAt;
             const phaseMs = phaseRef ? now - new Date(phaseRef).getTime() : 0;
+
+            // Auto-compute phase from what the niche actually has — never downgrade from stored phase
+            const PHASE_ORDER: Record<string, number> = { niche: 0, catalog: 1, libro: 2, seo: 3, cover: 4, published: 5 };
+            const storedPhase = (n.phase === "pdf" ? "seo" : n.phase) ?? "niche";
+            const hasCatalogs = nicheCatalogs.length > 0;
+            const hasDraft = bookDrafts.some(d => d.nicheId === n._id);
+            const hasListing = (n.listings?.length ?? 0) > 0;
+            const hasCover = !!(n.coverUrl || (n.coverCandidates?.length ?? 0) > 0);
+            const derivedPhase = (() => {
+                if (storedPhase === "published") return "published";
+                if (hasCatalogs && hasDraft && hasListing && hasCover) return "cover";
+                if (hasCatalogs && hasDraft && hasListing) return "seo";
+                if (hasCatalogs && hasDraft) return "libro";
+                if (hasCatalogs) return "catalog";
+                return "niche";
+            })();
+            // Take whichever is higher: data-derived or stored in DB (prevents downgrade when nicheId isn't linked on draft)
+            const computedPhase = (PHASE_ORDER[derivedPhase] ?? 0) >= (PHASE_ORDER[storedPhase] ?? 0) ? derivedPhase : storedPhase;
+
             return {
                 id: n._id,
                 name: n.name,
                 nickname: n.nickname,
-                phase: (n.phase === "pdf" ? "seo" : n.phase) ?? "niche",
+                phase: computedPhase,
                 score: n.score,
                 autoPilotEnabled: n.autoPilotEnabled ?? false,
                 phaseMs,
                 catalogs: { running: running.length, completed: completed.length, queued: queued.length, total: nicheCatalogs.length, imgsDone, imgsTotal },
                 lastImageAt,
                 lastError,
+                coverUrl: n.coverUrl,
+                backCoverUrl: n.backCoverUrl,
             };
         });
 
@@ -4693,6 +4769,10 @@ export function KdpFactoryApp() {
         const phaseColor: Record<string, string> = {
             niche: "text-sky-400", catalog: "text-blue-400", libro: "text-violet-400",
             seo: "text-amber-400", cover: "text-orange-400", published: "text-emerald-400",
+        };
+        const phaseLabel: Record<string, string> = {
+            niche: "Encontrado", catalog: "Catálogo", libro: "PDF",
+            seo: "SEO", cover: "Portada", published: "Publicado",
         };
 
         return (
@@ -4783,7 +4863,7 @@ export function KdpFactoryApp() {
                                                     {nicheRoyalties > 0 && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400">${nicheRoyalties.toFixed(2)} · {nicheUnits}u</span>}
                                                 </div>
                                                 <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                                    <span className={`text-[10px] font-black uppercase ${phaseColor[n.phase] ?? "text-neutral-400"}`}>{n.phase}</span>
+                                                    <span className={`text-[10px] font-black uppercase ${phaseColor[n.phase] ?? "text-neutral-400"}`}>{phaseLabel[n.phase] ?? n.phase}</span>
                                                     <span className="text-[9px] text-neutral-600">{fmtMs(n.phaseMs)} en esta fase</span>
                                                 </div>
                                             </div>
@@ -4817,6 +4897,22 @@ export function KdpFactoryApp() {
                                                         Última imagen: {fmtMs(Date.now() - new Date(n.lastImageAt).getTime())} atrás
                                                         {Date.now() - new Date(n.lastImageAt).getTime() > 10 * 60_000 && <span className="text-amber-400 ml-1">⚠️</span>}
                                                     </p>
+                                                )}
+                                            </div>
+                                        )}
+                                        {(n.coverUrl || n.backCoverUrl) && (
+                                            <div className="flex items-center gap-2">
+                                                {n.coverUrl && (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <img src={n.coverUrl} alt="Portada" className="w-7 h-11 rounded-lg object-cover border border-orange-500/30 shrink-0" />
+                                                        <span className="text-[9px] text-orange-400 font-black uppercase">Portada</span>
+                                                    </div>
+                                                )}
+                                                {n.backCoverUrl && (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <img src={n.backCoverUrl} alt="Contraportada" className="w-7 h-11 rounded-lg object-cover border border-violet-500/30 shrink-0" />
+                                                        <span className="text-[9px] text-violet-400 font-black uppercase">Contraportada</span>
+                                                    </div>
                                                 )}
                                             </div>
                                         )}
@@ -4876,6 +4972,12 @@ export function KdpFactoryApp() {
                                                                 <div className="h-0.5 bg-white/5 rounded-full overflow-hidden">
                                                                     <div className="h-full bg-blue-400/50 rounded-full" style={{ width: `${imgPct}%` }} />
                                                                 </div>
+                                                            </div>
+                                                        )}
+                                                        {(n.coverUrl || n.backCoverUrl) && (
+                                                            <div className="flex gap-1.5">
+                                                                {n.coverUrl && <img src={n.coverUrl} alt="" className="w-6 h-9 rounded object-cover border border-orange-500/30" title="Portada" />}
+                                                                {n.backCoverUrl && <img src={n.backCoverUrl} alt="" className="w-6 h-9 rounded object-cover border border-violet-500/30" title="Contraportada" />}
                                                             </div>
                                                         )}
                                                         {n.lastError && (
@@ -9369,7 +9471,34 @@ export function KdpFactoryApp() {
             });
             if (!res.ok) { const err = await res.json(); toast.error(err.error ?? "Error generando portada"); return; }
             const blob = await res.blob();
-            setGeneratedCoverUrl(URL.createObjectURL(blob));
+            const objectUrl = URL.createObjectURL(blob);
+            setGeneratedCoverUrl(objectUrl);
+            // Persist to niche if one is selected
+            if (selectedCoverNicheId) {
+                try {
+                    const dataUrl = await new Promise<string>((res, rej) => {
+                        const reader = new FileReader();
+                        reader.onload = () => res(reader.result as string);
+                        reader.onerror = rej;
+                        reader.readAsDataURL(blob);
+                    });
+                    const uploadRes = await fetch(`${API_BASE_URL}/cloudinary/upload`, {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ dataUrl }),
+                    });
+                    if (uploadRes.ok) {
+                        const uploadData = await uploadRes.json();
+                        const cloudUrl: string = uploadData.image?.url;
+                        if (cloudUrl) {
+                            await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
+                                method: "PATCH", headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ coverUrl: cloudUrl, coverCandidates: [cloudUrl] }),
+                            });
+                            setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, coverUrl: cloudUrl, coverCandidates: [cloudUrl] } : n));
+                        }
+                    }
+                } catch { /* upload is non-blocking */ }
+            }
         } catch { toast.error("Error conectando con la API"); } finally { setIsBuildingCover(false); }
     };
 
@@ -9478,7 +9607,36 @@ export function KdpFactoryApp() {
             });
             if (!res.ok) { const err = await res.json(); toast.error(err.error ?? "Error generando contraportada"); return; }
             const blob = await res.blob();
-            setGeneratedBackCoverUrl(URL.createObjectURL(blob));
+            const objectUrl = URL.createObjectURL(blob);
+            setGeneratedBackCoverUrl(objectUrl);
+            // If a niche is selected, upload to Cloudinary and persist as backCoverUrl
+            if (selectedCoverNicheId) {
+                try {
+                    const dataUrl = await new Promise<string>((res, rej) => {
+                        const reader = new FileReader();
+                        reader.onload = () => res(reader.result as string);
+                        reader.onerror = rej;
+                        reader.readAsDataURL(blob);
+                    });
+                    const uploadRes = await fetch(`${API_BASE_URL}/cloudinary/upload`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ dataUrl }),
+                    });
+                    if (uploadRes.ok) {
+                        const uploadData = await uploadRes.json();
+                        const cloudUrl: string = uploadData.image?.url;
+                        if (cloudUrl) {
+                            await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ backCoverUrl: cloudUrl }),
+                            });
+                            setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, backCoverUrl: cloudUrl } : n));
+                        }
+                    }
+                } catch { /* upload is non-blocking */ }
+            }
         } catch { toast.error("Error conectando con la API"); } finally { setIsBuildingBackCover(false); }
     };
 
@@ -9713,52 +9871,66 @@ export function KdpFactoryApp() {
                         </Card>
                     </div>
 
-                    {/* Cover Factory */}
-                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                        <Card variant="outline" className="relative overflow-hidden border-white/8 bg-gradient-to-br from-white/[0.02] to-transparent">
-                            <div className="absolute -top-16 -right-16 w-48 h-48 bg-fuchsia-500/8 blur-[60px] pointer-events-none" />
-                            <div className="p-5 space-y-3">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-fuchsia-500/20 to-violet-600/10 border border-fuchsia-500/20 flex items-center justify-center shadow-lg shadow-fuchsia-500/10 shrink-0">
-                                        <ImageIcon size={19} className="text-fuchsia-400" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="text-sm font-black text-white tracking-tight italic leading-tight">Cover Factory</h4>
-                                        <p className="text-sm text-neutral-500 font-medium">Portada tall-format · 1600×2560px · Lista para KDP</p>
-                                    </div>
-                                    <button
-                                        onClick={() => setShowCoverModal(true)}
-                                        className="h-8 px-3 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white transition-all text-sm font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_16px_rgba(192,38,211,0.25)] active:scale-95 shrink-0"
-                                    >
-                                        <ImageIcon size={11} /> Abrir
-                                    </button>
-                                </div>
-                                {generatedCoverUrl && (
-                                    <div className="flex items-center gap-3 p-3 rounded-2xl bg-fuchsia-500/[0.04] border border-fuchsia-500/15">
-                                        <img src={generatedCoverUrl} alt="" className="w-8 h-12 rounded-lg object-cover border border-fuchsia-500/20 shrink-0" />
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-black text-white truncate">{coverTitle || "Portada generada"}</p>
-                                            <p className="text-sm text-neutral-600">1600×2560px · Lista para descargar</p>
-                                        </div>
-                                        <div className="flex items-center gap-1.5 shrink-0">
-                                            <a href={generatedCoverUrl} download={`portada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
-                                                className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-sm font-black uppercase text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all">
-                                                <Download size={9} /> DL
-                                            </a>
-                                            <button onClick={() => setGeneratedCoverUrl(null)}
-                                                className="w-7 h-7 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 transition-all flex items-center justify-center">
-                                                <Trash2 size={10} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </Card>
-                    </div>
                 </div>
             </div>
         );
     };
+
+    const renderCoverFactory = () => (
+        <div className="mt-8 pt-8 border-t border-white/[0.06]">
+            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                <div className="h-px w-full bg-gradient-to-r from-fuchsia-500/60 via-violet-400/20 to-transparent" />
+                <div className="p-6 space-y-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-fuchsia-500/15 flex items-center justify-center">
+                            <ImageIcon size={16} className="text-fuchsia-400" />
+                        </div>
+                        <div className="flex-1">
+                            <h2 className="text-lg font-black text-white">Cover Factory</h2>
+                            <p className="text-sm text-neutral-600">Portada tall-format · 1600×2560px · Lista para KDP</p>
+                        </div>
+                        <button
+                            onClick={() => setShowCoverModal(true)}
+                            className="h-9 px-4 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-sm font-black uppercase tracking-widest flex items-center justify-center gap-1.5 shadow-[0_4px_16px_rgba(192,38,211,0.25)] transition-all active:scale-95 shrink-0"
+                        >
+                            <ImageIcon size={12} /> Abrir Cover Factory
+                        </button>
+                    </div>
+                    {(generatedCoverUrl || generatedBackCoverUrl) && (
+                        <div className="flex items-center gap-4 p-4 rounded-2xl bg-fuchsia-500/[0.04] border border-fuchsia-500/10">
+                            {generatedCoverUrl && (
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    <img src={generatedCoverUrl} alt="" className="w-10 h-16 rounded-xl object-cover border border-fuchsia-500/20 shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-black text-white truncate">{coverTitle || "Portada"}</p>
+                                        <p className="text-sm text-neutral-600">Portada · 1600×2560px</p>
+                                    </div>
+                                    <a href={generatedCoverUrl} download={`portada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
+                                        className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-sm font-black uppercase text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all shrink-0">
+                                        <Download size={9} /> DL
+                                    </a>
+                                </div>
+                            )}
+                            {generatedCoverUrl && generatedBackCoverUrl && <div className="w-px h-12 bg-white/8 shrink-0" />}
+                            {generatedBackCoverUrl && (
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    <img src={generatedBackCoverUrl} alt="" className="w-10 h-16 rounded-xl object-cover border border-violet-500/20 shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-black text-white truncate">{coverTitle || "Contraportada"}</p>
+                                        <p className="text-sm text-neutral-600">Contraportada · 1600×2560px</p>
+                                    </div>
+                                    <a href={generatedBackCoverUrl} download={`contraportada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
+                                        className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-violet-500/15 border border-violet-500/30 text-sm font-black uppercase text-violet-300 hover:bg-violet-500/25 transition-all shrink-0">
+                                        <Download size={9} /> DL
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
 
     const renderStudio = () => {
         const STUDIO_TABS: KdpTabDef<"niches" | "radar" | "pipeline">[] = [
@@ -10962,7 +11134,7 @@ export function KdpFactoryApp() {
                 {activeTab === "studio" && renderStudio()}
                 {activeTab === "creation" && renderCreation()}
                 {activeTab === "insights" && renderInsights()}
-                {activeTab === "gelato" && <>{renderGelato()}{renderContenido()}</>}
+                {activeTab === "gelato" && <>{renderGelato()}{renderContenido()}{renderCoverFactory()}</>}
                 {activeTab === "config" && renderConfig()}
             </div>
 
@@ -11389,7 +11561,7 @@ export function KdpFactoryApp() {
                                             const id = e.target.value || null;
                                             setSelectedCoverNicheId(id);
                                             setSelectedCollageImages(new Set());
-                                            if (!id) return;
+                                            if (!id) { setGeneratedCoverUrl(null); setGeneratedBackCoverUrl(null); return; }
                                             const niche = niches.find(n => n._id === id);
                                             if (!niche) return;
                                             const coverMap = NICHE_STYLE_TO_COVER[niche.styleCategory] ?? NICHE_STYLE_TO_COVER.generic;
@@ -11399,6 +11571,9 @@ export function KdpFactoryApp() {
                                             setCoverColorTheme(coverMap.colorTheme);
                                             setCoverModelId(NICHE_STYLE_MODEL[niche.styleCategory] ?? "pollinations-flux");
                                             if (niche.description) setCoverDescription(niche.description);
+                                            // Pre-load existing covers if the niche already has them
+                                            setGeneratedCoverUrl(niche.coverUrl ?? null);
+                                            setGeneratedBackCoverUrl(niche.backCoverUrl ?? null);
                                         }}
                                         className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:border-fuchsia-500/40 [color-scheme:dark] truncate"
                                     >

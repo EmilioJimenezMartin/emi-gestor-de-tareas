@@ -31,6 +31,7 @@ export interface INiche extends Document {
     phase: "niche" | "catalog" | "libro" | "seo" | "cover" | "published";
     bookPdfUrl?: string;
     coverUrl?: string;
+    backCoverUrl?: string;
     publishedAt?: Date;
     asin?: string;
     etsyUrl?: string;
@@ -69,6 +70,7 @@ const NicheSchema = new Schema<INiche>(
         phase: { type: String, enum: ["niche", "catalog", "libro", "seo", "cover", "published"], default: "niche" },
         bookPdfUrl: { type: String },
         coverUrl: { type: String },
+        backCoverUrl: { type: String },
         publishedAt: { type: Date },
         asin: { type: String, default: "" },
         etsyUrl: { type: String, default: "" },
