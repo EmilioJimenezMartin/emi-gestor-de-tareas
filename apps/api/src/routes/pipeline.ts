@@ -1,10 +1,20 @@
 import { FastifyInstance } from "fastify";
 import { Niche } from "../models/niche.js";
 import { Catalog } from "../models/catalog.js";
+import { Settings } from "../models/settings.js";
 import { imageSemaphore, llmSemaphore } from "../lib/ai-semaphore.js";
 import { PromptMetric } from "../models/prompt-metric.js";
+import { getMongoStatus } from "../lib/mongo.js";
 
-export async function registerPipelineRoutes(app: FastifyInstance) {
+function ensureMongo(reply: any): boolean {
+    if (getMongoStatus() !== "connected") {
+        reply.status(503).send({ error: "Base de datos no disponible" });
+        return false;
+    }
+    return true;
+}
+
+export async function registerPipelineRoutes(app: FastifyInstance, deps?: { agenda?: any; io?: any }) {
     // GET /pipeline/status — full pipeline overview
     app.get("/pipeline/status", async (_req, reply) => {
         try {
@@ -110,6 +120,54 @@ export async function registerPipelineRoutes(app: FastifyInstance) {
                 .lean();
 
             return reply.send({ metrics });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // POST /niches/:id/pipeline/run — trigger server-side pipeline for a specific niche
+    app.post("/niches/:id/pipeline/run", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { id } = request.params as { id: string };
+            const body = (request.body ?? {}) as { catalogsPerNiche?: number; imagesPerCatalog?: number };
+
+            const niche = await Niche.findById(id);
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+
+            // Persist run config to Settings so the autopilot job picks them up
+            if (body.catalogsPerNiche) {
+                await Settings.findOneAndUpdate(
+                    { key: "AUTOPILOT_CATALOGS_PER_NICHE" },
+                    { $set: { key: "AUTOPILOT_CATALOGS_PER_NICHE", value: String(body.catalogsPerNiche) } },
+                    { upsert: true }
+                );
+            }
+            if (body.imagesPerCatalog) {
+                await Settings.findOneAndUpdate(
+                    { key: "AUTOPILOT_IMAGES_PER_CATALOG" },
+                    { $set: { key: "AUTOPILOT_IMAGES_PER_CATALOG", value: String(body.imagesPerCatalog) } },
+                    { upsert: true }
+                );
+            }
+
+            // Enable autopilot on this niche so runPipeline picks it up
+            await Niche.findByIdAndUpdate(id, {
+                $set: { autoPilotEnabled: true, status: "active" },
+            });
+
+            deps?.io?.emit("niches:updated");
+            deps?.io?.emit("autopilot:log", {
+                nicheId: id,
+                message: `🚀 Pipeline lanzado para "${(niche as any).name}"`,
+            });
+
+            // Schedule an immediate autopilot run
+            if (deps?.agenda) {
+                await deps.agenda.schedule("in 2 seconds", "autopilot-run", {}).catch(() => {});
+            }
+
+            return reply.send({ ok: true, nicheId: id, message: "Pipeline iniciado en servidor" });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
         }

@@ -31,6 +31,7 @@ import { registerDatasetRoutes } from "./routes/datasets.js";
 import { registerAutoPilotRoutes } from "./routes/autopilot.js";
 import { registerKdpSalesRoutes } from "./routes/kdp-sales.js";
 import { registerPipelineRoutes } from "./routes/pipeline.js";
+import { registerBookDraftRoutes } from "./routes/book-drafts.js";
 import { startTelegramPolling } from "./lib/telegram-polling.js";
 import { Settings } from "./models/settings.js";
 
@@ -70,7 +71,8 @@ await registerPatternRoutes(app);
 await registerDatasetRoutes(app);
 await registerAutoPilotRoutes(app, deps);
 await registerKdpSalesRoutes(app);
-await registerPipelineRoutes(app);
+await registerBookDraftRoutes(app);
+await registerPipelineRoutes(app, deps);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {

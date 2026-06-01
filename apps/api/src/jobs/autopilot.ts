@@ -696,6 +696,35 @@ async function runPipeline(
                     io?.emit("niches:updated");
                     io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✅ Libro PDF listo (${pagesAdded} imágenes, ${totalPdfPages} páginas) → generando listing SEO…` });
 
+                    // Persist a BookDraft record so it appears in the Book Factory UI
+                    try {
+                        const { BookDraft } = await import("../models/book-draft.js");
+                        const safeDraftName = niche.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+                        const draftPages = allUrls.map((url, i) => ({
+                            id: `auto-${i}`,
+                            type: "image",
+                            image: { url, scale: 1, label: `${niche.name} #${i + 1}` },
+                            text: { content: "", bold: false, italic: false, fontSize: 14, color: "#333333", align: "center", verticalAlign: "middle", fontFamily: "helvetica" },
+                        }));
+                        await BookDraft.findOneAndUpdate(
+                            { nicheId: String(niche._id) },
+                            {
+                                $set: {
+                                    fileName: safeDraftName,
+                                    pdfUrl: bookPdfUrl,
+                                    pageCount: totalPdfPages,
+                                    pages: draftPages,
+                                    savedAt: new Date(),
+                                    nicheId: String(niche._id),
+                                },
+                            },
+                            { upsert: true, new: true }
+                        );
+                        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📚 Borrador de libro guardado en base de datos` });
+                    } catch (draftErr: any) {
+                        console.warn(`[autopilot] BookDraft creation failed: ${draftErr.message}`);
+                    }
+
                     if (await shouldNotify("pipeline.complete")) {
                         await sendTelegram(`📖 <b>Libro generado</b>\n📚 <b>${niche.name}</b>\n📄 ${pagesAdded} imágenes · ${totalPdfPages} páginas totales\n\n⚙️ Generando listing SEO…`).catch(() => {});
                     }

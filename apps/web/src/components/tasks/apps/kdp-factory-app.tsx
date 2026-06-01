@@ -2798,6 +2798,31 @@ export function KdpFactoryApp() {
     const previewMargin = selectedSizeConfig.margin;
 
     const [bookDrafts, setBookDrafts] = useState<{ id: string; fileName: string; pages: BookPage[]; savedAt: string; nicheId?: string }[]>([]);
+
+    // Shared phase computation — used by Pipeline, Kanban, and Insights views
+    const NICHE_PHASE_ORDER: Record<string, number> = { niche: 0, catalog: 1, libro: 2, seo: 3, cover: 4, published: 5 };
+    const nicheComputedPhases = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const n of niches) {
+            const storedPhase = (n.phase === "pdf" ? "seo" : n.phase) ?? "niche";
+            const hasCatalogs = iaCatalogs.some(c => (c.nicheIds ?? []).includes(n._id));
+            const hasDraft = bookDrafts.some(d => d.nicheId === n._id);
+            const hasListing = (n.listings?.length ?? 0) > 0;
+            const hasCover = !!(n.coverUrl || (n.coverCandidates?.length ?? 0) > 0);
+            const derivedPhase = (() => {
+                if (storedPhase === "published") return "published";
+                if (hasCatalogs && hasDraft && hasListing && hasCover) return "cover";
+                if (hasCatalogs && hasDraft && hasListing) return "seo";
+                if (hasCatalogs && hasDraft) return "libro";
+                if (hasCatalogs) return "catalog";
+                return "niche";
+            })();
+            map.set(n._id, (NICHE_PHASE_ORDER[derivedPhase] ?? 0) >= (NICHE_PHASE_ORDER[storedPhase] ?? 0) ? derivedPhase : storedPhase);
+        }
+        return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [niches, bookDrafts, iaCatalogs]);
+
     const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
     const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState<string | null>(null);
     const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
@@ -2889,22 +2914,41 @@ export function KdpFactoryApp() {
                 ...p,
                 image: p.image?.url.startsWith("blob:") ? undefined : p.image,
             }));
-            const draftId = activeDraftId ?? `draft-${Date.now()}`;
-            const savedAt = new Date().toISOString();
+            const draftId = activeDraftId;
             // Carry existing nicheId if set, or detect from pipeline- prefix
             const existingNicheId = bookDrafts.find(d => d.id === draftId)?.nicheId;
-            const prefixMatch = draftId.match(/^pipeline-([a-f0-9]{24})/);
+            const prefixMatch = draftId?.match(/^pipeline-([a-f0-9]{24})/);
             const linkedNicheId = existingNicheId ?? prefixMatch?.[1];
-            const draft = { id: draftId, fileName: bookFileName, pages: serializablePages, savedAt, ...(linkedNicheId ? { nicheId: linkedNicheId } : {}) };
-            const updated = bookDrafts.some(d => d.id === draftId)
-                ? bookDrafts.map(d => d.id === draftId ? draft : d)
-                : [...bookDrafts, draft];
-            setBookDrafts(updated);
-            setActiveDraftId(draftId);
-            await fetch(`${API_BASE_URL}/settings`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify([{ key: "kdp-book-drafts", value: updated }]),
+
+            const isMongoId = /^[a-f0-9]{24}$/.test(draftId ?? "");
+            let savedId: string;
+
+            if (draftId && isMongoId) {
+                // Existing MongoDB draft → PATCH
+                const res = await fetch(`${API_BASE_URL}/book-drafts/${draftId}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ fileName: bookFileName, pages: serializablePages, ...(linkedNicheId ? { nicheId: linkedNicheId } : {}) }),
+                });
+                if (!res.ok) throw new Error("Error guardando borrador");
+                savedId = draftId;
+            } else {
+                // New draft → POST
+                const res = await fetch(`${API_BASE_URL}/book-drafts`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ fileName: bookFileName, pages: serializablePages, ...(linkedNicheId ? { nicheId: linkedNicheId } : {}) }),
+                });
+                if (!res.ok) throw new Error("Error guardando borrador");
+                const resData = await res.json();
+                savedId = String(resData.draft._id);
+            }
+
+            const savedDraft = { id: savedId, fileName: bookFileName, pages: serializablePages, savedAt: new Date().toISOString(), ...(linkedNicheId ? { nicheId: linkedNicheId } : {}) };
+            setActiveDraftId(savedId);
+            setBookDrafts(prev => {
+                const exists = draftId && prev.some(d => d.id === draftId);
+                return exists ? prev.map(d => d.id === draftId ? savedDraft : d) : [...prev, savedDraft];
             });
 
             // If this draft is linked to a niche, advance to "libro" phase
@@ -2929,8 +2973,7 @@ export function KdpFactoryApp() {
     };
 
     const deleteBookDraft = async (draftId: string) => {
-        const updated = bookDrafts.filter(d => d.id !== draftId);
-        setBookDrafts(updated);
+        setBookDrafts(prev => prev.filter(d => d.id !== draftId));
         if (activeDraftId === draftId) {
             setBookPages([]);
             setSelectedPageId(null);
@@ -2938,34 +2981,44 @@ export function KdpFactoryApp() {
             setActiveDraftId(null);
             setBookEditorOpen(false);
         }
-        try {
-            await fetch(`${API_BASE_URL}/settings`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify([{ key: "kdp-book-drafts", value: updated }]),
-            });
-        } catch { /* silent */ }
+        // Delete from MongoDB if it's a MongoDB ID
+        if (/^[a-f0-9]{24}$/.test(draftId)) {
+            await fetch(`${API_BASE_URL}/book-drafts/${draftId}`, { method: "DELETE" }).catch(() => {});
+        }
     };
 
     // Auto-saves current pages before switching to another draft
-    const guardedLoadBookDraft = async (draft: { id: string; fileName: string; pages: BookPage[]; savedAt: string }) => {
+    const guardedLoadBookDraft = async (draft: { id: string; fileName: string; pages: BookPage[]; savedAt: string; nicheId?: string }) => {
         if (bookPages.length > 0 && activeDraftId !== draft.id) {
             // Persist current state silently before switching
             const serializablePages = bookPages.map(p => ({
                 ...p,
                 image: p.image?.url.startsWith("blob:") ? undefined : p.image,
             }));
-            const draftId = activeDraftId ?? `draft-${Date.now()}`;
-            const snapshotDraft = { id: draftId, fileName: bookFileName, pages: serializablePages, savedAt: new Date().toISOString() };
-            const updated = bookDrafts.some(d => d.id === draftId)
-                ? bookDrafts.map(d => d.id === draftId ? snapshotDraft : d)
-                : [...bookDrafts, snapshotDraft];
-            setBookDrafts(updated);
-            await fetch(`${API_BASE_URL}/settings`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify([{ key: "kdp-book-drafts", value: updated }]),
-            }).catch(() => {});
+            const draftId = activeDraftId;
+            const isMongoId = /^[a-f0-9]{24}$/.test(draftId ?? "");
+            if (draftId && isMongoId) {
+                fetch(`${API_BASE_URL}/book-drafts/${draftId}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ fileName: bookFileName, pages: serializablePages }),
+                }).catch(() => {});
+            } else {
+                // New unsaved draft — save to API
+                fetch(`${API_BASE_URL}/book-drafts`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ fileName: bookFileName, pages: serializablePages }),
+                }).then(r => r.ok ? r.json() : null).then(data => {
+                    if (data?.draft?._id) {
+                        const newId = String(data.draft._id);
+                        setBookDrafts(prev => {
+                            const snap = { id: newId, fileName: bookFileName, pages: serializablePages, savedAt: new Date().toISOString() };
+                            return draftId ? prev.map(d => d.id === draftId ? snap : d) : [...prev, snap];
+                        });
+                    }
+                }).catch(() => {});
+            }
         }
         setBookPages(draft.pages);
         setSelectedPageId(draft.pages[0]?.id ?? null);
@@ -3358,18 +3411,45 @@ export function KdpFactoryApp() {
                     } catch { /* keep defaults */ }
                 }
 
-                // Book drafts (multi-draft)
-                const draftsFound = (data.settings ?? []).find((s: any) => s.key === "kdp-book-drafts");
-                if (draftsFound?.value && Array.isArray(draftsFound.value) && draftsFound.value.length > 0) {
-                    setBookDrafts(draftsFound.value);
-                } else {
-                    // Migrate legacy single draft
-                    const legacyDraft = (data.settings ?? []).find((s: any) => s.key === "kdp-book-draft");
-                    if (legacyDraft?.value?.pages && Array.isArray(legacyDraft.value.pages) && legacyDraft.value.pages.length > 0) {
-                        const migrated = [{ id: "draft-legacy", fileName: legacyDraft.value.fileName ?? "libro-kdp", pages: legacyDraft.value.pages, savedAt: new Date().toISOString() }];
-                        setBookDrafts(migrated);
+                // Book drafts — load from MongoDB API, migrate from Settings if empty
+                try {
+                    const draftsRes = await fetch(`${API_BASE_URL}/book-drafts`);
+                    if (draftsRes.ok) {
+                        const draftsData = await draftsRes.json();
+                        if (draftsData.drafts && draftsData.drafts.length > 0) {
+                            setBookDrafts(draftsData.drafts.map((d: any) => ({
+                                id: String(d._id),
+                                fileName: d.fileName,
+                                pages: d.pages ?? [],
+                                savedAt: typeof d.savedAt === "string" ? d.savedAt : new Date(d.savedAt).toISOString(),
+                                nicheId: d.nicheId,
+                            })));
+                        } else {
+                            // Migrate from Settings if no MongoDB drafts yet
+                            const draftsFound = (data.settings ?? []).find((s: any) => s.key === "kdp-book-drafts");
+                            const settingsDrafts: any[] = draftsFound?.value && Array.isArray(draftsFound.value) ? draftsFound.value
+                                : (() => {
+                                    const legacyDraft = (data.settings ?? []).find((s: any) => s.key === "kdp-book-draft");
+                                    return legacyDraft?.value?.pages ? [{ id: "draft-legacy", fileName: legacyDraft.value.fileName ?? "libro-kdp", pages: legacyDraft.value.pages, savedAt: new Date().toISOString() }] : [];
+                                })();
+                            if (settingsDrafts.length > 0) {
+                                setBookDrafts(settingsDrafts);
+                                // Migrate to MongoDB in background
+                                for (const d of settingsDrafts) {
+                                    fetch(`${API_BASE_URL}/book-drafts`, {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ fileName: d.fileName, pages: d.pages ?? [], savedAt: d.savedAt, nicheId: d.nicheId }),
+                                    }).then(r => r.ok ? r.json() : null).then(data => {
+                                        if (data?.draft?._id) {
+                                            setBookDrafts(prev => prev.map(existing => existing.id === d.id ? { ...existing, id: String(data.draft._id) } : existing));
+                                        }
+                                    }).catch(() => {});
+                                }
+                            }
+                        }
                     }
-                }
+                } catch { /* silent — drafts load is non-critical */ }
             } catch { }
         };
         void load();
@@ -3515,6 +3595,11 @@ export function KdpFactoryApp() {
             setApCurrentNicheName(null);
             setApCurrentNicheId(null);
             setApStage(null);
+            // Clear pipeline running state — server cycle is done
+            pipelineRunningRef.current = null;
+            setPipelineRunningId(null);
+            setPipelineQueueIds([]);
+            pipelineQueueRef.current = [];
             const msg = `✅ Completado · ${data.processed} nicho${data.processed !== 1 ? "s" : ""} procesado${data.processed !== 1 ? "s" : ""}`;
             setApLogs(prev => [...prev.slice(-49), { nicheId: "", message: msg, ts: Date.now() }]);
             toast.success(msg);
@@ -3643,12 +3728,23 @@ export function KdpFactoryApp() {
                 if ((i + 1) % pending.imagesPerCatalog === 0 && i + 1 < shuffled.length)
                     pages.push({ id: `pipe-ct-${i}-${ts}`, type: "owner", text: defaultTextStyle() });
             });
-            const draftId = `pipeline-${nicheId}-${ts}`;
-            const newDraft = { id: draftId, fileName: `${nicheName} — Pipeline Draft`, pages, savedAt: new Date().toISOString(), nicheId };
-            setBookDrafts(prev => {
-                const updated = [newDraft, ...prev.filter(d => !d.id.startsWith(`pipeline-${nicheId}`) && d.nicheId !== nicheId)];
-                void fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "kdp-book-drafts", value: updated }]) }).catch(() => {});
-                return updated;
+            const newDraft = { id: `pipeline-${nicheId}-${ts}`, fileName: `${nicheName} — Pipeline Draft`, pages, savedAt: new Date().toISOString(), nicheId };
+            // Save to MongoDB and use the returned _id as the draft's id
+            fetch(`${API_BASE_URL}/book-drafts`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ fileName: newDraft.fileName, pages, nicheId, savedAt: newDraft.savedAt }),
+            }).then(r => r.ok ? r.json() : null).then(data => {
+                const savedId = data?.draft?._id ? String(data.draft._id) : newDraft.id;
+                setBookDrafts(prev => {
+                    const filtered = prev.filter(d => !d.id.startsWith(`pipeline-${nicheId}`) && d.nicheId !== nicheId);
+                    return [{ ...newDraft, id: savedId }, ...filtered];
+                });
+            }).catch(() => {
+                setBookDrafts(prev => {
+                    const filtered = prev.filter(d => !d.id.startsWith(`pipeline-${nicheId}`) && d.nicheId !== nicheId);
+                    return [newDraft, ...filtered];
+                });
             });
             void fetch(`${API_BASE_URL}/niches/${nicheId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro" }) }).catch(() => {});
             setNiches(prev => prev.map(n => n._id === nicheId ? { ...n, phase: "libro" } : n));
@@ -4177,274 +4273,34 @@ export function KdpFactoryApp() {
 
     // ── Pipeline automático: genera catálogos + KDP listing ──────────────────
     const runNichePipeline = async (niche: NicheFE, cfg?: { catalogs: number; imagesPerCatalog: number }) => {
-        // Self-queue if another pipeline is already running
-        if (pipelineRunningRef.current !== null) {
-            pipelineQueueRef.current.push({ niche, cfg });
-            setPipelineQueueIds(prev => [...prev, niche._id]);
-            toast.info(`"${niche.nickname?.trim() || niche.name}" en cola · posición ${pipelineQueueRef.current.length}`);
-            return;
-        }
+        if (pipelineRunningRef.current === niche._id) return; // prevent double-press
 
         pipelineRunningRef.current = niche._id;
         setPipelineRunningId(niche._id);
 
-        const IMAGES_PER_CATALOG = cfg?.imagesPerCatalog ?? pipelineConfig.imagesPerCatalog;
-        const MAX_CATALOGS = cfg?.catalogs ?? pipelineConfig.catalogs;
-        const IMAGES_TARGET = MAX_CATALOGS * IMAGES_PER_CATALOG;
-
-        const nicheImageCount = iaCatalogs
-            .filter(c => c.nicheIds?.includes(niche._id))
-            .reduce((sum, c) => sum + (c.images?.length ?? 0), 0);
-
-        const toCreate = nicheImageCount < IMAGES_TARGET
-            ? Math.min(MAX_CATALOGS, Math.ceil((IMAGES_TARGET - nicheImageCount) / IMAGES_PER_CATALOG))
-            : 0;
-
-        const allNewCatalogIds: string[] = [...(niche.catalogIds ?? [])];
-        const freshCatalogIds: string[] = [];
-
         try {
-            if (toCreate > 0) {
-                toast.info(`Pipeline iniciado · ${toCreate} catálogos de ${IMAGES_PER_CATALOG} imágenes…`);
-                const styles = niche.styleCategories?.length ? niche.styleCategories : [niche.styleCategory ?? "generic"];
+            const IMAGES_PER_CATALOG = cfg?.imagesPerCatalog ?? pipelineConfig.imagesPerCatalog;
+            const MAX_CATALOGS = cfg?.catalogs ?? pipelineConfig.catalogs;
 
-                for (let i = 0; i < toCreate; i++) {
-                    const style = styles[i % styles.length];
-                    let imagePrompt: string;
-                    let promptParts: { theme: string; specs: string; details: string; particulars: string };
+            const res = await fetch(`${API_BASE_URL}/niches/${niche._id}/pipeline/run`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ catalogsPerNiche: MAX_CATALOGS, imagesPerCatalog: IMAGES_PER_CATALOG }),
+            });
 
-                    if (niche.productType === "coloring-book") {
-                        let particulars = niche.name;
-                        try {
-                            const partRes = await fetch(`${API_BASE_URL}/ai/generate-text`, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ type: "niche-particulars", niche: niche.name, extras: ANIME_STYLES.includes(style) ? "anime cartoon style" : undefined, language: "en" }),
-                            });
-                            if (partRes.ok) {
-                                const partData = await partRes.json();
-                                particulars = partData.result?.particulars ?? niche.name;
-                            }
-                        } catch { /* fall back to niche name */ }
-                        const built = buildColoringBookPromptParts(niche.name, style, particulars);
-                        imagePrompt = built.fullPrompt;
-                        promptParts = { theme: built.theme, specs: built.specs, details: built.details, particulars };
-                    } else {
-                        let theme = niche.name;
-                        let particulars = "";
-                        try {
-                            const promptRes = await fetch(`${API_BASE_URL}/niches/suggest-prompt`, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ nicheName: niche.name, productType: niche.productType, style, tags: niche.tags }),
-                            });
-                            if (promptRes.ok) {
-                                const promptData = await promptRes.json();
-                                theme = promptData.theme ?? niche.name;
-                                particulars = promptData.particulars ?? "";
-                            }
-                        } catch { /* fall back to niche name */ }
-                        imagePrompt = [theme, particulars].filter(Boolean).join(". ");
-                        promptParts = { theme, specs: "", details: "", particulars };
-                    }
-
-                    const modelId = NICHE_STYLE_MODEL[style] ?? NICHE_STYLE_MODEL[niche.styleCategory ?? "generic"] ?? "pollinations-flux";
-                    const model = AI_MODELS.find(m => m.id === modelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
-
-                    const catalogRes = await fetch(`${API_BASE_URL}/catalogs`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            name: `${niche.name} · ${i + 1}`,
-                            prompt: imagePrompt,
-                            promptParts,
-                            productType: niche.productType ?? "coloring-book",
-                            aiModel: { id: model.id, name: model.name, provider: model.provider, modelId: model.modelId },
-                            width: 1024,
-                            height: 1024,
-                            totalImages: IMAGES_PER_CATALOG,
-                            nicheIds: [niche._id],
-                        }),
-                    });
-                    const catalogData = await catalogRes.json();
-                    if (catalogRes.ok) {
-                        setIaCatalogs(prev => [catalogData.catalog, ...prev]);
-                        allNewCatalogIds.push(catalogData.catalog._id);
-                        freshCatalogIds.push(catalogData.catalog._id);
-                        toast.success(`Catálogo ${i + 1}/${toCreate} en cola`);
-                    } else {
-                        const errMsg = typeof catalogData.error === "string" ? catalogData.error : JSON.stringify(catalogData.error ?? catalogData);
-                        throw new Error(`Error creando catálogo ${i + 1}: ${errMsg}`);
-                    }
-                }
-
-                await fetch(`${API_BASE_URL}/niches/${niche._id}`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ catalogIds: allNewCatalogIds, phase: "catalog", autoPilotEnabled: true, status: "active" }),
-                });
-                setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, catalogIds: allNewCatalogIds, phase: "catalog", autoPilotEnabled: true, status: "active" } : n));
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({})) as any;
+                throw new Error(err.error ?? "Error lanzando pipeline en servidor");
             }
 
-            // Generate KDP listing and save as product draft
-            toast.info("Generando listing KDP…");
-            try {
-                const listingRes = await fetch(`${API_BASE_URL}/ai/generate-text`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        type: "kdp-physical-book",
-                        niche: niche.name,
-                        productType: niche.productType === "coloring-book" ? "Libro de colorear KDP" : "Poster imprimible KDP",
-                        extras: [
-                            niche.tags.length > 0 ? `tags: ${niche.tags.join(", ")}` : "",
-                            niche.styleCategory ? `estilo: ${niche.styleCategory}` : "",
-                            niche.description ? `descripción: ${niche.description}` : "",
-                        ].filter(Boolean).join(" · "),
-                        language: "es",
-                    }),
-                });
-                const listingData = await listingRes.json();
-                if (listingRes.ok && listingData.result) {
-                    const r = listingData.result;
-                    const keywords = Array.isArray(r.keywords) ? r.keywords : [];
-                    const descHtml = typeof r.description === "string" ? r.description.trim() : "";
-                    const descPlain = descHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-                    // Save listing to niche.listings (HTML preserved)
-                    try {
-                        const saveRes = await fetch(`${API_BASE_URL}/niches/${niche._id}/listings`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ title: r.title ?? niche.name, subtitle: r.subtitle ?? "", description: descHtml, keywords }),
-                        });
-                        const saveData = await saveRes.json();
-                        if (saveRes.ok && saveData.niche) {
-                            setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, listings: saveData.niche.listings } : n));
-                        }
-                    } catch { /* non-blocking */ }
-                    const fullDesc = [descPlain, keywords.length > 0 ? `Keywords: ${keywords.join(", ")}` : ""].filter(Boolean).join("\n\n");
-                    const productRes = await fetch(`${API_BASE_URL}/digital-products`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ type: "KDP Color Book", title: r.title ?? niche.name, description: fullDesc, status: "borrador", platforms: [], nicheId: niche._id }),
-                    });
-                    const productData = await productRes.json();
-                    if (productRes.ok) {
-                        setProducts(prev => [productData.product ?? productData, ...prev]);
-                        toast.success(`Listing guardado en borrador · "${r.title ?? niche.name}"`);
-                    }
-                }
-            } catch { /* listing failure is non-blocking */ }
-
-            // ── Book draft: defer if new catalogs were created, build now if re-run ──
-            if (freshCatalogIds.length > 0) {
-                pipelineBookPendingRef.current.set(niche._id, {
-                    catalogIds: freshCatalogIds,
-                    imagesPerCatalog: IMAGES_PER_CATALOG,
-                    nicheName: niche.name,
-                });
-                toast.info(`Catálogos en cola · el borrador del libro se creará cuando terminen las imágenes`);
-            } else {
-                // No new catalogs — build from already-completed images immediately
-                try {
-                    const catImgs = iaCatalogs
-                        .filter(c => c.nicheIds?.includes(niche._id) && c.status === "completed")
-                        .flatMap(c => c.images.map(img => ({ url: img.url, publicId: img.publicId })));
-                    const cloudImgs = cloudinaryImages
-                        .filter(img => img.nicheId === niche._id)
-                        .map(img => ({ url: img.url, publicId: img.publicId }));
-                    const allImgs = [...catImgs, ...cloudImgs];
-                    if (allImgs.length > 0) {
-                        const shuffled = [...allImgs].sort(() => Math.random() - 0.5);
-                        const ts = Date.now();
-                        const pages: BookPage[] = [];
-                        pages.push({ id: `pipe-owner-${ts}`, type: "owner", text: defaultTextStyle() });
-                        const titleStyle = defaultTextStyle();
-                        titleStyle.content = niche.name || "Mi Libro de Colorear";
-                        titleStyle.fontSize = 24; titleStyle.bold = true;
-                        titleStyle.verticalAlign = "middle"; titleStyle.align = "center";
-                        pages.push({ id: `pipe-title-${ts}`, type: "text", text: titleStyle });
-                        pages.push({ id: `pipe-titleback-${ts}`, type: "text", text: defaultTextStyle() });
-                        shuffled.forEach((img, i) => {
-                            pages.push({ id: `pipe-img-${i}-${ts}`, type: "image", image: { url: img.url, scale: 1, label: `${niche.name} #${i + 1}` }, text: defaultTextStyle() });
-                            pages.push({ id: `pipe-blank-${i}-${ts}`, type: "text", text: defaultTextStyle() });
-                            if ((i + 1) % IMAGES_PER_CATALOG === 0 && i + 1 < shuffled.length)
-                                pages.push({ id: `pipe-ct-${i}-${ts}`, type: "owner", text: defaultTextStyle() });
-                        });
-                        const draftId = `pipeline-${niche._id}-${ts}`;
-                        const newDraft = { id: draftId, fileName: `${niche.name} — Pipeline Draft`, pages, savedAt: new Date().toISOString(), nicheId: niche._id };
-                        const updatedDrafts = [newDraft, ...bookDrafts.filter(d => !d.id.startsWith(`pipeline-${niche._id}`) && d.nicheId !== niche._id)];
-                        setBookDrafts(updatedDrafts);
-                        await Promise.all([
-                            fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "kdp-book-drafts", value: updatedDrafts }]) }),
-                            fetch(`${API_BASE_URL}/niches/${niche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro" }) }),
-                        ]).catch(() => {});
-                        setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase: "libro" } : n));
-                        toast.success(`Borrador listo · ${shuffled.length} imágenes (${catImgs.length} catálogo + ${cloudImgs.length} almacén)`);
-                    }
-                } catch { /* non-blocking */ }
-            }
-
-            // ── Cover: generate AI cover and save to niche ──────────────────────────
-            try {
-                toast.info(`Portada: generando para "${niche.nickname?.trim() || niche.name}"…`);
-                const coverMap = NICHE_STYLE_TO_COVER[niche.styleCategory] ?? NICHE_STYLE_TO_COVER.generic;
-                const nicheContext = `${niche.name}${niche.description ? `, ${niche.description}` : ""}`;
-                const isColoringBook = (niche.productType ?? "coloring-book") === "coloring-book";
-                const coverPrompt = isColoringBook
-                    ? `KDP coloring book cover illustration: ${nicheContext}. Visual style: ${coverMap.style}. Color palette: ${coverMap.colorTheme}. Intricate detailed line art design, zentangle and mandala elements, beautiful decorative composition filling the entire frame, professional adult coloring book cover art, high contrast, no text, no letters, no words, purely illustrative`
-                    : `KDP printable poster cover: ${nicheContext}. Visual style: ${coverMap.style}. Color palette: ${coverMap.colorTheme}. Premium wall art illustration, beautiful decorative composition, professional quality, centered focal artwork, no text, no letters, no words`;
-                const coverModelId = NICHE_STYLE_MODEL[niche.styleCategory] ?? "pollinations-flux";
-                const coverModel = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
-                const imgRes = await fetch(`${API_BASE_URL}/ai/generate-image`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ prompt: coverPrompt, provider: coverModel.provider, modelId: coverModel.modelId, width: 1600, height: 2560 }),
-                });
-                if (imgRes.ok) {
-                    const blob = await imgRes.blob();
-                    // Convert to base64 for Cloudinary upload
-                    const dataUrl = await new Promise<string>((res, rej) => {
-                        const reader = new FileReader();
-                        reader.onload = () => res(reader.result as string);
-                        reader.onerror = rej;
-                        reader.readAsDataURL(blob);
-                    });
-                    const uploadRes = await fetch(`${API_BASE_URL}/cloudinary/upload`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ dataUrl }),
-                    });
-                    if (uploadRes.ok) {
-                        const uploadData = await uploadRes.json();
-                        const cloudUrl: string = uploadData.image?.url;
-                        if (cloudUrl) {
-                            await fetch(`${API_BASE_URL}/niches/${niche._id}`, {
-                                method: "PATCH",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ coverUrl: cloudUrl, coverCandidates: [cloudUrl], phase: "cover" }),
-                            });
-                            setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, coverUrl: cloudUrl, coverCandidates: [cloudUrl], phase: "cover" } : n));
-                            toast.success(`Portada guardada para "${niche.nickname?.trim() || niche.name}"`);
-                        }
-                    }
-                }
-            } catch { /* cover generation is non-blocking */ }
-
-            changeTab("creation");
-
+            toast.success(`Pipeline de "${niche.nickname?.trim() || niche.name}" iniciado en servidor`);
+            changeTab("niches");
         } catch (e: any) {
             toast.error(e.message ?? "Error en el pipeline");
-        } finally {
             pipelineRunningRef.current = null;
             setPipelineRunningId(null);
-            // Drain queue: start next pipeline if any
-            if (pipelineQueueRef.current.length > 0) {
-                const next = pipelineQueueRef.current.shift()!;
-                setPipelineQueueIds(prev => prev.filter(id => id !== next.niche._id));
-                void runNichePipeline(next.niche, next.cfg);
-            }
         }
+        // pipelineRunningId is cleared when the autopilot:done socket event fires
     };
 
     const monthlyEarningsData = useMemo(() => {
@@ -4706,23 +4562,7 @@ export function KdpFactoryApp() {
             const phaseRef = n.phaseChangedAt ?? n.updatedAt;
             const phaseMs = phaseRef ? now - new Date(phaseRef).getTime() : 0;
 
-            // Auto-compute phase from what the niche actually has — never downgrade from stored phase
-            const PHASE_ORDER: Record<string, number> = { niche: 0, catalog: 1, libro: 2, seo: 3, cover: 4, published: 5 };
-            const storedPhase = (n.phase === "pdf" ? "seo" : n.phase) ?? "niche";
-            const hasCatalogs = nicheCatalogs.length > 0;
-            const hasDraft = bookDrafts.some(d => d.nicheId === n._id);
-            const hasListing = (n.listings?.length ?? 0) > 0;
-            const hasCover = !!(n.coverUrl || (n.coverCandidates?.length ?? 0) > 0);
-            const derivedPhase = (() => {
-                if (storedPhase === "published") return "published";
-                if (hasCatalogs && hasDraft && hasListing && hasCover) return "cover";
-                if (hasCatalogs && hasDraft && hasListing) return "seo";
-                if (hasCatalogs && hasDraft) return "libro";
-                if (hasCatalogs) return "catalog";
-                return "niche";
-            })();
-            // Take whichever is higher: data-derived or stored in DB (prevents downgrade when nicheId isn't linked on draft)
-            const computedPhase = (PHASE_ORDER[derivedPhase] ?? 0) >= (PHASE_ORDER[storedPhase] ?? 0) ? derivedPhase : storedPhase;
+            const computedPhase = nicheComputedPhases.get(n._id) ?? "niche";
 
             return {
                 id: n._id,
@@ -5196,13 +5036,11 @@ export function KdpFactoryApp() {
         const topNicheDemand = topNiche?.demand;
 
         // ── Insights data ─────────────────────────────────────────────
-        const phaseMatch = (nPhase: NicheFE["phase"], colPhase: NicheFE["phase"]) => {
-            const p = nPhase ?? "niche";
-            return p === colPhase || (colPhase === "seo" && p === "pdf");
-        };
-        const phaseCount = (p: NicheFE["phase"]) => niches.filter(n => phaseMatch(n.phase, p)).length;
+        const phaseMatch = (n: NicheFE, colPhase: NicheFE["phase"]) =>
+            (nicheComputedPhases.get(n._id) ?? "niche") === colPhase;
+        const phaseCount = (p: NicheFE["phase"]) => niches.filter(n => phaseMatch(n, p)).length;
         const phaseImgs = (p: NicheFE["phase"]) => {
-            const phaseNiches = niches.filter(n => phaseMatch(n.phase, p));
+            const phaseNiches = niches.filter(n => phaseMatch(n, p));
             return iaCatalogs.filter(c => (c.nicheIds ?? []).some(id => phaseNiches.find(n => n._id === id))).reduce((s, c) => s + c.images.length, 0);
         };
         const totalImgsAll = iaCatalogs.reduce((s, c) => s + c.images.length, 0);
@@ -10113,8 +9951,8 @@ export function KdpFactoryApp() {
                                 {PHASES.map(col => {
                                     // "pdf" is the legacy name for "seo" — show both in the seo column
                                     const colNiches = niches.filter(n => {
-                                        const p = n.phase ?? "niche";
-                                        if (!(p === col.id || (col.id === "seo" && p === "pdf"))) return false;
+                                        const p = nicheComputedPhases.get(n._id) ?? "niche";
+                                        if (p !== col.id) return false;
                                         if (kanbanProductFilter !== "all" && (n.productType ?? "coloring-book") !== kanbanProductFilter) return false;
                                         return true;
                                     });
