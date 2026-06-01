@@ -47,6 +47,7 @@ export interface INiche extends Document {
     sampleImageUrl?: string;
     catalogImageOrder?: string[];
     coverCandidates?: string[];
+    phaseChangedAt?: Date;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -100,8 +101,17 @@ const NicheSchema = new Schema<INiche>(
         sampleImageUrl: { type: String },
         catalogImageOrder: [{ type: String }],
         coverCandidates: [{ type: String }],
+        phaseChangedAt: { type: Date },
     },
     { timestamps: true }
 );
+
+// Auto-set phaseChangedAt whenever phase is written via findOneAndUpdate / findByIdAndUpdate
+NicheSchema.pre(["findOneAndUpdate", "updateOne", "updateMany"] as any, function (this: any) {
+    const update = this.getUpdate() as any;
+    if (update?.$set?.phase) {
+        update.$set.phaseChangedAt = new Date();
+    }
+});
 
 export const Niche = mongoose.model<INiche>("Niche", NicheSchema);

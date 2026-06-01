@@ -1,6 +1,6 @@
 import type { Agenda, Job } from "agenda";
 import { RadarJob } from "../models/radar-job.js";
-import { EtsyNicheResultSchema, NicheInsightSchema, ETSY_SYSTEM_PROMPT, AMAZON_SYSTEM_PROMPT, TRENDS_SYSTEM_PROMPT } from "../routes/radar.js";
+import { EtsyNicheResultSchema, NicheInsightSchema, ETSY_SYSTEM_PROMPT, AMAZON_SYSTEM_PROMPT, TRENDS_SYSTEM_PROMPT, OPPORTUNITY_SYSTEM_PROMPT, MOVERS_SYSTEM_PROMPT, REDDIT_SYSTEM_PROMPT, CROSS_NICHE_SYSTEM_PROMPT, GAP_FINDER_SYSTEM_PROMPT } from "../routes/radar.js";
 import { analyzePageForRadar } from "../lib/ai.js";
 import { AUTOPILOT_JOB_NAME } from "./autopilot.js";
 
@@ -19,6 +19,25 @@ function computeNicheScore(product: any): number {
     if (cart > 100) score += 15;
     else if (cart > 20) score += 10;
     else if (cart > 5) score += 5;
+    return Math.min(score, 100);
+}
+
+// Inverted scoring: rewards high demand (cart) + low competition (few reviews)
+function computeOpportunityScore(product: any): number {
+    let score = 25;
+    const reviews = parseInt(String(product.total_reseñas ?? "0").replace(/[^\d]/g, "")) || 0;
+    const cart = parseInt(String(product.personas_carrito ?? "0").replace(/[^\d]/g, "")) || 0;
+    if (cart > 100) score += 35;
+    else if (cart > 20) score += 25;
+    else if (cart > 10) score += 15;
+    else if (cart > 5) score += 10;
+    else if (cart > 0) score += 5;
+    // Inverted reviews: fewer = more opportunity
+    if (reviews === 0 && cart > 0) score += 30;
+    else if (reviews < 20) score += 25;
+    else if (reviews < 100) score += 15;
+    else if (reviews < 500) score += 5;
+    if (product.bestseller) score += 5;
     return Math.min(score, 100);
 }
 
@@ -59,15 +78,21 @@ async function runWithRetry<T>(fn: () => Promise<T>, onWait: (secs: number, atte
     throw lastErr;
 }
 
+const LISTING_MODES = new Set(["etsy-niches", "amazon-niches", "trends-niches", "opportunity", "amazon-movers", "reddit-niches", "cross-niche", "gap-finder"]);
+
 function buildRadarSystemPrompt(mode: string, nicheName?: string, context?: string): string {
-    const isListingMode = mode === "etsy-niches" || mode === "amazon-niches" || mode === "trends-niches";
+    const isListingMode = LISTING_MODES.has(mode);
     const schemaHint = isListingMode
         ? `{"nichos_detectados":[{"titulo_producto":"string","precio":"string","bestseller":true/false,"personas_carrito":number,"total_reseñas":number,"sub_nicho_estimado":"string","url_producto":"string|undefined"}]}`
         : `{"niche":"string","competition":"low|medium|high","demand":"low|medium|high","trend":"rising|stable|declining","topKeywords":["string"],"priceRange":"string","topCompetitors":["string"],"entryOpportunity":"string","buyerProfile":"string","summary":"string"}`;
 
-    if (mode === "amazon-niches") return `${AMAZON_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "amazon-niches" || mode === "amazon-movers") return `${mode === "amazon-movers" ? MOVERS_SYSTEM_PROMPT : AMAZON_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     if (mode === "etsy-niches") return `${ETSY_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "opportunity") return `${OPPORTUNITY_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     if (mode === "trends-niches") return `${TRENDS_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "reddit-niches") return `${REDDIT_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "cross-niche") return `${CROSS_NICHE_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "gap-finder") return `${GAP_FINDER_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     return [
         nicheName ? `Niche objetivo: "${nicheName}".` : "",
         context ? `Contexto adicional: ${context}.` : "",
@@ -193,6 +218,36 @@ async function fetchTrendsData(url: string): Promise<string> {
     throw new Error("URL de Google Trends no reconocida. Usa trends.google.com/trends/explore?q=... o .../trendingsearches/daily");
 }
 
+async function fetchRedditData(url: string): Promise<string> {
+    const jsonUrl = url.endsWith(".json") ? url : url.replace(/\/$/, "") + ".json";
+    const res = await fetch(jsonUrl, {
+        headers: {
+            "User-Agent": "KDPRadarBot/1.0 (niche research tool; contact: research@kdp.local)",
+            "Accept": "application/json",
+        },
+        signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) throw new Error(`Reddit API: HTTP ${res.status} — puede que necesites usar la URL .json directamente`);
+    const data: any = await res.json();
+    const posts: any[] = data?.data?.children ?? [];
+    if (posts.length === 0) throw new Error("Reddit no devolvió posts. Comprueba que la URL sea válida y accesible.");
+    const lines = posts.map((p: any) => {
+        const d = p.data;
+        return `- "${d.title}" | score: ${d.score} | comments: ${d.num_comments} | flair: ${d.link_flair_text ?? "none"} | url: ${d.url ?? ""}`;
+    });
+    return `Reddit posts (${posts.length} entradas):\n\n` + lines.join("\n");
+}
+
+async function readNichesForGapFinder(): Promise<string> {
+    const { Niche } = await import("../models/niche.js");
+    const niches = await Niche.find({ status: { $ne: "archived" } }).lean();
+    if (niches.length === 0) return "El catálogo está vacío — no hay nichos existentes para analizar.";
+    const lines = niches.map((n: any) =>
+        `- "${n.name}" | fase: ${n.phase} | estilo: ${n.styleCategory} | tipo: ${n.productType} | score: ${n.score ?? "?"}`
+    );
+    return `Catálogo actual (${niches.length} nichos):\n\n` + lines.join("\n");
+}
+
 export function defineRadarJob(agenda: Agenda, io: any) {
     agenda.define(RADAR_JOB_NAME, async (job: Job) => {
         const { jobId } = (job.attrs.data ?? {}) as { jobId: string };
@@ -277,7 +332,170 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 return; // Done — skip the Playwright branch below
             }
 
-            // ── Normal Playwright flow for Etsy, Amazon, General ──────────────────
+            // ── Gap-finder: no HTTP, reads niches from DB + AI ─────────────────────
+            if (mode === "gap-finder") {
+                pushLog(jobDoc, io, "info", `[DB] Leyendo catálogo de nichos...`);
+                await jobDoc.save();
+
+                const catalogText = await readNichesForGapFinder();
+                pushLog(jobDoc, io, "info", `[DB] ✓ ${catalogText.split("\n").length - 2} nichos en catálogo`);
+                await jobDoc.save();
+
+                pushLog(jobDoc, io, "info", `[AI] Buscando huecos con IA...`);
+                await jobDoc.save();
+
+                const systemPrompt = buildRadarSystemPrompt(mode);
+                const data = await analyzePageForRadar(catalogText, systemPrompt, {
+                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                });
+
+                const count = (data?.nichos_detectados ?? []).length;
+                pushLog(jobDoc, io, "success", `[AI] ✓ ${count} huecos detectados`);
+
+                if (data?.nichos_detectados) {
+                    const ts = new Date().toISOString();
+                    data.nichos_detectados = (data.nichos_detectados as any[]).map((n: any) => ({
+                        ...n, fecha_detectado: n.fecha_detectado ?? ts, fuente: "gap",
+                    }));
+                }
+
+                jobDoc.status = "completed";
+                jobDoc.result = data;
+                await jobDoc.save();
+
+                try {
+                    const { Settings } = await import("../models/settings.js");
+                    if (data?.nichos_detectados) {
+                        await Settings.findOneAndUpdate({ key: storageKey }, { key: storageKey, value: JSON.stringify(data) }, { upsert: true });
+                    }
+                } catch { /* non-critical */ }
+
+                io?.emit("radar:result", { jobId, mode, storageKey, data });
+                io?.emit("radar:done", { jobId });
+                return;
+            }
+
+            // ── Reddit: direct HTTP (no Playwright) ────────────────────────────────
+            if (mode === "reddit-niches") {
+                pushLog(jobDoc, io, "info", `[FETCH] Obteniendo posts de Reddit...`);
+                await jobDoc.save();
+
+                const redditText = await fetchRedditData(url);
+                pushLog(jobDoc, io, "info", `[FETCH] ✓ ${redditText.split("\n").length} líneas extraídas`);
+                await jobDoc.save();
+
+                pushLog(jobDoc, io, "info", `[AI] Analizando tendencias de Reddit con IA...`);
+                await jobDoc.save();
+
+                const systemPrompt = buildRadarSystemPrompt(mode);
+                const data = await analyzePageForRadar(redditText, systemPrompt, {
+                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                });
+
+                const count = (data?.nichos_detectados ?? []).length;
+                pushLog(jobDoc, io, "success", `[AI] ✓ ${count} nichos detectados en Reddit`);
+
+                if (data?.nichos_detectados) {
+                    const ts = new Date().toISOString();
+                    data.nichos_detectados = (data.nichos_detectados as any[]).map((n: any) => ({
+                        ...n, fecha_detectado: n.fecha_detectado ?? ts, fuente: "reddit",
+                    }));
+                }
+
+                jobDoc.status = "completed";
+                jobDoc.result = data;
+                await jobDoc.save();
+
+                let dataToEmit = data;
+                try {
+                    const { Settings } = await import("../models/settings.js");
+                    if (data?.nichos_detectados) {
+                        const existing = await Settings.findOne({ key: storageKey }).lean() as any;
+                        if (existing?.value) {
+                            try {
+                                const saved = JSON.parse(existing.value);
+                                if (saved?.nichos_detectados?.length) {
+                                    const incoming: any[] = data.nichos_detectados;
+                                    const incomingTitles = new Set(incoming.map((r: any) => r.titulo_producto));
+                                    const preserved = (saved.nichos_detectados as any[]).filter((r: any) => !incomingTitles.has(r.titulo_producto));
+                                    const merged = incoming.map((r: any) => ({
+                                        ...r,
+                                        _nichoCreado: (saved.nichos_detectados as any[]).find((s: any) => s.titulo_producto === r.titulo_producto)?._nichoCreado ?? r._nichoCreado,
+                                    }));
+                                    dataToEmit = { ...data, nichos_detectados: [...merged, ...preserved] };
+                                }
+                            } catch { /* keep dataToEmit = data */ }
+                        }
+                        await Settings.findOneAndUpdate({ key: storageKey }, { key: storageKey, value: JSON.stringify(dataToEmit) }, { upsert: true });
+                    }
+                } catch { /* non-critical */ }
+
+                io?.emit("radar:result", { jobId, mode, storageKey, data: dataToEmit });
+                io?.emit("radar:done", { jobId });
+                return;
+            }
+
+            // ── Cross-niche: Google Trends HTTP (no Playwright) ────────────────────
+            if (mode === "cross-niche") {
+                pushLog(jobDoc, io, "info", `[FETCH] Google Trends (cross-niche) — descargando via API directa...`);
+                await jobDoc.save();
+
+                const trendsText = await fetchTrendsData(url);
+                pushLog(jobDoc, io, "info", `[FETCH] ✓ ${trendsText.length.toLocaleString()} chars extraídos`);
+                await jobDoc.save();
+
+                pushLog(jobDoc, io, "info", `[AI] Detectando cross-nichos KDP...`);
+                await jobDoc.save();
+
+                const systemPrompt = buildRadarSystemPrompt(mode);
+                const data = await analyzePageForRadar(trendsText, systemPrompt, {
+                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                });
+
+                const count = (data?.nichos_detectados ?? []).length;
+                pushLog(jobDoc, io, "success", `[AI] ✓ ${count} cross-nichos detectados`);
+
+                if (data?.nichos_detectados) {
+                    const ts = new Date().toISOString();
+                    data.nichos_detectados = (data.nichos_detectados as any[]).map((n: any) => ({
+                        ...n, fecha_detectado: n.fecha_detectado ?? ts, fuente: "cross",
+                    }));
+                }
+
+                jobDoc.status = "completed";
+                jobDoc.result = data;
+                await jobDoc.save();
+
+                let dataToEmit = data;
+                try {
+                    const { Settings } = await import("../models/settings.js");
+                    if (data?.nichos_detectados) {
+                        const existing = await Settings.findOne({ key: storageKey }).lean() as any;
+                        if (existing?.value) {
+                            try {
+                                const saved = JSON.parse(existing.value);
+                                if (saved?.nichos_detectados?.length) {
+                                    const incoming: any[] = data.nichos_detectados;
+                                    const incomingTitles = new Set(incoming.map((r: any) => r.titulo_producto));
+                                    const preserved = (saved.nichos_detectados as any[]).filter((r: any) => !incomingTitles.has(r.titulo_producto));
+                                    const merged = incoming.map((r: any) => ({
+                                        ...r,
+                                        _nichoCreado: (saved.nichos_detectados as any[]).find((s: any) => s.titulo_producto === r.titulo_producto)?._nichoCreado ?? r._nichoCreado,
+                                    }));
+                                    dataToEmit = { ...data, nichos_detectados: [...merged, ...preserved] };
+                                }
+                            } catch { /* keep dataToEmit = data */ }
+                        }
+                        await Settings.findOneAndUpdate({ key: storageKey }, { key: storageKey, value: JSON.stringify(dataToEmit) }, { upsert: true });
+                    }
+                } catch { /* non-critical */ }
+
+                io?.emit("radar:result", { jobId, mode, storageKey, data: dataToEmit });
+                io?.emit("radar:done", { jobId });
+                return;
+            }
+
+            // ── Normal Playwright flow for Etsy, Amazon, Opportunity, Movers, General
             pushLog(jobDoc, io, "info", `[BROWSER] Lanzando navegador headless (modo stealth)...`);
             await jobDoc.save();
 
@@ -339,7 +557,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 throw new Error(`Página bloqueada por anti-bot: "${pageTitle}". Intenta de nuevo en unos minutos.`);
             }
 
-            if (mode === "etsy-niches" || mode === "amazon-niches") {
+            if (mode === "etsy-niches" || mode === "amazon-niches" || mode === "opportunity" || mode === "amazon-movers") {
                 pushLog(jobDoc, io, "info", `[FETCH] Scroll para cargar resultados lazy...`);
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)");
                 await page.waitForTimeout(1500);
@@ -392,8 +610,8 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 const scraper = new LLMScraper(google(geminiModel));
 
                 try {
-                    if (mode === "etsy-niches" || mode === "amazon-niches" || mode === "trends-niches") {
-                        const systemPrompt = mode === "amazon-niches" ? AMAZON_SYSTEM_PROMPT : mode === "trends-niches" ? TRENDS_SYSTEM_PROMPT : ETSY_SYSTEM_PROMPT;
+                    if (LISTING_MODES.has(mode)) {
+                        const systemPrompt = buildRadarSystemPrompt(mode);
                         const output = Output.object(EtsyNicheResultSchema as any);
                         const result = await runWithRetry(
                             () => scraper.run(page, output, { format: "markdown", system: systemPrompt }),
@@ -417,8 +635,8 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                     }
                     const count = (data?.nichos_detectados ?? []).length;
                     pushLog(jobDoc, io, "success",
-                        (mode === "etsy-niches" || mode === "amazon-niches" || mode === "trends-niches")
-                            ? `[AI] ✓ Gemini · ${count} ${mode === "trends-niches" ? "tendencias" : "productos"} detectados`
+                        LISTING_MODES.has(mode)
+                            ? `[AI] ✓ Gemini · ${count} ${mode === "trends-niches" || mode === "cross-niche" ? "tendencias" : mode === "gap-finder" ? "huecos" : "productos"} detectados`
                             : `[AI] ✓ Gemini · análisis completado`
                     );
                 } catch (geminiErr: any) {
@@ -447,8 +665,8 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
             if (data) {
                 const count = (data?.nichos_detectados ?? []).length;
-                if (mode === "etsy-niches" || mode === "amazon-niches" || mode === "trends-niches") {
-                    pushLog(jobDoc, io, "success", `[AI] ✓ ${count} ${mode === "trends-niches" ? "tendencias detectadas" : "productos detectados"}`);
+                if (LISTING_MODES.has(mode)) {
+                    pushLog(jobDoc, io, "success", `[AI] ✓ ${count} ${mode === "trends-niches" || mode === "cross-niche" ? "tendencias detectadas" : mode === "gap-finder" ? "huecos detectados" : "productos detectados"}`);
                 } else {
                     pushLog(jobDoc, io, "success", `[AI] ✓ Análisis completado`);
                 }
@@ -457,7 +675,13 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             // Stamp detection date and source on every listing
             if (data?.nichos_detectados) {
                 const ts = new Date().toISOString();
-                const fuente = mode === "amazon-niches" ? "amazon" : mode === "etsy-niches" ? "etsy" : mode === "trends-niches" ? "trends" : "general";
+                const fuente = mode === "amazon-niches" || mode === "amazon-movers" ? "amazon"
+                    : mode === "etsy-niches" || mode === "opportunity" ? "etsy"
+                    : mode === "trends-niches" ? "trends"
+                    : mode === "reddit-niches" ? "reddit"
+                    : mode === "cross-niche" ? "cross"
+                    : mode === "gap-finder" ? "gap"
+                    : "general";
                 data.nichos_detectados = (data.nichos_detectados as any[]).map(n => ({ ...n, fecha_detectado: ts, fuente: n.fuente ?? fuente }));
             }
 
@@ -510,7 +734,15 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 const { sendTelegram, shouldNotify } = await import("../lib/telegram.js");
                 const newNiches = (data?.nichos_detectados ?? []).filter((n: any) => !n._nichoCreado);
                 const count = (dataToEmit?.nichos_detectados ?? []).length;
-                const modeLabel = mode === "etsy-niches" ? "Etsy" : mode === "amazon-niches" ? "Amazon" : mode === "trends-niches" ? "Google Trends" : "General";
+                const modeLabel = mode === "etsy-niches" ? "Etsy"
+                    : mode === "amazon-niches" ? "Amazon"
+                    : mode === "trends-niches" ? "Google Trends"
+                    : mode === "opportunity" ? "Oportunidad"
+                    : mode === "amazon-movers" ? "Amazon Movers"
+                    : mode === "reddit-niches" ? "Reddit KDP"
+                    : mode === "cross-niche" ? "Cross-Nicho"
+                    : mode === "gap-finder" ? "Detector Huecos"
+                    : "General";
 
                 if (await shouldNotify("radar.found") && count > 0) {
                     await sendTelegram(
@@ -523,7 +755,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 }
 
                 // Queue: create niches + send Telegram photo sequentially for each new product
-                if (newNiches.length > 0) {
+                if (newNiches.length > 0 && mode !== "gap-finder" && mode !== "cross-niche") {
                     const { Niche } = await import("../models/niche.js");
                     const port = process.env.PORT || 3001;
                     const base = `http://localhost:${port}`;
@@ -542,7 +774,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                                 const existing = await Niche.findOne({ sourceTitulo: product.titulo_producto }).lean();
                                 if (existing) continue;
 
-                                const nicheScore = computeNicheScore(product);
+                                const nicheScore = mode === "opportunity" ? computeOpportunityScore(product) : computeNicheScore(product);
                                 const niche = await Niche.create({
                                     name: nicheName,
                                     status: "found",

@@ -369,9 +369,15 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                                                                 ? "bg-rose-500/10 border-rose-500/20 text-rose-400"
                                                                 : row.fuente === "trends"
                                                                 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                                                                : row.fuente === "reddit"
+                                                                ? "bg-orange-600/10 border-orange-600/20 text-orange-400"
+                                                                : row.fuente === "cross"
+                                                                ? "bg-cyan-500/10 border-cyan-500/20 text-cyan-400"
+                                                                : row.fuente === "gap"
+                                                                ? "bg-fuchsia-500/10 border-fuchsia-500/20 text-fuchsia-400"
                                                                 : "bg-neutral-500/10 border-neutral-500/20 text-neutral-500"
                                                         }`}>
-                                                            {row.fuente === "amazon" ? "🛒" : row.fuente === "etsy" ? "🏪" : row.fuente === "trends" ? "📈" : "🌐"} {row.fuente}
+                                                            {row.fuente === "amazon" ? "🛒" : row.fuente === "etsy" ? "🏪" : row.fuente === "trends" ? "📈" : row.fuente === "reddit" ? "💬" : row.fuente === "cross" ? "🔀" : row.fuente === "gap" ? "🔍" : "🌐"} {row.fuente}
                                                         </span>
                                                     )}
                                                     <span className="inline-flex items-center gap-1 text-[7px] text-neutral-500">

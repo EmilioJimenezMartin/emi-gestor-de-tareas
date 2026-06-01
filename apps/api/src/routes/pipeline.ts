@@ -43,7 +43,8 @@ export async function registerPipelineRoutes(app: FastifyInstance) {
                     .at(-1) ?? null;
 
                 const lastError = running.map(c => (c as any).lastError).filter(Boolean).at(-1) ?? null;
-                const phaseMs = now - new Date((n as any).updatedAt).getTime();
+                const phaseRef = (n as any).phaseChangedAt ?? (n as any).updatedAt;
+                const phaseMs = now - new Date(phaseRef).getTime();
 
                 return {
                     id: nid,

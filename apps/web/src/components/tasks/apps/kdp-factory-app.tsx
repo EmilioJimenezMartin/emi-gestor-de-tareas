@@ -236,6 +236,7 @@ interface NicheFE {
     coverUrl?: string;
     bookPdfUrl?: string;
     coverCandidates?: string[];
+    phaseChangedAt?: string;
     createdAt: string;
     updatedAt?: string;
 }
@@ -1032,6 +1033,11 @@ export function KdpFactoryApp() {
         (typeof window !== "undefined" && localStorage.getItem("kdp-studio-subtab") as "niches" | "radar" | "pipeline") || "niches"
     );
     const [nicheGeneratingId, setNicheGeneratingId] = useState<string | null>(null);
+    const [pipelineRunningId, setPipelineRunningId] = useState<string | null>(null);
+    const [pipelineQueueIds, setPipelineQueueIds] = useState<string[]>([]);
+    const pipelineRunningRef = useRef<string | null>(null);
+    const pipelineQueueRef = useRef<Array<{ niche: NicheFE; cfg?: { catalogs: number; imagesPerCatalog: number } }>>([]);
+    const pipelineBookPendingRef = useRef<Map<string, { catalogIds: string[]; imagesPerCatalog: number; nicheName: string }>>(new Map());
     const [nicheFormProductType, setNicheFormProductType] = useState<NicheProductType>("coloring-book");
     const [nicheFormStyles, setNicheFormStyles] = useState<NicheStyle[]>(["generic"]);
     const [catalogNicheFilter, setCatalogNicheFilter] = useState<string | null>(null);
@@ -1089,7 +1095,7 @@ export function KdpFactoryApp() {
     const [apCurrentNicheId, setApCurrentNicheId] = useState<string | null>(null);
     // elapsed time ticker for image generation timing (ticks every second while catalogs are running)
     const [imageElapsedTick, setImageElapsedTick] = useState(0);
-    const [apStage, setApStage] = useState<"discovery" | "prompt" | "sample" | "catalog" | "listing" | null>(null);
+    const [apStage, setApStage] = useState<"discovery" | "prompt" | "sample" | "catalog" | "libro" | "listing" | "cover" | null>(null);
     const [apLogs, setApLogs] = useState<{ nicheId: string; message: string; ts: number }[]>([]);
     const [apRuns, setApRuns] = useState<{ _id: string; startedAt: string; finishedAt?: string; status: string; discovered: number; pipelineProcessed: number; catalogsCreated: number; abortReason?: string }[]>([]);
     const [apRunsLoading, setApRunsLoading] = useState(false);
@@ -2782,6 +2788,7 @@ export function KdpFactoryApp() {
     const [ideogramStyle, setIdeogramStyle] = useState("AUTO");
     const [initImageDataUrl, setInitImageDataUrl] = useState<string | null>(null);
     const [initImageStrength, setInitImageStrength] = useState(0.6);
+    const [radarStorageKey, setRadarStorageKey] = useState("RADAR_ETSY_RESULT");
 
     const downloadFile = async (url: string, filename: string) => {
         try {
@@ -3407,7 +3414,7 @@ export function KdpFactoryApp() {
     };
 
     // Fetch catalogs on mount (socket connects when entering creation tab)
-    useEffect(() => { void fetchCatalogs(); void fetchApRuns(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { void fetchCatalogs(); void fetchApRuns(); void fetchPipelineData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => { if (activeTab === "insights") void fetchTimeseries(timeseriesDays); }, [activeTab, timeseriesDays]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -3415,6 +3422,16 @@ export function KdpFactoryApp() {
     useEffect(() => {
         const socket = createApiSocket(API_BASE_URL);
         catalogSocketRef.current = socket;
+
+        // Sync halo on connect/reconnect — in case the socket missed an autopilot:done event
+        const syncApRunning = () => {
+            fetch(`${API_BASE_URL}/autopilot/status`)
+                .then(r => r.json())
+                .then((d: any) => { if (typeof d.running === "boolean") setApRunning(d.running); })
+                .catch(() => {});
+        };
+        socket.on("connect", syncApRunning);
+        syncApRunning(); // also run immediately on mount
 
         socket.on("catalog:progress", (data: { catalogId: string; status: string; current: number; total: number; image?: CatalogImageFE; lastError?: string; skipped?: number; promptSnippet?: string; imageStartedAt?: number }) => {
             setIaCatalogs((prev) =>
@@ -3466,7 +3483,7 @@ export function KdpFactoryApp() {
             setApLogs(prev => [...prev.slice(-49), { nicheId: data.nicheId, message: data.message, ts: Date.now() }]);
         });
 
-        socket.on("autopilot:stage", (data: { stage: "discovery" | "prompt" | "sample" | "catalog" | "listing"; nicheId: string; nicheName: string }) => {
+        socket.on("autopilot:stage", (data: { stage: "discovery" | "prompt" | "sample" | "catalog" | "libro" | "listing" | "cover"; nicheId: string; nicheName: string }) => {
             setApStage(data.stage);
             setApCurrentNicheName(data.nicheName);
             setApCurrentNicheId(data.nicheId);
@@ -3497,20 +3514,20 @@ export function KdpFactoryApp() {
 
         socket.on("niches:updated", () => {
             void fetchNiches();
-            if (studioSubTabRef.current === "pipeline") void fetchPipelineData();
+            void fetchPipelineData();
         });
 
         socket.on("catalogs:updated", () => {
             void fetchCatalogs();
-            if (studioSubTabRef.current === "pipeline") void fetchPipelineData();
+            void fetchPipelineData();
         });
 
         socket.on("autopilot:stage", () => {
-            if (studioSubTabRef.current === "pipeline") void fetchPipelineData();
+            void fetchPipelineData();
         });
 
         socket.on("autopilot:done", () => {
-            if (studioSubTabRef.current === "pipeline") void fetchPipelineData();
+            void fetchPipelineData();
         });
 
         socket.on("telegram:open-pdf", (data: { nicheId: string; nicheName: string; catalogIds: string[] }) => {
@@ -3565,6 +3582,58 @@ export function KdpFactoryApp() {
                 delete catalogStartTimeRef.current[c._id];
             }
         });
+    }, [iaCatalogs]);
+
+    // Build pipeline book draft once all pending catalogs complete
+    useEffect(() => {
+        if (pipelineBookPendingRef.current.size === 0) return;
+        const ready: string[] = [];
+        for (const [nicheId, pending] of pipelineBookPendingRef.current.entries()) {
+            const allDone = pending.catalogIds.every(cid =>
+                iaCatalogs.find(c => c._id === cid)?.status === "completed"
+            );
+            if (allDone) ready.push(nicheId);
+        }
+        for (const nicheId of ready) {
+            const pending = pipelineBookPendingRef.current.get(nicheId)!;
+            pipelineBookPendingRef.current.delete(nicheId);
+            const nicheName = pending.nicheName;
+            const catImgs = iaCatalogs
+                .filter(c => pending.catalogIds.includes(c._id))
+                .flatMap(c => c.images.map(img => ({ url: img.url, publicId: img.publicId })));
+            const cloudImgs = cloudinaryImages
+                .filter(img => img.nicheId === nicheId)
+                .map(img => ({ url: img.url, publicId: img.publicId }));
+            const allImgs = [...catImgs, ...cloudImgs];
+            if (allImgs.length === 0) continue;
+            const shuffled = [...allImgs].sort(() => Math.random() - 0.5);
+            const ts = Date.now();
+            const pages: BookPage[] = [];
+            pages.push({ id: `pipe-owner-${ts}`, type: "owner", text: defaultTextStyle() });
+            const titleStyle = defaultTextStyle();
+            titleStyle.content = nicheName || "Mi Libro de Colorear";
+            titleStyle.fontSize = 24; titleStyle.bold = true;
+            titleStyle.verticalAlign = "middle"; titleStyle.align = "center";
+            pages.push({ id: `pipe-title-${ts}`, type: "text", text: titleStyle });
+            pages.push({ id: `pipe-titleback-${ts}`, type: "text", text: defaultTextStyle() });
+            shuffled.forEach((img, i) => {
+                pages.push({ id: `pipe-img-${i}-${ts}`, type: "image", image: { url: img.url, scale: 1, label: `${nicheName} #${i + 1}` }, text: defaultTextStyle() });
+                pages.push({ id: `pipe-blank-${i}-${ts}`, type: "text", text: defaultTextStyle() });
+                if ((i + 1) % pending.imagesPerCatalog === 0 && i + 1 < shuffled.length)
+                    pages.push({ id: `pipe-ct-${i}-${ts}`, type: "owner", text: defaultTextStyle() });
+            });
+            const draftId = `pipeline-${nicheId}-${ts}`;
+            const newDraft = { id: draftId, fileName: `${nicheName} — Pipeline Draft`, pages, savedAt: new Date().toISOString(), nicheId };
+            setBookDrafts(prev => {
+                const updated = [newDraft, ...prev.filter(d => !d.id.startsWith(`pipeline-${nicheId}`) && d.nicheId !== nicheId)];
+                void fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "kdp-book-drafts", value: updated }]) }).catch(() => {});
+                return updated;
+            });
+            void fetch(`${API_BASE_URL}/niches/${nicheId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro" }) }).catch(() => {});
+            setNiches(prev => prev.map(n => n._id === nicheId ? { ...n, phase: "libro" } : n));
+            toast.success(`Borrador listo · ${shuffled.length} imágenes · "${nicheName}"`);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [iaCatalogs]);
 
     // Live countdown timer for queue estimate
@@ -4087,6 +4156,17 @@ export function KdpFactoryApp() {
 
     // ── Pipeline automático: genera catálogos + KDP listing ──────────────────
     const runNichePipeline = async (niche: NicheFE, cfg?: { catalogs: number; imagesPerCatalog: number }) => {
+        // Self-queue if another pipeline is already running
+        if (pipelineRunningRef.current !== null) {
+            pipelineQueueRef.current.push({ niche, cfg });
+            setPipelineQueueIds(prev => [...prev, niche._id]);
+            toast.info(`"${niche.nickname?.trim() || niche.name}" en cola · posición ${pipelineQueueRef.current.length}`);
+            return;
+        }
+
+        pipelineRunningRef.current = niche._id;
+        setPipelineRunningId(niche._id);
+
         const IMAGES_PER_CATALOG = cfg?.imagesPerCatalog ?? pipelineConfig.imagesPerCatalog;
         const MAX_CATALOGS = cfg?.catalogs ?? pipelineConfig.catalogs;
         const IMAGES_TARGET = MAX_CATALOGS * IMAGES_PER_CATALOG;
@@ -4099,8 +4179,8 @@ export function KdpFactoryApp() {
             ? Math.min(MAX_CATALOGS, Math.ceil((IMAGES_TARGET - nicheImageCount) / IMAGES_PER_CATALOG))
             : 0;
 
-        setNicheGeneratingId(niche._id);
         const allNewCatalogIds: string[] = [...(niche.catalogIds ?? [])];
+        const freshCatalogIds: string[] = [];
 
         try {
             if (toCreate > 0) {
@@ -4169,6 +4249,7 @@ export function KdpFactoryApp() {
                     if (catalogRes.ok) {
                         setIaCatalogs(prev => [catalogData.catalog, ...prev]);
                         allNewCatalogIds.push(catalogData.catalog._id);
+                        freshCatalogIds.push(catalogData.catalog._id);
                         toast.success(`Catálogo ${i + 1}/${toCreate} en cola`);
                     } else {
                         const errMsg = typeof catalogData.error === "string" ? catalogData.error : JSON.stringify(catalogData.error ?? catalogData);
@@ -4234,59 +4315,68 @@ export function KdpFactoryApp() {
                 }
             } catch { /* listing failure is non-blocking */ }
 
-            // ── Auto-build KDP book draft from niche images (catalog + Cloudinary) ──
-            try {
-                const catImgs = iaCatalogs
-                    .filter(c => c.nicheIds?.includes(niche._id) && c.status === "completed")
-                    .flatMap(c => c.images.map(img => ({ url: img.url, publicId: img.publicId })));
-                const cloudImgs = cloudinaryImages
-                    .filter(img => img.nicheId === niche._id)
-                    .map(img => ({ url: img.url, publicId: img.publicId }));
-                const allImgs = [...catImgs, ...cloudImgs];
-                if (allImgs.length > 0) {
-                    const shuffled = [...allImgs].sort(() => Math.random() - 0.5);
-                    const ts = Date.now();
-                    const pages: BookPage[] = [];
-                    // p1: copyright/owner
-                    pages.push({ id: `pipe-owner-${ts}`, type: "owner", text: defaultTextStyle() });
-                    // p2: title page
-                    const titleStyle = defaultTextStyle();
-                    titleStyle.content = niche.name || "Mi Libro de Colorear";
-                    titleStyle.fontSize = 24;
-                    titleStyle.bold = true;
-                    titleStyle.verticalAlign = "middle";
-                    titleStyle.align = "center";
-                    pages.push({ id: `pipe-title-${ts}`, type: "text", text: titleStyle });
-                    // p3: blank back of title
-                    pages.push({ id: `pipe-titleback-${ts}`, type: "text", text: defaultTextStyle() });
-                    // p4+: image + blank (alternating), color-test every N images
-                    shuffled.forEach((img, i) => {
-                        pages.push({ id: `pipe-img-${i}-${ts}`, type: "image", image: { url: img.url, scale: 1, label: `${niche.name} #${i + 1}` }, text: defaultTextStyle() });
-                        pages.push({ id: `pipe-blank-${i}-${ts}`, type: "text", text: defaultTextStyle() });
-                        if ((i + 1) % IMAGES_PER_CATALOG === 0 && i + 1 < shuffled.length) {
-                            pages.push({ id: `pipe-ct-${i}-${ts}`, type: "owner", text: defaultTextStyle() });
-                        }
-                    });
-                    const draftId = `pipeline-${niche._id}-${ts}`;
-                    const newDraft = { id: draftId, fileName: `${niche.name} — Pipeline Draft`, pages, savedAt: new Date().toISOString(), nicheId: niche._id };
-                    const updatedDrafts = [newDraft, ...bookDrafts.filter(d => !d.id.startsWith(`pipeline-${niche._id}`) && d.nicheId !== niche._id)];
-                    setBookDrafts(updatedDrafts);
-                    // Persist draft + advance niche to "libro" immediately
-                    await Promise.all([
-                        fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "kdp-book-drafts", value: updatedDrafts }]) }),
-                        fetch(`${API_BASE_URL}/niches/${niche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro" }) }),
-                    ]).catch(() => {});
-                    setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase: "libro" } : n));
-                    toast.success(`Borrador listo · ${shuffled.length} imágenes (${catImgs.length} catálogo + ${cloudImgs.length} almacén)`);
-                }
-            } catch { /* non-blocking */ }
+            // ── Book draft: defer if new catalogs were created, build now if re-run ──
+            if (freshCatalogIds.length > 0) {
+                pipelineBookPendingRef.current.set(niche._id, {
+                    catalogIds: freshCatalogIds,
+                    imagesPerCatalog: IMAGES_PER_CATALOG,
+                    nicheName: niche.name,
+                });
+                toast.info(`Catálogos en cola · el borrador del libro se creará cuando terminen las imágenes`);
+            } else {
+                // No new catalogs — build from already-completed images immediately
+                try {
+                    const catImgs = iaCatalogs
+                        .filter(c => c.nicheIds?.includes(niche._id) && c.status === "completed")
+                        .flatMap(c => c.images.map(img => ({ url: img.url, publicId: img.publicId })));
+                    const cloudImgs = cloudinaryImages
+                        .filter(img => img.nicheId === niche._id)
+                        .map(img => ({ url: img.url, publicId: img.publicId }));
+                    const allImgs = [...catImgs, ...cloudImgs];
+                    if (allImgs.length > 0) {
+                        const shuffled = [...allImgs].sort(() => Math.random() - 0.5);
+                        const ts = Date.now();
+                        const pages: BookPage[] = [];
+                        pages.push({ id: `pipe-owner-${ts}`, type: "owner", text: defaultTextStyle() });
+                        const titleStyle = defaultTextStyle();
+                        titleStyle.content = niche.name || "Mi Libro de Colorear";
+                        titleStyle.fontSize = 24; titleStyle.bold = true;
+                        titleStyle.verticalAlign = "middle"; titleStyle.align = "center";
+                        pages.push({ id: `pipe-title-${ts}`, type: "text", text: titleStyle });
+                        pages.push({ id: `pipe-titleback-${ts}`, type: "text", text: defaultTextStyle() });
+                        shuffled.forEach((img, i) => {
+                            pages.push({ id: `pipe-img-${i}-${ts}`, type: "image", image: { url: img.url, scale: 1, label: `${niche.name} #${i + 1}` }, text: defaultTextStyle() });
+                            pages.push({ id: `pipe-blank-${i}-${ts}`, type: "text", text: defaultTextStyle() });
+                            if ((i + 1) % IMAGES_PER_CATALOG === 0 && i + 1 < shuffled.length)
+                                pages.push({ id: `pipe-ct-${i}-${ts}`, type: "owner", text: defaultTextStyle() });
+                        });
+                        const draftId = `pipeline-${niche._id}-${ts}`;
+                        const newDraft = { id: draftId, fileName: `${niche.name} — Pipeline Draft`, pages, savedAt: new Date().toISOString(), nicheId: niche._id };
+                        const updatedDrafts = [newDraft, ...bookDrafts.filter(d => !d.id.startsWith(`pipeline-${niche._id}`) && d.nicheId !== niche._id)];
+                        setBookDrafts(updatedDrafts);
+                        await Promise.all([
+                            fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "kdp-book-drafts", value: updatedDrafts }]) }),
+                            fetch(`${API_BASE_URL}/niches/${niche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro" }) }),
+                        ]).catch(() => {});
+                        setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase: "libro" } : n));
+                        toast.success(`Borrador listo · ${shuffled.length} imágenes (${catImgs.length} catálogo + ${cloudImgs.length} almacén)`);
+                    }
+                } catch { /* non-blocking */ }
+            }
 
             changeTab("creation");
 
         } catch (e: any) {
             toast.error(e.message ?? "Error en el pipeline");
         } finally {
-            setNicheGeneratingId(null);
+            pipelineRunningRef.current = null;
+            setPipelineRunningId(null);
+            // Drain queue: start next pipeline if any
+            if (pipelineQueueRef.current.length > 0) {
+                const next = pipelineQueueRef.current.shift()!;
+                setPipelineQueueIds(prev => prev.filter(id => id !== next.niche._id));
+                void runNichePipeline(next.niche, next.cfg);
+            }
         }
     };
 
@@ -4530,8 +4620,58 @@ export function KdpFactoryApp() {
             { id: "published", label: "Publicado", icon: ShoppingBag, text: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20"},
         ] as const;
 
-        const byPhase: Record<string, PipelineNiche[]> = {};
-        PHASES.forEach(p => { byPhase[p.id] = pipelineData?.niches.filter(n => n.phase === p.id) ?? []; });
+        // Derive pipeline data directly from live niches + iaCatalogs state (always in sync via sockets)
+        const now = Date.now();
+        const pipelineNiches = niches.map(n => {
+            const nicheCatalogs = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
+            const running  = nicheCatalogs.filter(c => c.status === "running");
+            const completed = nicheCatalogs.filter(c => c.status === "completed");
+            const queued   = nicheCatalogs.filter(c => c.status === "queued" || c.status === "pending");
+            const imgsDone = [...completed, ...running].reduce((s, c) => s + c.images.length, 0);
+            const imgsTotal = nicheCatalogs.reduce((s, c) => s + c.totalImages, 0);
+            const lastImageAt: string | null = nicheCatalogs
+                .flatMap(c => c.images)
+                .map(img => (img as any).createdAt as string)
+                .filter(Boolean)
+                .sort()
+                .at(-1) ?? null;
+            const lastError = running.map(c => c.lastError).filter(Boolean).at(-1) ?? null;
+            const phaseRef = n.phaseChangedAt ?? n.updatedAt;
+            const phaseMs = phaseRef ? now - new Date(phaseRef).getTime() : 0;
+            return {
+                id: n._id,
+                name: n.name,
+                nickname: n.nickname,
+                phase: (n.phase === "pdf" ? "seo" : n.phase) ?? "niche",
+                score: n.score,
+                autoPilotEnabled: n.autoPilotEnabled ?? false,
+                phaseMs,
+                catalogs: { running: running.length, completed: completed.length, queued: queued.length, total: nicheCatalogs.length, imgsDone, imgsTotal },
+                lastImageAt,
+                lastError,
+            };
+        });
+
+        const byPhase: Record<string, typeof pipelineNiches> = {};
+        PHASES.forEach(p => { byPhase[p.id] = pipelineNiches.filter(n => n.phase === p.id); });
+
+        // Smart stuck detection: context-aware by phase
+        const computeIsStuck = (n: (typeof pipelineNiches)[number]) => {
+            if (n.phase === "niche" || n.phase === "published") return false;
+            const lastImgMs = n.lastImageAt ? now - new Date(n.lastImageAt).getTime() : Infinity;
+            if (n.phase === "catalog") {
+                // Active catalog with recent image (<20min) → definitely NOT stuck
+                if (n.catalogs.running > 0 && lastImgMs < 20 * 60_000) return false;
+                // No catalogs at all (just entered phase) and <6h → not stuck yet
+                if (n.catalogs.total === 0 && n.phaseMs < 6 * 3_600_000) return false;
+                // Running but no image for >90min → likely stuck
+                if (n.catalogs.running > 0 && lastImgMs > 90 * 60_000) return true;
+                // Not running: stuck if phase > 6h
+                return n.catalogs.running === 0 && n.phaseMs > 6 * 3_600_000;
+            }
+            // libro, seo, cover → stuck if >12h without phase change
+            return n.phaseMs > 12 * 3_600_000;
+        };
 
         const switchView = (v: "list" | "columns") => {
             setPipelineViewMode(v);
@@ -4549,10 +4689,10 @@ export function KdpFactoryApp() {
                 <div className="flex items-center justify-between flex-wrap gap-2">
                     <div>
                         <h2 className="text-xl font-black text-white">Pipeline en tiempo real</h2>
-                        <p className="text-xs text-neutral-600">Estado de todos los nichos activos</p>
+                        <p className="text-xs text-neutral-600">Estado de todos los nichos · {pipelineNiches.length} total</p>
                     </div>
                     <div className="flex items-center gap-2">
-                        {/* Semaphore dots */}
+                        {/* Semaphore dots (from pipelineData if available) */}
                         {pipelineData && [
                             { label: "IMG", s: pipelineData.semaphore.image, color: "sky" as const },
                             { label: "LLM", s: pipelineData.semaphore.llm,   color: "violet" as const },
@@ -4575,29 +4715,18 @@ export function KdpFactoryApp() {
                                 </button>
                             ))}
                         </div>
-                        <button onClick={fetchPipelineData} disabled={pipelineLoading}
-                            className="h-7 w-7 rounded-lg border border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white transition-all flex items-center justify-center disabled:opacity-40">
-                            {pipelineLoading ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                        <button onClick={() => { void fetchNiches(); void fetchCatalogs(); }}
+                            className="h-7 w-7 rounded-lg border border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white transition-all flex items-center justify-center">
+                            <RefreshCw size={11} />
                         </button>
                     </div>
                 </div>
 
-                {!pipelineData && !pipelineLoading && (
-                    <button onClick={fetchPipelineData} className="w-full py-12 rounded-2xl border border-dashed border-white/10 text-neutral-600 hover:text-neutral-400 transition-colors text-sm font-black flex items-center justify-center gap-2">
-                        <Zap size={14} /> Cargar estado del pipeline
-                    </button>
-                )}
-                {pipelineLoading && (
-                    <div className="flex items-center justify-center py-16 text-neutral-700">
-                        <Loader2 size={20} className="animate-spin mr-2" /> Cargando…
-                    </div>
-                )}
+                <div className="space-y-6">
 
-                {pipelineData && (
-                    <div className="space-y-6">
-
-                        {/* ── LIST VIEW (original) ── */}
-                        {pipelineViewMode === "list" && <>
+                    {/* ── LIST VIEW ── */}
+                    {pipelineViewMode === "list" && <>
+                        {pipelineData && (
                             <div className="grid grid-cols-2 gap-3">
                                 {[
                                     { label: "Cola imágenes", s: pipelineData.semaphore.image, color: "sky" },
@@ -4615,158 +4744,159 @@ export function KdpFactoryApp() {
                                     </Card>
                                 ))}
                             </div>
+                        )}
 
-                            {pipelineData.niches.length === 0 && (
-                                <p className="text-sm text-neutral-600 text-center py-8">No hay nichos activos en el pipeline.</p>
-                            )}
-                            <div className="space-y-3">
-                                {pipelineData.niches.map(n => {
-                                    const isStuck = n.phaseMs > 4 * 3_600_000 && !["published", "niche"].includes(n.phase);
-                                    const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
-                                    const nicheRoyalties = salesData.filter(s => s.nicheId === n.id).reduce((sum, s) => sum + s.royaltiesUsd, 0);
-                                    const nicheUnits    = salesData.filter(s => s.nicheId === n.id).reduce((sum, s) => sum + s.unitsSold, 0);
-                                    return (
-                                        <Card key={n.id} variant="glass" className={`p-4 border-white/5 bg-white/[0.01] space-y-3 ${isStuck ? "border-amber-500/20 bg-amber-500/[0.02]" : ""}`}>
-                                            <div className="flex items-start gap-3">
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                        <span className="font-black text-white text-sm truncate">{nd(n)}</span>
-                                                        {n.score != null && (
-                                                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${n.score >= 70 ? "bg-emerald-500/15 text-emerald-400" : n.score >= 50 ? "bg-amber-500/15 text-amber-400" : "bg-neutral-500/15 text-neutral-500"}`}>
-                                                                {n.score}pts
-                                                            </span>
-                                                        )}
-                                                        {n.autoPilotEnabled && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400">AP</span>}
-                                                        {isStuck && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 flex items-center gap-0.5"><AlertTriangle size={8} /> ATASCADO</span>}
-                                                        {nicheRoyalties > 0 && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400">${nicheRoyalties.toFixed(2)} · {nicheUnits}u</span>}
-                                                    </div>
-                                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                                        <span className={`text-[10px] font-black uppercase ${phaseColor[n.phase] ?? "text-neutral-400"}`}>{n.phase}</span>
-                                                        <span className="text-[9px] text-neutral-600">{fmtMs(n.phaseMs)} en esta fase</span>
-                                                    </div>
+                        {pipelineNiches.length === 0 && (
+                            <p className="text-sm text-neutral-600 text-center py-8">No hay nichos.</p>
+                        )}
+                        <div className="space-y-3">
+                            {pipelineNiches.map(n => {
+                                const isStuck = computeIsStuck(n);
+                                const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
+                                const nicheRoyalties = salesData.filter(s => s.nicheId === n.id).reduce((sum, s) => sum + s.royaltiesUsd, 0);
+                                const nicheUnits    = salesData.filter(s => s.nicheId === n.id).reduce((sum, s) => sum + s.unitsSold, 0);
+                                return (
+                                    <Card key={n.id} variant="glass" className={`p-4 border-white/5 bg-white/[0.01] space-y-3 ${isStuck ? "border-amber-500/20 bg-amber-500/[0.02]" : ""}`}>
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="font-black text-white text-sm truncate">{n.nickname?.trim() || n.name?.trim() || <span className="text-neutral-600 italic font-normal">Sin nombre</span>}</span>
+                                                    {n.score != null && (
+                                                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${n.score >= 70 ? "bg-emerald-500/15 text-emerald-400" : n.score >= 50 ? "bg-amber-500/15 text-amber-400" : "bg-neutral-500/15 text-neutral-500"}`}>
+                                                            {n.score}pts
+                                                        </span>
+                                                    )}
+                                                    {n.autoPilotEnabled && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400">AP</span>}
+                                                    {isStuck && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 flex items-center gap-0.5"><AlertTriangle size={8} /> ATASCADO</span>}
+                                                    {nicheRoyalties > 0 && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400">${nicheRoyalties.toFixed(2)} · {nicheUnits}u</span>}
                                                 </div>
-                                                <div className="flex items-center gap-1.5 shrink-0">
-                                                    {["libro", "seo", "pdf"].includes(n.phase) && (
-                                                        <button onClick={() => void launchPipelineSeo(n.id)} disabled={pipelineSeoLoading[n.id]}
-                                                            title="Generar / regenerar SEO"
-                                                            className="flex items-center gap-1 h-7 px-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] font-black hover:bg-amber-500/25 transition-all disabled:opacity-50">
-                                                            {pipelineSeoLoading[n.id] ? <Loader2 size={9} className="animate-spin" /> : <FileText size={9} />} SEO
-                                                        </button>
-                                                    )}
-                                                    {(isStuck || !!n.lastError) && (
-                                                        <button onClick={() => void retryStuckNiche(n.id)} disabled={pipelineRetryLoading[n.id]}
-                                                            className="flex items-center gap-1 h-7 px-2.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-400 text-[10px] font-black hover:bg-rose-500/25 transition-all disabled:opacity-50">
-                                                            {pipelineRetryLoading[n.id] ? <Loader2 size={9} className="animate-spin" /> : <RefreshCw size={9} />} Retry
-                                                        </button>
-                                                    )}
+                                                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                    <span className={`text-[10px] font-black uppercase ${phaseColor[n.phase] ?? "text-neutral-400"}`}>{n.phase}</span>
+                                                    <span className="text-[9px] text-neutral-600">{fmtMs(n.phaseMs)} en esta fase</span>
                                                 </div>
                                             </div>
-                                            {n.phase === "catalog" && n.catalogs.total > 0 && (
-                                                <div className="space-y-1.5">
-                                                    <div className="flex items-center justify-between text-[10px]">
-                                                        <span className="text-neutral-600">{n.catalogs.imgsDone}/{n.catalogs.imgsTotal} imágenes · {n.catalogs.running} activo{n.catalogs.running !== 1 ? "s" : ""} · {n.catalogs.queued} en cola</span>
-                                                        <span className="text-neutral-500 font-black">{imgPct}%</span>
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                {["libro", "seo", "pdf"].includes(n.phase) && (
+                                                    <button onClick={() => void launchPipelineSeo(n.id)} disabled={pipelineSeoLoading[n.id]}
+                                                        title="Generar / regenerar SEO"
+                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] font-black hover:bg-amber-500/25 transition-all disabled:opacity-50">
+                                                        {pipelineSeoLoading[n.id] ? <Loader2 size={9} className="animate-spin" /> : <FileText size={9} />} SEO
+                                                    </button>
+                                                )}
+                                                {(isStuck || !!n.lastError) && (
+                                                    <button onClick={() => void retryStuckNiche(n.id)} disabled={pipelineRetryLoading[n.id]}
+                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-400 text-[10px] font-black hover:bg-rose-500/25 transition-all disabled:opacity-50">
+                                                        {pipelineRetryLoading[n.id] ? <Loader2 size={9} className="animate-spin" /> : <RefreshCw size={9} />} Retry
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {n.phase === "catalog" && n.catalogs.total > 0 && (
+                                            <div className="space-y-1.5">
+                                                <div className="flex items-center justify-between text-[10px]">
+                                                    <span className="text-neutral-600">{n.catalogs.imgsDone}/{n.catalogs.imgsTotal} imágenes · {n.catalogs.running} activo{n.catalogs.running !== 1 ? "s" : ""} · {n.catalogs.queued} en cola</span>
+                                                    <span className="text-neutral-500 font-black">{imgPct}%</span>
+                                                </div>
+                                                <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-gradient-to-r from-blue-500/60 to-sky-400/60 rounded-full transition-all duration-500" style={{ width: `${imgPct}%` }} />
+                                                </div>
+                                                {n.lastImageAt && (
+                                                    <p className="text-[9px] text-neutral-700">
+                                                        Última imagen: {fmtMs(Date.now() - new Date(n.lastImageAt).getTime())} atrás
+                                                        {Date.now() - new Date(n.lastImageAt).getTime() > 10 * 60_000 && <span className="text-amber-400 ml-1">⚠️</span>}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
+                                        {n.lastError && (
+                                            <p className="text-[9px] text-rose-400/80 font-mono bg-rose-500/5 rounded-lg px-2 py-1 truncate" title={n.lastError}>{n.lastError}</p>
+                                        )}
+                                    </Card>
+                                );
+                            })}
+                        </div>
+                    </>}
+
+                    {/* ── COLUMNS VIEW (kanban) ── */}
+                    {pipelineViewMode === "columns" && (
+                        <div className="overflow-x-auto pb-2 no-scrollbar -mx-1 px-1">
+                            <div className="flex gap-3" style={{ minWidth: `${PHASES.length * 188}px` }}>
+                                {PHASES.map(phase => {
+                                    const nichos = byPhase[phase.id] ?? [];
+                                    const PhaseIcon = phase.icon;
+                                    return (
+                                        <div key={phase.id} className="flex-1 min-w-0 flex flex-col gap-2">
+                                            {/* Column header */}
+                                            <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${nichos.length > 0 ? `${phase.bg} ${phase.border}` : "border-white/5 bg-white/[0.01]"}`}>
+                                                <PhaseIcon size={11} className={nichos.length > 0 ? phase.text : "text-neutral-700"} />
+                                                <span className={`text-[10px] font-black uppercase tracking-widest flex-1 ${nichos.length > 0 ? phase.text : "text-neutral-700"}`}>
+                                                    {phase.label}
+                                                </span>
+                                                <span className={`text-sm font-black tabular-nums ${nichos.length > 0 ? phase.text : "text-neutral-800"}`}>
+                                                    {nichos.length}
+                                                </span>
+                                            </div>
+                                            {/* Niche cards */}
+                                            {nichos.map(n => {
+                                                const isStuck = computeIsStuck(n);
+                                                const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
+                                                const royalties = salesData.filter(s => s.nicheId === n.id).reduce((sum, s) => sum + s.royaltiesUsd, 0);
+                                                return (
+                                                    <div key={n.id} title={n.lastError ?? (n.nickname?.trim() || n.name?.trim() || "Sin nombre")}
+                                                        className={`rounded-xl border p-3 space-y-2 transition-all
+                                                            ${isStuck     ? "bg-amber-500/[0.06] border-amber-500/25" :
+                                                              n.lastError ? "bg-rose-500/[0.06]  border-rose-500/25"  :
+                                                                            "bg-white/[0.02] border-white/8"}`}>
+                                                        <p className="text-[11px] font-black leading-tight line-clamp-2">{n.nickname?.trim() || n.name?.trim() || <span className="text-neutral-600 italic font-normal">Sin nombre</span>}</p>
+                                                        <div className="flex items-center gap-1 flex-wrap">
+                                                            {isStuck && <span className="flex items-center gap-0.5 text-[9px] font-black text-amber-400"><AlertTriangle size={8} /> Atascado</span>}
+                                                            {n.lastError && !isStuck && <span className="flex items-center gap-0.5 text-[9px] font-black text-rose-400"><AlertTriangle size={8} /> Error</span>}
+                                                            {n.autoPilotEnabled && <span className="text-[9px] font-black text-sky-400">AP</span>}
+                                                            {royalties > 0 && <span className="text-[9px] font-black text-emerald-400">${royalties.toFixed(0)}</span>}
+                                                        </div>
+                                                        <p className="text-[9px] text-neutral-600">{fmtMs(n.phaseMs)}</p>
+                                                        {phase.id === "catalog" && n.catalogs.imgsTotal > 0 && (
+                                                            <div className="space-y-1">
+                                                                <div className="flex justify-between text-[9px] text-neutral-600">
+                                                                    <span>{n.catalogs.imgsDone}/{n.catalogs.imgsTotal} imgs</span>
+                                                                    <span className="font-black">{imgPct}%</span>
+                                                                </div>
+                                                                <div className="h-0.5 bg-white/5 rounded-full overflow-hidden">
+                                                                    <div className="h-full bg-blue-400/50 rounded-full" style={{ width: `${imgPct}%` }} />
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        {n.lastError && (
+                                                            <p className="text-[8px] text-rose-400/70 font-mono truncate" title={n.lastError}>{n.lastError}</p>
+                                                        )}
+                                                        <div className="flex gap-1 flex-wrap">
+                                                            {["libro", "seo", "pdf"].includes(n.phase) && (
+                                                                <button onClick={() => void launchPipelineSeo(n.id)} disabled={pipelineSeoLoading[n.id]}
+                                                                    className="flex items-center gap-0.5 h-5 px-2 rounded bg-amber-500/15 border border-amber-500/25 text-amber-400 text-[9px] font-black hover:bg-amber-500/25 transition-all disabled:opacity-50">
+                                                                    {pipelineSeoLoading[n.id] ? <Loader2 size={7} className="animate-spin" /> : <Sparkles size={7} />} SEO
+                                                                </button>
+                                                            )}
+                                                            {(isStuck || !!n.lastError) && (
+                                                                <button onClick={() => void retryStuckNiche(n.id)} disabled={pipelineRetryLoading[n.id]}
+                                                                    className="flex items-center gap-0.5 h-5 px-2 rounded bg-rose-500/15 border border-rose-500/25 text-rose-400 text-[9px] font-black hover:bg-rose-500/25 transition-all disabled:opacity-50">
+                                                                    {pipelineRetryLoading[n.id] ? <Loader2 size={7} className="animate-spin" /> : <RefreshCw size={7} />} Retry
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                    <div className="h-1 bg-white/5 rounded-full overflow-hidden">
-                                                        <div className="h-full bg-gradient-to-r from-blue-500/60 to-sky-400/60 rounded-full transition-all duration-500" style={{ width: `${imgPct}%` }} />
-                                                    </div>
-                                                    {n.lastImageAt && (
-                                                        <p className="text-[9px] text-neutral-700">
-                                                            Última imagen: {fmtMs(Date.now() - new Date(n.lastImageAt).getTime())} atrás
-                                                            {Date.now() - new Date(n.lastImageAt).getTime() > 10 * 60_000 && <span className="text-amber-400 ml-1">⚠️</span>}
-                                                        </p>
-                                                    )}
+                                                );
+                                            })}
+                                            {nichos.length === 0 && (
+                                                <div className="rounded-xl border border-dashed border-white/5 py-6 flex items-center justify-center">
+                                                    <span className="text-[10px] text-neutral-800 font-black">—</span>
                                                 </div>
                                             )}
-                                            {n.lastError && (
-                                                <p className="text-[9px] text-rose-400/80 font-mono bg-rose-500/5 rounded-lg px-2 py-1 truncate" title={n.lastError}>{n.lastError}</p>
-                                            )}
-                                        </Card>
+                                        </div>
                                     );
                                 })}
                             </div>
-                        </>}
-
-                        {/* ── COLUMNS VIEW (kanban) ── */}
-                        {pipelineViewMode === "columns" && (
-                            <div className="overflow-x-auto pb-2 no-scrollbar -mx-1 px-1">
-                                <div className="flex gap-3" style={{ minWidth: `${PHASES.length * 188}px` }}>
-                                    {PHASES.map(phase => {
-                                        const nichos = byPhase[phase.id] ?? [];
-                                        const PhaseIcon = phase.icon;
-                                        return (
-                                            <div key={phase.id} className="flex-1 min-w-0 flex flex-col gap-2">
-                                                {/* Column header */}
-                                                <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${nichos.length > 0 ? `${phase.bg} ${phase.border}` : "border-white/5 bg-white/[0.01]"}`}>
-                                                    <PhaseIcon size={11} className={nichos.length > 0 ? phase.text : "text-neutral-700"} />
-                                                    <span className={`text-[10px] font-black uppercase tracking-widest flex-1 ${nichos.length > 0 ? phase.text : "text-neutral-700"}`}>
-                                                        {phase.label}
-                                                    </span>
-                                                    <span className={`text-sm font-black tabular-nums ${nichos.length > 0 ? phase.text : "text-neutral-800"}`}>
-                                                        {nichos.length}
-                                                    </span>
-                                                </div>
-                                                {/* Niche cards */}
-                                                {nichos.map(n => {
-                                                    const isStuck = n.phaseMs > 4 * 3_600_000 && !["published", "niche"].includes(n.phase);
-                                                    const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
-                                                    const royalties = salesData.filter(s => s.nicheId === n.id).reduce((sum, s) => sum + s.royaltiesUsd, 0);
-                                                    return (
-                                                        <div key={n.id} title={n.lastError ?? nd(n)}
-                                                            className={`rounded-xl border p-3 space-y-2 transition-all
-                                                                ${isStuck     ? "bg-amber-500/[0.06] border-amber-500/25" :
-                                                                  n.lastError ? "bg-rose-500/[0.06]  border-rose-500/25"  :
-                                                                                "bg-white/[0.02] border-white/8"}`}>
-                                                            <p className="text-[11px] font-black text-white leading-tight line-clamp-2">{nd(n)}</p>
-                                                            <div className="flex items-center gap-1 flex-wrap">
-                                                                {isStuck && <span className="flex items-center gap-0.5 text-[9px] font-black text-amber-400"><AlertTriangle size={8} /> Atascado</span>}
-                                                                {n.lastError && !isStuck && <span className="flex items-center gap-0.5 text-[9px] font-black text-rose-400"><AlertTriangle size={8} /> Error</span>}
-                                                                {n.autoPilotEnabled && <span className="text-[9px] font-black text-sky-400">AP</span>}
-                                                                {royalties > 0 && <span className="text-[9px] font-black text-emerald-400">${royalties.toFixed(0)}</span>}
-                                                            </div>
-                                                            <p className="text-[9px] text-neutral-600">{fmtMs(n.phaseMs)}</p>
-                                                            {phase.id === "catalog" && n.catalogs.imgsTotal > 0 && (
-                                                                <div className="space-y-1">
-                                                                    <div className="flex justify-between text-[9px] text-neutral-600">
-                                                                        <span>{n.catalogs.imgsDone}/{n.catalogs.imgsTotal} imgs</span>
-                                                                        <span className="font-black">{imgPct}%</span>
-                                                                    </div>
-                                                                    <div className="h-0.5 bg-white/5 rounded-full overflow-hidden">
-                                                                        <div className="h-full bg-blue-400/50 rounded-full" style={{ width: `${imgPct}%` }} />
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            {n.lastError && (
-                                                                <p className="text-[8px] text-rose-400/70 font-mono truncate" title={n.lastError}>{n.lastError}</p>
-                                                            )}
-                                                            <div className="flex gap-1 flex-wrap">
-                                                                {["libro", "seo", "pdf"].includes(n.phase) && (
-                                                                    <button onClick={() => void launchPipelineSeo(n.id)} disabled={pipelineSeoLoading[n.id]}
-                                                                        className="flex items-center gap-0.5 h-5 px-2 rounded bg-amber-500/15 border border-amber-500/25 text-amber-400 text-[9px] font-black hover:bg-amber-500/25 transition-all disabled:opacity-50">
-                                                                        {pipelineSeoLoading[n.id] ? <Loader2 size={7} className="animate-spin" /> : <Sparkles size={7} />} SEO
-                                                                    </button>
-                                                                )}
-                                                                {(isStuck || !!n.lastError) && (
-                                                                    <button onClick={() => void retryStuckNiche(n.id)} disabled={pipelineRetryLoading[n.id]}
-                                                                        className="flex items-center gap-0.5 h-5 px-2 rounded bg-rose-500/15 border border-rose-500/25 text-rose-400 text-[9px] font-black hover:bg-rose-500/25 transition-all disabled:opacity-50">
-                                                                        {pipelineRetryLoading[n.id] ? <Loader2 size={7} className="animate-spin" /> : <RefreshCw size={7} />} Retry
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                                {nichos.length === 0 && (
-                                                    <div className="rounded-xl border border-dashed border-white/5 py-6 flex items-center justify-center">
-                                                        <span className="text-[10px] text-neutral-800 font-black">—</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
+                        </div>
+                    )}
 
                         {/* Prompt metrics (shared) */}
                         <div className="space-y-3">
@@ -4816,8 +4946,7 @@ export function KdpFactoryApp() {
                                 </div>
                             )}
                         </div>
-                    </div>
-                )}
+                </div>
             </div>
         );
     };
@@ -6593,192 +6722,19 @@ export function KdpFactoryApp() {
                     </Card>
                 </div>
 
-                {/* ─ Pipeline control ─ */}
-                {(() => {
-                    const PHASE_LABELS: Partial<Record<NonNullable<NicheFE["phase"]>, string>> = {
-                        libro: "📖 Libro PDF",
-                        seo:   "📝 SEO",
-                        cover: "🎨 Portada",
-                    };
-                    const stuckNiches = niches.filter(n =>
-                        n.autoPilotEnabled &&
-                        n.status === "active" &&
-                        ["libro", "seo", "cover"].includes(n.phase ?? "")
-                    );
-                    if (!apRunning && stuckNiches.length === 0) return null;
-                    return (
-                        <Card variant="outline" className="p-5 bg-white/[0.02] border-white/[0.08] space-y-4">
-                            <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm font-black text-white">Control del Pipeline</span>
-                                    {apRunning && (
-                                        <span className="relative flex h-2 w-2">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
-                                        </span>
-                                    )}
-                                </div>
-                                {apRunning && (
-                                    <button
-                                        onClick={() => void stopAutoPilot()}
-                                        className="flex items-center gap-1.5 h-7 px-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 transition-all text-[10px] font-black uppercase tracking-widest"
-                                    >
-                                        <StopCircle size={10} />
-                                        Detener
-                                    </button>
-                                )}
-                            </div>
-                            {stuckNiches.length > 0 ? (
-                                <div className="space-y-2">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Nichos en pipeline</p>
-                                    {stuckNiches.map(n => (
-                                        <div key={n._id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-[11px] font-black text-white truncate">{nd(n)}</p>
-                                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">{PHASE_LABELS[n.phase as keyof typeof PHASE_LABELS] ?? n.phase}</p>
-                                            </div>
-                                            <button
-                                                onClick={() => void forceAdvanceNiche(n._id)}
-                                                title="Forzar avance a la siguiente fase"
-                                                className="h-6 px-2 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 hover:bg-sky-500/20 transition-all text-[10px] font-black uppercase tracking-widest shrink-0"
-                                            >
-                                                Forzar ›
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="text-[11px] text-neutral-700">Sin nichos en fases intermedias</p>
-                            )}
-                        </Card>
-                    );
-                })()}
-
-                {/* ─ Visual pipeline overview ─ */}
-                {(() => {
-                    const runningCatalogs = iaCatalogs.filter(c => c.status === "running" || c.status === "pending" || c.status === "queued");
-                    if (runningCatalogs.length === 0 && !apRunning) return null;
-
-                    // Group by niche — prefer current autopilot niche, then all active niches
-                    const activeNicheIds = apCurrentNicheId
-                        ? [apCurrentNicheId]
-                        : [...new Set(runningCatalogs.flatMap(c => c.nicheIds ?? []))];
-
-                    return (
-                        <div className="space-y-3">
-                            {activeNicheIds.map(nicheId => {
-                                const niche = niches.find(n => n._id === nicheId);
-                                const nicheCatalogs = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(nicheId));
-                                const doneCats = nicheCatalogs.filter(c => c.status === "completed").length;
-                                const totalCats = nicheCatalogs.length;
-                                const activeCat = nicheCatalogs.find(c => c.status === "running") ?? nicheCatalogs.find(c => c.status === "pending");
-                                const totalNicheImages = nicheCatalogs.reduce((s, c) => s + c.totalImages, 0);
-                                const doneNicheImages = nicheCatalogs.reduce((s, c) => s + c.images.length, 0);
-                                const overallPct = totalNicheImages > 0 ? Math.round((doneNicheImages / totalNicheImages) * 100) : 0;
-
-                                // Active image timing
-                                const imgMs = activeCat?.status === "running" && activeCat?.imageStartedAt
-                                    ? Date.now() - activeCat.imageStartedAt : 0;
-                                void imageElapsedTick;
-                                const imgSec = Math.floor(imgMs / 1000);
-                                const imgHeat = imgMs <= 0 ? "text-neutral-500" : imgMs < 2 * 60_000 ? "text-emerald-400" : imgMs < 4 * 60_000 ? "text-yellow-400" : imgMs < 6 * 60_000 ? "text-orange-400" : "text-red-400";
-
-                                const productLabel = niche?.productType === "printable-poster" ? "póster" : "libro";
-
-                                return (
-                                    <Card key={nicheId} variant="outline" className="p-4 bg-amber-500/[0.02] border-amber-500/20 space-y-3 overflow-hidden relative">
-                                        <div className="absolute -right-4 -top-4 w-20 h-20 bg-amber-500/[0.06] blur-2xl rounded-full pointer-events-none" />
-
-                                        {/* Niche header */}
-                                        <div className="flex items-center gap-2 relative">
-                                            <span className="relative flex h-2 w-2 shrink-0">
-                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
-                                            </span>
-                                            <p className="text-sm font-black text-white truncate flex-1">{niche?.name ?? apCurrentNicheName ?? "—"}</p>
-                                            <span className="text-[9px] font-black uppercase tracking-widest text-amber-500/60 shrink-0">
-                                                {productLabel}
-                                            </span>
-                                        </div>
-
-                                        {/* Overall progress bar */}
-                                        <div className="space-y-1 relative">
-                                            <div className="flex justify-between items-center text-[10px]">
-                                                <span className="font-black text-neutral-500">
-                                                    {doneNicheImages}/{totalNicheImages} imgs · {doneCats}/{totalCats} catálogos
-                                                </span>
-                                                <span className="font-black text-amber-400">{overallPct}%</span>
-                                            </div>
-                                            <div className="h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
-                                                <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 transition-all duration-700"
-                                                    style={{ width: `${overallPct}%` }} />
-                                            </div>
-                                        </div>
-
-                                        {/* Per-catalog pills */}
-                                        {totalCats > 0 && (
-                                            <div className="flex flex-wrap gap-1.5 relative">
-                                                {nicheCatalogs.map((cat, i) => {
-                                                    const pct = cat.totalImages > 0 ? Math.round((cat.images.length / cat.totalImages) * 100) : 0;
-                                                    const isRunning = cat.status === "running";
-                                                    const isDone = cat.status === "completed";
-                                                    return (
-                                                        <div key={cat._id} className={`relative flex flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 border transition-all min-w-[52px] ${
-                                                            isRunning ? "bg-amber-500/10 border-amber-500/30" :
-                                                            isDone ? "bg-emerald-500/10 border-emerald-500/20" :
-                                                            cat.status === "pending" ? "bg-white/[0.03] border-white/10" :
-                                                            "bg-white/[0.02] border-white/5"
-                                                        }`}>
-                                                            <span className={`text-[9px] font-black uppercase tracking-widest ${isRunning ? "text-amber-400" : isDone ? "text-emerald-400" : "text-neutral-700"}`}>
-                                                                {isDone ? "✓" : isRunning ? "⚙" : `#${i + 1}`}
-                                                            </span>
-                                                            <span className={`text-[10px] font-black tabular-nums ${isRunning ? "text-white" : isDone ? "text-emerald-400/70" : "text-neutral-600"}`}>
-                                                                {cat.images.length}/{cat.totalImages}
-                                                            </span>
-                                                            {/* mini progress bar */}
-                                                            <div className="w-full h-0.5 bg-white/[0.05] rounded-full overflow-hidden">
-                                                                <div className={`h-full rounded-full transition-all duration-500 ${isDone ? "bg-emerald-400" : isRunning ? "bg-amber-400" : "bg-white/20"}`}
-                                                                    style={{ width: `${pct}%` }} />
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-
-                                        {/* Active catalog image detail */}
-                                        {activeCat && (
-                                            <div className="relative flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-                                                <Loader2 size={12} className="text-amber-400 animate-spin shrink-0" />
-                                                <div className="flex-1 min-w-0 space-y-0.5">
-                                                    <p className="text-[10px] font-black text-white truncate">{activeCat.name}</p>
-                                                    <p className="text-[9px] text-neutral-600 truncate">{activeCat.currentPrompt ?? activeCat.prompt.slice(0, 60)}</p>
-                                                </div>
-                                                <div className="shrink-0 text-right">
-                                                    <p className="text-[11px] font-black text-white tabular-nums">{activeCat.images.length}/{activeCat.totalImages}</p>
-                                                    {imgMs > 0 && (
-                                                        <p className={`text-[10px] font-black tabular-nums ${imgHeat}`}>
-                                                            {Math.floor(imgSec / 60)}:{String(imgSec % 60).padStart(2, "0")}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </Card>
-                                );
-                            })}
-                        </div>
-                    );
-                })()}
+                {/* ─ Pipeline overview (same component as Pipeline tab) ─ */}
+                {renderPipeline()}
 
                 {/* ─ Live status panel ─ */}
                 {(apRunning || apLogs.length > 0) && (() => {
-                    const STAGES: { key: "discovery" | "prompt" | "sample" | "catalog" | "listing"; label: string; icon: string }[] = [
+                    const STAGES: { key: "discovery" | "prompt" | "sample" | "catalog" | "libro" | "listing" | "cover"; label: string; icon: string }[] = [
                         { key: "discovery", label: "Descubrir", icon: "🔍" },
                         { key: "prompt", label: "Prompt", icon: "✨" },
                         { key: "sample", label: "Muestra", icon: "🖼️" },
                         { key: "catalog", label: "Catálogo", icon: "🏭" },
-                        { key: "listing", label: "Listing", icon: "📝" },
+                        { key: "libro", label: "Libro", icon: "📖" },
+                        { key: "listing", label: "SEO", icon: "📝" },
+                        { key: "cover", label: "Portada", icon: "🎨" },
                     ];
                     const activeIdx = apStage ? STAGES.findIndex(s => s.key === apStage) : -1;
                     return (
@@ -10277,17 +10233,19 @@ export function KdpFactoryApp() {
                                                         <div className="flex gap-1.5">
                                                             <button
                                                                 onClick={() => void launchPipelineStep(niche, pipelineConfig)}
-                                                                disabled={nicheGeneratingId === niche._id}
+                                                                disabled={pipelineRunningId === niche._id || pipelineQueueIds.includes(niche._id)}
                                                                 className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl bg-gradient-to-r from-violet-600/15 to-blue-600/15 border border-violet-500/20 text-sm font-black text-violet-300 hover:from-violet-600/25 hover:to-blue-600/25 hover:border-violet-500/35 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                                                                {nicheGeneratingId === niche._id
+                                                                {pipelineRunningId === niche._id
                                                                     ? <><Loader2 size={11} className="animate-spin" />Ejecutando…</>
-                                                                    : (niche.phase ?? "niche") === "cover"
-                                                                        ? <><ImageIcon size={11} /> Abrir Cover Factory</>
-                                                                        : (niche.phase ?? "niche") === "pdf"
-                                                                            ? <><FileText size={11} /> Generar listing SEO</>
-                                                                            : (niche.phase ?? "niche") === "catalog"
-                                                                                ? <><ImageIcon size={11} /> Más catálogos</>
-                                                                                : <><ImageIcon size={11} /> Generar catálogos</>}
+                                                                    : pipelineQueueIds.includes(niche._id)
+                                                                        ? <><Loader2 size={11} className="animate-spin opacity-50" />En cola ({pipelineQueueIds.indexOf(niche._id) + 1})</>
+                                                                        : (niche.phase ?? "niche") === "cover"
+                                                                            ? <><ImageIcon size={11} /> Abrir Cover Factory</>
+                                                                            : (niche.phase ?? "niche") === "pdf"
+                                                                                ? <><FileText size={11} /> Generar listing SEO</>
+                                                                                : (niche.phase ?? "niche") === "catalog"
+                                                                                    ? <><ImageIcon size={11} /> Más catálogos</>
+                                                                                    : <><ImageIcon size={11} /> Generar catálogos</>}
                                                             </button>
                                                             {/* Telegram discovery button */}
                                                             <button
@@ -10572,10 +10530,10 @@ export function KdpFactoryApp() {
             {studioSubTab === "radar" && <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
                 <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent" />
                 <div className="p-6">
-                    <NicheRadar apiUrl={API_BASE_URL} storageKey="RADAR_ETSY_RESULT" />
+                    <NicheRadar apiUrl={API_BASE_URL} niches={niches} onStorageKeyChange={setRadarStorageKey} />
                     <RadarResultsTable
                         apiUrl={API_BASE_URL}
-                        storageKey="RADAR_ETSY_RESULT"
+                        storageKey={radarStorageKey}
                         niches={niches}
                         onNicheCreated={() => void fetchNiches()}
                         pipelineAction={{
@@ -13631,11 +13589,14 @@ export function KdpFactoryApp() {
                                         {/* Pipeline launcher */}
                                         <button
                                             onClick={() => { void runNichePipeline(detailNiche); setNicheDetailId(null); }}
-                                            disabled={nicheGeneratingId === detailNiche._id}
+                                            disabled={pipelineRunningId === detailNiche._id || pipelineQueueIds.includes(detailNiche._id)}
                                             className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-violet-500/15 border border-violet-500/30 text-sm font-black text-violet-300 hover:bg-violet-500/25 transition-all disabled:opacity-40"
                                         >
-                                            {nicheGeneratingId === detailNiche._id ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
-                                            Pipeline
+                                            {pipelineRunningId === detailNiche._id
+                                                ? <><Loader2 size={10} className="animate-spin" />Ejecutando…</>
+                                                : pipelineQueueIds.includes(detailNiche._id)
+                                                    ? <><Loader2 size={10} className="animate-spin opacity-50" />Cola ({pipelineQueueIds.indexOf(detailNiche._id) + 1})</>
+                                                    : <><Play size={10} />Pipeline</>}
                                         </button>
                                         <button onClick={() => setNicheDetailId(null)} className="p-2 rounded-xl text-neutral-600 hover:text-white hover:bg-white/10 transition-all"><X size={16} /></button>
                                     </div>
@@ -13965,9 +13926,11 @@ export function KdpFactoryApp() {
                                                             );
                                                         })()}
                                                         <button onClick={() => { setNicheDetailId(null); void runNichePipeline(detailNiche); }}
-                                                            disabled={nicheGeneratingId === nicheDetailId}
+                                                            disabled={pipelineRunningId === nicheDetailId || pipelineQueueIds.includes(nicheDetailId ?? "")}
                                                             className="h-9 px-6 rounded-xl bg-violet-500/15 border border-violet-500/30 text-sm font-black text-violet-300 hover:bg-violet-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-40">
-                                                            <Play size={10} /> Lanzar pipeline completo
+                                                            {pipelineQueueIds.includes(nicheDetailId ?? "")
+                                                                ? <><Loader2 size={10} className="animate-spin opacity-50" />En cola ({pipelineQueueIds.indexOf(nicheDetailId ?? "") + 1})</>
+                                                                : <><Play size={10} /> Lanzar pipeline completo</>}
                                                         </button>
                                                     </div>
                                                 </div>

@@ -293,6 +293,27 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
         }
     });
 
+    // ── Is autopilot currently running? (used by frontend to sync halo on reconnect) ──
+    app.get("/autopilot/status", async (_req, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            // A run is "live" only if it started less than 50 minutes ago (Agenda lockLifetime = 45 min)
+            const cutoff = new Date(Date.now() - 50 * 60 * 1000);
+            const runningJob = await AutopilotRun.findOne({
+                status: "running",
+                startedAt: { $gte: cutoff },
+            }).lean();
+            // Mark stale runs as aborted so the halo doesn't stay on after a server restart
+            await AutopilotRun.updateMany(
+                { status: "running", startedAt: { $lt: cutoff } },
+                { $set: { status: "aborted", finishedAt: new Date(), abortReason: "Proceso reiniciado (stale lock)" } }
+            );
+            return reply.send({ running: !!runningJob });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // ── Run history ──────────────────────────────────────────────────────────
     app.get("/autopilot/runs", async (_req, reply) => {
         if (!ensureMongo(reply)) return;

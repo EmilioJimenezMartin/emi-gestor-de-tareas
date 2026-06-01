@@ -9,7 +9,7 @@ export interface RadarLog {
 export interface IRadarJob extends Document {
     jobId: string;
     url: string;
-    mode: "etsy-niches" | "amazon-niches" | "general" | "trends-niches";
+    mode: "etsy-niches" | "amazon-niches" | "general" | "trends-niches" | "opportunity" | "amazon-movers" | "reddit-niches" | "cross-niche" | "gap-finder";
     geminiModel?: string;
     nicheName?: string;
     context?: string;
@@ -27,7 +27,7 @@ const RadarJobSchema = new Schema<IRadarJob>(
     {
         jobId: { type: String, required: true, unique: true },
         url: { type: String, required: true },
-        mode: { type: String, enum: ["etsy-niches", "amazon-niches", "general", "trends-niches"], default: "general" },
+        mode: { type: String, enum: ["etsy-niches", "amazon-niches", "general", "trends-niches", "opportunity", "amazon-movers", "reddit-niches", "cross-niche", "gap-finder"], default: "general" },
         geminiModel: { type: String, default: "gemini-2.0-flash" },
         nicheName: { type: String },
         context: { type: String },

@@ -1435,7 +1435,7 @@ async function processUpdate(update: any): Promise<void> {
                     const icon = phaseIcon[phase] ?? "❓";
                     const desc = phaseDesc[phase] ?? phase;
                     const manualTag = !n.autoPilotEnabled ? " · <i>manual</i>" : " · AP";
-                    const elapsed = formatElapsed(n.updatedAt);
+                    const elapsed = formatElapsed(n.phaseChangedAt ?? n.updatedAt);
 
                     lines.push(`${icon} <code>${shortId}</code> <b>${(n.name as string).slice(0, 28)}${(n.name as string).length > 28 ? "…" : ""}</b>${manualTag}`);
 
@@ -1467,7 +1467,7 @@ async function processUpdate(update: any): Promise<void> {
                     } else {
                         const WARN_PHASE_MS: Record<string, number> = { libro: 2 * 3600_000, seo: 3600_000, cover: 3600_000 };
                         const warnMs = WARN_PHASE_MS[phase] ?? 0;
-                        const phaseMs = Date.now() - new Date(n.updatedAt).getTime();
+                        const phaseMs = Date.now() - new Date(n.phaseChangedAt ?? n.updatedAt).getTime();
                         const stale = warnMs > 0 && phaseMs > warnMs;
                         lines.push(`   ${desc} · ${stale ? "⚠️ " : ""}en esta fase hace <b>${elapsed}</b>`);
                     }
@@ -1529,7 +1529,8 @@ async function processUpdate(update: any): Promise<void> {
                     const phase = niche.phase ?? "niche";
                     const shortId = String(niche._id).slice(-8);
                     const apTag = niche.autoPilotEnabled ? "AP" : "manual";
-                    const phaseElapsed = formatElapsed(niche.updatedAt);
+                    const phaseRef = niche.phaseChangedAt ?? niche.updatedAt;
+                    const phaseElapsed = formatElapsed(phaseRef);
 
                     lines.push(`📚 <b>${niche.name}</b> <code>${shortId}</code> · ${apTag}`);
                     lines.push(`${phaseLabel[phase] ?? `Fase: ${phase}`} · <b>${phaseElapsed}</b> en esta fase`);
@@ -1591,7 +1592,7 @@ async function processUpdate(update: any): Promise<void> {
                             lines.push(`  📄 PDF listo — esperando autopilot para avanzar`);
                         } else {
                             const WARN_MS = 2 * 3600_000;
-                            const phaseMs = nowMs - new Date(niche.updatedAt).getTime();
+                            const phaseMs = nowMs - new Date(phaseRef).getTime();
                             if (phaseMs > WARN_MS) lines.push(`  ⚠️ Generando PDF · lleva <b>${phaseElapsed}</b> — puede estar bloqueado`);
                             else lines.push(`  ⏳ Generando PDF…`);
                         }
@@ -1599,7 +1600,7 @@ async function processUpdate(update: any): Promise<void> {
                     } else if (phase === "seo" || phase === "pdf") {
                         const listingCount = (niche.listings ?? []).length;
                         const WARN_MS = 3600_000;
-                        const phaseMs = nowMs - new Date(niche.updatedAt).getTime();
+                        const phaseMs = nowMs - new Date(phaseRef).getTime();
                         if (listingCount > 0) {
                             lines.push(`  📝 ${listingCount} listing${listingCount > 1 ? "s" : ""} SEO listo${listingCount > 1 ? "s" : ""} · esperando portada`);
                         } else if (phaseMs > WARN_MS) {
@@ -1611,7 +1612,7 @@ async function processUpdate(update: any): Promise<void> {
                     } else if (phase === "cover") {
                         const hasCover = !!(niche as any).coverUrl;
                         const WARN_MS = 3600_000;
-                        const phaseMs = nowMs - new Date(niche.updatedAt).getTime();
+                        const phaseMs = nowMs - new Date(phaseRef).getTime();
                         if (hasCover) {
                             lines.push(`  🎨 Portada lista · esperando publicación`);
                         } else if (phaseMs > WARN_MS) {

@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-    TrendingUp, Globe, Play, X, Activity, ChevronRight,
+    TrendingUp, Play, X, Activity, ChevronRight,
     Loader2, RefreshCw, Target, BarChart3, ShoppingBag,
     Users, DollarSign, Tag, Zap, Search,
     ShoppingCart, BookOpen, Flame,
-    HelpCircle,
+    HelpCircle, Rocket, MessageCircle, Shuffle, ScanSearch,
 } from "lucide-react";
 import { createApiSocket } from "@/lib/socket";
 import { Modal } from "@/components/ui/modal";
@@ -37,7 +37,31 @@ interface LogEntry {
     message: string;
 }
 
-type Mode = "etsy-niches" | "amazon-niches" | "general" | "trends-niches";
+export type Mode =
+    | "etsy-niches"
+    | "amazon-niches"
+    | "general"
+    | "trends-niches"
+    | "opportunity"
+    | "amazon-movers"
+    | "reddit-niches"
+    | "cross-niche"
+    | "gap-finder";
+
+export const MODE_STORAGE_KEY: Record<Mode, string> = {
+    "etsy-niches": "RADAR_ETSY_RESULT",
+    "amazon-niches": "RADAR_AMAZON_RESULT",
+    "general": "RADAR_GENERAL_RESULT",
+    "trends-niches": "RADAR_TRENDS_RESULT",
+    "opportunity": "RADAR_OPPORTUNITY_RESULT",
+    "amazon-movers": "RADAR_MOVERS_RESULT",
+    "reddit-niches": "RADAR_REDDIT_RESULT",
+    "cross-niche": "RADAR_CROSS_RESULT",
+    "gap-finder": "RADAR_GAP_RESULT",
+};
+
+const MOVERS_URL = "https://www.amazon.com/gp/movers-and-shakers/books/154606011";
+const REDDIT_URL = "https://www.reddit.com/r/kdp+coloringbooks/new.json?limit=100";
 
 interface NicheRadarProps {
     apiUrl: string;
@@ -48,8 +72,9 @@ interface NicheRadarProps {
     headerTitle?: React.ReactNode;
     headerSubtitle?: string;
     modeLabels?: { etsy?: string; general?: string };
-    /** Clave de storage de esta app — se envía al backend para que el job lo incluya en el evento radar:result. */
-    storageKey: string;
+    /** If provided, overrides the per-mode storage key (useful for app-scoped keys like seamless patterns). */
+    storageKey?: string;
+    onStorageKeyChange?: (key: string) => void;
 }
 
 
@@ -73,6 +98,19 @@ const LEVEL_COLOR: Record<string, any> = {
 
 const TREND_ICON: Record<string, string> = { rising: "↑", stable: "→", declining: "↓" };
 
+function getModePlatform(m: Mode): SearchConfig["platform"] {
+    if (m === "amazon-niches" || m === "amazon-movers") return "amazon";
+    if (m === "etsy-niches" || m === "opportunity") return "etsy";
+    if (m === "trends-niches" || m === "cross-niche") return "trends";
+    return "general";
+}
+
+function getModeDefaultUrl(m: Mode): string {
+    if (m === "amazon-movers") return MOVERS_URL;
+    if (m === "reddit-niches") return REDDIT_URL;
+    return "";
+}
+
 export function NicheRadar({
     apiUrl,
     niches = [],
@@ -82,12 +120,15 @@ export function NicheRadar({
     headerTitle,
     headerSubtitle,
     modeLabels,
-    storageKey,
+    storageKey: storageKeyOverride,
+    onStorageKeyChange,
 }: NicheRadarProps) {
     const [mode, setMode] = useState<Mode>(defaultMode);
-    const [searchConfig, setSearchConfig] = useState<SearchConfig>({ platform: defaultMode === "amazon-niches" ? "amazon" : defaultMode === "etsy-niches" ? "etsy" : defaultMode === "trends-niches" ? "trends" : "general", url: "" });
+    const [searchConfig, setSearchConfig] = useState<SearchConfig>({
+        platform: getModePlatform(defaultMode),
+        url: getModeDefaultUrl(defaultMode),
+    });
     const url = searchConfig.url;
-    const setUrl = (u: string) => setSearchConfig(c => ({ ...c, url: u }));
     const [nicheName, setNicheName] = useState("");
     const [context, setContext] = useState("");
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -101,9 +142,17 @@ export function NicheRadar({
     const isFirstLog = useRef(true);
     const activeJobId = useRef<string | null>(null);
 
-    // Restore logs and running state from last job on mount (filtered by this app's storageKey)
+    const changeMode = (newMode: Mode) => {
+        setMode(newMode);
+        setSearchConfig({ platform: getModePlatform(newMode), url: getModeDefaultUrl(newMode) });
+        onStorageKeyChange?.(storageKeyOverride ?? MODE_STORAGE_KEY[newMode]);
+    };
+
+    const effectiveStorageKey = storageKeyOverride ?? MODE_STORAGE_KEY[mode];
+
+    // Restore logs and running state from last job on mount
     useEffect(() => {
-        fetch(`${apiUrl}/radar/jobs/latest?key=${encodeURIComponent(storageKey)}`)
+        fetch(`${apiUrl}/radar/jobs/latest?key=${encodeURIComponent(effectiveStorageKey)}`)
             .then(r => r.json())
             .then(({ job }: any) => {
                 if (!job) return;
@@ -125,6 +174,7 @@ export function NicheRadar({
                 }
             })
             .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [apiUrl]);
 
     // Socket: logs, done, error, general results
@@ -141,7 +191,6 @@ export function NicheRadar({
         });
 
         socket.on("radar:result", (data: any) => {
-            // Only handle general mode results here — etsy results are handled by RadarResultsTable
             if (data.mode === "general" && data.data && !data.data.nichos_detectados) {
                 setGeneralResult(data.data);
                 if (data.data) setHistory(prev => [{ url, insight: data.data, ts: Date.now() }, ...prev.slice(0, 4)]);
@@ -172,15 +221,27 @@ export function NicheRadar({
     }, [logs]);
 
     const analyze = async () => {
-        if (!url.trim()) { toast.error("Introduce una URL para analizar"); return; }
+        const urlForBackend = mode === "gap-finder" ? "gap-finder" : url.trim();
+        if (!urlForBackend) { toast.error("Introduce una URL para analizar"); return; }
         if (isAnalyzing) return;
         setIsAnalyzing(true);
         setGeneralResult(null);
         setLogs([]);
         isFirstLog.current = true;
-        toast.info(`Iniciando análisis · modo: ${mode === "etsy-niches" ? "Etsy Nichos" : mode === "amazon-niches" ? "Amazon KDP" : mode === "trends-niches" ? "Google Trends" : "General"}...`);
+        const modeLabelMap: Record<Mode, string> = {
+            "etsy-niches": "Etsy Nichos",
+            "amazon-niches": "Amazon KDP",
+            "trends-niches": "Google Trends",
+            "general": "Análisis General",
+            "opportunity": "Oportunidad",
+            "amazon-movers": "Movers & Shakers",
+            "reddit-niches": "Reddit KDP",
+            "cross-niche": "Cross-Nicho",
+            "gap-finder": "Detector Huecos",
+        };
+        toast.info(`Iniciando análisis · ${modeLabelMap[mode]}...`);
         try {
-            const body: Record<string, string> = { url: url.trim(), mode, geminiModel, storageKey };
+            const body: Record<string, string> = { url: urlForBackend, mode, geminiModel, storageKey: effectiveStorageKey };
             if (mode === "general") {
                 if (nicheName.trim()) body.nicheName = nicheName.trim();
                 if (context.trim()) body.context = context.trim();
@@ -207,6 +268,37 @@ export function NicheRadar({
     const levelPrefix = (l: string) =>
         l === "success" ? "▶" : l === "error" ? "✕" : l === "warning" ? "▲" : "›";
 
+    // ── Tab definitions ──────────────────────────────────────────────────────────
+
+    const ROW1_TABS = [
+        { id: "etsy-niches" as Mode, label: modeLabels?.etsy ?? "Etsy", icon: ShoppingCart, active: "bg-sky-500/15 border border-sky-500/25 text-sky-300", btn: "bg-gradient-to-r from-sky-500 to-cyan-500" },
+        { id: "amazon-niches" as Mode, label: "Amazon KDP", icon: ShoppingBag, active: "bg-orange-500/15 border border-orange-500/25 text-orange-300", btn: "bg-gradient-to-r from-orange-500 to-amber-500" },
+        { id: "trends-niches" as Mode, label: "Trends", icon: TrendingUp, active: "bg-emerald-500/15 border border-emerald-500/25 text-emerald-300", btn: "bg-gradient-to-r from-emerald-500 to-teal-500" },
+        { id: "general" as Mode, label: modeLabels?.general ?? "General", icon: BarChart3, active: "bg-amber-500/15 border border-amber-500/25 text-amber-300", btn: "bg-gradient-to-r from-amber-500 to-orange-500" },
+    ] as const;
+
+    const ROW2_TABS = [
+        { id: "opportunity" as Mode, label: "Oportunidad", icon: Target, active: "bg-violet-500/15 border border-violet-500/25 text-violet-300", btn: "bg-gradient-to-r from-violet-500 to-purple-500" },
+        { id: "amazon-movers" as Mode, label: "Movers", icon: Rocket, active: "bg-rose-500/15 border border-rose-500/25 text-rose-300", btn: "bg-gradient-to-r from-rose-500 to-orange-500" },
+        { id: "reddit-niches" as Mode, label: "Reddit KDP", icon: MessageCircle, active: "bg-orange-500/15 border border-orange-500/25 text-orange-300", btn: "bg-gradient-to-r from-orange-500 to-red-500" },
+        { id: "cross-niche" as Mode, label: "Cross-Nicho", icon: Shuffle, active: "bg-cyan-500/15 border border-cyan-500/25 text-cyan-300", btn: "bg-gradient-to-r from-cyan-500 to-teal-500" },
+        { id: "gap-finder" as Mode, label: "Huecos", icon: ScanSearch, active: "bg-fuchsia-500/15 border border-fuchsia-500/25 text-fuchsia-300", btn: "bg-gradient-to-r from-fuchsia-500 to-pink-500" },
+    ] as const;
+
+    const allTabs = [...ROW1_TABS, ...ROW2_TABS];
+    const activeTab = allTabs.find(t => t.id === mode);
+    const btnStyle = activeTab?.btn ?? "bg-gradient-to-r from-sky-500 to-cyan-500";
+
+    const btnLabel = mode === "etsy-niches" ? <span className="flex items-center justify-center gap-2"><ShoppingCart size={14} className="fill-black" /> Escanear Etsy</span>
+        : mode === "amazon-niches" ? <span className="flex items-center justify-center gap-2"><ShoppingBag size={14} className="fill-black" /> Escanear Amazon</span>
+        : mode === "trends-niches" ? <span className="flex items-center justify-center gap-2"><TrendingUp size={14} className="fill-black" /> Analizar Trends</span>
+        : mode === "opportunity" ? <span className="flex items-center justify-center gap-2"><Target size={14} /> Buscar Oportunidades</span>
+        : mode === "amazon-movers" ? <span className="flex items-center justify-center gap-2"><Rocket size={14} /> Ver Movers & Shakers</span>
+        : mode === "reddit-niches" ? <span className="flex items-center justify-center gap-2"><MessageCircle size={14} /> Analizar Reddit</span>
+        : mode === "cross-niche" ? <span className="flex items-center justify-center gap-2"><Shuffle size={14} /> Detectar Cross-Nichos</span>
+        : mode === "gap-finder" ? <span className="flex items-center justify-center gap-2"><ScanSearch size={14} /> Buscar Huecos</span>
+        : <span className="flex items-center justify-center gap-2"><Play size={14} className="fill-black" /> Analizar Mercado</span>;
+
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -214,7 +306,7 @@ export function NicheRadar({
                 <SectionHeader
                     icon={<TrendingUp size={20} />}
                     title={headerTitle ?? <><span className="text-white">Radar de </span><span className="bg-gradient-to-r from-amber-300 to-orange-400 bg-clip-text text-transparent">Nichos</span></>}
-                    subtitle={headerSubtitle ?? "Análisis de mercado con IA · Powered by Gemini + llm-scraper · Playwright headless"}
+                    subtitle={headerSubtitle ?? "Análisis de mercado con IA · Gemini + llm-scraper · Playwright headless"}
                     color="amber"
                     size="lg"
                 />
@@ -237,50 +329,38 @@ export function NicheRadar({
                         </div>
                         <div>
                             <p className="text-base font-black text-white">Radar — Guía de uso</p>
-                            <p className="text-[11px] text-neutral-500">Gemini + llm-scraper + Playwright headless</p>
+                            <p className="text-[11px] text-neutral-500">9 modos de análisis · Gemini + llm-scraper</p>
                         </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="rounded-2xl border border-sky-500/15 bg-sky-500/[0.04] p-4 space-y-3">
-                            <div className="flex items-center gap-2">
-                                <ShoppingCart size={14} className="text-sky-400" />
-                                <span className="text-[11px] font-black uppercase tracking-widest text-sky-400">Modo Etsy</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {[
+                            { icon: ShoppingCart, color: "sky", label: "Etsy / Amazon", desc: "Escanea páginas de resultados y extrae todos los productos con señales de demanda (carrito, reseñas, bestseller)." },
+                            { icon: Target, color: "violet", label: "Oportunidad", desc: "Mismo escaneo pero con scoring INVERTIDO: prioriza alto carrito + pocas reseñas = nichos con demanda y sin competencia." },
+                            { icon: Rocket, color: "rose", label: "Movers & Shakers", desc: "Amazon Movers & Shakers de libros de colorear — los libros que más suben en ranking en las últimas 24h." },
+                            { icon: MessageCircle, color: "orange", label: "Reddit KDP", desc: "Analiza posts recientes en r/kdp y r/coloringbooks para detectar nichos que la comunidad está discutiendo." },
+                            { icon: TrendingUp, color: "emerald", label: "Trends / Cross-Nicho", desc: "Google Trends para detectar nichos emergentes (Trends) o cruzar categorías adyacentes con KDP (Cross-Nicho)." },
+                            { icon: ScanSearch, color: "fuchsia", label: "Detector Huecos", desc: "Sin URL — analiza tu catálogo existente y sugiere nichos adyacentes, audiencias y estilos que te faltan." },
+                        ].map(({ icon: Icon, color, label, desc }) => (
+                            <div key={label} className={`rounded-2xl border border-${color}-500/15 bg-${color}-500/[0.04] p-3 space-y-2`}>
+                                <div className="flex items-center gap-2">
+                                    <Icon size={12} className={`text-${color}-400`} />
+                                    <span className={`text-[10px] font-black uppercase tracking-widest text-${color}-400`}>{label}</span>
+                                </div>
+                                <p className="text-[10px] text-neutral-400 leading-relaxed">{desc}</p>
                             </div>
-                            <div className="space-y-1.5">
-                                {["Selecciona un preset o pega una URL de búsqueda", "Pulsa el botón de escaneo — tarda 30–60 s", "Ordena la tabla por «Carrito» para ver demanda inmediata", "Pulsa el botón de acción en cada fila para guardar", "Exporta a CSV para analizar en Excel"].map((step, i) => (
-                                    <div key={i} className="flex items-start gap-2">
-                                        <span className="text-[9px] font-black text-sky-400/70 tabular-nums mt-px shrink-0">{i + 1}.</span>
-                                        <span className="text-[10px] text-neutral-400">{step}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="rounded-2xl border border-amber-500/15 bg-amber-500/[0.04] p-4 space-y-3">
-                            <div className="flex items-center gap-2">
-                                <BarChart3 size={14} className="text-amber-400" />
-                                <span className="text-[11px] font-black uppercase tracking-widest text-amber-400">Análisis General</span>
-                            </div>
-                            <div className="space-y-1.5">
-                                {["Pega la URL de resultados de cualquier marketplace", "Escribe el nicho objetivo (opcional)", "Añade contexto si lo necesitas", "Pulsa «Analizar Mercado»", "Revisa competencia · demanda · tendencia · oportunidad"].map((step, i) => (
-                                    <div key={i} className="flex items-start gap-2">
-                                        <span className="text-[9px] font-black text-amber-400/70 tabular-nums mt-px shrink-0">{i + 1}.</span>
-                                        <span className="text-[10px] text-neutral-400">{step}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
+                        ))}
                     </div>
                     <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-2">
                         <div className="flex items-center gap-2 mb-1">
                             <BookOpen size={13} className="text-neutral-400" />
-                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Tips avanzados</span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Tips</span>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {[
-                                "Escanea la página 1 y la página 3 del mismo término — la 3 muestra nichos emergentes sin posicionar",
-                                "Usa la tabla CSV en Google Sheets y filtra: bestseller=true AND carrito>5",
-                                "Busca términos muy específicos: «octopus coloring page pdf adults»",
-                                "El análisis general en Amazon revela el rango de precios exacto",
+                                "Escanea página 1 y página 3 del mismo término — la 3 muestra nichos emergentes",
+                                "Oportunidad + ordenar por Carrito ASC = nichos vírgenes con demanda real",
+                                "Reddit KDP revela lo que los creadores buscan y no encuentran",
+                                "Detector Huecos es el único modo sin URL — corre periódicamente",
                             ].map((tip, i) => (
                                 <div key={i} className="flex items-start gap-2">
                                     <span className="text-amber-400/60 text-[10px] mt-px shrink-0">✦</span>
@@ -292,40 +372,85 @@ export function NicheRadar({
                 </div>
             </Modal>
 
-            {/* Mode tabs */}
-            <div className="flex gap-1 p-1 bg-white/[0.03] border border-white/8 rounded-2xl w-fit flex-wrap">
-                {([
-                    { id: "etsy-niches" as Mode, platform: "etsy" as const, label: modeLabels?.etsy ?? "Nichos Etsy", icon: ShoppingCart, active: "bg-sky-500/15 border border-sky-500/25 text-sky-300" },
-                    { id: "amazon-niches" as Mode, platform: "amazon" as const, label: "Amazon KDP", icon: ShoppingBag, active: "bg-orange-500/15 border border-orange-500/25 text-orange-300" },
-                    { id: "trends-niches" as Mode, platform: "trends" as const, label: "Google Trends", icon: TrendingUp, active: "bg-emerald-500/15 border border-emerald-500/25 text-emerald-300" },
-                    { id: "general" as Mode, platform: "general" as const, label: modeLabels?.general ?? "Análisis General", icon: BarChart3, active: "bg-amber-500/15 border border-amber-500/25 text-amber-300" },
-                ] as const).map(tab => {
-                    const Icon = tab.icon;
-                    const isActive = mode === tab.id;
-                    return (
-                        <button key={tab.id}
-                            onClick={() => { setMode(tab.id); setSearchConfig({ platform: tab.platform, url: "" }); }}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isActive ? tab.active : "text-neutral-600 hover:text-neutral-400"}`}>
-                            <Icon size={12} />
-                            {tab.label}
-                        </button>
-                    );
-                })}
+            {/* Mode tabs — 2 rows */}
+            <div className="space-y-1">
+                {/* Row 1: Standard */}
+                <div className="flex gap-1 p-1 bg-white/[0.03] border border-white/8 rounded-2xl w-fit flex-wrap">
+                    {ROW1_TABS.map(tab => {
+                        const Icon = tab.icon;
+                        const isActive = mode === tab.id;
+                        return (
+                            <button key={tab.id}
+                                onClick={() => changeMode(tab.id)}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isActive ? tab.active : "text-neutral-600 hover:text-neutral-400"}`}>
+                                <Icon size={12} />
+                                {tab.label}
+                            </button>
+                        );
+                    })}
+                </div>
+                {/* Row 2: Advanced */}
+                <div className="flex gap-1 p-1 bg-white/[0.02] border border-white/[0.05] rounded-2xl w-fit flex-wrap">
+                    <span className="flex items-center self-center px-2 text-[7px] font-black uppercase tracking-[0.2em] text-neutral-700 shrink-0">Avanzado</span>
+                    {ROW2_TABS.map(tab => {
+                        const Icon = tab.icon;
+                        const isActive = mode === tab.id;
+                        return (
+                            <button key={tab.id}
+                                onClick={() => changeMode(tab.id)}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isActive ? tab.active : "text-neutral-700 hover:text-neutral-400"}`}>
+                                <Icon size={11} />
+                                {tab.label}
+                            </button>
+                        );
+                    })}
+                </div>
             </div>
 
             {/* Config + Terminal */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 {/* Left: Config */}
                 <div className="lg:col-span-4 space-y-4">
-                    <SearchQueryBuilder
-                        apiUrl={apiUrl}
-                        lockPlatform={mode === "etsy-niches" ? "etsy" : mode === "amazon-niches" ? "amazon" : mode === "trends-niches" ? "trends" : "general"}
-                        value={searchConfig}
-                        onChange={cfg => setSearchConfig(cfg)}
-                        extraEtsyPresets={etsyPresets}
-                        extraGeneralPresets={generalPresets}
-                    />
+                    {/* Gap-finder: special UI — no URL */}
+                    {mode === "gap-finder" ? (
+                        <div className="rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/[0.04] p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                                <ScanSearch size={14} className="text-fuchsia-400" />
+                                <span className="text-[10px] font-black uppercase tracking-widest text-fuchsia-400">Catálogo actual</span>
+                            </div>
+                            <p className="text-[10px] text-neutral-400 leading-relaxed">
+                                La IA analizará los <span className="text-fuchsia-300 font-black">{niches.length} nichos</span> de tu catálogo y sugerirá sub-nichos adyacentes, audiencias y estilos que no tienes.
+                            </p>
+                            {niches.length === 0 && (
+                                <p className="text-[9px] text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
+                                    ⚠ Catálogo vacío — crea algunos nichos primero para obtener mejores sugerencias.
+                                </p>
+                            )}
+                            <div className="space-y-1">
+                                {[
+                                    { icon: ScanSearch, label: "Sub-nichos adyacentes" },
+                                    { icon: Users, label: "Audiencias no representadas" },
+                                    { icon: Shuffle, label: "Combinaciones de nichos" },
+                                ].map(({ icon: Icon, label }) => (
+                                    <div key={label} className="flex items-center gap-2 text-[9px] text-neutral-500">
+                                        <Icon size={9} className="text-fuchsia-400/60 shrink-0" />
+                                        {label}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <SearchQueryBuilder
+                            apiUrl={apiUrl}
+                            lockPlatform={getModePlatform(mode)}
+                            value={searchConfig}
+                            onChange={cfg => setSearchConfig(cfg)}
+                            extraEtsyPresets={etsyPresets}
+                            extraGeneralPresets={generalPresets}
+                        />
+                    )}
 
+                    {/* Mode-specific info panels */}
                     {mode === "general" && (
                         <>
                             <div className="space-y-2">
@@ -365,12 +490,68 @@ export function NicheRadar({
                             <p className="text-[9px] font-black uppercase tracking-widest text-sky-400/80">Señales detectadas</p>
                             <div className="space-y-1">
                                 {[
-                                    { icon: ShoppingCart, label: "Personas en carrito" },
+                                    { icon: ShoppingCart, label: "Personas en carrito (demanda)" },
                                     { icon: Tag, label: "Sub-nicho estimado" },
-                                    { icon: Flame, label: "Señal de demanda (alta/media/nueva)" },
+                                    { icon: Flame, label: "Señal de demanda alta/media/nueva" },
                                 ].map(({ icon: Icon, label }) => (
                                     <div key={label} className="flex items-center gap-2 text-[9px] text-neutral-500">
                                         <Icon size={9} className="text-sky-400/60 shrink-0" />
+                                        {label}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {mode === "opportunity" && (
+                        <div className="rounded-xl bg-violet-500/[0.05] border border-violet-500/15 p-3 space-y-2">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/80">Scoring invertido</p>
+                            <div className="space-y-1.5">
+                                {[
+                                    { icon: ShoppingCart, label: "Alto carrito = demanda real", cls: "text-violet-400/60" },
+                                    { icon: TrendingUp, label: "Pocas reseñas = baja competencia", cls: "text-violet-400/60" },
+                                    { icon: Target, label: "Alta demanda + sin competencia = oportunidad", cls: "text-fuchsia-400/60" },
+                                ].map(({ icon: Icon, label, cls }) => (
+                                    <div key={label} className="flex items-center gap-2 text-[9px] text-neutral-500">
+                                        <Icon size={9} className={`${cls} shrink-0`} />
+                                        {label}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {mode === "amazon-movers" && (
+                        <div className="rounded-xl bg-rose-500/[0.05] border border-rose-500/15 p-3 space-y-2">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-rose-400/80">URL pre-cargada</p>
+                            <p className="text-[9px] text-neutral-500 leading-relaxed">Amazon Movers & Shakers para Coloring Books — los libros que más suben en ranking en las últimas 24h.</p>
+                            <div className="space-y-1">
+                                {[
+                                    { icon: Rocket, label: "Libros subiendo en ranking" },
+                                    { icon: Flame, label: "Tendencias calientes del día" },
+                                    { icon: TrendingUp, label: "Señales de demanda en tiempo real" },
+                                ].map(({ icon: Icon, label }) => (
+                                    <div key={label} className="flex items-center gap-2 text-[9px] text-neutral-500">
+                                        <Icon size={9} className="text-rose-400/60 shrink-0" />
+                                        {label}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {mode === "reddit-niches" && (
+                        <div className="rounded-xl bg-orange-500/[0.05] border border-orange-500/15 p-3 space-y-2">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-orange-400/80">Reddit KDP</p>
+                            <p className="text-[9px] text-neutral-500 leading-relaxed">Analiza posts recientes de r/kdp y r/coloringbooks. URL pre-cargada con los posts más nuevos.</p>
+                            <div className="space-y-1">
+                                {[
+                                    { icon: MessageCircle, label: "Nichos que la comunidad pide" },
+                                    { icon: Users, label: "Conversaciones activas = demanda real" },
+                                    { icon: Flame, label: "Posts con alto upvotes = trending" },
+                                ].map(({ icon: Icon, label }) => (
+                                    <div key={label} className="flex items-center gap-2 text-[9px] text-neutral-500">
+                                        <Icon size={9} className="text-orange-400/60 shrink-0" />
                                         {label}
                                     </div>
                                 ))}
@@ -389,6 +570,25 @@ export function NicheRadar({
                                 ].map(({ icon: Icon, label }) => (
                                     <div key={label} className="flex items-center gap-2 text-[9px] text-neutral-500">
                                         <Icon size={9} className="text-emerald-400/60 shrink-0" />
+                                        {label}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {mode === "cross-niche" && (
+                        <div className="rounded-xl bg-cyan-500/[0.05] border border-cyan-500/15 p-3 space-y-2">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-cyan-400/80">Cross-nicho KDP</p>
+                            <p className="text-[9px] text-neutral-500 leading-relaxed">Usa una URL de Google Trends de una categoría adyacente (música, gaming, hobbies) para encontrar fans sin coloring books.</p>
+                            <div className="space-y-1">
+                                {[
+                                    { icon: Shuffle, label: "Categoría adyacente → KDP" },
+                                    { icon: Users, label: "Comunidades fan sin productos KDP" },
+                                    { icon: Target, label: "Nichos vírgenes con audiencia activa" },
+                                ].map(({ icon: Icon, label }) => (
+                                    <div key={label} className="flex items-center gap-2 text-[9px] text-neutral-500">
+                                        <Icon size={9} className="text-cyan-400/60 shrink-0" />
                                         {label}
                                     </div>
                                 ))}
@@ -425,26 +625,18 @@ export function NicheRadar({
 
                     <button
                         onClick={() => void analyze()}
-                        disabled={isAnalyzing || !url.trim()}
+                        disabled={isAnalyzing || (mode !== "gap-finder" && !url.trim())}
                         className={`w-full h-12 rounded-2xl font-black uppercase tracking-[0.15em] text-[10px] transition-all relative overflow-hidden group shadow-lg ${isAnalyzing
                             ? "bg-sky-600/60 text-white cursor-not-allowed"
-                            : mode === "etsy-niches"
-                                ? "bg-gradient-to-r from-sky-500 to-cyan-500 text-black hover:from-sky-400 hover:to-cyan-400 shadow-sky-500/20 active:scale-[0.98] disabled:opacity-40"
-                                : mode === "amazon-niches"
-                                    ? "bg-gradient-to-r from-orange-500 to-amber-500 text-black hover:from-orange-400 hover:to-amber-400 shadow-orange-500/20 active:scale-[0.98] disabled:opacity-40"
-                                    : mode === "trends-niches"
-                                        ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-black hover:from-emerald-400 hover:to-teal-400 shadow-emerald-500/20 active:scale-[0.98] disabled:opacity-40"
-                                        : "bg-gradient-to-r from-amber-500 to-orange-500 text-black hover:from-amber-400 hover:to-orange-400 shadow-amber-500/20 active:scale-[0.98] disabled:opacity-40"
+                            : `${btnStyle} text-black hover:opacity-90 active:scale-[0.98] disabled:opacity-40 shadow-black/20`
                             }`}
                     >
-                        {!isAnalyzing && url.trim() && <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12" />}
+                        {!isAnalyzing && (mode === "gap-finder" || url.trim()) && (
+                            <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12" />
+                        )}
                         {isAnalyzing
-                            ? <span className="flex items-center justify-center gap-2"><Loader2 size={14} className="animate-spin" /> Analizando con Gemini...</span>
-                            : mode === "etsy-niches"
-                                ? <span className="flex items-center justify-center gap-2"><ShoppingCart size={14} className="fill-black" /> Escanear Etsy</span>
-                                : mode === "amazon-niches"
-                                    ? <span className="flex items-center justify-center gap-2"><ShoppingBag size={14} className="fill-black" /> Escanear Amazon</span>
-                                    : <span className="flex items-center justify-center gap-2"><Play size={14} className="fill-black" /> Analizar Mercado</span>
+                            ? <span className="flex items-center justify-center gap-2"><Loader2 size={14} className="animate-spin" /> Analizando...</span>
+                            : btnLabel
                         }
                     </button>
 
@@ -453,7 +645,7 @@ export function NicheRadar({
                             <span className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Historial</span>
                             {history.map((h, i) => (
                                 <button key={i}
-                                    onClick={() => { setGeneralResult(h.insight); setUrl(h.url); }}
+                                    onClick={() => { setGeneralResult(h.insight); setSearchConfig(c => ({ ...c, url: h.url })); }}
                                     className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white/[0.02] border border-white/6 hover:border-white/12 text-left transition-all group">
                                     <TrendingUp size={11} className="text-amber-400/50 shrink-0" />
                                     <div className="flex-1 min-w-0">
@@ -490,7 +682,7 @@ export function NicheRadar({
                                     <div className="w-2 h-2 rounded-full bg-rose-500/40" />
                                     <div className="w-2 h-2 rounded-full bg-amber-500/40" />
                                     <div className={`w-2 h-2 rounded-full ${isAnalyzing ? "bg-emerald-500/60 animate-pulse" : "bg-emerald-500/20"}`} />
-                                    <span className="text-[8px] font-mono text-neutral-800 ml-1">radar.log · Gemini + llm-scraper · {mode === "amazon-niches" ? "amazon" : mode === "trends-niches" ? "trends" : mode === "etsy-niches" ? "etsy" : mode}</span>
+                                    <span className="text-[8px] font-mono text-neutral-800 ml-1">radar.log · {mode}</span>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-3 font-mono text-[9px] space-y-0.5">
                                     {logs.length === 0 ? (
@@ -516,13 +708,13 @@ export function NicheRadar({
                     {/* Empty state */}
                     {!generalResult && !isAnalyzing && logs.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-14 rounded-2xl border border-dashed border-white/[0.06] bg-white/[0.01] gap-4">
-                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${mode === "etsy-niches" ? "bg-sky-500/8 border border-sky-500/15" : mode === "amazon-niches" ? "bg-orange-500/8 border border-orange-500/15" : mode === "trends-niches" ? "bg-emerald-500/8 border border-emerald-500/15" : "bg-amber-500/8 border border-amber-500/15"}`}>
-                                {mode === "etsy-niches" ? <ShoppingCart size={24} className="text-sky-400/40" /> : mode === "amazon-niches" ? <ShoppingBag size={24} className="text-orange-400/40" /> : mode === "trends-niches" ? <TrendingUp size={24} className="text-emerald-400/40" /> : <BarChart3 size={24} className="text-amber-400/40" />}
+                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${activeTab ? `bg-${activeTab.active.split("bg-")[1]?.split(" ")[0]?.replace("/15", "/8")} border border-white/[0.06]` : "bg-white/[0.04] border border-white/8"}`}>
+                                {activeTab && <activeTab.icon size={24} className="opacity-30" />}
                             </div>
                             <div className="text-center space-y-1">
                                 <p className="text-[11px] font-black uppercase tracking-widest text-neutral-700">Sin análisis aún</p>
                                 <p className="text-[10px] text-neutral-800">
-                                    {mode === "etsy-niches" || mode === "amazon-niches" || mode === "trends-niches" ? "Selecciona una búsqueda predefinida o escribe una URL" : "Introduce una URL y pulsa Analizar"}
+                                    {mode === "gap-finder" ? "Pulsa el botón para analizar tu catálogo" : "Selecciona una URL o preset y pulsa el botón"}
                                 </p>
                             </div>
                         </div>
@@ -530,13 +722,15 @@ export function NicheRadar({
 
                     {/* Analyzing state */}
                     {isAnalyzing && !generalResult && (
-                        <div className={`flex flex-col items-center justify-center py-14 rounded-2xl gap-4 ${mode === "etsy-niches" ? "border border-sky-500/10 bg-sky-500/[0.02]" : mode === "amazon-niches" ? "border border-orange-500/10 bg-orange-500/[0.02]" : mode === "trends-niches" ? "border border-emerald-500/10 bg-emerald-500/[0.02]" : "border border-amber-500/10 bg-amber-500/[0.02]"}`}>
-                            <Loader2 size={28} className={`animate-spin ${mode === "etsy-niches" ? "text-sky-400" : mode === "amazon-niches" ? "text-orange-400" : mode === "trends-niches" ? "text-emerald-400" : "text-amber-400"}`} />
+                        <div className="flex flex-col items-center justify-center py-14 rounded-2xl gap-4 border border-white/[0.06] bg-white/[0.02]">
+                            <Loader2 size={28} className="animate-spin text-neutral-400" />
                             <div className="text-center space-y-1">
-                                <p className={`text-[11px] font-black uppercase tracking-widest ${mode === "etsy-niches" ? "text-sky-400/80" : mode === "amazon-niches" ? "text-orange-400/80" : mode === "trends-niches" ? "text-emerald-400/80" : "text-amber-400/80"}`}>
-                                    {mode === "etsy-niches" ? "Escaneando Etsy con Gemini..." : mode === "amazon-niches" ? "Escaneando Amazon con Gemini..." : mode === "trends-niches" ? "Extrayendo tendencias con Gemini..." : "Gemini analizando mercado..."}
+                                <p className="text-[11px] font-black uppercase tracking-widest text-neutral-400/80">
+                                    {mode === "gap-finder" ? "Analizando tu catálogo..." : mode === "reddit-niches" ? "Leyendo Reddit..." : mode === "cross-niche" ? "Detectando cross-nichos..." : "Analizando con Gemini..."}
                                 </p>
-                                <p className="text-[10px] text-neutral-600">Playwright cargando la página · llm-scraper extrayendo datos</p>
+                                <p className="text-[10px] text-neutral-600">
+                                    {mode === "gap-finder" || mode === "reddit-niches" || mode === "cross-niche" || mode === "trends-niches" ? "Petición HTTP directa + análisis IA" : "Playwright cargando la página · llm-scraper extrayendo datos"}
+                                </p>
                             </div>
                         </div>
                     )}
