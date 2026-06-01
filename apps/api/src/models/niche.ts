@@ -49,6 +49,11 @@ export interface INiche extends Document {
     catalogImageOrder?: string[];
     coverCandidates?: string[];
     phaseChangedAt?: Date;
+    // Pipeline artifact flags — source of truth for phase computation
+    pipelineHasCatalogs?: boolean;
+    pipelineHasPdf?: boolean;
+    pipelineHasListings?: boolean;
+    pipelineHasCover?: boolean;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -104,6 +109,10 @@ const NicheSchema = new Schema<INiche>(
         catalogImageOrder: [{ type: String }],
         coverCandidates: [{ type: String }],
         phaseChangedAt: { type: Date },
+        pipelineHasCatalogs: { type: Boolean, default: false },
+        pipelineHasPdf: { type: Boolean, default: false },
+        pipelineHasListings: { type: Boolean, default: false },
+        pipelineHasCover: { type: Boolean, default: false },
     },
     { timestamps: true }
 );

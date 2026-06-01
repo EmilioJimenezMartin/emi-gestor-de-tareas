@@ -238,6 +238,10 @@ interface NicheFE {
     bookPdfUrl?: string;
     coverCandidates?: string[];
     phaseChangedAt?: string;
+    pipelineHasCatalogs?: boolean;
+    pipelineHasPdf?: boolean;
+    pipelineHasListings?: boolean;
+    pipelineHasCover?: boolean;
     createdAt: string;
     updatedAt?: string;
 }
@@ -2917,26 +2921,19 @@ export function KdpFactoryApp() {
     const nicheComputedPhases = useMemo(() => {
         const map = new Map<string, string>();
         for (const n of niches) {
-            const storedPhase = (n.phase === "pdf" ? "seo" : n.phase) ?? "niche";
-            const hasCatalogs = iaCatalogs.some(c => (c.nicheIds ?? []).includes(n._id));
-            // bookPdfUrl on the niche is authoritative proof of a PDF even if no BookDraft record exists
-            const hasDraft = bookDrafts.some(d => d.nicheId === n._id) || !!(n.bookPdfUrl);
-            const hasListing = (n.listings?.length ?? 0) > 0;
-            const hasCover = !!(n.coverUrl || (n.coverCandidates?.length ?? 0) > 0);
-            const derivedPhase = (() => {
-                if (storedPhase === "published") return "published";
-                if (!hasCatalogs) return "niche";
-                // Work backwards: each artifact implies all previous pipeline steps were done
-                if (hasCover) return "cover";
-                if (hasListing) return "seo";   // listing implies libro was completed
-                if (hasDraft) return "libro";
-                return "catalog";
+            const phase = (() => {
+                if (n.phase === "published") return "published";
+                if (n.pipelineHasCover) return "cover";
+                if (n.pipelineHasListings) return "seo";
+                if (n.pipelineHasPdf) return "libro";
+                if (n.pipelineHasCatalogs) return "catalog";
+                return "niche";
             })();
-            map.set(n._id, (NICHE_PHASE_ORDER[derivedPhase] ?? 0) >= (NICHE_PHASE_ORDER[storedPhase] ?? 0) ? derivedPhase : storedPhase);
+            map.set(n._id, phase);
         }
         return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [niches, bookDrafts, iaCatalogs]);
+    }, [niches]);
 
     const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
     const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState<string | null>(null);

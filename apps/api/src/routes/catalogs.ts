@@ -111,12 +111,19 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
             }
 
             await Catalog.findByIdAndDelete(request.params.id);
-            // Remove catalog from any linked niches' catalogIds
+            // Remove catalog from any linked niches' catalogIds; clear pipelineHasCatalogs if no catalogs remain
             if (catalog.nicheIds?.length) {
                 await Niche.updateMany(
                     { _id: { $in: catalog.nicheIds } },
                     { $pull: { catalogIds: String(request.params.id) } }
                 );
+                // Clear flag for niches that no longer have any catalog
+                for (const nicheId of catalog.nicheIds) {
+                    const remaining = await Catalog.countDocuments({ nicheIds: nicheId });
+                    if (remaining === 0) {
+                        await Niche.findByIdAndUpdate(nicheId, { $set: { pipelineHasCatalogs: false } });
+                    }
+                }
             }
             if (wasActive) {
                 try { void activateNextQueued(getAgenda(), io); } catch { /* agenda not ready */ }

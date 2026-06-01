@@ -692,7 +692,7 @@ async function runPipeline(
                     const uploadData = await uploadRes.json() as any;
                     const bookPdfUrl = uploadData.url;
 
-                    await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "seo", bookPdfUrl } });
+                    await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "seo", bookPdfUrl, pipelineHasPdf: true } });
                     io?.emit("niches:updated");
                     io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✅ Libro PDF listo (${pagesAdded} imágenes, ${totalPdfPages} páginas) → generando listing SEO…` });
 
@@ -805,7 +805,7 @@ async function runPipeline(
                     if (toSave.length > 0) {
                         consecutiveErrors = 0;
                         for (const listing of toSave) {
-                            await Niche.findByIdAndUpdate(niche._id, { $push: { listings: listing } });
+                            await Niche.findByIdAndUpdate(niche._id, { $push: { listings: listing }, $set: { pipelineHasListings: true } });
                         }
                         io?.emit("niches:updated");
                         io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ ${toSave.length} listing${toSave.length > 1 ? "s" : ""} (${toSave.map(l => l.language.toUpperCase()).join(" + ")}) listos → generando portada…` });
@@ -858,7 +858,7 @@ async function runPipeline(
         if (phase === "cover") {
             if (niche.coverUrl) {
                 io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🎨 Portada ya existe → marcando como publicado` });
-                await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "published" } });
+                await Niche.findByIdAndUpdate(niche._id, { $set: { phase: "published", pipelineHasCover: true } });
                 io?.emit("niches:updated");
                 if (await shouldNotify("pipeline.complete")) {
                     const listing0 = (niche.listings ?? [])[0];
@@ -983,7 +983,7 @@ async function runPipeline(
                 const coverUrl = candidateUrls[0]; // first generated is the auto-pick; UI shows all to choose
 
                 await Niche.findByIdAndUpdate(niche._id, {
-                    $set: { coverUrl, coverCandidates: candidateUrls, phase: "published" },
+                    $set: { coverUrl, coverCandidates: candidateUrls, phase: "published", pipelineHasCover: true },
                 });
                 io?.emit("niches:updated");
                 io?.emit("autopilot:log", {

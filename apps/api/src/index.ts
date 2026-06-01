@@ -234,6 +234,20 @@ const seedSettings = async () => {
       { $setOnInsert: { key: "QUALITY_VAULT_TELEGRAM_NOTIFY", value: "0", is_secret: false } },
       { upsert: true, new: true }
     );
+    // Migrate pipeline flags for niches that predate the flags
+    try {
+        const { Niche: NicheModel } = await import("./models/niche.js");
+        const { Catalog: CatalogModel } = await import("./models/catalog.js");
+        await NicheModel.updateMany({ bookPdfUrl: { $exists: true, $ne: "" }, pipelineHasPdf: { $ne: true } }, { $set: { pipelineHasPdf: true } });
+        await NicheModel.updateMany({ "listings.0": { $exists: true }, pipelineHasListings: { $ne: true } }, { $set: { pipelineHasListings: true } });
+        await NicheModel.updateMany({ coverUrl: { $exists: true, $ne: "" }, pipelineHasCover: { $ne: true } }, { $set: { pipelineHasCover: true } });
+        const nicheIdsWithCatalogs = await CatalogModel.distinct("nicheIds");
+        if (nicheIdsWithCatalogs.length > 0) {
+            await NicheModel.updateMany({ _id: { $in: nicheIdsWithCatalogs }, pipelineHasCatalogs: { $ne: true } }, { $set: { pipelineHasCatalogs: true } });
+        }
+    } catch (migErr: any) {
+        app.log.warn(`Pipeline flags migration failed: ${migErr?.message}`);
+    }
     app.log.info("System config keys seeded into DB (setOnInsert).");
   } catch (e) {
     app.log.error(e, "Failed to seed config into DB");

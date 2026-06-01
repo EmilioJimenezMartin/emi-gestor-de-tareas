@@ -565,6 +565,14 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             if (isComplete) {
                 io.emit("catalog:completed", { catalogId });
                 void activateNextQueued(agenda, io);
+                // Mark pipeline flag on all associated niches
+                if ((freshCatalog.nicheIds ?? []).length > 0) {
+                    const { Niche: NicheModel } = await import("../models/niche.js");
+                    await NicheModel.updateMany(
+                        { _id: { $in: freshCatalog.nicheIds } },
+                        { $set: { pipelineHasCatalogs: true } }
+                    ).catch(() => {});
+                }
                 shouldNotify("catalog.ready").then(ok => {
                     if (ok) sendTelegram(`🖼️ <b>Catálogo listo</b>\n"${freshCatalog.name}" — ${freshCatalog.images.length} imágenes generadas`).catch(() => {});
                 });

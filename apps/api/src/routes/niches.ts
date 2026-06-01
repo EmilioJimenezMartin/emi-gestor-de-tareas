@@ -116,6 +116,15 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             if (request.body.asin !== undefined) update.asin = request.body.asin;
             if (request.body.etsyUrl !== undefined) update.etsyUrl = request.body.etsyUrl;
             if (request.body.gumroadUrl !== undefined) update.gumroadUrl = request.body.gumroadUrl;
+            // Sync pipeline flags when artifact URLs are explicitly set or cleared
+            if (request.body.bookPdfUrl !== undefined) {
+                update.bookPdfUrl = request.body.bookPdfUrl;
+                update.pipelineHasPdf = !!request.body.bookPdfUrl;
+            }
+            if (request.body.coverUrl !== undefined) {
+                update.coverUrl = request.body.coverUrl;
+                update.pipelineHasCover = !!request.body.coverUrl;
+            }
             const niche = await Niche.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
             // When autopilot is enabled on a niche that's already past the catalog phase, kick off autopilot-run
@@ -253,7 +262,7 @@ Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": st
 
             const niche = await Niche.findByIdAndUpdate(
                 id,
-                { $push: { listings: { ...listingData, generatedAt: new Date() } } },
+                { $push: { listings: { ...listingData, generatedAt: new Date() } }, $set: { pipelineHasListings: true } },
                 { new: true }
             ).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
@@ -297,6 +306,11 @@ Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": st
                 { new: true }
             ).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+            // Clear flag if no listings remain
+            const remaining = (niche as any).listings?.length ?? 0;
+            if (remaining === 0) {
+                await Niche.findByIdAndUpdate(id, { $set: { pipelineHasListings: false } });
+            }
             return reply.send({ niche });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
