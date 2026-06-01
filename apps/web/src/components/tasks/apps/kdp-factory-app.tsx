@@ -496,6 +496,114 @@ function KdpSelect({ value, onChange, options, accent = "white" }: {
     );
 }
 
+// ── NicheSelect — shared searchable dropdown for picking a niche ─────────────
+function NicheSelect({
+    niches,
+    selectedId,
+    onChange,
+    placeholder = "Seleccionar nicho…",
+    className = "",
+}: {
+    niches: NicheFE[];
+    selectedId: string | null;
+    onChange: (niche: NicheFE | null) => void;
+    placeholder?: string;
+    className?: string;
+}) {
+    const [open, setOpen] = React.useState(false);
+    const [query, setQuery] = React.useState("");
+    const ref = React.useRef<HTMLDivElement>(null);
+    const inputRef = React.useRef<HTMLInputElement>(null);
+
+    React.useEffect(() => {
+        const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, []);
+
+    React.useEffect(() => {
+        if (open) { setQuery(""); setTimeout(() => inputRef.current?.focus(), 50); }
+    }, [open]);
+
+    const selected = niches.find(n => n._id === selectedId) ?? null;
+    const display = selected ? (selected.nickname?.trim() || selected.name) : null;
+
+    const filtered = niches.filter(n => {
+        if (n.status === "archived") return false;
+        if (!query.trim()) return true;
+        const q = query.toLowerCase();
+        return (n.nickname?.toLowerCase().includes(q) || n.name.toLowerCase().includes(q));
+    });
+
+    const nicheColor = (n: NicheFE) =>
+        n.status === "archived" ? "text-neutral-700"
+        : n.phase === "published" ? "text-emerald-400"
+        : n.status === "active" ? "text-amber-400"
+        : "text-neutral-300";
+
+    return (
+        <div ref={ref} className={`relative ${className}`}>
+            <button
+                type="button"
+                onClick={() => setOpen(o => !o)}
+                className={`w-full h-8 px-3 rounded-xl border text-sm font-semibold flex items-center gap-2 transition-all ${
+                    selectedId
+                        ? "border-sky-500/40 bg-sky-500/10 text-sky-300"
+                        : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/6"
+                }`}
+            >
+                <Target size={9} className="shrink-0 opacity-60" />
+                <span className="flex-1 truncate text-left">{display ?? placeholder}</span>
+                {selectedId && (
+                    <span
+                        role="button"
+                        onClick={e => { e.stopPropagation(); onChange(null); }}
+                        className="shrink-0 opacity-50 hover:opacity-100 transition-opacity"
+                    >
+                        <X size={10} />
+                    </span>
+                )}
+                <ChevronDown size={10} className={`shrink-0 opacity-40 transition-transform ${open ? "rotate-180" : ""}`} />
+            </button>
+            {open && (
+                <div className="absolute z-50 top-full mt-1 left-0 right-0 rounded-xl border border-white/12 bg-[#141414] shadow-2xl overflow-hidden">
+                    <div className="px-2 pt-2 pb-1">
+                        <input
+                            ref={inputRef}
+                            value={query}
+                            onChange={e => setQuery(e.target.value)}
+                            placeholder="Buscar nicho…"
+                            className="w-full h-7 px-2.5 rounded-lg bg-white/6 border border-white/10 text-sm text-white outline-none placeholder:text-neutral-600"
+                        />
+                    </div>
+                    <div className="max-h-52 overflow-y-auto py-1">
+                        {filtered.length === 0 ? (
+                            <p className="px-3 py-2 text-xs text-neutral-600">Sin resultados</p>
+                        ) : filtered.map(n => {
+                            const label = n.nickname?.trim() || n.name;
+                            const isSelected = n._id === selectedId;
+                            return (
+                                <button
+                                    key={n._id}
+                                    type="button"
+                                    onClick={() => { onChange(isSelected ? null : n); setOpen(false); }}
+                                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors ${
+                                        isSelected ? "bg-sky-500/15 text-sky-300" : "hover:bg-white/5 " + nicheColor(n)
+                                    }`}
+                                >
+                                    <Target size={8} className="shrink-0 opacity-50" />
+                                    <span className="flex-1 truncate font-medium">{label}</span>
+                                    {isSelected && <Check size={9} className="shrink-0" />}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 // ── Listing card fields (reusable inside content panel) ───────────────────────
@@ -574,7 +682,7 @@ function GelatoUploadModal({
 }: {
     bookPages: BookPage[];
     bookFileName: string;
-    buildPdf: (pages?: BookPage[]) => Promise<Uint8Array | null>;
+    buildPdf: (pages?: BookPage[], forceNoOwnerPage?: boolean) => Promise<Uint8Array | null>;
     apiUrl: string;
     onClose: () => void;
 }) {
@@ -659,7 +767,7 @@ function GelatoUploadModal({
                 // owner page (auto-added by buildBookPdf) + blank separator + even content pages = even total
                 const firstIsBlank = !chunks[i][0]?.image;
                 const pagesForPdf = firstIsBlank ? chunks[i] : [blankSeparator, ...chunks[i]];
-                const bytes = await buildPdf(pagesForPdf);
+                const bytes = await buildPdf(pagesForPdf, i > 0);
                 if (!bytes) throw new Error(`Error generando parte ${i + 1}`);
                 const partName = `${bookFileName || "libro-kdp"}-parte${i + 1}.pdf`;
                 downloadBlob(bytes, partName);
@@ -1085,7 +1193,12 @@ export function KdpFactoryApp() {
     const [scoringNicheId, setScoringNicheId] = useState<string | null>(null);
     // Auto-Pilot config
     const [qualityCheckEnabled, setQualityCheckEnabled] = useState(true);
+    const [qualityVaultTelegramEnabled, setQualityVaultTelegramEnabled] = useState(false);
     const [weeklyDigestEnabled, setWeeklyDigestEnabled] = useState(true);
+    // Quality control vault
+    const [rejectedImages, setRejectedImages] = useState<{ _id: string; catalogId: string; catalogName: string; nicheIds: string[]; imageUrl: string; reason: string; score: number; prompt: string; createdAt: string }[]>([]);
+    const [vaultLoadingId, setVaultLoadingId] = useState<string | null>(null);
+    const [isVaultExpanded, setIsVaultExpanded] = useState(false);
     const [apCatalogsPer, setApCatalogsPer] = useState("5");
     const [apImagesPerCatalog, setApImagesPerCatalog] = useState("5");
     const [apMaxNiches, setApMaxNiches] = useState("3");
@@ -2806,16 +2919,18 @@ export function KdpFactoryApp() {
         for (const n of niches) {
             const storedPhase = (n.phase === "pdf" ? "seo" : n.phase) ?? "niche";
             const hasCatalogs = iaCatalogs.some(c => (c.nicheIds ?? []).includes(n._id));
-            const hasDraft = bookDrafts.some(d => d.nicheId === n._id);
+            // bookPdfUrl on the niche is authoritative proof of a PDF even if no BookDraft record exists
+            const hasDraft = bookDrafts.some(d => d.nicheId === n._id) || !!(n.bookPdfUrl);
             const hasListing = (n.listings?.length ?? 0) > 0;
             const hasCover = !!(n.coverUrl || (n.coverCandidates?.length ?? 0) > 0);
             const derivedPhase = (() => {
                 if (storedPhase === "published") return "published";
-                if (hasCatalogs && hasDraft && hasListing && hasCover) return "cover";
-                if (hasCatalogs && hasDraft && hasListing) return "seo";
-                if (hasCatalogs && hasDraft) return "libro";
-                if (hasCatalogs) return "catalog";
-                return "niche";
+                if (!hasCatalogs) return "niche";
+                // Work backwards: each artifact implies all previous pipeline steps were done
+                if (hasCover) return "cover";
+                if (hasListing) return "seo";   // listing implies libro was completed
+                if (hasDraft) return "libro";
+                return "catalog";
             })();
             map.set(n._id, (NICHE_PHASE_ORDER[derivedPhase] ?? 0) >= (NICHE_PHASE_ORDER[storedPhase] ?? 0) ? derivedPhase : storedPhase);
         }
@@ -3366,6 +3481,7 @@ export function KdpFactoryApp() {
                 if (settingsMap.has("AUTOPILOT_MAX_NICHES")) setApMaxNiches(settingsMap.get("AUTOPILOT_MAX_NICHES")!);
                 if (settingsMap.has("MAX_ACTIVE_CATALOGS")) setApMaxActiveCatalogs(settingsMap.get("MAX_ACTIVE_CATALOGS")!);
                 if (settingsMap.has("QUALITY_CHECK_ENABLED")) setQualityCheckEnabled(settingsMap.get("QUALITY_CHECK_ENABLED") !== "0" && settingsMap.get("QUALITY_CHECK_ENABLED") !== "false");
+                if (settingsMap.has("QUALITY_VAULT_TELEGRAM_NOTIFY")) setQualityVaultTelegramEnabled(settingsMap.get("QUALITY_VAULT_TELEGRAM_NOTIFY") === "1" || settingsMap.get("QUALITY_VAULT_TELEGRAM_NOTIFY") === "true");
                 if (settingsMap.has("TELEGRAM_WEEKLY_DIGEST")) setWeeklyDigestEnabled(settingsMap.get("TELEGRAM_WEEKLY_DIGEST") !== "false");
 
                 // Autopilot schedule — restore cron UI state
@@ -3515,7 +3631,7 @@ export function KdpFactoryApp() {
     };
 
     // Fetch catalogs on mount (socket connects when entering creation tab)
-    useEffect(() => { void fetchCatalogs(); void fetchApRuns(); void fetchPipelineData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { void fetchCatalogs(); void fetchApRuns(); void fetchPipelineData(); void fetchRejectedImages(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => { if (activeTab === "insights") void fetchTimeseries(timeseriesDays); }, [activeTab, timeseriesDays]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -3649,6 +3765,28 @@ export function KdpFactoryApp() {
                 : data.type === "success" ? toast.success
                 : toast.info;
             fn(data.message, { duration: 5000 });
+        });
+
+        (socket as any).on("vault:rejected", (data: { id: string; catalogId: string; catalogName: string; nicheIds: string[]; imageUrl: string; reason: string; score: number }) => {
+            setRejectedImages(prev => [{
+                _id: data.id,
+                catalogId: data.catalogId,
+                catalogName: data.catalogName,
+                nicheIds: data.nicheIds,
+                imageUrl: data.imageUrl,
+                reason: data.reason,
+                score: data.score,
+                prompt: "",
+                createdAt: new Date().toISOString(),
+            }, ...prev]);
+            setIsVaultExpanded(true);
+            toast.warning(`Imagen rechazada → vault (${data.reason})`);
+        });
+
+        (socket as any).on("vault:updated", (data: { id: string; reviewStatus: string }) => {
+            if (data.reviewStatus !== "pending") {
+                setRejectedImages(prev => prev.filter(r => r._id !== data.id));
+            }
         });
 
         (socket as any).on("kdp:status", (data: { nicheId: string; status: string; message?: string }) => {
@@ -4398,6 +4536,16 @@ export function KdpFactoryApp() {
             const res = await fetch(`${API_BASE_URL}/pipeline/status`);
             if (res.ok) setPipelineData(await res.json());
         } catch { } finally { setPipelineLoading(false); }
+    };
+
+    const fetchRejectedImages = async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/rejected-images?status=pending&limit=100`);
+            if (res.ok) {
+                const data = await res.json();
+                setRejectedImages(data.images ?? []);
+            }
+        } catch { }
     };
     const launchPipelineSeo = async (nicheId: string) => {
         setPipelineSeoLoading(prev => ({ ...prev, [nicheId]: true }));
@@ -7100,6 +7248,27 @@ export function KdpFactoryApp() {
                             <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${qualityCheckEnabled ? "left-[22px]" : "left-0.5"}`} />
                         </button>
                     </div>
+                    <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-white/8 bg-white/[0.02]">
+                        <div>
+                            <p className="text-xs font-black text-white">Vault → Telegram</p>
+                            <p className="text-[10px] text-neutral-500 mt-0.5">{qualityVaultTelegramEnabled ? "Envía imágenes rechazadas a Telegram para revisión" : "Solo guarda en el vault de la app — sin notificación"}</p>
+                        </div>
+                        <button
+                            onClick={async () => {
+                                const next = !qualityVaultTelegramEnabled;
+                                setQualityVaultTelegramEnabled(next);
+                                await fetch(`${API_BASE_URL}/settings`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify([{ key: "QUALITY_VAULT_TELEGRAM_NOTIFY", value: next ? "1" : "0" }]),
+                                });
+                                toast.success(next ? "Notificación Telegram del vault activada" : "Notificación Telegram del vault desactivada");
+                            }}
+                            className={`relative shrink-0 w-11 h-6 rounded-full transition-all duration-200 ${qualityVaultTelegramEnabled ? "bg-sky-500" : "bg-white/10"}`}
+                        >
+                            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${qualityVaultTelegramEnabled ? "left-[22px]" : "left-0.5"}`} />
+                        </button>
+                    </div>
                 </div>
             </section>
             </div>}
@@ -7342,53 +7511,34 @@ export function KdpFactoryApp() {
                         {/* ── 02 PROMPT ── */}
                         <div className="p-6 space-y-4 relative z-10">
                             {niches.length > 0 && (
-                                <div className="space-y-2">
+                                <div className="space-y-1.5">
                                     <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Cargar desde nicho</p>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {niches.filter(n => n.status !== "archived").map(niche => (
-                                            <button
-                                                key={niche._id}
-                                                type="button"
-                                                onClick={() => {
-                                                    if (niche.productType === "coloring-book") {
-                                                        const parts = buildColoringBookPromptParts(niche.name, niche.styleCategory, "");
-                                                        setPromptTheme(parts.theme);
-                                                        setPromptSpecs(parts.specs);
-                                                        setPromptDetails(parts.details);
-                                                        setPromptParticulars("");
-                                                    } else if (niche.productType === "printable-poster") {
-                                                        const style = (niche.styleCategory as NicheStyle) ?? "wall-art";
-                                                        const parts = buildPrintablePromptParts(niche.name, style, "");
-                                                        setPromptTheme(parts.theme);
-                                                        setPromptSpecs(parts.specs);
-                                                        setPromptDetails(parts.details);
-                                                        setPromptParticulars("");
-                                                    } else {
-                                                        setPromptTheme(niche.name);
-                                                        setPromptSpecs(niche.tags.join(", "));
-                                                        setPromptDetails(niche.description || "");
-                                                        setPromptParticulars("");
-                                                    }
-                                                    if (niche.styleCategory && NICHE_STYLE_MODEL[niche.styleCategory]) {
-                                                        setSelectedModel(NICHE_STYLE_MODEL[niche.styleCategory]);
-                                                    }
-                                                    // Associate niche and set correct product type
-                                                    setCatalogFormNicheId(niche._id);
-                                                    setCatalogProductType(niche.productType ?? "coloring-book");
-                                                    setLoadedNicheForPrompt(niche);
-                                                    toast.success(`Prompt cargado desde "${niche.name}"`);
-                                                }}
-                                                className={`flex items-center gap-1.5 h-6 px-2.5 rounded-lg border text-sm font-black transition-all ${
-                                                    niche.phase === "published" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
-                                                    : niche.status === "active" ? "border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
-                                                    : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"
-                                                }`}
-                                            >
-                                                <Target size={8} className="shrink-0" />
-                                                <span className="max-w-[150px] truncate">{nd(niche)}</span>
-                                            </button>
-                                        ))}
-                                    </div>
+                                    <NicheSelect
+                                        niches={niches}
+                                        selectedId={catalogFormNicheId}
+                                        placeholder="Seleccionar nicho…"
+                                        onChange={niche => {
+                                            if (!niche) { setCatalogFormNicheId(null); setLoadedNicheForPrompt(null); return; }
+                                            if (niche.productType === "coloring-book") {
+                                                const parts = buildColoringBookPromptParts(niche.name, niche.styleCategory, "");
+                                                setPromptTheme(parts.theme); setPromptSpecs(parts.specs);
+                                                setPromptDetails(parts.details); setPromptParticulars("");
+                                            } else if (niche.productType === "printable-poster") {
+                                                const style = (niche.styleCategory as NicheStyle) ?? "wall-art";
+                                                const parts = buildPrintablePromptParts(niche.name, style, "");
+                                                setPromptTheme(parts.theme); setPromptSpecs(parts.specs);
+                                                setPromptDetails(parts.details); setPromptParticulars("");
+                                            } else {
+                                                setPromptTheme(niche.name); setPromptSpecs(niche.tags.join(", "));
+                                                setPromptDetails(niche.description || ""); setPromptParticulars("");
+                                            }
+                                            if (niche.styleCategory && NICHE_STYLE_MODEL[niche.styleCategory]) setSelectedModel(NICHE_STYLE_MODEL[niche.styleCategory]);
+                                            setCatalogFormNicheId(niche._id);
+                                            setCatalogProductType(niche.productType ?? "coloring-book");
+                                            setLoadedNicheForPrompt(niche);
+                                            toast.success(`Prompt cargado desde "${niche.name}"`);
+                                        }}
+                                    />
                                 </div>
                             )}
                             <div className="flex items-center justify-between gap-3">
@@ -7691,20 +7841,12 @@ export function KdpFactoryApp() {
                                     {niches.filter(n => n.status !== "archived").length > 0 && (
                                         <div className="space-y-1.5">
                                             <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Vincular a nicho <span className="normal-case font-medium">(opcional)</span></p>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {niches.filter(n => n.status !== "archived").slice(0, 12).map(n => {
-                                                    const isSelected = catalogFormNicheId === n._id;
-                                                    return (
-                                                        <button key={n._id} type="button"
-                                                            onClick={() => setCatalogFormNicheId(isSelected ? null : n._id)}
-                                                            className={`flex items-center gap-1 max-w-[220px] h-6 px-2.5 rounded-lg border text-sm font-black transition-all ${isSelected ? "border-sky-500/50 bg-sky-500/15 text-sky-300" : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"}`}>
-                                                            <Target size={8} className="shrink-0" />
-                                                            <span className="truncate">{nd(n)}</span>
-                                                            {isSelected && <Check size={8} className="shrink-0" />}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
+                                            <NicheSelect
+                                                niches={niches}
+                                                selectedId={catalogFormNicheId}
+                                                placeholder="Ninguno (opcional)…"
+                                                onChange={n => setCatalogFormNicheId(n?._id ?? null)}
+                                            />
                                         </div>
                                     )}
                                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
@@ -10646,6 +10788,112 @@ export function KdpFactoryApp() {
                 </div>
             </div>
 
+            {/* ══ VAULT DE CALIDAD ══ */}
+            {rejectedImages.length > 0 && (
+            <div className="rounded-3xl border border-orange-500/20 bg-orange-500/[0.03] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                <div className="h-px w-full bg-gradient-to-r from-orange-500/60 via-red-400/30 to-transparent" />
+                <div className="p-5">
+                    <button
+                        onClick={() => setIsVaultExpanded(v => !v)}
+                        className="w-full flex items-center justify-between gap-3 group"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-orange-500/15 border border-orange-500/25 flex items-center justify-center shrink-0">
+                                <AlertTriangle size={15} className="text-orange-400" />
+                            </div>
+                            <div className="text-left">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm font-black text-white">Vault de calidad</span>
+                                    <span className="px-2 py-0.5 rounded-full bg-orange-500/20 border border-orange-500/30 text-orange-300 text-[10px] font-black tabular-nums">{rejectedImages.length}</span>
+                                </div>
+                                <p className="text-[10px] text-neutral-500 mt-0.5">Imágenes rechazadas pendientes de revisión manual</p>
+                            </div>
+                        </div>
+                        <ChevronDown size={14} className={`text-neutral-500 transition-transform duration-200 ${isVaultExpanded ? "rotate-180" : ""}`} />
+                    </button>
+
+                    {isVaultExpanded && (
+                    <div className="mt-4 space-y-2">
+                        {rejectedImages.map(img => {
+                            const nicheName = niches.find(n => (img.nicheIds ?? []).includes(n._id))?.nickname?.trim() || niches.find(n => (img.nicheIds ?? []).includes(n._id))?.name || img.catalogName;
+                            const isLoading = vaultLoadingId === img._id;
+                            return (
+                            <div key={img._id} className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.03] border border-white/[0.06] hover:border-orange-500/20 transition-all">
+                                {/* Thumbnail */}
+                                <div className="w-14 h-14 rounded-xl overflow-hidden bg-white/[0.05] border border-white/[0.08] shrink-0 cursor-pointer"
+                                    onClick={() => { setPreviewImage(img.imageUrl); setPreviewContext(null); }}>
+                                    <img src={img.imageUrl} alt="Rechazada" className="w-full h-full object-cover" loading="lazy" />
+                                </div>
+                                {/* Info */}
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-xs font-black text-white truncate max-w-[140px]">{nicheName}</span>
+                                        <span className="px-1.5 py-0.5 rounded-md bg-red-500/15 border border-red-500/20 text-red-300 text-[9px] font-black shrink-0">score {img.score}</span>
+                                    </div>
+                                    <p className="text-[10px] text-neutral-500 mt-0.5 truncate">{img.reason}</p>
+                                    <p className="text-[9px] text-neutral-700 mt-0.5 truncate">{img.catalogName}</p>
+                                </div>
+                                {/* Actions */}
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                        disabled={isLoading}
+                                        onClick={async () => {
+                                            setVaultLoadingId(img._id);
+                                            try {
+                                                const res = await fetch(`${API_BASE_URL}/rejected-images/${img._id}/approve`, {
+                                                    method: "POST",
+                                                    headers: { "Content-Type": "application/json" },
+                                                    body: JSON.stringify({ catalogId: img.catalogId }),
+                                                });
+                                                if (!res.ok) throw new Error((await res.json()).error ?? "Error");
+                                                setRejectedImages(prev => prev.filter(r => r._id !== img._id));
+                                                toast.success("Imagen añadida al catálogo");
+                                                void fetchCatalogs();
+                                            } catch (e: any) {
+                                                toast.error(e.message ?? "Error");
+                                            } finally { setVaultLoadingId(null); }
+                                        }}
+                                        title="Incluir en catálogo"
+                                        className="flex items-center gap-1 h-7 px-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-black transition-all">
+                                        <Check size={10} /> Incluir
+                                    </button>
+                                    <button
+                                        disabled={isLoading}
+                                        onClick={async () => {
+                                            setVaultLoadingId(img._id);
+                                            try {
+                                                await fetch(`${API_BASE_URL}/rejected-images/${img._id}`, { method: "DELETE" });
+                                                setRejectedImages(prev => prev.filter(r => r._id !== img._id));
+                                                toast.success("Imagen eliminada del vault");
+                                            } catch { toast.error("Error eliminando"); }
+                                            finally { setVaultLoadingId(null); }
+                                        }}
+                                        title="Eliminar permanentemente"
+                                        className="flex items-center gap-1 h-7 px-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 hover:border-red-500/40 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-black transition-all">
+                                        <Trash2 size={10} /> Borrar
+                                    </button>
+                                </div>
+                            </div>
+                            );
+                        })}
+                        <button
+                            onClick={async () => {
+                                if (!confirm(`¿Eliminar ${rejectedImages.length} imágenes del vault permanentemente?`)) return;
+                                await Promise.all(rejectedImages.map(img =>
+                                    fetch(`${API_BASE_URL}/rejected-images/${img._id}`, { method: "DELETE" })
+                                ));
+                                setRejectedImages([]);
+                                toast.success("Vault limpiado");
+                            }}
+                            className="w-full h-8 rounded-xl border border-red-500/15 bg-red-500/5 text-red-400 hover:bg-red-500/10 hover:border-red-500/25 text-xs font-black transition-all mt-1">
+                            Limpiar vault ({rejectedImages.length})
+                        </button>
+                    </div>
+                    )}
+                </div>
+            </div>
+            )}
+
             </>}
 
             {/* ══ RADAR DE NICHOS — ETSY ══ */}
@@ -11202,9 +11450,9 @@ export function KdpFactoryApp() {
                     bookPages={bookPages}
                     bookFileName={bookFileName}
                     apiUrl={API_BASE_URL}
-                    buildPdf={async (pages?) => {
+                    buildPdf={async (pages?, forceNoOwnerPage?) => {
                         let result: Uint8Array | null = null;
-                        await buildBookPdf(bytes => { result = bytes; }, false, pages);
+                        await buildBookPdf(bytes => { result = bytes; }, false, pages, forceNoOwnerPage);
                         return result;
                     }}
                     onClose={() => setShowGelatoUpload(false)}
@@ -11254,7 +11502,8 @@ export function KdpFactoryApp() {
                         const preamblePart = i === 0 ? [] : preambleWithPad;
                         const pagesForPdf = [blankSep, ...preamblePart, ...chunks[i]];
                         let result: Uint8Array | null = null;
-                        await buildBookPdf(bytes => { result = bytes; }, false, pagesForPdf);
+                        // Owner page only in first part — subsequent parts skip it
+                        await buildBookPdf(bytes => { result = bytes; }, false, pagesForPdf, i > 0);
                         if (result) {
                             const blob = new Blob([result], { type: "application/pdf" });
                             const url = URL.createObjectURL(blob);

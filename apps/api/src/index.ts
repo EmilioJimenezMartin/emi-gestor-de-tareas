@@ -32,6 +32,7 @@ import { registerAutoPilotRoutes } from "./routes/autopilot.js";
 import { registerKdpSalesRoutes } from "./routes/kdp-sales.js";
 import { registerPipelineRoutes } from "./routes/pipeline.js";
 import { registerBookDraftRoutes } from "./routes/book-drafts.js";
+import { registerRejectedImageRoutes } from "./routes/rejected-images.js";
 import { startTelegramPolling } from "./lib/telegram-polling.js";
 import { Settings } from "./models/settings.js";
 
@@ -72,6 +73,7 @@ await registerDatasetRoutes(app);
 await registerAutoPilotRoutes(app, deps);
 await registerKdpSalesRoutes(app);
 await registerBookDraftRoutes(app);
+await registerRejectedImageRoutes(app, { io });
 await registerPipelineRoutes(app, deps);
 
 app.setErrorHandler((error, _req, reply) => {
@@ -220,6 +222,16 @@ const seedSettings = async () => {
     await Settings.findOneAndUpdate(
       { key: "KAGGLE_KEY" },
       { $setOnInsert: { key: "KAGGLE_KEY", value: process.env.KAGGLE_KEY || "", is_secret: true } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "QUALITY_CHECK_ENABLED" },
+      { $setOnInsert: { key: "QUALITY_CHECK_ENABLED", value: "1", is_secret: false } },
+      { upsert: true, new: true }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "QUALITY_VAULT_TELEGRAM_NOTIFY" },
+      { $setOnInsert: { key: "QUALITY_VAULT_TELEGRAM_NOTIFY", value: "0", is_secret: false } },
       { upsert: true, new: true }
     );
     app.log.info("System config keys seeded into DB (setOnInsert).");

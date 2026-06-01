@@ -528,6 +528,60 @@ async function processUpdate(update: any): Promise<void> {
             return;
         }
 
+        // ── Quality vault: include in catalog ────────────────────────────────
+        if (action === "vault_include") {
+            await answerCallbackQuery(cq.id, "Añadiendo al catálogo…");
+            try {
+                const { RejectedImage } = await import("../models/rejected-image.js");
+                const rejected = await RejectedImage.findById(actionId);
+                if (!rejected || rejected.reviewStatus !== "pending") {
+                    await sendTelegram("⚠️ Imagen no disponible o ya procesada");
+                    return;
+                }
+                const port = process.env.PORT || 3001;
+                const res = await fetch(`http://localhost:${port}/rejected-images/${actionId}/approve`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ catalogId: rejected.catalogId }),
+                });
+                if (!res.ok) throw new Error("Error añadiendo al catálogo");
+                if (rejected.telegramMessageId) {
+                    await editTelegramMessage(
+                        rejected.telegramMessageId,
+                        `✅ <b>Imagen incluida en catálogo</b>\n📁 ${rejected.catalogName}`
+                    );
+                }
+                await sendTelegram(`✅ <b>Imagen del vault añadida</b>\n📁 Catálogo: <b>${rejected.catalogName}</b>`);
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        // ── Quality vault: delete permanently ────────────────────────────────
+        if (action === "vault_delete") {
+            await answerCallbackQuery(cq.id, "Eliminando…");
+            try {
+                const { RejectedImage } = await import("../models/rejected-image.js");
+                const rejected = await RejectedImage.findById(actionId);
+                if (!rejected || rejected.reviewStatus !== "pending") {
+                    await sendTelegram("⚠️ Imagen no disponible o ya procesada");
+                    return;
+                }
+                const port = process.env.PORT || 3001;
+                await fetch(`http://localhost:${port}/rejected-images/${actionId}`, { method: "DELETE" });
+                if (rejected.telegramMessageId) {
+                    await editTelegramMessage(
+                        rejected.telegramMessageId,
+                        `🗑️ <b>Imagen eliminada del vault</b>\n📁 ${rejected.catalogName}`
+                    );
+                }
+            } catch (e: any) {
+                await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
         const tAction = await TelegramAction.findById(actionId);
         if (!tAction || tAction.status !== "pending") {
             await answerCallbackQuery(cq.id, "Esta acción ya fue procesada");

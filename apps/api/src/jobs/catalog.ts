@@ -5,9 +5,87 @@ import { PromptMetric } from "../models/prompt-metric.js";
 import { Settings } from "../models/settings.js";
 import { getCloudinaryConfig, initCloudinary } from "../routes/cloudinary.js";
 import { activateNextQueued } from "../lib/catalog-queue.js";
-import { sendTelegram, shouldNotify } from "../lib/telegram.js";
+import { sendTelegram, shouldNotify, sendTelegramImageWithButtons } from "../lib/telegram.js";
 import { withImageSlot } from "../lib/ai-semaphore.js";
 import sharp from "sharp";
+
+async function isQualityVaultTelegramEnabled(): Promise<boolean> {
+    try {
+        const row = await Settings.findOne({ key: "QUALITY_VAULT_TELEGRAM_NOTIFY" }).lean();
+        return (row as any)?.value === "1" || (row as any)?.value === "true";
+    } catch { return false; }
+}
+
+async function saveRejectedImageToVault(opts: {
+    imageBuffer: Buffer;
+    catalog: any;
+    catalogId: string;
+    reason: string;
+    score: number;
+    finalPrompt: string;
+    io: any;
+}): Promise<void> {
+    const { imageBuffer, catalog, catalogId, reason, score, finalPrompt, io } = opts;
+    try {
+        const { RejectedImage } = await import("../models/rejected-image.js");
+        const { getCloudinaryConfig: getCldCfg, initCloudinary: initCld } = await import("../routes/cloudinary.js");
+
+        const config = await getCldCfg();
+        if (!config) return;
+
+        const base64 = imageBuffer.toString("base64");
+        const dataUrl = `data:image/png;base64,${base64}`;
+        const cld = await initCld(config);
+        const uploadResult = await cld.uploader.upload(dataUrl, {
+            folder: `emi-kdp-rejected/${catalogId}`,
+            resource_type: "image",
+            timeout: 60000,
+        });
+
+        const rejected = await RejectedImage.create({
+            catalogId,
+            catalogName: catalog.name,
+            nicheIds: catalog.nicheIds ?? [],
+            imageUrl: uploadResult.secure_url,
+            publicId: uploadResult.public_id,
+            reason,
+            score,
+            prompt: finalPrompt.slice(0, 500),
+            reviewStatus: "pending",
+        });
+
+        io.emit("vault:rejected", {
+            id: String(rejected._id),
+            catalogId,
+            catalogName: catalog.name,
+            nicheIds: catalog.nicheIds ?? [],
+            imageUrl: uploadResult.secure_url,
+            reason,
+            score,
+        });
+
+        const telegramEnabled = await isQualityVaultTelegramEnabled();
+        if (telegramEnabled) {
+            const caption = `🚫 <b>Imagen rechazada</b>\n📁 Catálogo: <b>${catalog.name}</b>\n❌ ${reason} (score ${score})\n<i>Revisa el vault para incluirla o eliminarla</i>`;
+            const msgId = await sendTelegramImageWithButtons(
+                imageBuffer,
+                caption,
+                [
+                    [
+                        { text: "✅ Incluir en catálogo", callback_data: `vault_include:${String(rejected._id)}` },
+                        { text: "🗑️ Eliminar", callback_data: `vault_delete:${String(rejected._id)}` },
+                    ],
+                ]
+            );
+            if (msgId) {
+                rejected.telegramMessageId = msgId;
+                await rejected.save();
+            }
+        }
+    } catch (vaultErr: any) {
+        console.warn(`[catalog] Vault save failed: ${vaultErr?.message}`);
+    }
+}
 
 async function isQualityCheckEnabled(): Promise<boolean> {
     try {
@@ -397,6 +475,18 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             const quality = await analyzeImageQuality(imageBuffer, catalog.productType ?? "coloring-book");
             console.log(`${tag} Quality: score=${quality.score} ok=${quality.ok} enabled=${qualityEnabled}${quality.reason ? ` reason="${quality.reason}"` : ""}`);
             if (qualityEnabled && !quality.ok) {
+                // Save to vault on first attempt only (avoid duplicate vault entries per slot across retries)
+                if (retryCount === 0) {
+                    void saveRejectedImageToVault({
+                        imageBuffer,
+                        catalog,
+                        catalogId,
+                        reason: quality.reason ?? "Quality check failed",
+                        score: quality.score,
+                        finalPrompt,
+                        io,
+                    });
+                }
                 throw new Error(`Calidad insuficiente (score ${quality.score}): ${quality.reason}`);
             }
 
