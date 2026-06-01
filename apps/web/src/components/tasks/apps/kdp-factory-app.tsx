@@ -2754,11 +2754,15 @@ export function KdpFactoryApp() {
     const [generatedCoverUrl, setGeneratedCoverUrl] = useState<string | null>(null);
     const [showCoverModal, setShowCoverModal] = useState(false);
     const [coverModalTab, setCoverModalTab] = useState<"front" | "back">("front");
+    const [coverMode, setCoverMode] = useState<"ai" | "collage">("ai");
     const [coverDescription, setCoverDescription] = useState("");
     const [coverAuthor, setCoverAuthor] = useState("");
     const [generatedBackCoverUrl, setGeneratedBackCoverUrl] = useState<string | null>(null);
     const [isBuildingBackCover, setIsBuildingBackCover] = useState(false);
     const [selectedCoverNicheId, setSelectedCoverNicheId] = useState<string | null>(null);
+    const [selectedCollageImages, setSelectedCollageImages] = useState<Set<string>>(new Set());
+    const [isBuildingCollage, setIsBuildingCollage] = useState(false);
+    const [collageTitleBand, setCollageTitleBand] = useState<"top" | "bottom" | "none">("bottom");
 
     const [bookEditorOpen, setBookEditorOpen] = useState(false);
     const [bookFileName, setBookFileName] = useState("libro-kdp");
@@ -9349,7 +9353,15 @@ export function KdpFactoryApp() {
         setGeneratedCoverUrl(null);
         try {
             const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
-            const prompt = `KDP paperback book cover illustration background. Style: ${coverStyle}. Color theme: ${coverColorTheme}. Beautiful decorative composition, centered focal artwork, professional book cover layout, high detail, no text, no letters, no words, no typography, no title, no captions, purely illustrative background`;
+            const selectedNiche = niches.find(n => n._id === selectedCoverNicheId);
+            const nicheContext = selectedNiche
+                ? `${selectedNiche.name}${selectedNiche.description ? `, ${selectedNiche.description}` : ""}`
+                : coverTitle;
+            const productType = selectedNiche?.productType ?? "coloring-book";
+            const isColoringBook = productType === "coloring-book";
+            const prompt = isColoringBook
+                ? `KDP coloring book cover illustration: ${nicheContext}. ${coverStyle ? `Visual style: ${coverStyle}.` : ""} ${coverColorTheme ? `Color palette: ${coverColorTheme}.` : ""} Intricate detailed line art design, zentangle and mandala elements, beautiful decorative composition filling the entire frame, professional adult coloring book cover art, high contrast, no text, no letters, no words, purely illustrative`
+                : `KDP printable poster cover: ${nicheContext}. ${coverStyle ? `Visual style: ${coverStyle}.` : ""} ${coverColorTheme ? `Color palette: ${coverColorTheme}.` : ""} Premium wall art illustration, beautiful decorative composition, professional quality, centered focal artwork, no text, no letters, no words`;
             const res = await fetch(`${API_BASE_URL}/ai/generate-image`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -9359,6 +9371,98 @@ export function KdpFactoryApp() {
             const blob = await res.blob();
             setGeneratedCoverUrl(URL.createObjectURL(blob));
         } catch { toast.error("Error conectando con la API"); } finally { setIsBuildingCover(false); }
+    };
+
+    const buildCollage = async () => {
+        if (!selectedCoverNicheId) { toast.error("Selecciona un nicho primero"); return; }
+        const allUrls = iaCatalogs
+            .filter(c => c.nicheIds?.includes(selectedCoverNicheId) && c.status === "completed")
+            .flatMap(c => c.images.map((img: any) => img.url));
+        const urls = selectedCollageImages.size > 0 ? [...selectedCollageImages] : allUrls.slice(0, 9);
+        if (urls.length === 0) { toast.error("No hay imágenes completadas para este nicho"); return; }
+
+        setIsBuildingCollage(true);
+        setGeneratedCoverUrl(null);
+        try {
+            const W = 1600, H = 2560;
+            const BAND_H = collageTitleBand !== "none" ? 240 : 0;
+            const cols = urls.length <= 4 ? 2 : 3;
+            const rows = Math.ceil(urls.length / cols);
+            const gridH = H - BAND_H;
+            const GAP = 6;
+            const cellW = Math.floor((W - GAP * (cols + 1)) / cols);
+            const cellH = Math.floor((gridH - GAP * (rows + 1)) / rows);
+
+            const loadedImgs = (await Promise.allSettled(
+                urls.map(url => new Promise<HTMLImageElement>((res, rej) => {
+                    const img = new Image(); img.crossOrigin = "anonymous";
+                    img.onload = () => res(img); img.onerror = rej;
+                    img.src = url;
+                }))
+            )).flatMap(r => r.status === "fulfilled" ? [r.value] : []);
+
+            if (loadedImgs.length === 0) { toast.error("No se pudieron cargar las imágenes"); return; }
+
+            const canvas = document.createElement("canvas");
+            canvas.width = W; canvas.height = H;
+            const ctx = canvas.getContext("2d")!;
+
+            // Background
+            ctx.fillStyle = "#111111";
+            ctx.fillRect(0, 0, W, H);
+
+            // Grid images
+            const gridOffsetY = collageTitleBand === "top" ? BAND_H : 0;
+            loadedImgs.forEach((img, i) => {
+                const col = i % cols, row = Math.floor(i / cols);
+                const x = GAP + col * (cellW + GAP);
+                const y = gridOffsetY + GAP + row * (cellH + GAP);
+                // Cover-fill crop
+                const ia = img.width / img.height, ca = cellW / cellH;
+                let sx = 0, sy = 0, sw = img.width, sh = img.height;
+                if (ia > ca) { sw = img.height * ca; sx = (img.width - sw) / 2; }
+                else { sh = img.width / ca; sy = (img.height - sh) / 2; }
+                ctx.drawImage(img, sx, sy, sw, sh, x, y, cellW, cellH);
+            });
+
+            // Title band
+            if (collageTitleBand !== "none" && coverTitle.trim()) {
+                const bandY = collageTitleBand === "top" ? 0 : H - BAND_H;
+                const grad = ctx.createLinearGradient(0, bandY, 0, bandY + BAND_H);
+                grad.addColorStop(0, collageTitleBand === "top" ? "rgba(0,0,0,0.92)" : "rgba(0,0,0,0.3)");
+                grad.addColorStop(1, collageTitleBand === "top" ? "rgba(0,0,0,0.3)" : "rgba(0,0,0,0.92)");
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, bandY, W, BAND_H);
+
+                const textY = collageTitleBand === "top" ? bandY + 110 : bandY + 110;
+                ctx.textAlign = "center";
+
+                // Title — auto-size to fit width
+                let fontSize = 96;
+                ctx.font = `bold ${fontSize}px serif`;
+                while (ctx.measureText(coverTitle).width > W - 80 && fontSize > 40) {
+                    fontSize -= 4;
+                    ctx.font = `bold ${fontSize}px serif`;
+                }
+                ctx.fillStyle = "#ffffff";
+                ctx.fillText(coverTitle, W / 2, textY);
+
+                if (coverSubtitle.trim()) {
+                    ctx.font = `${Math.round(fontSize * 0.46)}px sans-serif`;
+                    ctx.fillStyle = "rgba(255,255,255,0.75)";
+                    ctx.fillText(coverSubtitle, W / 2, textY + fontSize * 0.72);
+                }
+            }
+
+            canvas.toBlob(blob => {
+                if (blob) setGeneratedCoverUrl(URL.createObjectURL(blob));
+                else toast.error("Error exportando collage");
+            }, "image/jpeg", 0.95);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error generando collage");
+        } finally {
+            setIsBuildingCollage(false);
+        }
     };
 
     const generateBackCover = async () => {
@@ -11258,61 +11362,51 @@ export function KdpFactoryApp() {
                             ))}
                         </div>
                         {/* Body */}
-                        <div className="overflow-y-auto p-5 space-y-5 relative" style={{ maxHeight: "75dvh" }}>
-                            {/* ── Niche picker ── */}
+                        <div className="overflow-y-auto relative" style={{ maxHeight: "80dvh" }}>
+                          <div className="flex gap-0 min-h-0" style={{ minHeight: "60dvh" }}>
+                            {/* ── Left: controls ── */}
+                            <div className="flex-1 p-5 space-y-4 overflow-y-auto border-r border-white/6" style={{ minWidth: 0 }}>
+
+                            {/* Mode selector (front only) */}
+                            {coverModalTab === "front" && (
+                                <div className="flex gap-1 p-1 bg-white/[0.04] rounded-xl border border-white/8">
+                                    {([["ai", "✦ IA", "Genera imagen con el contexto del nicho"], ["collage", "⊞ Collage", "Compone imágenes reales del catálogo"]] as const).map(([id, label, desc]) => (
+                                        <button key={id} onClick={() => setCoverMode(id)} title={desc}
+                                            className={`flex-1 h-8 rounded-lg text-sm font-black transition-all ${coverMode === id ? "bg-fuchsia-500/25 border border-fuchsia-500/35 text-fuchsia-300 shadow-[0_0_12px_rgba(192,38,211,0.2)]" : "text-neutral-500 hover:text-neutral-300"}`}>
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Niche selector */}
                             {niches.filter(n => n.status !== "archived").length > 0 && (
-                                <div className="space-y-2">
-                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-600 flex items-center gap-1.5">
-                                        <Target size={9} /> Cargar desde nicho
-                                    </p>
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {niches.filter(n => n.status !== "archived").map(niche => {
-                                            const isSelected = selectedCoverNicheId === niche._id;
-                                            return (
-                                                <button
-                                                    key={niche._id}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        if (isSelected) {
-                                                            setSelectedCoverNicheId(null);
-                                                            return;
-                                                        }
-                                                        setSelectedCoverNicheId(niche._id);
-                                                        const coverMap = NICHE_STYLE_TO_COVER[niche.styleCategory] ?? NICHE_STYLE_TO_COVER.generic;
-                                                        setCoverTitle(niche.name);
-                                                        if (niche.productType === "coloring-book") {
-                                                            setCoverSubtitle("Coloring Book for Adults");
-                                                        } else if (niche.productType === "printable-poster") {
-                                                            setCoverSubtitle("Premium Printable Artwork");
-                                                        } else {
-                                                            setCoverSubtitle("");
-                                                        }
-                                                        setCoverStyle(coverMap.style);
-                                                        setCoverColorTheme(coverMap.colorTheme);
-                                                        setCoverModelId(NICHE_STYLE_MODEL[niche.styleCategory] ?? "pollinations-flux");
-                                                        if (niche.description) setCoverDescription(niche.description);
-                                                        toast.success(`Campos cargados desde "${niche.name}"`);
-                                                    }}
-                                                    className={`flex items-center gap-1.5 h-6 px-2.5 rounded-lg border text-sm font-black transition-all ${
-                                                        isSelected
-                                                            ? "border-fuchsia-500/50 bg-fuchsia-500/20 text-fuchsia-300"
-                                                            : niche.phase === "published"
-                                                                ? "border-emerald-500/25 bg-emerald-500/8 text-emerald-400 hover:bg-emerald-500/15"
-                                                                : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/8"
-                                                    }`}
-                                                >
-                                                    <Target size={8} />
-                                                    {nd(niche)}
-                                                    {isSelected && <Check size={8} />}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                    {selectedCoverNicheId && (
-                                        <p className="text-sm text-neutral-700 italic">
-                                            Campos auto-rellenados · puedes editarlos libremente antes de generar
-                                        </p>
-                                    )}
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Nicho</label>
+                                    <select
+                                        value={selectedCoverNicheId ?? ""}
+                                        onChange={e => {
+                                            const id = e.target.value || null;
+                                            setSelectedCoverNicheId(id);
+                                            setSelectedCollageImages(new Set());
+                                            if (!id) return;
+                                            const niche = niches.find(n => n._id === id);
+                                            if (!niche) return;
+                                            const coverMap = NICHE_STYLE_TO_COVER[niche.styleCategory] ?? NICHE_STYLE_TO_COVER.generic;
+                                            setCoverTitle(niche.nickname?.trim() || niche.name);
+                                            setCoverSubtitle(niche.productType === "coloring-book" ? "Coloring Book for Adults" : niche.productType === "printable-poster" ? "Premium Printable Artwork" : "");
+                                            setCoverStyle(coverMap.style);
+                                            setCoverColorTheme(coverMap.colorTheme);
+                                            setCoverModelId(NICHE_STYLE_MODEL[niche.styleCategory] ?? "pollinations-flux");
+                                            if (niche.description) setCoverDescription(niche.description);
+                                        }}
+                                        className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:border-fuchsia-500/40 [color-scheme:dark] truncate"
+                                    >
+                                        <option value="">— Sin nicho —</option>
+                                        {niches.filter(n => n.status !== "archived").map(n => (
+                                            <option key={n._id} value={n._id}>{n.nickname?.trim() || n.name}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             )}
 
@@ -11329,149 +11423,194 @@ export function KdpFactoryApp() {
                                         className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
                                 </div>
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="space-y-1">
-                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Estilo visual</label>
-                                    <input type="text" value={coverStyle} onChange={e => setCoverStyle(e.target.value)} placeholder="Ej: vibrant illustration, fantasy"
-                                        className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Modelo</label>
-                                    <select value={coverModelId} onChange={e => setCoverModelId(e.target.value)}
-                                        className="w-full h-9 px-2.5 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:border-fuchsia-500/40 [color-scheme:dark]">
-                                        {AI_MODELS.filter(m => ["Pollinations", "fal.ai", "Ideogram", "Google"].includes(m.provider)).map(m => (
-                                            <option key={m.id} value={m.id}>{m.name} · {m.provider}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Paleta de colores</label>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {["deep blue and gold", "pastel pink and mint", "dark forest green", "warm sunset orange", "purple and silver"].map(p => (
-                                        <button key={p} onClick={() => setCoverColorTheme(p)}
-                                            className={`px-2 py-1 rounded-lg border text-sm font-black transition-all ${coverColorTheme === p ? "border-fuchsia-500/40 bg-fuchsia-500/15 text-fuchsia-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-400"}`}>
-                                            {p}
-                                        </button>
-                                    ))}
-                                    <input type="text" value={coverColorTheme} onChange={e => setCoverColorTheme(e.target.value)}
-                                        className="flex-1 min-w-[90px] h-7 px-2 bg-white/[0.04] border border-white/10 rounded-lg text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" placeholder="tema libre..." />
-                                </div>
-                            </div>
 
-                            <div className="h-px bg-white/6" />
-
-                            {/* ── Tab content ── */}
-                            {coverModalTab === "front" ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                    <button onClick={() => void generateCover()} disabled={isBuildingCover || !coverTitle.trim()}
-                                        className="h-10 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-95">
-                                        {isBuildingCover ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><ImageIcon size={13} /> Generar Portada</>}
-                                    </button>
-                                    <div className="flex items-start justify-center">
-                                        {generatedCoverUrl ? (
-                                            <div className="space-y-2 w-full flex flex-col items-center">
-                                                <div className="relative overflow-hidden rounded-2xl border border-white/10 shadow-[0_0_40px_rgba(192,38,211,0.15)]" style={{ maxWidth: 160 }}>
-                                                    <img src={generatedCoverUrl} alt="Portada KDP" className="w-full object-cover" style={{ aspectRatio: "1600/2560" }} />
-                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
-                                                </div>
-                                                <p className="text-sm text-neutral-700 text-center font-mono">1600×2560px · front</p>
-                                                <div className="flex gap-1.5 flex-wrap justify-center">
-                                                    <a href={generatedCoverUrl} download={`portada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
-                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-sm font-black uppercase text-fuchsia-300 hover:bg-fuchsia-500/25 transition-all">
-                                                        <Download size={9} /> DL
-                                                    </a>
-                                                    <button onClick={() => void generateCover()} disabled={isBuildingCover}
-                                                        className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-white/5 border border-white/10 text-sm font-black text-neutral-500 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40">
-                                                        <RefreshCw size={9} /> Regen.
-                                                    </button>
-                                                    <button onClick={() => setGeneratedCoverUrl(null)}
-                                                        className="h-7 w-7 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 transition-all flex items-center justify-center">
-                                                        <Trash2 size={9} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="w-full flex flex-col items-center justify-center gap-2 py-8 border border-dashed border-fuchsia-500/15 rounded-2xl bg-fuchsia-500/[0.02]">
-                                                {isBuildingCover ? (
-                                                    <><Loader2 size={24} className="text-fuchsia-500/50 animate-spin" /><p className="text-sm text-neutral-600">Generando…</p></>
-                                                ) : (
-                                                    <><div className="w-12 h-18 rounded-xl border-2 border-dashed border-fuchsia-500/20 flex items-center justify-center" style={{ height: 72 }}><ImageIcon size={16} className="text-fuchsia-500/20" /></div><p className="text-sm text-neutral-700">Portada · 1600×2560</p></>
-                                                )}
-                                            </div>
-                                        )}
+                            {/* ── AI-mode fields ── */}
+                            {(coverMode === "ai" || coverModalTab === "back") && (<>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Estilo visual</label>
+                                        <input type="text" value={coverStyle} onChange={e => setCoverStyle(e.target.value)} placeholder="Ej: vibrant illustration, fantasy"
+                                            className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Modelo</label>
+                                        <select value={coverModelId} onChange={e => setCoverModelId(e.target.value)}
+                                            className="w-full h-9 px-2.5 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white focus:outline-none focus:border-fuchsia-500/40 [color-scheme:dark]">
+                                            {AI_MODELS.filter(m => ["Pollinations", "fal.ai", "Ideogram", "Google"].includes(m.provider)).map(m => (
+                                                <option key={m.id} value={m.id}>{m.name} · {m.provider}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                 </div>
-                            ) : (
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <div className="space-y-3">
-                                            <div className="space-y-1">
-                                                <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Autor <span className="text-neutral-700">(opcional)</span></label>
-                                                <input type="text" value={coverAuthor} onChange={e => setCoverAuthor(e.target.value)} placeholder="Ej: Editorial Zen Studio"
-                                                    className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Descripción / Blurb</label>
-                                                <textarea value={coverDescription} onChange={e => setCoverDescription(e.target.value)}
-                                                    placeholder="Texto descriptivo que aparecerá en la contraportada..."
-                                                    rows={4}
-                                                    className="w-full px-3 py-2 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none leading-relaxed" />
-                                            </div>
-                                            <button onClick={() => void generateBackCover()} disabled={isBuildingBackCover || !coverTitle.trim()}
-                                                className="w-full h-10 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(139,92,246,0.3)] active:scale-95">
-                                                {isBuildingBackCover ? <><Loader2 size={13} className="animate-spin" /> Generando...</> : <><ImageIcon size={13} /> Generar Contraportada</>}
+                                <div className="space-y-1">
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Paleta</label>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {["deep blue and gold", "pastel pink and mint", "dark forest green", "warm sunset orange", "purple and silver"].map(p => (
+                                            <button key={p} onClick={() => setCoverColorTheme(p)}
+                                                className={`px-2 py-1 rounded-lg border text-[11px] font-black transition-all ${coverColorTheme === p ? "border-fuchsia-500/40 bg-fuchsia-500/15 text-fuchsia-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-400"}`}>
+                                                {p}
                                             </button>
-                                        </div>
-                                        <div className="flex items-start justify-center">
-                                            {generatedBackCoverUrl ? (
-                                                <div className="space-y-2 w-full flex flex-col items-center">
-                                                    <div className="relative overflow-hidden rounded-2xl border border-white/10 shadow-[0_0_40px_rgba(139,92,246,0.15)]" style={{ maxWidth: 160 }}>
-                                                        <img src={generatedBackCoverUrl} alt="Contraportada KDP" className="w-full object-cover" style={{ aspectRatio: "1600/2560" }} />
-                                                        {/* Text overlay preview */}
-                                                        {(coverTitle || coverDescription || coverAuthor) && (
-                                                            <div className="absolute inset-0 flex flex-col justify-between p-2 bg-black/30">
-                                                                <div />
-                                                                <div className="space-y-1">
-                                                                    {coverDescription && <p className="text-[5px] text-white/90 leading-tight line-clamp-6">{coverDescription}</p>}
-                                                                    {coverAuthor && <p className="text-[5px] font-bold text-white/70">{coverAuthor}</p>}
-                                                                    <div className="w-8 h-6 bg-white/10 rounded flex items-center justify-center">
-                                                                        <span className="text-[4px] text-white/40 font-mono">ISBN</span>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <p className="text-sm text-neutral-700 text-center font-mono">1600×2560px · back</p>
-                                                    <div className="flex gap-1.5 flex-wrap justify-center">
-                                                        <a href={generatedBackCoverUrl} download={`contraportada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`}
-                                                            className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-violet-500/15 border border-violet-500/30 text-sm font-black uppercase text-violet-300 hover:bg-violet-500/25 transition-all">
-                                                            <Download size={9} /> DL
-                                                        </a>
-                                                        <button onClick={() => void generateBackCover()} disabled={isBuildingBackCover}
-                                                            className="flex items-center gap-1 h-7 px-2.5 rounded-xl bg-white/5 border border-white/10 text-sm font-black text-neutral-500 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40">
-                                                            <RefreshCw size={9} /> Regen.
+                                        ))}
+                                        <input type="text" value={coverColorTheme} onChange={e => setCoverColorTheme(e.target.value)}
+                                            className="flex-1 min-w-[80px] h-7 px-2 bg-white/[0.04] border border-white/10 rounded-lg text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" placeholder="libre…" />
+                                    </div>
+                                </div>
+                            </>)}
+
+                            {/* ── Collage: image picker ── */}
+                            {coverMode === "collage" && coverModalTab === "front" && (() => {
+                                const nicheImgUrls = selectedCoverNicheId
+                                    ? iaCatalogs
+                                        .filter(c => c.nicheIds?.includes(selectedCoverNicheId) && c.status === "completed")
+                                        .flatMap((c: any) => c.images.map((img: any) => img.url))
+                                    : [];
+                                return (
+                                    <div className="space-y-3">
+                                        {nicheImgUrls.length === 0 ? (
+                                            <div className="text-sm text-neutral-600 italic py-4 text-center border border-dashed border-white/8 rounded-xl">
+                                                {selectedCoverNicheId ? "No hay catálogos completados para este nicho" : "Selecciona un nicho para ver sus imágenes"}
+                                            </div>
+                                        ) : (<>
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-sm font-black text-neutral-500">
+                                                    {selectedCollageImages.size === 0 ? `${nicheImgUrls.length} imágenes (todas)` : `${selectedCollageImages.size} / ${nicheImgUrls.length} seleccionadas`}
+                                                </p>
+                                                {selectedCollageImages.size > 0 && (
+                                                    <button onClick={() => setSelectedCollageImages(new Set())} className="text-sm text-fuchsia-400 hover:text-fuchsia-300 transition-colors">
+                                                        Usar todas
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <div className="grid grid-cols-5 gap-1.5 max-h-44 overflow-y-auto pr-0.5">
+                                                {nicheImgUrls.map((url: string, i: number) => {
+                                                    const isSel = selectedCollageImages.size === 0 || selectedCollageImages.has(url);
+                                                    return (
+                                                        <button key={i} onClick={() => setSelectedCollageImages(prev => {
+                                                            const next = new Set(prev.size === 0 ? nicheImgUrls : [...prev]);
+                                                            if (next.has(url)) next.delete(url); else next.add(url);
+                                                            if (next.size === nicheImgUrls.length) return new Set();
+                                                            return next;
+                                                        })} className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${isSel ? "border-fuchsia-500/60" : "border-transparent opacity-25 hover:opacity-60"}`}>
+                                                            <img src={url} alt="" className="w-full h-full object-cover" />
+                                                            {isSel && <div className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-fuchsia-500 flex items-center justify-center shadow"><Check size={7} className="text-white" /></div>}
                                                         </button>
-                                                        <button onClick={() => setGeneratedBackCoverUrl(null)}
-                                                            className="h-7 w-7 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 transition-all flex items-center justify-center">
-                                                            <Trash2 size={9} />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div className="w-full flex flex-col items-center justify-center gap-2 py-8 border border-dashed border-violet-500/15 rounded-2xl bg-violet-500/[0.02]">
-                                                    {isBuildingBackCover ? (
-                                                        <><Loader2 size={24} className="text-violet-500/50 animate-spin" /><p className="text-sm text-neutral-600">Generando…</p></>
-                                                    ) : (
-                                                        <><div className="w-12 rounded-xl border-2 border-dashed border-violet-500/20 flex items-center justify-center" style={{ height: 72 }}><AlignLeft size={16} className="text-violet-500/20" /></div><p className="text-sm text-neutral-700">Contraportada · 1600×2560</p></>
-                                                    )}
-                                                </div>
-                                            )}
+                                                    );
+                                                })}
+                                            </div>
+                                        </>)}
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-black uppercase tracking-widest text-neutral-600 shrink-0">Título</span>
+                                            {([["top", "Arriba"], ["bottom", "Abajo"], ["none", "Sin banda"]] as const).map(([v, l]) => (
+                                                <button key={v} onClick={() => setCollageTitleBand(v)}
+                                                    className={`px-2.5 py-1 rounded-lg border text-sm font-black transition-all ${collageTitleBand === v ? "border-fuchsia-500/40 bg-fuchsia-500/15 text-fuchsia-300" : "border-white/8 text-neutral-600 hover:text-neutral-400"}`}>
+                                                    {l}
+                                                </button>
+                                            ))}
                                         </div>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* ── Back cover extra fields ── */}
+                            {coverModalTab === "back" && (
+                                <div className="space-y-3">
+                                    <div className="space-y-1">
+                                        <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Autor <span className="text-neutral-700">(opcional)</span></label>
+                                        <input type="text" value={coverAuthor} onChange={e => setCoverAuthor(e.target.value)} placeholder="Ej: Editorial Zen Studio"
+                                            className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Descripción / Blurb</label>
+                                        <textarea value={coverDescription} onChange={e => setCoverDescription(e.target.value)}
+                                            placeholder="Texto descriptivo que aparecerá en la contraportada…"
+                                            rows={3}
+                                            className="w-full px-3 py-2 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none leading-relaxed" />
                                     </div>
                                 </div>
                             )}
-                        </div>
+
+                            {/* ── Generate button ── */}
+                            <div className="pt-1">
+                                {coverModalTab === "front" ? (
+                                    coverMode === "ai" ? (
+                                        <button onClick={() => void generateCover()} disabled={isBuildingCover || !coverTitle.trim()}
+                                            className="w-full h-11 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-[0.98]">
+                                            {isBuildingCover ? <><Loader2 size={14} className="animate-spin" /> Generando con IA…</> : <><ImageIcon size={14} /> Generar Portada con IA</>}
+                                        </button>
+                                    ) : (
+                                        <button onClick={() => void buildCollage()} disabled={isBuildingCollage || !selectedCoverNicheId}
+                                            className="w-full h-11 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-[0.98]">
+                                            {isBuildingCollage ? <><Loader2 size={14} className="animate-spin" /> Componiendo collage…</> : <><Library size={14} /> Crear Collage</>}
+                                        </button>
+                                    )
+                                ) : (
+                                    <button onClick={() => void generateBackCover()} disabled={isBuildingBackCover || !coverTitle.trim()}
+                                        className="w-full h-11 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(139,92,246,0.3)] active:scale-[0.98]">
+                                        {isBuildingBackCover ? <><Loader2 size={14} className="animate-spin" /> Generando…</> : <><ImageIcon size={14} /> Generar Contraportada</>}
+                                    </button>
+                                )}
+                            </div>
+
+                            </div>{/* end left column */}
+
+                            {/* ── Right: live preview ── */}
+                            <div className="w-52 shrink-0 p-5 flex flex-col items-center gap-4 sticky top-0">
+                                {(() => {
+                                    const url = coverModalTab === "front" ? generatedCoverUrl : generatedBackCoverUrl;
+                                    const isBuilding = coverModalTab === "front" ? (isBuildingCover || isBuildingCollage) : isBuildingBackCover;
+                                    const accentClass = coverModalTab === "front" ? "fuchsia" : "violet";
+                                    const dlName = coverModalTab === "front"
+                                        ? `portada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`
+                                        : `contraportada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`;
+                                    return (<>
+                                        <div className={`w-full rounded-2xl overflow-hidden border border-white/10 shadow-[0_0_40px_rgba(192,38,211,0.1)] relative bg-white/[0.02]`} style={{ aspectRatio: "1600/2560" }}>
+                                            {url ? (
+                                                <img src={url} alt="Preview" className="w-full h-full object-cover" />
+                                            ) : isBuilding ? (
+                                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                                                    <Loader2 size={20} className="text-fuchsia-500/60 animate-spin" />
+                                                    <p className="text-[10px] text-neutral-600">{coverMode === "collage" && coverModalTab === "front" ? "Componiendo…" : "Generando…"}</p>
+                                                </div>
+                                            ) : (
+                                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+                                                    <ImageIcon size={18} className="text-white/10" />
+                                                    <p className="text-[10px] text-neutral-700">1600×2560px</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {url && (
+                                            <div className="flex flex-col gap-1.5 w-full">
+                                                <a href={url} download={dlName}
+                                                    className={`w-full h-9 rounded-xl bg-fuchsia-500/20 border border-fuchsia-500/35 text-fuchsia-300 text-sm font-black flex items-center justify-center gap-1.5 hover:bg-fuchsia-500/30 transition-all`}>
+                                                    <Download size={12} /> Descargar
+                                                </a>
+                                                <div className="flex gap-1.5">
+                                                    <button onClick={() => coverModalTab === "front"
+                                                        ? (coverMode === "ai" ? void generateCover() : void buildCollage())
+                                                        : void generateBackCover()}
+                                                        disabled={isBuildingCover || isBuildingCollage || isBuildingBackCover}
+                                                        className="flex-1 h-8 rounded-xl bg-white/5 border border-white/10 text-sm font-black text-neutral-500 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40 flex items-center justify-center gap-1">
+                                                        <RefreshCw size={10} /> Regen.
+                                                    </button>
+                                                    <button onClick={() => coverModalTab === "front" ? setGeneratedCoverUrl(null) : setGeneratedBackCoverUrl(null)}
+                                                        className="h-8 w-9 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 transition-all flex items-center justify-center">
+                                                        <Trash2 size={10} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>);
+                                })()}
+                                {coverModalTab === "back" && generatedBackCoverUrl && (coverTitle || coverDescription || coverAuthor) && (
+                                    <div className="w-full text-[10px] text-neutral-700 space-y-1 border-t border-white/6 pt-3">
+                                        {coverDescription && <p className="line-clamp-4 leading-relaxed">{coverDescription}</p>}
+                                        {coverAuthor && <p className="font-bold text-neutral-600">{coverAuthor}</p>}
+                                    </div>
+                                )}
+                            </div>{/* end right preview */}
+                          </div>{/* end flex row */}
+
+                        </div>{/* end overflow-y-auto body */}
                     </div>
                 </div>
             )}
