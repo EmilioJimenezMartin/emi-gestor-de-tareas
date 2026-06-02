@@ -11136,6 +11136,17 @@ export function KdpFactoryApp() {
                             </div>
                         </div>
 
+                        {/* Niche selector — upfront link */}
+                        <NicheSelect
+                            niches={niches}
+                            selectedId={contentSaveNicheId || null}
+                            placeholder="Vincular a nicho (opcional)"
+                            onChange={(n) => {
+                                setContentSaveNicheId(n?._id ?? "");
+                                if (n) { const parts = [n.nickname?.trim(), n.name].filter(Boolean); setContentNiche(parts.join(" · ")); }
+                            }}
+                        />
+
                         {/* Type selector */}
                         <div className="space-y-2">
                             <button onClick={() => { setContentType("kdp-physical-book"); setContentResult(null); }}
@@ -11258,23 +11269,27 @@ export function KdpFactoryApp() {
                                 )}
                                 {/* Save to niche */}
                                 <div className="border-t border-white/[0.05] pt-3 space-y-2">
-                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Vincular a nicho</p>
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Guardar en nicho</p>
+                                        {contentSaveNicheId && (niches.find(n => n._id === contentSaveNicheId)?.listings?.length ?? 0) > 0 && (
+                                            <button onClick={() => { setNicheDetailId(contentSaveNicheId); setNicheDetailTab("seo"); }}
+                                                title="Ver listings del nicho" className="h-6 w-6 rounded-lg bg-white/[0.04] border border-white/10 text-neutral-600 hover:text-white transition-all flex items-center justify-center">
+                                                <Eye size={10} />
+                                            </button>
+                                        )}
+                                    </div>
                                     <div className="flex gap-1.5">
-                                        <select value={contentSaveNicheId} onChange={e => setContentSaveNicheId(e.target.value)}
-                                            className="flex-1 h-8 bg-black/40 border border-white/10 rounded-lg px-2 text-sm text-white outline-none focus:border-amber-500/40 transition-all appearance-none cursor-pointer">
-                                            <option value="">— Seleccionar nicho —</option>
-                                            {niches.map(n => <option key={n._id} value={n._id}>{nd(n)}{(n.listings?.length ?? 0) > 0 ? ` (${n.listings!.length})` : ""}</option>)}
-                                        </select>
+                                        <NicheSelect
+                                            niches={niches}
+                                            selectedId={contentSaveNicheId || null}
+                                            placeholder="— Seleccionar nicho —"
+                                            className="flex-1"
+                                            onChange={(n) => setContentSaveNicheId(n?._id ?? "")}
+                                        />
                                         <button onClick={() => void saveContentToNiche()} disabled={!contentSaveNicheId || savingContentListing}
                                             className="h-8 px-3 rounded-lg bg-amber-500/15 border border-amber-500/30 text-sm font-black text-amber-400 hover:bg-amber-500/25 transition-all disabled:opacity-40 flex items-center gap-1">
                                             {savingContentListing ? <Loader2 size={9} className="animate-spin" /> : <Save size={9} />} Guardar
                                         </button>
-                                        {contentSaveNicheId && (niches.find(n => n._id === contentSaveNicheId)?.listings?.length ?? 0) > 0 && (
-                                            <button onClick={() => { setNicheDetailId(contentSaveNicheId); setNicheDetailTab("seo"); }}
-                                                title="Ver listings del nicho" className="h-8 w-8 rounded-lg bg-white/[0.04] border border-white/10 text-neutral-600 hover:text-white transition-all flex items-center justify-center">
-                                                <Eye size={11} />
-                                            </button>
-                                        )}
                                     </div>
                                 </div>
                                 <button onClick={() => void generateContent()} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-sm font-black uppercase tracking-widest text-neutral-700 hover:text-neutral-400 transition-colors">
@@ -13923,6 +13938,17 @@ export function KdpFactoryApp() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             {/* ── Left: type selector + inputs ── */}
                             <div className="space-y-3">
+                                {/* Niche selector — upfront link */}
+                                <NicheSelect
+                                    niches={niches}
+                                    selectedId={contentSaveNicheId || null}
+                                    placeholder="Vincular a nicho (opcional)"
+                                    onChange={(n) => {
+                                        setContentSaveNicheId(n?._id ?? "");
+                                        if (n) { const parts = [n.nickname?.trim(), n.name].filter(Boolean); setContentNiche(parts.join(" · ")); }
+                                    }}
+                                />
+
                                 {/* KDP Physical Book — primary card */}
                                 <button
                                     onClick={() => { setContentType("kdp-physical-book"); setContentResult(null); }}
@@ -14075,17 +14101,25 @@ export function KdpFactoryApp() {
                                                 )}
                                                 {/* ── Save to niche ── */}
                                                 <div className="border-t border-white/[0.05] pt-2.5 space-y-2">
-                                                    <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Guardar en nicho</p>
+                                                    <div className="flex items-center justify-between">
+                                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Guardar en nicho</p>
+                                                        {contentSaveNicheId && (niches.find(n => n._id === contentSaveNicheId)?.listings?.length ?? 0) > 0 && (
+                                                            <button
+                                                                onClick={() => { setContentGeneratorOpen(false); setNicheDetailId(contentSaveNicheId); setNicheDetailTab("seo"); }}
+                                                                title="Ver listings guardados"
+                                                                className="h-6 w-6 rounded-lg bg-white/[0.04] border border-white/10 text-neutral-600 hover:text-white hover:bg-white/8 transition-all flex items-center justify-center">
+                                                                <Eye size={10} />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                     <div className="flex gap-1.5">
-                                                        <select
-                                                            value={contentSaveNicheId}
-                                                            onChange={e => setContentSaveNicheId(e.target.value)}
-                                                            className="flex-1 h-8 bg-black/40 border border-white/10 rounded-lg px-2 text-sm text-white outline-none focus:border-amber-500/40 transition-all appearance-none cursor-pointer">
-                                                            <option value="">— Seleccionar nicho —</option>
-                                                            {niches.map(n => (
-                                                                <option key={n._id} value={n._id}>{nd(n)}{(n.listings?.length ?? 0) > 0 ? ` (${n.listings!.length})` : ""}</option>
-                                                            ))}
-                                                        </select>
+                                                        <NicheSelect
+                                                            niches={niches}
+                                                            selectedId={contentSaveNicheId || null}
+                                                            placeholder="— Seleccionar nicho —"
+                                                            className="flex-1"
+                                                            onChange={(n) => setContentSaveNicheId(n?._id ?? "")}
+                                                        />
                                                         <button
                                                             onClick={() => void saveContentToNiche()}
                                                             disabled={!contentSaveNicheId || savingContentListing}
@@ -14093,14 +14127,6 @@ export function KdpFactoryApp() {
                                                             {savingContentListing ? <Loader2 size={9} className="animate-spin" /> : <Save size={9} />}
                                                             Guardar
                                                         </button>
-                                                        {contentSaveNicheId && (niches.find(n => n._id === contentSaveNicheId)?.listings?.length ?? 0) > 0 && (
-                                                            <button
-                                                                onClick={() => { setContentGeneratorOpen(false); setNicheDetailId(contentSaveNicheId); setNicheDetailTab("seo"); }}
-                                                                title="Ver listings guardados"
-                                                                className="h-8 w-8 rounded-lg bg-white/[0.04] border border-white/10 text-neutral-600 hover:text-white hover:bg-white/8 transition-all flex items-center justify-center">
-                                                                <Eye size={11} />
-                                                            </button>
-                                                        )}
                                                     </div>
                                                 </div>
                                                 <button onClick={() => void generateContent()} className="w-full flex items-center justify-center gap-1.5 py-2 text-sm font-black uppercase tracking-widest text-neutral-700 hover:text-neutral-400 transition-colors">
