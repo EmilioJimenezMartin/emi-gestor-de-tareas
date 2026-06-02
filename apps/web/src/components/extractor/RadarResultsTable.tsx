@@ -106,7 +106,10 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
 
     // ── Load persisted results on mount ───────────────────────────────────────
     useEffect(() => {
-        fetch(`${apiUrl}/radar/saved-etsy-result?key=${storageKey}`)
+        const url = storageKey === "ALL"
+            ? `${apiUrl}/radar/all-results`
+            : `${apiUrl}/radar/saved-etsy-result?key=${storageKey}`;
+        fetch(url)
             .then(r => r.json())
             .then(({ result }: any) => {
                 if (result?.nichos_detectados?.length) {
@@ -127,9 +130,11 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
         const socket = createApiSocket(apiUrl);
 
         socket.on("radar:result", (data: any) => {
-            // Only process results that belong to this table's storageKey
-            if (data.storageKey !== storageKey) return;
-            if (data.mode !== "etsy-niches" && data.mode !== "amazon-niches" && data.mode !== "trends-niches" && !data.data?.nichos_detectados) return;
+            const LISTING_MODES = ["etsy-niches","amazon-niches","trends-niches","opportunity","amazon-movers","reddit-niches","cross-niche","gap-finder"];
+            if (!LISTING_MODES.includes(data.mode) && !(data.data?.nichos_detectados?.length)) return;
+
+            // In ALL mode accept any listing result; otherwise only the matching storageKey
+            if (storageKey !== "ALL" && data.storageKey !== storageKey) return;
 
             const incoming: EtsyListing[] = data.data?.nichos_detectados ?? [];
             const existing: EtsyListing[] = etsyResultRef.current?.nichos_detectados ?? [];
@@ -140,16 +145,18 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                 _nichoCreado: existingMap.get(r.titulo_producto)?._nichoCreado ?? r._nichoCreado,
             }));
             const appendedRows = existing.filter(r => !incoming.some(nr => nr.titulo_producto === r.titulo_producto));
-            const merged: EtsyNicheResult = { ...data.data, nichos_detectados: [...newRows, ...appendedRows] };
+            const merged: EtsyNicheResult = { nichos_detectados: [...newRows, ...appendedRows] };
 
             setEtsyResult(merged);
 
-            // Persist immediately — this is the authoritative save for this app
-            fetch(`${apiUrl}/radar/saved-etsy-result?key=${storageKey}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ result: merged }),
-            }).catch(() => {});
+            // In non-ALL mode persist the merged state to its own key
+            if (storageKey !== "ALL") {
+                fetch(`${apiUrl}/radar/saved-etsy-result?key=${storageKey}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ result: merged }),
+                }).catch(() => {});
+            }
         });
 
         // Niche rejected from Telegram — remove its row immediately without waiting for a reload

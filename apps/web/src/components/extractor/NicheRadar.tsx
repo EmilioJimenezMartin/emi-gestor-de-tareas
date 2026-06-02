@@ -112,6 +112,8 @@ function getModeDefaultUrl(m: Mode): string {
     return "";
 }
 
+const RADAR_MODE_LS_KEY = "radar_last_mode";
+
 export function NicheRadar({
     apiUrl,
     niches = [],
@@ -124,10 +126,17 @@ export function NicheRadar({
     storageKey: storageKeyOverride,
     onStorageKeyChange,
 }: NicheRadarProps) {
-    const [mode, setMode] = useState<Mode>(defaultMode);
+    const restoredMode = (): Mode => {
+        if (typeof window === "undefined") return defaultMode;
+        const saved = localStorage.getItem(RADAR_MODE_LS_KEY) as Mode | null;
+        const valid: Mode[] = ["etsy-niches","amazon-niches","general","trends-niches","opportunity","amazon-movers","reddit-niches","cross-niche","gap-finder"];
+        return saved && valid.includes(saved) ? saved : defaultMode;
+    };
+
+    const [mode, setMode] = useState<Mode>(restoredMode);
     const [searchConfig, setSearchConfig] = useState<SearchConfig>({
-        platform: getModePlatform(defaultMode),
-        url: getModeDefaultUrl(defaultMode),
+        platform: getModePlatform(restoredMode()),
+        url: getModeDefaultUrl(restoredMode()),
     });
     const url = searchConfig.url;
     const [nicheName, setNicheName] = useState("");
@@ -143,10 +152,17 @@ export function NicheRadar({
     const isFirstLog = useRef(true);
     const activeJobId = useRef<string | null>(null);
 
+    // Notify parent of initial mode so radarStorageKey is correct from the start
+    useEffect(() => {
+        onStorageKeyChange?.(storageKeyOverride ?? MODE_STORAGE_KEY[mode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const changeMode = (newMode: Mode) => {
         setMode(newMode);
         setSearchConfig({ platform: getModePlatform(newMode), url: getModeDefaultUrl(newMode) });
         onStorageKeyChange?.(storageKeyOverride ?? MODE_STORAGE_KEY[newMode]);
+        if (typeof window !== "undefined") localStorage.setItem(RADAR_MODE_LS_KEY, newMode);
     };
 
     const effectiveStorageKey = storageKeyOverride ?? MODE_STORAGE_KEY[mode];

@@ -19,12 +19,16 @@ type APRule = {
 function storageKeyForPlatform(platform: string): string {
     if (platform === "amazon") return "RADAR_AMAZON_RESULT";
     if (platform === "etsy") return "RADAR_ETSY_RESULT";
+    if (platform === "reddit") return "RADAR_REDDIT_RESULT";
+    if (platform === "trends") return "RADAR_TRENDS_RESULT";
     return "RADAR_GENERAL_RESULT";
 }
 
-function modeForPlatform(platform: string): "etsy-niches" | "amazon-niches" | "general" {
+function modeForPlatform(platform: string): "etsy-niches" | "amazon-niches" | "reddit-niches" | "trends-niches" | "general" {
     if (platform === "amazon") return "amazon-niches";
     if (platform === "etsy") return "etsy-niches";
+    if (platform === "reddit") return "reddit-niches";
+    if (platform === "trends") return "trends-niches";
     return "general";
 }
 

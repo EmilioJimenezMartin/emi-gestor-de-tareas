@@ -298,6 +298,41 @@ export async function registerRadarRoutes(
         return reply.send({ success: true });
     });
 
+    // GET /radar/all-results — fusiona resultados de todas las fuentes en un único listado
+    app.get("/radar/all-results", async (_req, reply) => {
+        const ALL_KEYS = [
+            "RADAR_ETSY_RESULT",
+            "RADAR_AMAZON_RESULT",
+            "RADAR_REDDIT_RESULT",
+            "RADAR_TRENDS_RESULT",
+            "RADAR_OPPORTUNITY_RESULT",
+            "RADAR_MOVERS_RESULT",
+            "RADAR_CROSS_RESULT",
+            "RADAR_GAP_RESULT",
+        ];
+        const { Settings } = await import("../models/settings.js");
+        const rows = await Settings.find({ key: { $in: ALL_KEYS } }).lean();
+        const all: any[] = [];
+        for (const row of rows) {
+            try {
+                const parsed = JSON.parse(row.value as string);
+                const nichos: any[] = parsed?.nichos_detectados ?? [];
+                all.push(...nichos);
+            } catch { /* skip malformed */ }
+        }
+        // Deduplicate by titulo_producto (keep last seen)
+        const seen = new Map<string, any>();
+        for (const n of all) {
+            if (n?.titulo_producto) seen.set(n.titulo_producto, n);
+        }
+        const nichos_detectados = [...seen.values()].sort((a, b) => {
+            const ta = a.fecha_detectado ? new Date(a.fecha_detectado).getTime() : 0;
+            const tb = b.fecha_detectado ? new Date(b.fecha_detectado).getTime() : 0;
+            return tb - ta;
+        });
+        return reply.send({ result: { nichos_detectados } });
+    });
+
     // GET /radar/saved-etsy-result — lee último resultado Etsy persistido en Settings
     // ?key=<storageKey> permite aislar resultados por app (default: RADAR_ETSY_RESULT)
     app.get("/radar/saved-etsy-result", async (request: any, reply) => {

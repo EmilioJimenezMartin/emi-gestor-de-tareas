@@ -461,32 +461,99 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 jobDoc.result = data;
                 await jobDoc.save();
 
-                let dataToEmit = data;
+                // Normalise: guarantee nichos_detectados is always an array
+                const redditData: any = { nichos_detectados: [], ...(data ?? {}) };
+                let dataToEmit: any = redditData;
                 try {
                     const { Settings } = await import("../models/settings.js");
-                    if (data?.nichos_detectados) {
-                        const existing = await Settings.findOne({ key: storageKey }).lean() as any;
-                        if (existing?.value) {
-                            try {
-                                const saved = JSON.parse(existing.value);
-                                if (saved?.nichos_detectados?.length) {
-                                    const incoming: any[] = data.nichos_detectados;
-                                    const incomingTitles = new Set(incoming.map((r: any) => r.titulo_producto));
-                                    const preserved = (saved.nichos_detectados as any[]).filter((r: any) => !incomingTitles.has(r.titulo_producto));
-                                    const merged = incoming.map((r: any) => ({
-                                        ...r,
-                                        _nichoCreado: (saved.nichos_detectados as any[]).find((s: any) => s.titulo_producto === r.titulo_producto)?._nichoCreado ?? r._nichoCreado,
-                                    }));
-                                    dataToEmit = { ...data, nichos_detectados: [...merged, ...preserved] };
-                                }
-                            } catch { /* keep dataToEmit = data */ }
-                        }
-                        await Settings.findOneAndUpdate({ key: storageKey }, { key: storageKey, value: JSON.stringify(dataToEmit) }, { upsert: true });
+                    const existing = await Settings.findOne({ key: storageKey }).lean() as any;
+                    if (existing?.value) {
+                        try {
+                            const saved = JSON.parse(existing.value as string);
+                            if (saved?.nichos_detectados?.length) {
+                                const incoming: any[] = redditData.nichos_detectados;
+                                const incomingTitles = new Set(incoming.map((r: any) => r.titulo_producto));
+                                const preserved = (saved.nichos_detectados as any[]).filter((r: any) => !incomingTitles.has(r.titulo_producto));
+                                const mergedRows = incoming.map((r: any) => ({
+                                    ...r,
+                                    _nichoCreado: (saved.nichos_detectados as any[]).find((s: any) => s.titulo_producto === r.titulo_producto)?._nichoCreado ?? r._nichoCreado,
+                                }));
+                                dataToEmit = { ...redditData, nichos_detectados: [...mergedRows, ...preserved] };
+                            }
+                        } catch { /* malformed saved data — overwrite */ }
                     }
-                } catch { /* non-critical */ }
+                    await Settings.findOneAndUpdate(
+                        { key: storageKey },
+                        { key: storageKey, value: JSON.stringify(dataToEmit) },
+                        { upsert: true }
+                    );
+                    console.log(`[reddit-job] Guardado en Settings key=${storageKey} · ${(dataToEmit.nichos_detectados ?? []).length} nichos`);
+                } catch (saveErr: any) {
+                    console.error(`[reddit-job] Error al guardar en Settings (${storageKey}): ${saveErr?.message}`);
+                }
 
                 io?.emit("radar:result", { jobId, mode, storageKey, data: dataToEmit });
                 io?.emit("radar:done", { jobId });
+
+                // ── Telegram + niche creation (same as Playwright branch) ────────────
+                try {
+                    const { sendTelegram, shouldNotify } = await import("../lib/telegram.js");
+                    const newNiches = (redditData?.nichos_detectados ?? []).filter((n: any) => !n._nichoCreado);
+                    const count2 = (dataToEmit?.nichos_detectados ?? []).length;
+
+                    if (await shouldNotify("radar.found") && count2 > 0) {
+                        await sendTelegram(
+                            `🔍 <b>Radar completado — Reddit KDP</b>\n\n` +
+                            `<b>${count2}</b> producto${count2 !== 1 ? "s" : ""} en el listado` +
+                            (newNiches.length > 0 ? ` · <b>${newNiches.length} nuevo${newNiches.length !== 1 ? "s" : ""}</b>` : " · sin novedades") + `\n` +
+                            `<b>URL:</b> ${url}\n\n` +
+                            (newNiches.length > 0 ? `⏳ Generando imágenes de muestra…` : "")
+                        );
+                    }
+
+                    if (newNiches.length > 0) {
+                        const { Niche } = await import("../models/niche.js");
+                        const port = process.env.PORT || 3001;
+                        const base = `http://localhost:${port}`;
+
+                        setImmediate(async () => {
+                            let createdCount = 0;
+                            for (let i = 0; i < newNiches.length; i++) {
+                                const product = newNiches[i];
+                                const nicheName = ((product.sub_nicho_estimado as string) || (product.titulo_producto as string) || "").trim();
+                                if (!nicheName) continue;
+                                try {
+                                    const existing = await Niche.findOne({ sourceTitulo: product.titulo_producto }).lean();
+                                    if (existing) continue;
+                                    const niche = await Niche.create({
+                                        name: nicheName,
+                                        status: "found",
+                                        sourceTitulo: (product.titulo_producto as string) ?? "",
+                                        productType: "coloring-book",
+                                        styleCategory: "generic",
+                                        styleCategories: ["generic"],
+                                        score: computeNicheScore(product),
+                                        scoreReason: `Reddit: score=${product.score ?? 0}, comments=${product.total_reseñas ?? 0}`,
+                                    });
+                                    io?.emit("niches:updated");
+                                    createdCount++;
+                                    await fetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
+                                } catch (e: any) {
+                                    console.error("[reddit-queue] Error creating niche:", e.message);
+                                }
+                                if (i < newNiches.length - 1) await new Promise(r => setTimeout(r, 15_000));
+                            }
+                            if (createdCount > 0) {
+                                try {
+                                    const { sendTelegram: tg } = await import("../lib/telegram.js");
+                                    await tg(`📬 <b>${createdCount} nicho${createdCount !== 1 ? "s" : ""} de Reddit enviado${createdCount !== 1 ? "s" : ""} a Telegram</b>\n\nResponde a cada imagen para confirmar o descartar.\nLos de score alto se lanzan automáticamente.`);
+                                } catch { /* non-critical */ }
+                                try { await agenda.schedule("in 10 seconds", AUTOPILOT_JOB_NAME, {}); } catch { /* non-critical */ }
+                            }
+                        });
+                    }
+                } catch { /* Telegram not configured */ }
+
                 return;
             }
 

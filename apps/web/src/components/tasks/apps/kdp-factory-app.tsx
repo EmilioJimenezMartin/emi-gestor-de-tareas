@@ -11142,7 +11142,7 @@ export function KdpFactoryApp() {
                     <NicheRadar apiUrl={API_BASE_URL} niches={niches} onStorageKeyChange={setRadarStorageKey} />
                     <RadarResultsTable
                         apiUrl={API_BASE_URL}
-                        storageKey={radarStorageKey}
+                        storageKey="ALL"
                         niches={niches}
                         onNicheCreated={() => void fetchNiches()}
                         pipelineAction={{
