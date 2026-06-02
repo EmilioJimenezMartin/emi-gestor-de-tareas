@@ -2876,6 +2876,7 @@ export function KdpFactoryApp() {
     const [coverStyle, setCoverStyle] = useState("vibrant illustration, fantasy");
     const [coverColorTheme, setCoverColorTheme] = useState("deep blue and gold");
     const [coverModelId, setCoverModelId] = useState("pollinations-flux");
+    const [coverImgDims, setCoverImgDims] = useState("1024x1024");
     const [isBuildingCover, setIsBuildingCover] = useState(false);
     const [generatedCoverUrl, setGeneratedCoverUrl] = useState<string | null>(null);
     const [showCoverModal, setShowCoverModal] = useState(false);
@@ -3070,9 +3071,9 @@ export function KdpFactoryApp() {
                     await fetch(`${API_BASE_URL}/niches/${linkedNicheId}`, {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ phase: "libro" }),
+                        body: JSON.stringify({ phase: "libro", pipelineHasPdf: true }),
                     }).catch(() => {});
-                    setNiches(prev => prev.map(n => n._id === linkedNicheId ? { ...n, phase: "libro" } : n));
+                    setNiches(prev => prev.map(n => n._id === linkedNicheId ? { ...n, phase: "libro", pipelineHasPdf: true } : n));
                 }
             }
 
@@ -3085,6 +3086,7 @@ export function KdpFactoryApp() {
     };
 
     const deleteBookDraft = async (draftId: string) => {
+        const draft = bookDrafts.find(d => d.id === draftId);
         setBookDrafts(prev => prev.filter(d => d.id !== draftId));
         if (activeDraftId === draftId) {
             setBookPages([]);
@@ -3096,6 +3098,15 @@ export function KdpFactoryApp() {
         // Delete from MongoDB if it's a MongoDB ID
         if (/^[a-f0-9]{24}$/.test(draftId)) {
             await fetch(`${API_BASE_URL}/book-drafts/${draftId}`, { method: "DELETE" }).catch(() => {});
+        }
+        // Clear bookPdfUrl on the linked niche so the pipeline flag resets
+        if (draft?.nicheId) {
+            await fetch(`${API_BASE_URL}/niches/${draft.nicheId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ bookPdfUrl: "", pipelineHasPdf: false }),
+            }).catch(() => {});
+            setNiches(prev => prev.map(n => n._id === draft.nicheId ? { ...n, bookPdfUrl: undefined, pipelineHasPdf: false } : n));
         }
     };
 
@@ -3881,8 +3892,8 @@ export function KdpFactoryApp() {
                     return [newDraft, ...filtered];
                 });
             });
-            void fetch(`${API_BASE_URL}/niches/${nicheId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro" }) }).catch(() => {});
-            setNiches(prev => prev.map(n => n._id === nicheId ? { ...n, phase: "libro" } : n));
+            void fetch(`${API_BASE_URL}/niches/${nicheId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro", pipelineHasPdf: true }) }).catch(() => {});
+            setNiches(prev => prev.map(n => n._id === nicheId ? { ...n, phase: "libro", pipelineHasPdf: true } : n));
             toast.success(`Borrador listo · ${shuffled.length} imágenes · "${nicheName}"`);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4792,9 +4803,67 @@ export function KdpFactoryApp() {
                                 </button>
                             ))}
                         </div>
-                        <button onClick={() => { void fetchNiches(); void fetchCatalogs(); }}
-                            className="h-7 w-7 rounded-lg border border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white transition-all flex items-center justify-center">
-                            <RefreshCw size={11} />
+                        <button
+                            onClick={async () => {
+                                setPipelineLoading(true);
+                                try {
+                                    // Fetch fresh drafts from server (not stale state)
+                                    const draftsRes = await fetch(`${API_BASE_URL}/book-drafts`).catch(() => null);
+                                    const freshDrafts: { id: string; nicheId?: string }[] = draftsRes?.ok
+                                        ? ((await draftsRes.json()).drafts ?? []).map((d: any) => ({ id: String(d._id), nicheId: d.nicheId }))
+                                        : bookDrafts;
+
+                                    // Support both nicheId field and legacy pipeline-{nicheId}-{ts} id format
+                                    const nicheIdsWithDraft = new Set<string>();
+                                    for (const d of freshDrafts) {
+                                        if (d.nicheId) {
+                                            nicheIdsWithDraft.add(d.nicheId);
+                                        } else {
+                                            const m = d.id.match(/^pipeline-([a-f0-9]{24})-/);
+                                            if (m) nicheIdsWithDraft.add(m[1]);
+                                        }
+                                    }
+
+                                    // Sync pipelineHasPdf flags on niches
+                                    await Promise.all(
+                                        niches.map(async n => {
+                                            const hasDraft = nicheIdsWithDraft.has(n._id);
+                                            if (hasDraft && !n.pipelineHasPdf) {
+                                                await fetch(`${API_BASE_URL}/niches/${n._id}`, {
+                                                    method: "PATCH",
+                                                    headers: { "Content-Type": "application/json" },
+                                                    body: JSON.stringify({ pipelineHasPdf: true }),
+                                                }).catch(() => {});
+                                            } else if (!hasDraft && !n.bookPdfUrl && n.pipelineHasPdf) {
+                                                await fetch(`${API_BASE_URL}/niches/${n._id}`, {
+                                                    method: "PATCH",
+                                                    headers: { "Content-Type": "application/json" },
+                                                    body: JSON.stringify({ bookPdfUrl: "", pipelineHasPdf: false }),
+                                                }).catch(() => {});
+                                            }
+                                        })
+                                    );
+
+                                    // Full backend repair + show result
+                                    const repairRes = await fetch(`${API_BASE_URL}/niches/repair-pipeline`, { method: "POST" }).catch(() => null);
+                                    const repairData = repairRes?.ok ? await repairRes.json() : null;
+                                    if (repairData?.updated > 0) {
+                                        toast.success(`Pipeline: ${repairData.updated} nicho${repairData.updated !== 1 ? "s" : ""} actualizado${repairData.updated !== 1 ? "s" : ""}`);
+                                    } else {
+                                        toast.success("Pipeline al día");
+                                    }
+                                    await fetchNiches();
+                                    void fetchCatalogs();
+                                } catch (e: any) {
+                                    toast.error(`Error al reparar: ${e.message}`);
+                                } finally {
+                                    setPipelineLoading(false);
+                                }
+                            }}
+                            disabled={pipelineLoading}
+                            title="Sincronizar y reparar fases"
+                            className="h-7 w-7 rounded-lg border border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white transition-all flex items-center justify-center disabled:opacity-40">
+                            <RefreshCw size={11} className={pipelineLoading ? "animate-spin" : ""} />
                         </button>
                     </div>
                 </div>
@@ -7127,6 +7196,31 @@ export function KdpFactoryApp() {
                         </div>
                     )}
                 </div>
+
+                {/* ─ Reparar estados pipeline ─ */}
+                <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                        <RefreshCw size={13} className="text-sky-400" />
+                        <p className="text-sm font-black text-white">Reparar estados del pipeline</p>
+                    </div>
+                    <p className="text-[11px] text-neutral-500 leading-relaxed">Escanea todos los nichos y corrige las fases del pipeline en función de los artefactos reales (catálogos completados, PDF, listings, portada).</p>
+                    <button
+                        onClick={async () => {
+                            try {
+                                const res = await fetch(`${API_BASE_URL}/niches/repair-pipeline`, { method: "POST" });
+                                const data = await res.json();
+                                if (res.ok) {
+                                    toast.success(`Pipeline reparado: ${data.updated} nichos actualizados de ${data.total}`);
+                                    void fetchNiches();
+                                } else {
+                                    toast.error(data.error ?? "Error al reparar");
+                                }
+                            } catch { toast.error("Error de conexión"); }
+                        }}
+                        className="h-9 px-4 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sm font-black text-sky-300 hover:bg-sky-500/25 transition-all flex items-center gap-2">
+                        <RefreshCw size={11} /> Reparar ahora
+                    </button>
+                </div>
             </section>}
 
             {configSection === "notificaciones" && <div className="space-y-8">
@@ -9426,6 +9520,30 @@ export function KdpFactoryApp() {
 
     const copyText = (text: string) => { navigator.clipboard.writeText(text); toast.success("Copiado"); };
 
+    // Add white letterbox padding to convert a square/landscape blob to KDP portrait ratio (2:3 = 1:1.5)
+    const applyKdpPadding = (blob: Blob): Promise<Blob> => new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(blob);
+        img.onload = () => {
+            URL.revokeObjectURL(url);
+            const w = img.width;
+            const h = img.height;
+            const targetH = Math.round(w * 1.5); // 2:3 portrait ratio
+            if (h >= targetH) { resolve(blob); return; }
+            const canvas = document.createElement("canvas");
+            canvas.width = w;
+            canvas.height = targetH;
+            const ctx = canvas.getContext("2d")!;
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillRect(0, 0, w, targetH);
+            const offsetY = Math.round((targetH - h) / 2);
+            ctx.drawImage(img, 0, offsetY, w, h);
+            canvas.toBlob(b => b ? resolve(b) : reject(new Error("Canvas toBlob failed")), "image/jpeg", 0.93);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("img load failed")); };
+        img.src = url;
+    });
+
     const generateCover = async () => {
         if (!coverTitle.trim()) { toast.error("Escribe el título del libro"); return; }
         setIsBuildingCover(true);
@@ -9441,13 +9559,16 @@ export function KdpFactoryApp() {
             const prompt = isColoringBook
                 ? `KDP coloring book cover illustration: ${nicheContext}. ${coverStyle ? `Visual style: ${coverStyle}.` : ""} ${coverColorTheme ? `Color palette: ${coverColorTheme}.` : ""} Intricate detailed line art design, zentangle and mandala elements, beautiful decorative composition filling the entire frame, professional adult coloring book cover art, high contrast, no text, no letters, no words, purely illustrative`
                 : `KDP printable poster cover: ${nicheContext}. ${coverStyle ? `Visual style: ${coverStyle}.` : ""} ${coverColorTheme ? `Color palette: ${coverColorTheme}.` : ""} Premium wall art illustration, beautiful decorative composition, professional quality, centered focal artwork, no text, no letters, no words`;
+            const [dimW, dimH] = coverImgDims.split("x").map(Number);
             const res = await fetch(`${API_BASE_URL}/ai/generate-image`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ prompt, provider: model.provider, modelId: model.modelId, width: 1600, height: 2560 }),
+                body: JSON.stringify({ prompt, provider: model.provider, modelId: model.modelId, width: dimW || 1024, height: dimH || 1024 }),
             });
             if (!res.ok) { const err = await res.json(); toast.error(err.error ?? "Error generando portada"); return; }
-            const blob = await res.blob();
+            let blob = await res.blob();
+            // Add white top/bottom padding to reach portrait 2:3 ratio if image is square/landscape
+            blob = await applyKdpPadding(blob).catch(() => blob);
             const objectUrl = URL.createObjectURL(blob);
             setGeneratedCoverUrl(objectUrl);
             // Persist to niche if one is selected
@@ -9469,12 +9590,14 @@ export function KdpFactoryApp() {
                         if (cloudUrl) {
                             await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
                                 method: "PATCH", headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ coverUrl: cloudUrl, coverCandidates: [cloudUrl] }),
+                                body: JSON.stringify({ coverUrl: cloudUrl, coverCandidates: [cloudUrl], pipelineHasCover: true }),
                             });
-                            setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, coverUrl: cloudUrl, coverCandidates: [cloudUrl] } : n));
+                            setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, coverUrl: cloudUrl, coverCandidates: [cloudUrl], pipelineHasCover: true } : n));
                         }
+                    } else {
+                        toast.error("Error subiendo portada a Cloudinary");
                     }
-                } catch { /* upload is non-blocking */ }
+                } catch { toast.error("Error al guardar la portada"); }
             }
         } catch { toast.error("Error conectando con la API"); } finally { setIsBuildingCover(false); }
     };
@@ -9560,10 +9683,40 @@ export function KdpFactoryApp() {
                 }
             }
 
-            canvas.toBlob(blob => {
-                if (blob) setGeneratedCoverUrl(URL.createObjectURL(blob));
-                else toast.error("Error exportando collage");
-            }, "image/jpeg", 0.95);
+            const collageBlob = await new Promise<Blob | null>(resolve => {
+                canvas.toBlob(b => resolve(b), "image/jpeg", 0.95);
+            });
+            if (!collageBlob) { toast.error("Error exportando collage"); return; }
+            setGeneratedCoverUrl(URL.createObjectURL(collageBlob));
+            // Upload to Cloudinary and persist to niche
+            if (selectedCoverNicheId) {
+                try {
+                    const dataUrl = await new Promise<string>((res, rej) => {
+                        const reader = new FileReader();
+                        reader.onload = () => res(reader.result as string);
+                        reader.onerror = rej;
+                        reader.readAsDataURL(collageBlob);
+                    });
+                    const uploadRes = await fetch(`${API_BASE_URL}/cloudinary/upload`, {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ dataUrl }),
+                    });
+                    if (uploadRes.ok) {
+                        const uploadData = await uploadRes.json();
+                        const cloudUrl: string = uploadData.image?.url;
+                        if (cloudUrl) {
+                            await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
+                                method: "PATCH", headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ coverUrl: cloudUrl, coverCandidates: [cloudUrl], pipelineHasCover: true }),
+                            });
+                            setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, coverUrl: cloudUrl, coverCandidates: [cloudUrl], pipelineHasCover: true } : n));
+                            toast.success("Collage guardado como portada");
+                        }
+                    } else {
+                        toast.error("Error subiendo collage a Cloudinary");
+                    }
+                } catch { toast.error("Error al guardar el collage"); }
+            }
         } catch (e: any) {
             toast.error(e.message ?? "Error generando collage");
         } finally {
@@ -9752,7 +9905,41 @@ export function KdpFactoryApp() {
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-sm font-black text-white truncate">{draft.fileName || "libro-kdp"}</p>
-                                                    <p className="text-sm text-neutral-600">{draft.pages.length} pág · {new Date(draft.savedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                                                    <p className="text-xs text-neutral-600">{draft.pages.length} pág · {new Date(draft.savedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+                                                    <NicheSelect
+                                                        niches={niches}
+                                                        selectedId={draft.nicheId ?? null}
+                                                        placeholder="— Sin nicho —"
+                                                        className="mt-1"
+                                                        onChange={async (niche: NicheFE | null) => {
+                                                            const newNicheId = niche?._id;
+                                                            await fetch(`${API_BASE_URL}/book-drafts/${draft.id}`, {
+                                                                method: "PATCH",
+                                                                headers: { "Content-Type": "application/json" },
+                                                                body: JSON.stringify({ nicheId: newNicheId ?? null }),
+                                                            }).catch(() => {});
+                                                            if (newNicheId) {
+                                                                await fetch(`${API_BASE_URL}/niches/${newNicheId}`, {
+                                                                    method: "PATCH",
+                                                                    headers: { "Content-Type": "application/json" },
+                                                                    body: JSON.stringify({ pipelineHasPdf: true }),
+                                                                }).catch(() => {});
+                                                                setNiches(prev => prev.map(n => n._id === newNicheId ? { ...n, pipelineHasPdf: true } : n));
+                                                            }
+                                                            if (draft.nicheId && draft.nicheId !== newNicheId) {
+                                                                const otherLinked = bookDrafts.some(d => d.id !== draft.id && d.nicheId === draft.nicheId);
+                                                                if (!otherLinked) {
+                                                                    await fetch(`${API_BASE_URL}/niches/${draft.nicheId}`, {
+                                                                        method: "PATCH",
+                                                                        headers: { "Content-Type": "application/json" },
+                                                                        body: JSON.stringify({ pipelineHasPdf: false }),
+                                                                    }).catch(() => {});
+                                                                    setNiches(prev => prev.map(n => n._id === draft.nicheId ? { ...n, pipelineHasPdf: false } : n));
+                                                                }
+                                                            }
+                                                            setBookDrafts(prev => prev.map(d => d.id === draft.id ? { ...d, nicheId: newNicheId } : d));
+                                                        }}
+                                                    />
                                                 </div>
                                                 <div className="flex items-center gap-1 shrink-0">
                                                     <button onClick={() => void guardedLoadBookDraft(draft)}
@@ -11701,6 +11888,21 @@ export function KdpFactoryApp() {
                                         </select>
                                     </div>
                                 </div>
+                                {/* Dimension selector — white KDP padding applied automatically */}
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Dimensiones de generación</label>
+                                        <span className="text-[10px] text-neutral-600 border border-white/8 rounded px-1.5 py-0.5">+ padding blanco → 2:3 KDP</span>
+                                    </div>
+                                    <div className="flex gap-1.5 flex-wrap">
+                                        {(["512x512", "768x768", "1024x1024", "768x1024", "1024x1344"] as const).map(d => (
+                                            <button key={d} onClick={() => setCoverImgDims(d)}
+                                                className={`px-2.5 py-1 rounded-lg border text-xs font-black transition-all ${coverImgDims === d ? "border-fuchsia-500/40 bg-fuchsia-500/15 text-fuchsia-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-400"}`}>
+                                                {d}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
                                 <div className="space-y-1">
                                     <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Paleta</label>
                                     <div className="flex flex-wrap gap-1.5">
@@ -11851,7 +12053,27 @@ export function KdpFactoryApp() {
                                                         className="flex-1 h-8 rounded-xl bg-white/5 border border-white/10 text-sm font-black text-neutral-500 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40 flex items-center justify-center gap-1">
                                                         <RefreshCw size={10} /> Regen.
                                                     </button>
-                                                    <button onClick={() => coverModalTab === "front" ? setGeneratedCoverUrl(null) : setGeneratedBackCoverUrl(null)}
+                                                    <button onClick={async () => {
+                                                        if (coverModalTab === "front") {
+                                                            setGeneratedCoverUrl(null);
+                                                            if (selectedCoverNicheId) {
+                                                                await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
+                                                                    method: "PATCH", headers: { "Content-Type": "application/json" },
+                                                                    body: JSON.stringify({ coverUrl: "", coverCandidates: [] }),
+                                                                }).catch(() => {});
+                                                                setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, coverUrl: undefined, coverCandidates: [], pipelineHasCover: false } : n));
+                                                            }
+                                                        } else {
+                                                            setGeneratedBackCoverUrl(null);
+                                                            if (selectedCoverNicheId) {
+                                                                await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
+                                                                    method: "PATCH", headers: { "Content-Type": "application/json" },
+                                                                    body: JSON.stringify({ backCoverUrl: "" }),
+                                                                }).catch(() => {});
+                                                                setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, backCoverUrl: undefined } : n));
+                                                            }
+                                                        }
+                                                    }}
                                                         className="h-8 w-9 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 transition-all flex items-center justify-center">
                                                         <Trash2 size={10} />
                                                     </button>
@@ -14168,6 +14390,7 @@ export function KdpFactoryApp() {
                                                                     setEditingListingId(lid);
                                                                 }} className="p-1.5 rounded-lg text-neutral-600 hover:text-amber-400 hover:bg-amber-500/10 transition-all" title="Editar"><Pencil size={11} /></button>
                                                                 <button onClick={() => { navigator.clipboard.writeText([listing.title, listing.subtitle, listing.description.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim(), listing.keywords.join(", ")].filter(Boolean).join("\n\n")); toast.success("Copiado"); }} className="p-1.5 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Copy size={11} /></button>
+                                                                <button onClick={() => void deleteNicheListing(detailNiche._id, lid)} disabled={deletingListingId === lid} className="p-1.5 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all disabled:opacity-40" title="Eliminar"><Trash2 size={11} /></button>
                                                             </div>
                                                         </div>
                                                         {listing.subtitle && <p className="text-sm text-neutral-500">{listing.subtitle}</p>}
@@ -14194,6 +14417,55 @@ export function KdpFactoryApp() {
                                 )}
                                 {nicheDetailTab === "book" && (
                                     <div className="space-y-4">
+                                        {/* Cover section */}
+                                        {detailNiche.coverUrl ? (
+                                            <div className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/[0.03] p-4 space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-sm font-black text-fuchsia-300">Portada principal</p>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <button
+                                                            onClick={() => {
+                                                                setSelectedCoverNicheId(detailNiche._id);
+                                                                setCoverTitle(detailNiche.nickname?.trim() || detailNiche.name);
+                                                                setNicheDetailId(null);
+                                                                changeTab("gelato");
+                                                            }}
+                                                            className="h-7 px-3 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 text-xs font-black text-fuchsia-400 hover:bg-fuchsia-500/20 transition-all flex items-center gap-1.5">
+                                                            <Wand2 size={10} /> Cambiar
+                                                        </button>
+                                                        <button
+                                                            onClick={async () => {
+                                                                await fetch(`${API_BASE_URL}/niches/${detailNiche._id}`, {
+                                                                    method: "PATCH", headers: { "Content-Type": "application/json" },
+                                                                    body: JSON.stringify({ coverUrl: "", coverCandidates: [] }),
+                                                                }).catch(() => {});
+                                                                setNiches(prev => prev.map(n => n._id === detailNiche._id ? { ...n, coverUrl: undefined, coverCandidates: [], pipelineHasCover: false } : n));
+                                                                toast.success("Portada eliminada");
+                                                            }}
+                                                            className="h-7 w-7 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all flex items-center justify-center">
+                                                            <Trash2 size={10} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="flex justify-center">
+                                                    <img src={detailNiche.coverUrl} alt="Portada" className="h-40 rounded-xl object-cover border border-fuchsia-500/20 shadow-lg" style={{ aspectRatio: "3/4" }} />
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 flex flex-col items-center gap-3">
+                                                <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Sin portada</p>
+                                                <button
+                                                    onClick={() => {
+                                                        setSelectedCoverNicheId(detailNiche._id);
+                                                        setCoverTitle(detailNiche.nickname?.trim() || detailNiche.name);
+                                                        setNicheDetailId(null);
+                                                        changeTab("gelato");
+                                                    }}
+                                                    className="h-9 px-5 rounded-xl bg-fuchsia-500/15 border border-fuchsia-500/30 text-sm font-black text-fuchsia-400 hover:bg-fuchsia-500/25 transition-all flex items-center gap-2">
+                                                    <Wand2 size={12} /> Generar portada
+                                                </button>
+                                            </div>
+                                        )}
                                         {/* Cover candidates (feature 8) */}
                                         {(detailNiche.coverCandidates?.length ?? 0) > 0 && (
                                             <div className="rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/[0.03] p-4 space-y-3">
@@ -14272,9 +14544,9 @@ export function KdpFactoryApp() {
                                                                         setBookDrafts(updatedDrafts);
                                                                         await Promise.all([
                                                                             fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "kdp-book-drafts", value: updatedDrafts }]) }),
-                                                                            fetch(`${API_BASE_URL}/niches/${nicheDetailId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro" }) }),
+                                                                            fetch(`${API_BASE_URL}/niches/${nicheDetailId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro", pipelineHasPdf: true }) }),
                                                                         ]).catch(() => {});
-                                                                        setNiches(prev => prev.map(n => n._id === nicheDetailId ? { ...n, phase: "libro" } : n));
+                                                                        setNiches(prev => prev.map(n => n._id === nicheDetailId ? { ...n, phase: "libro", pipelineHasPdf: true } : n));
                                                                         toast.success(`Borrador "${d.fileName}" vinculado`);
                                                                     }}
                                                                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05] hover:border-indigo-500/30 transition-all text-left group">
@@ -14321,9 +14593,9 @@ export function KdpFactoryApp() {
                                                                         setBookDrafts(updatedDrafts);
                                                                         await Promise.all([
                                                                             fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "kdp-book-drafts", value: updatedDrafts }]) }),
-                                                                            fetch(`${API_BASE_URL}/niches/${nicheDetailId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro" }) }),
+                                                                            fetch(`${API_BASE_URL}/niches/${nicheDetailId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "libro", pipelineHasPdf: true }) }),
                                                                         ]).catch(() => {});
-                                                                        setNiches(prev => prev.map(n => n._id === nicheDetailId ? { ...n, phase: "libro" } : n));
+                                                                        setNiches(prev => prev.map(n => n._id === nicheDetailId ? { ...n, phase: "libro", pipelineHasPdf: true } : n));
                                                                         toast.success(`Libro creado · ${shuffled.length} imágenes (${catImgs.length} catálogo + ${cloudImgsSrc.length} almacén)`);
                                                                     }}
                                                                     className="h-9 px-4 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-sm font-black text-emerald-400 hover:bg-emerald-500/25 transition-all flex items-center justify-center gap-2">

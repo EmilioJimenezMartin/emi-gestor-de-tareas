@@ -1,5 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { Niche } from "../models/niche.js";
+import { Catalog } from "../models/catalog.js";
+import { BookDraft } from "../models/book-draft.js";
 import { getMongoStatus } from "../lib/mongo.js";
 import { getAgenda } from "../lib/agenda.js";
 
@@ -125,6 +127,13 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 update.coverUrl = request.body.coverUrl;
                 update.pipelineHasCover = !!request.body.coverUrl;
             }
+            // Allow direct flag overrides (e.g. when a book draft is linked without a final PDF URL)
+            if (request.body.pipelineHasPdf !== undefined && request.body.bookPdfUrl === undefined) update.pipelineHasPdf = Boolean(request.body.pipelineHasPdf);
+            if (request.body.pipelineHasCover !== undefined && request.body.coverUrl === undefined) update.pipelineHasCover = Boolean(request.body.pipelineHasCover);
+            if (request.body.pipelineHasCatalogs !== undefined) update.pipelineHasCatalogs = Boolean(request.body.pipelineHasCatalogs);
+            if (request.body.pipelineHasListings !== undefined) update.pipelineHasListings = Boolean(request.body.pipelineHasListings);
+            if (Array.isArray(request.body.coverCandidates)) update.coverCandidates = request.body.coverCandidates;
+            if (request.body.backCoverUrl !== undefined) update.backCoverUrl = request.body.backCoverUrl;
             const niche = await Niche.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
             // When autopilot is enabled on a niche that's already past the catalog phase, kick off autopilot-run
@@ -382,6 +391,66 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
             return reply.send({ theme: json.theme ?? nicheName, particulars: json.particulars ?? "" });
         } catch (err: any) {
             return reply.status(500).send({ error: err.message ?? "Error generando sugerencia" });
+        }
+    });
+
+    // POST /niches/repair-pipeline — scan all niches and correct pipeline flags + phase
+    app.post("/niches/repair-pipeline", async (_req, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const niches = await Niche.find({}).lean();
+            const nicheIdsWithCatalogs = new Set<string>(
+                (await Catalog.distinct("nicheIds", { status: "completed" })).map(String)
+            );
+            // A niche has a PDF if it has a bookPdfUrl OR any linked book draft
+            const nicheIdsWithDrafts = new Set<string>(
+                (await BookDraft.distinct("nicheId", { nicheId: { $exists: true, $ne: null } })).map(String)
+            );
+
+            let updated = 0;
+            const phaseCounts: Record<string, number> = {};
+
+            for (const niche of niches) {
+                const id = String(niche._id);
+                const hasCatalogs = nicheIdsWithCatalogs.has(id);
+                const hasPdf = !!(niche as any).bookPdfUrl || nicheIdsWithDrafts.has(id);
+                const hasListings = Array.isArray((niche as any).listings) && (niche as any).listings.length > 0;
+                const hasCover = !!(niche as any).coverUrl;
+                const isPublished = (niche as any).phase === "published";
+
+                const phase = isPublished ? "published"
+                    : hasCover ? "cover"
+                    : hasListings ? "seo"
+                    : hasPdf ? "libro"
+                    : hasCatalogs ? "catalog"
+                    : "niche";
+
+                const current = niche as any;
+                const needsUpdate =
+                    current.pipelineHasCatalogs !== hasCatalogs ||
+                    current.pipelineHasPdf !== hasPdf ||
+                    current.pipelineHasListings !== hasListings ||
+                    current.pipelineHasCover !== hasCover ||
+                    (current.phase !== "published" && current.phase !== phase);
+
+                if (needsUpdate) {
+                    await Niche.findByIdAndUpdate(id, {
+                        $set: {
+                            pipelineHasCatalogs: hasCatalogs,
+                            pipelineHasPdf: hasPdf,
+                            pipelineHasListings: hasListings,
+                            pipelineHasCover: hasCover,
+                            ...(isPublished ? {} : { phase }),
+                        },
+                    });
+                    updated++;
+                }
+                phaseCounts[phase] = (phaseCounts[phase] ?? 0) + 1;
+            }
+
+            return reply.send({ ok: true, total: niches.length, updated, phases: phaseCounts });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
         }
     });
 }

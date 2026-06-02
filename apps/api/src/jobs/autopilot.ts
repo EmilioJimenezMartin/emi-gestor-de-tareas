@@ -75,43 +75,70 @@ async function hasPendingAction(nicheId: string): Promise<boolean> {
 }
 
 // Build a Pollinations URL for the sample image (public URL, no Cloudinary needed)
-function buildSampleUrl(nicheName: string, style: string, productType: string): string {
+function buildSampleUrl(nicheName: string, style: string, productType: string, enhancedCore?: string): string {
     let prompt: string;
     let model = "flux";
+    const core = enhancedCore ?? nicheName;
 
     if (productType === "printable-poster" && style === "illustration") {
-        prompt = `${nicheName} high quality digital illustration, 8K resolution, vibrant rich colors, fine detailed artwork, professional quality, no text, clean composition`;
+        prompt = `${core} high quality digital illustration, 8K resolution, vibrant rich colors, fine detailed artwork, professional quality, no text, clean composition`;
         model = "flux-realism";
     } else if (productType === "printable-poster" && style === "realistic") {
-        prompt = `${nicheName} realistic photo, ultra sharp, 8K resolution, professional photography, vibrant colors, no text`;
+        prompt = `${core} realistic photo, ultra sharp, 8K resolution, professional photography, vibrant colors, no text`;
         model = "flux-realism";
     } else if (productType === "printable-poster") {
-        prompt = `${nicheName} printable wall art poster, colorful illustration, clean design, no text`;
+        prompt = `${core} printable wall art poster, colorful illustration, clean design, no text`;
         model = "flux-realism";
     } else if (productType === "seamless-pattern") {
-        prompt = `${nicheName} seamless tileable repeat surface pattern, flat design, symmetrical layout, clean edges, no background noise, vector-like, POD ready`;
+        prompt = `${core} seamless tileable repeat surface pattern, flat design, symmetrical layout, clean edges, no background noise, vector-like, POD ready`;
         model = "flux-realism";
     } else {
         // coloring book
         switch (style) {
             case "anime":
-                prompt = `Anime coloring page ${nicheName}, ultra thick clean black outlines, white background, zero shading, no grey`;
+                prompt = `Anime coloring page ${core}, ultra thick clean black outlines, white background, zero shading, no grey`;
                 model = "flux-anime";
                 break;
             case "children":
-                prompt = `Cute children coloring page ${nicheName}, thick clean black outlines, white background, simple shapes, no shading`;
+                prompt = `Cute children coloring page ${core}, thick clean black outlines, white background, simple shapes, no shading`;
                 break;
             case "realistic":
-                prompt = `Realistic coloring page ${nicheName}, detailed thick black outlines, white background, zero shading`;
+                prompt = `Realistic coloring page ${core}, detailed thick black outlines, white background, zero shading`;
                 model = "flux-realism";
                 break;
             default:
-                prompt = `Coloring page ${nicheName}, ultra thick clean black outlines, white background, high contrast, zero shading, zero gradients`;
+                prompt = `Coloring page ${core}, ultra thick clean black outlines, white background, high contrast, zero shading, zero gradients`;
         }
     }
 
     const seed = Math.floor(Math.random() * 99999);
     return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${model}&width=1024&height=1024&nologo=true&seed=${seed}`;
+}
+
+async function buildAiEnhancedSampleCore(
+    nicheName: string,
+    productType: string,
+    style: string,
+    base: string
+): Promise<string | null> {
+    try {
+        const aiType = productType === "printable-poster" ? "printable-particulars" : "niche-particulars";
+        const res = await fetch(`${base}/ai/generate-text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: aiType, niche: nicheName, productType, extras: style }),
+            signal: AbortSignal.timeout(20_000),
+        });
+        if (!res.ok) return null;
+        const data = await res.json() as any;
+        // Combine theme + specs + details into a rich descriptive core for the image prompt
+        const parts: string[] = [data.result?.theme, data.result?.specs, data.result?.details]
+            .filter((p): p is string => !!p?.trim());
+        if (parts.length === 0) return null;
+        return parts.join(", ");
+    } catch {
+        return null;
+    }
 }
 
 // ── PHASE 1: Discovery ────────────────────────────────────────────────────────
@@ -224,9 +251,26 @@ async function runDiscovery(
             continue;
         }
 
-        // Build sample image URL (Pollinations — public URL)
+        // Build sample image URL with AI-enhanced prompt for better quality
         emitStage(io, "sample", String(niche._id), niche.name);
-        const sampleUrl = buildSampleUrl(niche.name, niche.styleCategory ?? "generic", niche.productType ?? "coloring-book");
+        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🎨 Mejorando prompt de muestra con IA para "${niche.name}"…` });
+        let sampleUrl: string;
+        try {
+            const aiCore = await buildAiEnhancedSampleCore(
+                niche.name,
+                niche.productType ?? "coloring-book",
+                niche.styleCategory ?? "generic",
+                base
+            );
+            if (aiCore) {
+                sampleUrl = buildSampleUrl(niche.name, niche.styleCategory ?? "generic", niche.productType ?? "coloring-book", aiCore);
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ Prompt mejorado por IA → generando muestra…` });
+            } else {
+                sampleUrl = buildSampleUrl(niche.name, niche.styleCategory ?? "generic", niche.productType ?? "coloring-book");
+            }
+        } catch {
+            sampleUrl = buildSampleUrl(niche.name, niche.styleCategory ?? "generic", niche.productType ?? "coloring-book");
+        }
         await Niche.findByIdAndUpdate(niche._id, { $set: { sampleImageUrl: sampleUrl } });
         io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🖼️ Imagen de muestra generada para "${niche.name}"` });
 
