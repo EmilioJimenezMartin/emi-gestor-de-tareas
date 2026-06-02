@@ -102,6 +102,7 @@ function getModePlatform(m: Mode): SearchConfig["platform"] {
     if (m === "amazon-niches" || m === "amazon-movers") return "amazon";
     if (m === "etsy-niches" || m === "opportunity") return "etsy";
     if (m === "trends-niches" || m === "cross-niche") return "trends";
+    if (m === "reddit-niches") return "reddit";
     return "general";
 }
 

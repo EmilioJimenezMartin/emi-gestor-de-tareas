@@ -3,10 +3,10 @@
 import { useState, useEffect } from "react";
 import {
     ShoppingCart, ShoppingBag, Globe, Sparkles, Loader2,
-    X, ChevronRight, Wand2, TrendingUp,
+    X, ChevronRight, Wand2, TrendingUp, MessageCircle,
 } from "lucide-react";
 
-export type SearchPlatform = "etsy" | "amazon" | "general" | "trends";
+export type SearchPlatform = "etsy" | "amazon" | "general" | "trends" | "reddit";
 
 export interface SearchConfig {
     platform: SearchPlatform;
@@ -52,6 +52,14 @@ const GENERAL_PRESETS: { label: string; url: string; hint?: string }[] = [
     { label: "Google Trends", url: "https://trends.google.com/trends/explore?q=coloring+book", hint: "coloring book trends" },
 ];
 
+const REDDIT_PRESETS: { label: string; url: string; hint?: string }[] = [
+    { label: "KDP + Coloring (New)", url: "https://www.reddit.com/r/kdp+coloringbooks/new.json?limit=100", hint: "posts recientes en r/kdp y r/coloringbooks" },
+    { label: "KDP Hot", url: "https://www.reddit.com/r/kdp/hot.json?limit=100", hint: "posts populares en r/kdp" },
+    { label: "Coloring Books Hot", url: "https://www.reddit.com/r/coloringbooks/hot.json?limit=100", hint: "posts populares en r/coloringbooks" },
+    { label: "Self Publishing", url: "https://www.reddit.com/r/selfpublishing/hot.json?limit=100", hint: "comunidad de autopublicación" },
+    { label: "KDP Top Month", url: "https://www.reddit.com/r/kdp/top.json?t=month&limit=100", hint: "más votados del mes en r/kdp" },
+];
+
 const TRENDS_PRESETS: { label: string; url: string; hint?: string }[] = [
     // Root + Modifier comparisons — the most powerful technique
     { label: "Compare Formatos", url: "https://trends.google.com/trends/explore?q=coloring+book+adults,activity+book+adults,coloring+book+seniors&geo=US&date=today+5-y", hint: "Compara 3 formatos · 5 años" },
@@ -62,13 +70,14 @@ const TRENDS_PRESETS: { label: string; url: string; hint?: string }[] = [
     { label: "Trending Hoy", url: "https://trends.google.com/trends/trendingsearches/daily?geo=US", hint: "Búsquedas virales del día" },
 ];
 
-type AccentKey = "sky" | "orange" | "amber" | "emerald";
+type AccentKey = "sky" | "orange" | "amber" | "emerald" | "rose";
 
 const PLATFORM_ACCENT: Record<SearchPlatform, AccentKey> = {
     etsy: "sky",
     amazon: "orange",
     general: "amber",
     trends: "emerald",
+    reddit: "rose",
 };
 
 const accentClasses = {
@@ -103,6 +112,14 @@ const accentClasses = {
         input: "focus-within:border-emerald-500/40",
         button: "bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-500/20 hover:from-emerald-400 hover:to-teal-400",
         ai: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20",
+    },
+    rose: {
+        tab: "bg-rose-500/15 border-rose-500/25 text-rose-300",
+        preset: "bg-rose-500/15 border-rose-500/25 text-rose-300",
+        presetHover: "hover:text-rose-400 hover:border-rose-500/20",
+        input: "focus-within:border-rose-500/40",
+        button: "bg-gradient-to-r from-rose-500 to-orange-500 shadow-rose-500/20 hover:from-rose-400 hover:to-orange-400",
+        ai: "bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20",
     },
 };
 
@@ -148,7 +165,7 @@ export function SearchQueryBuilder({
     const amazonPresets = [...AMAZON_PRESETS, ...extraAmazonPresets];
     const generalPresets = [...GENERAL_PRESETS, ...extraGeneralPresets];
 
-    const presetsForPlatform = platform === "etsy" ? etsyPresets : platform === "amazon" ? amazonPresets : platform === "trends" ? TRENDS_PRESETS : generalPresets;
+    const presetsForPlatform = platform === "etsy" ? etsyPresets : platform === "amazon" ? amazonPresets : platform === "trends" ? TRENDS_PRESETS : platform === "reddit" ? REDDIT_PRESETS : generalPresets;
 
     const emit = (newPlatform: SearchPlatform, newUrl: string, preset?: string) => {
         const term = newUrl.match(/[?&](?:q|k)=([^&]+)/)?.[1]?.replace(/\+/g, " ") ?? "";
@@ -217,7 +234,7 @@ export function SearchQueryBuilder({
         }
     };
 
-    const platformIcon = platform === "etsy" ? <ShoppingCart size={11} /> : platform === "amazon" ? <ShoppingBag size={11} /> : <Globe size={11} />;
+    const platformIcon = platform === "etsy" ? <ShoppingCart size={11} /> : platform === "amazon" ? <ShoppingBag size={11} /> : platform === "reddit" ? <MessageCircle size={11} /> : <Globe size={11} />;
 
     return (
         <div className={`space-y-3 ${className}`}>
@@ -249,6 +266,7 @@ export function SearchQueryBuilder({
                         platform === "etsy" ? "https://www.etsy.com/search?q=..."
                         : platform === "amazon" ? "https://www.amazon.com/s?k=..."
                         : platform === "trends" ? "https://trends.google.com/trends/explore?q=..."
+                        : platform === "reddit" ? "https://www.reddit.com/r/kdp/new.json?limit=100"
                         : "https://..."
                     }
                     className="flex-1 bg-transparent text-[11px] text-white placeholder:text-neutral-700 focus:outline-none font-mono"

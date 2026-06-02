@@ -218,24 +218,79 @@ async function fetchTrendsData(url: string): Promise<string> {
     throw new Error("URL de Google Trends no reconocida. Usa trends.google.com/trends/explore?q=... o .../trendingsearches/daily");
 }
 
-async function fetchRedditData(url: string): Promise<string> {
-    const jsonUrl = url.endsWith(".json") ? url : url.replace(/\/$/, "") + ".json";
-    const res = await fetch(jsonUrl, {
-        headers: {
-            "User-Agent": "KDPRadarBot/1.0 (niche research tool; contact: research@kdp.local)",
-            "Accept": "application/json",
-        },
-        signal: AbortSignal.timeout(20_000),
-    });
-    if (!res.ok) throw new Error(`Reddit API: HTTP ${res.status} — puede que necesites usar la URL .json directamente`);
-    const data: any = await res.json();
-    const posts: any[] = data?.data?.children ?? [];
-    if (posts.length === 0) throw new Error("Reddit no devolvió posts. Comprueba que la URL sea válida y accesible.");
+const REDDIT_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+function redditPostsToText(posts: any[]): string {
     const lines = posts.map((p: any) => {
-        const d = p.data;
-        return `- "${d.title}" | score: ${d.score} | comments: ${d.num_comments} | flair: ${d.link_flair_text ?? "none"} | url: ${d.url ?? ""}`;
+        const d = p.data ?? p;
+        return `- "${d.title}" | score: ${d.score ?? 0} | comments: ${d.num_comments ?? 0} | flair: ${d.link_flair_text ?? "none"} | url: ${d.url ?? ""}`;
     });
     return `Reddit posts (${posts.length} entradas):\n\n` + lines.join("\n");
+}
+
+async function fetchRedditJson(jsonUrl: string): Promise<any[] | null> {
+    try {
+        const res = await fetch(jsonUrl, {
+            headers: {
+                "User-Agent": REDDIT_UA,
+                "Accept": "application/json, text/javascript, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Cache-Control": "no-cache",
+                "Referer": "https://www.reddit.com/",
+            },
+            signal: AbortSignal.timeout(20_000),
+        });
+        if (!res.ok) return null;
+        const data: any = await res.json();
+        // Multi-subreddit response (r/kdp+coloringbooks) → array of listings
+        if (Array.isArray(data)) return data.flatMap((d: any) => d?.data?.children ?? []);
+        return data?.data?.children ?? null;
+    } catch { return null; }
+}
+
+async function fetchRedditRss(subredditPath: string): Promise<string | null> {
+    // Extract base subreddit path (strip query params, .json suffix)
+    const base = subredditPath.replace(/\.json.*$/, "").replace(/\?.*$/, "").replace(/\/$/, "");
+    const rssUrl = `https://www.reddit.com${base}.rss?limit=100`;
+    try {
+        const res = await fetch(rssUrl, {
+            headers: { "User-Agent": REDDIT_UA, "Accept": "application/rss+xml, text/xml, */*" },
+            signal: AbortSignal.timeout(20_000),
+        });
+        if (!res.ok) return null;
+        const xml = await res.text();
+        // Extract <title> elements (skip first which is the feed title)
+        const titles = [...xml.matchAll(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/gs)]
+            .map(m => m[1].trim())
+            .filter((t, i) => i > 0 && t.length > 5)
+            .slice(0, 100);
+        if (titles.length === 0) return null;
+        return `Reddit posts vía RSS (${titles.length} entradas):\n\n` + titles.map(t => `- "${t}"`).join("\n");
+    } catch { return null; }
+}
+
+async function fetchRedditData(url: string): Promise<string> {
+    // Normalize to JSON URL
+    const parsed = new URL(url.startsWith("http") ? url : `https://www.reddit.com${url}`);
+    const pathJson = parsed.pathname.replace(/\.json$/, "") + ".json";
+    const jsonUrl = `https://www.reddit.com${pathJson}${parsed.search ? parsed.search : "?limit=100"}`;
+
+    // Strategy 1: www.reddit.com with browser UA
+    let posts = await fetchRedditJson(jsonUrl);
+
+    // Strategy 2: old.reddit.com (less aggressive bot detection)
+    if (!posts || posts.length === 0) {
+        const oldUrl = jsonUrl.replace("www.reddit.com", "old.reddit.com");
+        posts = await fetchRedditJson(oldUrl);
+    }
+
+    if (posts && posts.length > 0) return redditPostsToText(posts);
+
+    // Strategy 3: RSS feed
+    const rssText = await fetchRedditRss(parsed.pathname);
+    if (rssText) return rssText;
+
+    throw new Error("Reddit bloqueó todas las estrategias de acceso (403/rate-limit). Espera unos minutos e inténtalo de nuevo.");
 }
 
 async function readNichesForGapFinder(): Promise<string> {
