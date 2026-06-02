@@ -483,4 +483,136 @@ ${listSummary}`;
             return reply.status(500).send({ error: hfErr?.message ?? "Error generando pre-nichos con HuggingFace" });
         }
     });
+
+    // ── GET /radar/insights — lista los últimos análisis guardados ────────────
+    app.get("/radar/insights", async (_request, reply) => {
+        try {
+            const { RadarInsight } = await import("../models/radar-insight.js");
+            const insights = await RadarInsight.find({}).sort({ createdAt: -1 }).limit(20).lean();
+            return reply.send({ insights });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // ── POST /radar/insights/analyze — analiza todos los productos con IA ─────
+    app.post("/radar/insights/analyze", async (request: any, reply) => {
+        const { platforms = [], dateRange = "all" } = request.body || {};
+
+        const RADAR_KEYS: Record<string, string> = {
+            RADAR_ETSY_RESULT:        "etsy",
+            RADAR_AMAZON_RESULT:      "amazon",
+            RADAR_REDDIT_RESULT:      "reddit",
+            RADAR_TRENDS_RESULT:      "trends",
+            RADAR_OPPORTUNITY_RESULT: "amazon",
+            RADAR_MOVERS_RESULT:      "amazon",
+            RADAR_CROSS_RESULT:       "cross",
+            RADAR_GAP_RESULT:         "gap",
+            RADAR_PINTEREST_RESULT:   "pinterest",
+            RADAR_GENERAL_RESULT:     "general",
+        };
+
+        const { Settings } = await import("../models/settings.js");
+        const rows = await Settings.find({ key: { $in: Object.keys(RADAR_KEYS) } }).lean();
+
+        let allProducts: any[] = [];
+        for (const row of rows) {
+            try {
+                const parsed = JSON.parse(row.value as string);
+                const products: any[] = parsed?.nichos_detectados ?? [];
+                const defaultFuente = RADAR_KEYS[row.key] ?? "general";
+                products.forEach(p => allProducts.push({ ...p, fuente: p.fuente || defaultFuente }));
+            } catch { /* skip malformed */ }
+        }
+
+        // Deduplicate by titulo_producto
+        const seen = new Set<string>();
+        allProducts = allProducts.filter(p => {
+            if (seen.has(p.titulo_producto)) return false;
+            seen.add(p.titulo_producto);
+            return true;
+        });
+
+        if (platforms.length > 0) {
+            allProducts = allProducts.filter((p: any) => platforms.includes(p.fuente));
+        }
+
+        if (dateRange !== "all") {
+            const days = dateRange === "7d" ? 7 : dateRange === "30d" ? 30 : 90;
+            const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+            allProducts = allProducts.filter((p: any) => {
+                if (!p.fecha_detectado) return true;
+                return new Date(p.fecha_detectado) >= cutoff;
+            });
+        }
+
+        if (allProducts.length === 0) {
+            return reply.status(400).send({ error: "No hay productos para analizar con los filtros seleccionados." });
+        }
+
+        const productSummary = allProducts.slice(0, 150)
+            .map((p: any) =>
+                `- "${p.titulo_producto}" | sub_nicho: ${p.sub_nicho_estimado || "—"} | fuente: ${p.fuente || "—"} | bestseller: ${p.bestseller ?? false} | reseñas: ${p.total_reseñas || 0}`
+            ).join("\n");
+
+        const SYSTEM = `Eres un experto en análisis de mercado para productos digitales KDP (libros de colorear, printables, Etsy, Amazon).
+Analiza una lista de productos detectados automáticamente y genera un informe con insights accionables.
+Responde ÚNICAMENTE con un objeto JSON válido. Sin markdown, sin backticks, sin explicaciones previas.`;
+
+        const USER = `Analiza estos ${allProducts.length} productos y devuelve este JSON exacto:
+{
+  "summary": "resumen ejecutivo 2-3 frases",
+  "topNiches": [{"name":"string","count":0,"platforms":["string"]}],
+  "emergingNiches": [{"name":"string","reason":"string","confidence":"high|medium|low"}],
+  "repeatedThemes": [{"theme":"string","count":0}],
+  "platformBreakdown": [{"platform":"string","count":0,"percentage":0}],
+  "recommendations": ["string"]
+}
+
+REGLAS:
+- topNiches: máx 10, ordenados por count desc; agrupa sub_nichos similares
+- emergingNiches: máx 6, nichos con potencial aunque tengan pocos productos todavía
+- repeatedThemes: máx 12, palabras o temas que se repiten en títulos y sub_nichos
+- platformBreakdown: distribución exacta por campo fuente
+- recommendations: exactamente 5, específicas y accionables para KDP/Etsy
+
+PRODUCTOS:
+${productSummary}`;
+
+        const { generateTextWithLLM } = await import("../lib/ai.js");
+
+        let raw: string;
+        try {
+            raw = await generateTextWithLLM(SYSTEM, USER);
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message ?? "Error en IA" });
+        }
+
+        // Parse JSON from response
+        let analysis: any;
+        try {
+            const clean = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+            const match = clean.match(/(\{[\s\S]*\})/);
+            analysis = JSON.parse(match ? match[1] : clean);
+        } catch {
+            return reply.status(500).send({ error: `La IA no devolvió JSON válido: ${raw.slice(0, 200)}` });
+        }
+
+        // Detect active AI provider name
+        let aiProvider = "google";
+        try {
+            const provRow = await Settings.findOne({ key: "DEFAULT_LLM_PROVIDER" }).lean();
+            if (provRow?.value) aiProvider = provRow.value as string;
+        } catch { /* use default */ }
+
+        const { RadarInsight } = await import("../models/radar-insight.js");
+        const platformsUsed = platforms.length > 0 ? platforms : Object.values(RADAR_KEYS).filter((v, i, a) => a.indexOf(v) === i);
+        const insight = await RadarInsight.create({
+            filters: { platforms: platformsUsed, dateRange, totalProducts: allProducts.length },
+            analysis,
+            aiProvider,
+        });
+
+        return reply.send({ insight });
+    });
 }

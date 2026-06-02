@@ -17,15 +17,16 @@ type APRule = {
 };
 
 const MODE_TO_STORAGE_KEY: Record<string, string> = {
-    "etsy-niches":   "RADAR_ETSY_RESULT",
-    "amazon-niches": "RADAR_AMAZON_RESULT",
-    "reddit-niches": "RADAR_REDDIT_RESULT",
-    "trends-niches": "RADAR_TRENDS_RESULT",
-    "opportunity":   "RADAR_OPPORTUNITY_RESULT",
-    "amazon-movers": "RADAR_MOVERS_RESULT",
-    "cross-niche":   "RADAR_CROSS_RESULT",
-    "gap-finder":    "RADAR_GAP_RESULT",
-    "general":       "RADAR_GENERAL_RESULT",
+    "etsy-niches":      "RADAR_ETSY_RESULT",
+    "amazon-niches":    "RADAR_AMAZON_RESULT",
+    "reddit-niches":    "RADAR_REDDIT_RESULT",
+    "trends-niches":    "RADAR_TRENDS_RESULT",
+    "opportunity":      "RADAR_OPPORTUNITY_RESULT",
+    "amazon-movers":    "RADAR_MOVERS_RESULT",
+    "cross-niche":      "RADAR_CROSS_RESULT",
+    "gap-finder":       "RADAR_GAP_RESULT",
+    "pinterest-niches": "RADAR_PINTEREST_RESULT",
+    "general":          "RADAR_GENERAL_RESULT",
 };
 
 function storageKeyForMode(mode: string, platform: string): string {
@@ -40,6 +41,7 @@ function resolveMode(rule: APRule): string {
     if (rule.platform === "etsy") return "etsy-niches";
     if (rule.platform === "reddit") return "reddit-niches";
     if (rule.platform === "trends") return "trends-niches";
+    if (rule.platform === "pinterest") return "pinterest-niches";
     return "general";
 }
 

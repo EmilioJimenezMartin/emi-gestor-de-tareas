@@ -94,6 +94,7 @@ import { toast } from "sonner";
 import { createApiSocket } from "@/lib/socket";
 import { NicheRadar } from "@/components/extractor/NicheRadar";
 import { RadarResultsTable } from "@/components/extractor/RadarResultsTable";
+import { RadarInsightsPanel } from "@/components/extractor/RadarInsightsPanel";
 import { AppTabNav, type AppTab } from "@/components/tasks/apps/shared/app-tab-nav";
 import { NicheFilterBar, type NicheFilterStatus } from "@/components/tasks/apps/shared/niche-filter-bar";
 import { StatusGroupFilter, type StatusGroupOption } from "@/components/tasks/apps/shared/status-group-filter";
@@ -4693,7 +4694,7 @@ export function KdpFactoryApp() {
         return `${m}min`;
     }
 
-    const renderPipeline = () => {
+    const renderPipeline = (inConfig = false) => {
         const PHASES = [
             { id: "niche",     label: "Encontrado", icon: Target,      text: "text-sky-400",     bg: "bg-sky-500/10",     border: "border-sky-500/20"    },
             { id: "catalog",   label: "Catálogo",   icon: Grid3x3,     text: "text-blue-400",    bg: "bg-blue-500/10",    border: "border-blue-500/20"   },
@@ -4872,7 +4873,7 @@ export function KdpFactoryApp() {
                     </div>
                 </div>
 
-                <div className="space-y-6">
+                <div className={`space-y-6${inConfig ? " max-h-[360px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent" : ""}`}>
 
                     {/* ── LIST VIEW ── */}
                     {pipelineViewMode === "list" && <>
@@ -6725,7 +6726,7 @@ export function KdpFactoryApp() {
             <div className="space-y-8">
 
             {/* ── AUTO-PILOT ──────────────────────────────────────────────── */}
-            {configSection === "autopilot" && <section className="space-y-5 max-h-[calc(100vh-260px)] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+            {configSection === "autopilot" && <section className="space-y-5">
                 <SectionHeader icon={<Zap size={15} />} title="Auto-Pilot" subtitle="Automatiza el pipeline completo de producción" color="amber" size="sm" />
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -6905,7 +6906,7 @@ export function KdpFactoryApp() {
                 </div>
 
                 {/* ─ Pipeline overview (same component as Pipeline tab) ─ */}
-                {renderPipeline()}
+                {renderPipeline(true)}
 
                 {/* ─ Live status panel ─ */}
                 {(apRunning || apLogs.length > 0) && (() => {
@@ -9481,6 +9482,12 @@ export function KdpFactoryApp() {
                         </div>
                     )}
                 </div>
+
+            {/* ══ SECCIÓN: RADAR INSIGHTS ═══════════════════════════════════ */}
+            <section className="space-y-5">
+                <SectionHeader icon={<Sparkles size={16} />} title="Radar Insights" subtitle="Análisis IA del historial de productos detectados" color="violet" size="md" />
+                <RadarInsightsPanel apiUrl={API_BASE_URL} />
+            </section>
 
             </div>
         );

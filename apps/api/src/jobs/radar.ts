@@ -102,7 +102,7 @@ async function runWithRetry<T>(fn: () => Promise<T>, onWait: (secs: number, atte
     throw lastErr;
 }
 
-const LISTING_MODES = new Set(["etsy-niches", "amazon-niches", "trends-niches", "opportunity", "amazon-movers", "reddit-niches", "cross-niche", "gap-finder"]);
+const LISTING_MODES = new Set(["etsy-niches", "amazon-niches", "trends-niches", "opportunity", "amazon-movers", "reddit-niches", "cross-niche", "gap-finder", "pinterest-niches"]);
 
 function buildRadarSystemPrompt(mode: string, nicheName?: string, context?: string): string {
     const isListingMode = LISTING_MODES.has(mode);
@@ -112,6 +112,7 @@ function buildRadarSystemPrompt(mode: string, nicheName?: string, context?: stri
 
     if (mode === "amazon-niches" || mode === "amazon-movers") return `${mode === "amazon-movers" ? MOVERS_SYSTEM_PROMPT : AMAZON_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     if (mode === "etsy-niches") return `${ETSY_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "pinterest-niches") return `${ETSY_SYSTEM_PROMPT}\n\nEstás analizando Pinterest Ideas. Extrae productos visuales, tendencias de diseño y estilos populares que sean aptos para KDP (libros para colorear, printables, wall art). Responde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     if (mode === "opportunity") return `${OPPORTUNITY_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     if (mode === "trends-niches") return `${TRENDS_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     if (mode === "reddit-niches") return `${REDDIT_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
@@ -175,30 +176,50 @@ async function fetchTrendsData(url: string): Promise<string> {
             .trim();
     }
 
-    // ── Explore URL → 2-step undocumented API ────────────────────────────────
+    // ── Explore URL → per-keyword API calls (handles multi-term cross-niche) ──
     if (url.includes("/explore")) {
-        const query = urlObj.searchParams.get("q");
+        const rawQuery = urlObj.searchParams.get("q") ?? "";
         const geo = urlObj.searchParams.get("geo") ?? "US";
 
-        if (query) {
+        // Split comma-separated comparison keywords into individual queries
+        const keywords = rawQuery.split(",").map(k => k.trim()).filter(Boolean);
+        if (keywords.length === 0) throw new Error("URL de Google Trends sin parámetro q");
+
+        const allParts: string[] = [];
+
+        for (let ki = 0; ki < keywords.length; ki++) {
+            const keyword = keywords[ki];
+            if (ki > 0) await delay(4_000); // avoid rate-limit between terms
+
+            // Retry once on 429
+            let exploreRaw: string | null = null;
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    const req = encodeURIComponent(JSON.stringify({
+                        comparisonItem: [{ keyword, geo, time: "today 12-m" }],
+                        category: 0, property: "",
+                    }));
+                    const exploreRes = await fetch(
+                        `https://trends.google.com/trends/api/explore?hl=en-US&tz=0&req=${req}`,
+                        { headers: { ...TRENDS_HEADERS, "Accept": "application/json, */*" }, signal: AbortSignal.timeout(15_000) }
+                    );
+                    if (exploreRes.status === 429) {
+                        if (attempt < 2) { await delay(25_000); continue; }
+                        break; // skip this keyword after retry
+                    }
+                    if (!exploreRes.ok) break;
+                    exploreRaw = (await exploreRes.text()).replace(/^\)\]\}'\n/, "");
+                    break;
+                } catch { break; }
+            }
+
+            if (!exploreRaw) continue;
+
             try {
-                // Step 1: get widget metadata + tokens
-                const req = encodeURIComponent(JSON.stringify({
-                    comparisonItem: [{ keyword: query, geo, time: "today 12-m" }],
-                    category: 0, property: "",
-                }));
-                const exploreRes = await fetch(
-                    `https://trends.google.com/trends/api/explore?hl=en-US&tz=0&req=${req}`,
-                    { headers: { ...TRENDS_HEADERS, "Accept": "application/json, */*" }, signal: AbortSignal.timeout(15_000) }
-                );
-                if (!exploreRes.ok) throw new Error(`explore API: ${exploreRes.status}`);
-                const exploreRaw = (await exploreRes.text()).replace(/^\)\]\}'\n/, "");
                 const { widgets = [] } = JSON.parse(exploreRaw) as { widgets: any[] };
+                const parts: string[] = [`── "${keyword}" (${geo}) ──`];
 
-                // Step 2: fetch related queries (rising + top) using the widget token
                 const relWidget = widgets.find((w: any) => w.id === "RELATED_QUERIES");
-                let parts: string[] = [`Google Trends — Explore: "${query}" (${geo})\n`];
-
                 if (relWidget?.token) {
                     const relReq = encodeURIComponent(JSON.stringify(relWidget.request));
                     const relRes = await fetch(
@@ -210,33 +231,55 @@ async function fetchTrendsData(url: string): Promise<string> {
                         const relData = JSON.parse(relRaw);
                         const rising: any[] = relData?.default?.rankedList?.[1]?.rankedKeyword ?? [];
                         const top: any[] = relData?.default?.rankedList?.[0]?.rankedKeyword ?? [];
-                        if (rising.length) parts.push("RISING QUERIES:\n" + rising.map((r: any) => `- ${r.query} (${r.formattedValue ?? "breakout"})`).join("\n"));
-                        if (top.length) parts.push("TOP QUERIES:\n" + top.map((r: any) => `- ${r.query} (${r.formattedValue ?? ""})`).join("\n"));
+                        if (rising.length) parts.push("RISING: " + rising.slice(0, 10).map((r: any) => `${r.query} (${r.formattedValue ?? "breakout"})`).join(", "));
+                        if (top.length) parts.push("TOP: " + top.slice(0, 10).map((r: any) => `${r.query} (${r.formattedValue ?? ""})`).join(", "));
                     }
                 }
-
-                // Also include related topics if available
-                const topicWidget = widgets.find((w: any) => w.id === "RELATED_TOPICS");
-                if (topicWidget) parts.push(`RELATED TOPICS: ${topicWidget.title?.query ?? query}`);
-
-                if (parts.length > 1) return parts.join("\n\n");
-            } catch { /* fall through to plain page fetch */ }
+                allParts.push(parts.join("\n"));
+            } catch { /* skip this keyword's data */ }
         }
 
-        // Fallback: plain fetch of the explore page (less data but better than nothing)
-        const res = await fetch(url, {
-            headers: { ...TRENDS_HEADERS, "Accept": "text/html,application/xhtml+xml,*/*" },
-            signal: AbortSignal.timeout(20_000),
-        });
-        if (!res.ok) throw new Error(`Google Trends: HTTP ${res.status}`);
-        const html = await res.text();
-        return html
-            .replace(/<script[\s\S]*?<\/script>/gi, "")
-            .replace(/<style[\s\S]*?<\/style>/gi, "")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/&[a-z#0-9]+;/gi, " ")
-            .replace(/\s{2,}/g, " ")
-            .trim();
+        if (allParts.length > 0) {
+            return `Google Trends — Cross-Niche Explore (${geo})\n\n` + allParts.join("\n\n");
+        }
+
+        // Final fallback: Google Autocomplete API (never rate-limits)
+        try {
+            const autocompleteParts: string[] = [];
+            for (let ki = 0; ki < keywords.length; ki++) {
+                const keyword = keywords[ki];
+                if (ki > 0) await delay(500);
+
+                const queries = [
+                    keyword,
+                    `coloring book ${keyword}`,
+                    `KDP ${keyword}`,
+                ];
+
+                for (const q of queries) {
+                    try {
+                        const acRes = await fetch(
+                            `https://suggestqueries.google.com/complete/search?q=${encodeURIComponent(q)}&client=firefox&hl=en&gl=US`,
+                            { headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(10_000) }
+                        );
+                        if (!acRes.ok) continue;
+                        const acData: any = await acRes.json();
+                        const suggestions: string[] = Array.isArray(acData?.[1]) ? acData[1].slice(0, 10) : [];
+                        if (suggestions.length > 0) {
+                            autocompleteParts.push(`Autocomplete suggestions for "${q}": ${suggestions.join(", ")}`);
+                        }
+                    } catch { /* skip individual query */ }
+                }
+            }
+
+            if (autocompleteParts.length > 0) {
+                return `Google Autocomplete — Cross-Niche (${geo})\n\n` + autocompleteParts.join("\n");
+            }
+
+            throw new Error("Google Autocomplete no devolvió sugerencias");
+        } catch (e: any) {
+            throw new Error(`Google Trends no disponible (429 rate-limit) y Autocomplete también falló. Intenta de nuevo en unos minutos. Detalle: ${e.message}`);
+        }
     }
 
     throw new Error("URL de Google Trends no reconocida. Usa trends.google.com/trends/explore?q=... o .../trendingsearches/daily");
@@ -645,6 +688,199 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 return;
             }
 
+            // ── Pinterest: Playwright scraping ────────────────────────────────────
+            if (mode === "pinterest-niches") {
+                pushLog(jobDoc, io, "info", `[BROWSER] Lanzando navegador para Pinterest...`);
+                await jobDoc.save();
+
+                const { chromium: chromiumP } = await import("playwright");
+                browser = await chromiumP.launch({
+                    headless: true,
+                    args: [
+                        "--disable-blink-features=AutomationControlled",
+                        "--no-sandbox", "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage", "--no-first-run",
+                        "--no-zygote", "--disable-gpu",
+                    ],
+                });
+
+                const pinterestUrl = url?.trim() || "https://www.pinterest.com/ideas/";
+                const pCtx = await browser.newContext({
+                    viewport: { width: 1440, height: 900 },
+                    locale: "en-US",
+                    timezoneId: "America/New_York",
+                    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    extraHTTPHeaders: {
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                        "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+                        "sec-ch-ua-mobile": "?0",
+                        "sec-ch-ua-platform": '"macOS"',
+                        "Sec-Fetch-Dest": "document",
+                        "Sec-Fetch-Mode": "navigate",
+                        "Sec-Fetch-Site": "none",
+                        "Upgrade-Insecure-Requests": "1",
+                    },
+                });
+                await pCtx.addInitScript(() => {
+                    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+                    // @ts-ignore
+                    window.chrome = { runtime: {}, loadTimes: () => {}, csi: () => {}, app: {} };
+                    Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
+                    Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en"] });
+                    Object.defineProperty(navigator, "platform", { get: () => "MacIntel" });
+                });
+
+                const pPage = await pCtx.newPage();
+                pushLog(jobDoc, io, "info", `[FETCH] Cargando Pinterest: ${pinterestUrl}`);
+                await jobDoc.save();
+
+                await pPage.goto(pinterestUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+                await pPage.waitForTimeout(3000);
+
+                // Scroll to load more pins
+                await pPage.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)");
+                await pPage.waitForTimeout(1500);
+                await pPage.evaluate("window.scrollTo(0, document.body.scrollHeight)");
+                await pPage.waitForTimeout(1500);
+
+                const pTitle: string = await pPage.title().catch(() => "");
+                if (/captcha|attention required|just a moment|checking/i.test(pTitle)) {
+                    throw new Error(`Pinterest bloqueado por anti-bot: "${pTitle}". Intenta de nuevo en unos minutos.`);
+                }
+
+                const pRawHtml: string = await pPage.content().catch(() => "");
+                const pPageText = pRawHtml
+                    .replace(/<script[\s\S]*?<\/script>/gi, "")
+                    .replace(/<style[\s\S]*?<\/style>/gi, "")
+                    .replace(/<[^>]+>/g, " ")
+                    .replace(/&[a-z#0-9]+;/gi, " ")
+                    .replace(/\s{2,}/g, " ")
+                    .trim();
+
+                if (pPageText.length < 500) {
+                    pushLog(jobDoc, io, "warning", `[FETCH] ⚠ Contenido corto (${pPageText.length} chars) — posible bloqueo`);
+                } else {
+                    pushLog(jobDoc, io, "info", `[FETCH] ✓ ${pPageText.length.toLocaleString()} chars extraídos de Pinterest`);
+                }
+                await jobDoc.save();
+
+                await pPage.close();
+                await browser.close();
+                browser = null;
+
+                const pSystemPrompt = buildRadarSystemPrompt(mode, nicheName, context);
+                pushLog(jobDoc, io, "info", `[AI] Analizando Pinterest con IA...`);
+                await jobDoc.save();
+
+                const pData = await analyzePageForRadar(pPageText, pSystemPrompt, {
+                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                });
+
+                const pCount = (pData?.nichos_detectados ?? []).length;
+                pushLog(jobDoc, io, "success", `[AI] ✓ ${pCount} nichos detectados en Pinterest`);
+
+                if (pData?.nichos_detectados) {
+                    const ts = new Date().toISOString();
+                    pData.nichos_detectados = (pData.nichos_detectados as any[]).map((n: any) => ({
+                        ...n, fecha_detectado: n.fecha_detectado ?? ts, fuente: "pinterest",
+                    }));
+                }
+
+                jobDoc.status = "completed";
+                jobDoc.result = pData;
+                await jobDoc.save();
+
+                let pDataToEmit: any = { nichos_detectados: [], ...(pData ?? {}) };
+                try {
+                    const { Settings } = await import("../models/settings.js");
+                    if (pData?.nichos_detectados) {
+                        const existing = await Settings.findOne({ key: storageKey }).lean() as any;
+                        if (existing?.value) {
+                            try {
+                                const saved = JSON.parse(existing.value as string);
+                                if (saved?.nichos_detectados?.length) {
+                                    const incoming: any[] = pData.nichos_detectados;
+                                    const incomingTitles = new Set(incoming.map((r: any) => r.titulo_producto));
+                                    const preserved = (saved.nichos_detectados as any[]).filter((r: any) => !incomingTitles.has(r.titulo_producto));
+                                    const mergedRows = incoming.map((r: any) => ({
+                                        ...r,
+                                        _nichoCreado: (saved.nichos_detectados as any[]).find((s: any) => s.titulo_producto === r.titulo_producto)?._nichoCreado ?? r._nichoCreado,
+                                    }));
+                                    pDataToEmit = { ...pData, nichos_detectados: [...mergedRows, ...preserved] };
+                                }
+                            } catch { /* malformed saved data — overwrite */ }
+                        }
+                        await Settings.findOneAndUpdate({ key: storageKey }, { key: storageKey, value: JSON.stringify(pDataToEmit) }, { upsert: true });
+                    }
+                } catch { /* non-critical */ }
+
+                io?.emit("radar:result", { jobId, mode, storageKey, data: pDataToEmit });
+                io?.emit("radar:done", { jobId });
+
+                try {
+                    const { sendTelegram, shouldNotify } = await import("../lib/telegram.js");
+                    const newNiches = (pData?.nichos_detectados ?? []).filter((n: any) => !n._nichoCreado);
+                    const totalCount = (pDataToEmit?.nichos_detectados ?? []).length;
+                    if (await shouldNotify("radar.found") && totalCount > 0) {
+                        await sendTelegram(
+                            `🔍 <b>Radar completado — Pinterest</b>\n\n` +
+                            `<b>${totalCount}</b> producto${totalCount !== 1 ? "s" : ""} en el listado` +
+                            (newNiches.length > 0 ? ` · <b>${newNiches.length} nuevo${newNiches.length !== 1 ? "s" : ""}</b>` : " · sin novedades") + `\n` +
+                            `<b>URL:</b> ${pinterestUrl}\n\n` +
+                            (newNiches.length > 0 ? `⏳ Generando imágenes de muestra…` : "")
+                        );
+                    }
+
+                    if (newNiches.length > 0) {
+                        const { Niche } = await import("../models/niche.js");
+                        const port = process.env.PORT || 3001;
+                        const base = `http://localhost:${port}`;
+                        setImmediate(async () => {
+                            let createdCount = 0;
+                            for (let i = 0; i < newNiches.length; i++) {
+                                const product = newNiches[i];
+                                const titulo = ((product.titulo_producto as string) ?? "").trim();
+                                const subnicho = ((product.sub_nicho_estimado as string) ?? "").trim();
+                                const nicheNameVal = (subnicho || titulo);
+                                if (!nicheNameVal) continue;
+                                try {
+                                    const existingNiche = await Niche.findOne({ sourceTitulo: titulo }).lean();
+                                    if (existingNiche) continue;
+                                    const detectedType = detectProductType(titulo, subnicho);
+                                    const detectedStyle = detectStyleCategory(titulo, subnicho);
+                                    const niche = await Niche.create({
+                                        name: nicheNameVal,
+                                        status: "found",
+                                        sourceTitulo: titulo,
+                                        productType: detectedType,
+                                        styleCategory: detectedStyle,
+                                        styleCategories: [detectedStyle],
+                                        score: computeNicheScore(product),
+                                        scoreReason: `Pinterest: bestseller=${product.bestseller ?? false}, reseñas=${product.total_reseñas ?? 0}, carrito=${product.personas_carrito ?? 0}`,
+                                    });
+                                    io?.emit("niches:updated");
+                                    createdCount++;
+                                    await fetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
+                                } catch (e: any) {
+                                    console.error("[pinterest-queue] Error creating niche:", e.message);
+                                }
+                                if (i < newNiches.length - 1) await new Promise(r => setTimeout(r, 15_000));
+                            }
+                            if (createdCount > 0) {
+                                try {
+                                    const { sendTelegram: tg } = await import("../lib/telegram.js");
+                                    await tg(`📬 <b>${createdCount} nicho${createdCount !== 1 ? "s" : ""} de Pinterest enviado${createdCount !== 1 ? "s" : ""} a Telegram</b>\n\nResponde a cada imagen para confirmar o descartar.\nLos de score alto se lanzan automáticamente.`);
+                                } catch { /* non-critical */ }
+                                try { await agenda.schedule("in 10 seconds", AUTOPILOT_JOB_NAME, {}); } catch { /* non-critical */ }
+                            }
+                        });
+                    }
+                } catch { /* Telegram not configured */ }
+
+                return;
+            }
+
             // ── Normal Playwright flow for Etsy, Amazon, Opportunity, Movers, General
             pushLog(jobDoc, io, "info", `[BROWSER] Lanzando navegador headless (modo stealth)...`);
             await jobDoc.save();
@@ -827,6 +1063,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 const ts = new Date().toISOString();
                 const fuente = mode === "amazon-niches" || mode === "amazon-movers" ? "amazon"
                     : mode === "etsy-niches" || mode === "opportunity" ? "etsy"
+                    : mode === "pinterest-niches" ? "pinterest"
                     : mode === "trends-niches" ? "trends"
                     : mode === "reddit-niches" ? "reddit"
                     : mode === "cross-niche" ? "cross"
@@ -892,6 +1129,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                     : mode === "reddit-niches" ? "Reddit KDP"
                     : mode === "cross-niche" ? "Cross-Nicho"
                     : mode === "gap-finder" ? "Detector Huecos"
+                    : mode === "pinterest-niches" ? "Pinterest"
                     : "General";
 
                 if (await shouldNotify("radar.found") && count > 0) {

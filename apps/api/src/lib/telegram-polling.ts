@@ -116,7 +116,11 @@ async function handleNicheDiscovery(
         // Remove this niche's row from all radar tables so it disappears from the UI immediately
         if ((niche as any)?.sourceTitulo) {
             try {
-                const radarKeys = ["RADAR_ETSY_RESULT", "RADAR_AMAZON_RESULT", "RADAR_GENERAL_RESULT", "RADAR_TRENDS_RESULT"];
+                const radarKeys = [
+                    "RADAR_ETSY_RESULT", "RADAR_AMAZON_RESULT", "RADAR_REDDIT_RESULT",
+                    "RADAR_TRENDS_RESULT", "RADAR_GENERAL_RESULT", "RADAR_OPPORTUNITY_RESULT",
+                    "RADAR_MOVERS_RESULT", "RADAR_CROSS_RESULT", "RADAR_GAP_RESULT",
+                ];
                 for (const radarKey of radarKeys) {
                     const radarRow = await Settings.findOne({ key: radarKey }).lean();
                     if (radarRow?.value) {
@@ -231,7 +235,11 @@ async function handleNicheDiscovery(
             // Remove entry from radar settings and notify frontend table
             if ((niche as any).sourceTitulo) {
                 try {
-                    const radarKeys = ["RADAR_ETSY_RESULT", "RADAR_AMAZON_RESULT", "RADAR_GENERAL_RESULT", "RADAR_TRENDS_RESULT"];
+                    const radarKeys = [
+                        "RADAR_ETSY_RESULT", "RADAR_AMAZON_RESULT", "RADAR_REDDIT_RESULT",
+                        "RADAR_TRENDS_RESULT", "RADAR_GENERAL_RESULT", "RADAR_OPPORTUNITY_RESULT",
+                        "RADAR_MOVERS_RESULT", "RADAR_CROSS_RESULT", "RADAR_GAP_RESULT",
+                    ];
                     for (const key of radarKeys) {
                         const row = await Settings.findOne({ key }).lean();
                         if (row?.value) {
