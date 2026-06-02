@@ -181,17 +181,23 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
 
             // Generate prompt if needed (fire-and-forget for speed, use existing if present)
             let prompt = (niche as any).generatedPrompt as string | undefined;
+            const productType = (niche as any).productType ?? "coloring-book";
+            const style = (niche as any).styleCategory ?? "generic";
+            const sourceTitulo = ((niche as any).sourceTitulo as string | undefined)?.trim() || "";
+
             if (!prompt) {
                 const port = process.env.PORT || 3001;
                 const base = `http://localhost:${port}`;
-                const productType = (niche as any).productType ?? "coloring-book";
-                const style = (niche as any).styleCategory ?? "generic";
                 const aiType = productType === "printable-poster" ? "printable-particulars" : "niche-particulars";
+                // Pass both sub-niche name AND the original product title as extra context for the AI
+                const nicheForAI = sourceTitulo && sourceTitulo !== (niche as any).name
+                    ? `${(niche as any).name} (referencia: "${sourceTitulo}")`
+                    : (niche as any).name;
                 try {
                     const aiRes = await fetch(`${base}/ai/generate-text`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ type: aiType, niche: (niche as any).name, productType, extras: style }),
+                        body: JSON.stringify({ type: aiType, niche: nicheForAI, productType, extras: style }),
                         signal: AbortSignal.timeout(25_000),
                     });
                     if (aiRes.ok) {
@@ -199,14 +205,32 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                         prompt = [aiData.result?.theme, aiData.result?.specs, aiData.result?.details, aiData.result?.particulars].filter(Boolean).join("\n\n");
                         if (prompt) await Niche.findByIdAndUpdate(nicheId, { $set: { generatedPrompt: prompt } });
                     }
-                } catch { /* non-critical, continue without prompt */ }
+                } catch { /* non-critical, continue with rule-based fallback */ }
+            }
+
+            // Rule-based fallback prompt when AI is unavailable
+            if (!prompt) {
+                const base = sourceTitulo || (niche as any).name;
+                if (productType === "printable-poster") {
+                    prompt = `${base}, elegant wall art composition, vibrant harmonious colors, premium print quality, balanced centered layout`;
+                } else if (style === "anime") {
+                    prompt = `${base}, anime-style illustration, dynamic action composition, detailed manga backgrounds, expressive characters`;
+                } else if (style === "children") {
+                    prompt = `${base}, cute friendly characters, simple rounded shapes, playful cheerful scene, nursery-style illustration`;
+                } else if (style === "botanical") {
+                    prompt = `${base}, intricate botanical illustration, detailed flora and fauna, lush layered foliage, nature scene with fine line details`;
+                } else if (style === "geometric") {
+                    prompt = `${base}, intricate geometric mandala pattern, perfect symmetry, fine interlocking shapes, mesmerizing radial composition`;
+                } else if (style === "celestial") {
+                    prompt = `${base}, mystical celestial scene, moon and stars motifs, swirling cosmic elements, ethereal night sky atmosphere`;
+                } else {
+                    prompt = `${base}, detailed richly decorated scene, intricate fine line patterns, balanced composition, professional illustration quality`;
+                }
             }
 
             // Build Pollinations sample image URL
-            const style = (niche as any).styleCategory ?? "generic";
-            const productType = (niche as any).productType ?? "coloring-book";
-            // Use the first line of the AI-generated prompt as scene description, fallback to niche name
-            const sceneDesc = (prompt?.split("\n")[0]?.trim()) || (niche as any).name;
+            // Use the first line of the AI-generated (or rule-based) prompt as scene description
+            const sceneDesc = (prompt.split("\n")[0]?.trim()) || (niche as any).name;
             let samplePrompt: string;
             let sampleModel = "flux";
             if (productType === "printable-poster") {
@@ -222,7 +246,8 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             }
             const seed = Math.floor(Math.random() * 99999);
             const sampleUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(samplePrompt)}?model=${sampleModel}&width=1024&height=1024&nologo=true&seed=${seed}`;
-            await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: sampleUrl } });
+            // Save the full Pollinations-ready prompt so catalog generation uses exactly this prompt
+            await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: sampleUrl, discoveryImagePrompt: samplePrompt } });
             deps.io?.emit("niches:updated");
 
             // Fetch image bytes from Pollinations with retry (up to 3 attempts, 40s each)

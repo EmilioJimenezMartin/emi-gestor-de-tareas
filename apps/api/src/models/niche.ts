@@ -38,6 +38,7 @@ export interface INiche extends Document {
     gumroadUrl?: string;
     nickname?: string;
     sourceTitulo?: string;
+    discoveryImagePrompt?: string;
     royalties?: IRoyaltyEntry[];
     listings?: IKDPListing[];
     score?: number;
@@ -82,6 +83,7 @@ const NicheSchema = new Schema<INiche>(
         gumroadUrl: { type: String, default: "" },
         nickname: { type: String, default: "" },
         sourceTitulo: { type: String, default: "" },
+        discoveryImagePrompt: { type: String, default: "" },
         royalties: [{
             month: { type: String, required: true },
             sales: { type: Number, default: 0 },

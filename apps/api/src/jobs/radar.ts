@@ -6,6 +6,30 @@ import { AUTOPILOT_JOB_NAME } from "./autopilot.js";
 
 export const RADAR_JOB_NAME = "run-radar-analysis";
 
+// Infer product type from titulo + subnicho text
+function detectProductType(titulo: string, subnicho: string): "coloring-book" | "printable-poster" {
+    const t = `${titulo} ${subnicho}`.toLowerCase();
+    if (/\b(poster|printable|wall[\s-]?art|art[\s-]?print|digital[\s-]?print|imprimible)\b/.test(t)) return "printable-poster";
+    return "coloring-book";
+}
+
+type StyleCategory = "generic" | "anime" | "illustration" | "children" | "realistic" | "watercolor" | "abstract" | "wall-art" | "botanical" | "affirmation" | "geometric" | "celestial" | "retro";
+
+// Infer style category from titulo + subnicho text
+function detectStyleCategory(titulo: string, subnicho: string): StyleCategory {
+    const t = `${titulo} ${subnicho}`.toLowerCase();
+    if (/\b(anime|manga|chibi|shojo|shonen)\b/.test(t)) return "anime";
+    if (/\b(child|kid|baby|toddler|nursery|preschool)\b/.test(t)) return "children";
+    if (/\b(watercolor|aquarell|watercolour)\b/.test(t)) return "watercolor";
+    if (/\b(botanical|floral|flower|herb|garden|plant|nature)\b/.test(t)) return "botanical";
+    if (/\b(geometric|mandala|sacred geometry|tessell)\b/.test(t)) return "geometric";
+    if (/\b(celestial|moon|zodiac|astro|constellation|cosmic)\b/.test(t)) return "celestial";
+    if (/\b(retro|vintage|nostalg|70s|80s|classic)\b/.test(t)) return "retro";
+    if (/\b(wall[\s-]?art|decor|affirmation|quote|inspirational)\b/.test(t)) return "wall-art" as StyleCategory;
+    if (/\babstract\b/.test(t)) return "abstract" as StyleCategory;
+    return "generic" as StyleCategory;
+}
+
 // Compute a 0–100 score from raw radar product data
 function computeNicheScore(product: any): number {
     let score = 40; // base
@@ -520,18 +544,22 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                             let createdCount = 0;
                             for (let i = 0; i < newNiches.length; i++) {
                                 const product = newNiches[i];
-                                const nicheName = ((product.sub_nicho_estimado as string) || (product.titulo_producto as string) || "").trim();
+                                const titulo = ((product.titulo_producto as string) ?? "").trim();
+                                const subnicho = ((product.sub_nicho_estimado as string) ?? "").trim();
+                                const nicheName = (subnicho || titulo);
                                 if (!nicheName) continue;
                                 try {
-                                    const existing = await Niche.findOne({ sourceTitulo: product.titulo_producto }).lean();
+                                    const existing = await Niche.findOne({ sourceTitulo: titulo }).lean();
                                     if (existing) continue;
+                                    const detectedType = detectProductType(titulo, subnicho);
+                                    const detectedStyle = detectStyleCategory(titulo, subnicho);
                                     const niche = await Niche.create({
                                         name: nicheName,
                                         status: "found",
-                                        sourceTitulo: (product.titulo_producto as string) ?? "",
-                                        productType: "coloring-book",
-                                        styleCategory: "generic",
-                                        styleCategories: ["generic"],
+                                        sourceTitulo: titulo,
+                                        productType: detectedType,
+                                        styleCategory: detectedStyle,
+                                        styleCategories: [detectedStyle],
                                         score: computeNicheScore(product),
                                         scoreReason: `Reddit: score=${product.score ?? 0}, comments=${product.total_reseñas ?? 0}`,
                                     });
@@ -888,22 +916,26 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
                         for (let i = 0; i < newNiches.length; i++) {
                             const product = newNiches[i];
-                            const nicheName = ((product.sub_nicho_estimado as string) || (product.titulo_producto as string) || "").trim();
+                            const titulo = ((product.titulo_producto as string) ?? "").trim();
+                            const subnicho = ((product.sub_nicho_estimado as string) ?? "").trim();
+                            const nicheName = (subnicho || titulo);
                             if (!nicheName) continue;
 
                             try {
                                 // Skip if already exists by sourceTitulo
-                                const existing = await Niche.findOne({ sourceTitulo: product.titulo_producto }).lean();
+                                const existing = await Niche.findOne({ sourceTitulo: titulo }).lean();
                                 if (existing) continue;
 
+                                const detectedType = detectProductType(titulo, subnicho);
+                                const detectedStyle = detectStyleCategory(titulo, subnicho);
                                 const nicheScore = mode === "opportunity" ? computeOpportunityScore(product) : computeNicheScore(product);
                                 const niche = await Niche.create({
                                     name: nicheName,
                                     status: "found",
-                                    sourceTitulo: (product.titulo_producto as string) ?? "",
-                                    productType: "coloring-book",
-                                    styleCategory: "generic",
-                                    styleCategories: ["generic"],
+                                    sourceTitulo: titulo,
+                                    productType: detectedType,
+                                    styleCategory: detectedStyle,
+                                    styleCategories: [detectedStyle],
                                     score: nicheScore,
                                     scoreReason: `Radar: bestseller=${product.bestseller ?? false}, reseñas=${product.total_reseñas ?? 0}, carrito=${product.personas_carrito ?? 0}`,
                                 });

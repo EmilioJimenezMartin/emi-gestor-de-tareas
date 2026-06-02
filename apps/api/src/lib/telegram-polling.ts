@@ -162,7 +162,7 @@ async function handleNicheDiscovery(
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
                                 name: `${tAction.nicheName} — v${i + 1}`,
-                                prompt: n?.generatedPrompt || tAction.nicheName,
+                                prompt: n?.discoveryImagePrompt || n?.generatedPrompt || tAction.nicheName,
                                 totalImages: cfg.imagesPerCatalog,
                                 aiModel,
                                 nicheIds: [String(tAction.nicheId)],

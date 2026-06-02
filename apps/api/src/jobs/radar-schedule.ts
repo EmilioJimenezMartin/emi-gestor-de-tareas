@@ -16,19 +16,30 @@ type APRule = {
     enabled: boolean;
 };
 
-function storageKeyForPlatform(platform: string): string {
-    if (platform === "amazon") return "RADAR_AMAZON_RESULT";
-    if (platform === "etsy") return "RADAR_ETSY_RESULT";
-    if (platform === "reddit") return "RADAR_REDDIT_RESULT";
-    if (platform === "trends") return "RADAR_TRENDS_RESULT";
-    return "RADAR_GENERAL_RESULT";
+const MODE_TO_STORAGE_KEY: Record<string, string> = {
+    "etsy-niches":   "RADAR_ETSY_RESULT",
+    "amazon-niches": "RADAR_AMAZON_RESULT",
+    "reddit-niches": "RADAR_REDDIT_RESULT",
+    "trends-niches": "RADAR_TRENDS_RESULT",
+    "opportunity":   "RADAR_OPPORTUNITY_RESULT",
+    "amazon-movers": "RADAR_MOVERS_RESULT",
+    "cross-niche":   "RADAR_CROSS_RESULT",
+    "gap-finder":    "RADAR_GAP_RESULT",
+    "general":       "RADAR_GENERAL_RESULT",
+};
+
+function storageKeyForMode(mode: string, platform: string): string {
+    return MODE_TO_STORAGE_KEY[mode] ?? MODE_TO_STORAGE_KEY[`${platform}-niches`] ?? "RADAR_GENERAL_RESULT";
 }
 
-function modeForPlatform(platform: string): "etsy-niches" | "amazon-niches" | "reddit-niches" | "trends-niches" | "general" {
-    if (platform === "amazon") return "amazon-niches";
-    if (platform === "etsy") return "etsy-niches";
-    if (platform === "reddit") return "reddit-niches";
-    if (platform === "trends") return "trends-niches";
+function resolveMode(rule: APRule): string {
+    // Use explicit mode if it's a known radar mode; fall back to platform-based mapping
+    const knownModes = new Set(Object.keys(MODE_TO_STORAGE_KEY));
+    if (rule.mode && knownModes.has(rule.mode)) return rule.mode;
+    if (rule.platform === "amazon") return "amazon-niches";
+    if (rule.platform === "etsy") return "etsy-niches";
+    if (rule.platform === "reddit") return "reddit-niches";
+    if (rule.platform === "trends") return "trends-niches";
     return "general";
 }
 
@@ -46,12 +57,15 @@ export function defineRadarScheduleJob(agenda: Agenda, io: any): void {
             return;
         }
 
-        const matching = rules.filter(r =>
-            r.enabled &&
-            r.url?.trim() &&
-            r.days.includes(currentDay) &&
-            (r.hour ?? 9) === currentHour
-        );
+        const matching = rules.filter(r => {
+            if (!r.enabled) return false;
+            if (!r.days.includes(currentDay)) return false;
+            if ((r.hour ?? 9) !== currentHour) return false;
+            // gap-finder doesn't need a URL
+            const mode = resolveMode(r);
+            if (mode !== "gap-finder" && !r.url?.trim()) return false;
+            return true;
+        });
 
         if (!matching.length) return;
 
@@ -60,22 +74,23 @@ export function defineRadarScheduleJob(agenda: Agenda, io: any): void {
         for (const rule of matching) {
             try {
                 const jobId = `radar-${Date.now()}-${rule.id}`;
-                const storageKey = storageKeyForPlatform(rule.platform);
-                const mode = modeForPlatform(rule.platform);
+                const mode = resolveMode(rule);
+                const storageKey = storageKeyForMode(mode, rule.platform);
+                const jobUrl = mode === "gap-finder" ? "gap-finder" : rule.url!;
 
                 await RadarJob.create({
                     jobId,
-                    url: rule.url!,
-                    mode,
+                    url: jobUrl,
+                    mode: mode as any,
                     storageKey,
                     status: "running",
-                    logs: [{ timestamp: new Date(), level: "info", message: `[INIT] Regla automática · ${rule.platform} · ${rule.query}` }],
+                    logs: [{ timestamp: new Date(), level: "info", message: `[INIT] Regla automática · ${mode} · ${rule.query}` }],
                 });
 
                 io?.emit("radar:log", {
                     timestamp: new Date(),
                     level: "info",
-                    message: `[RADAR-SCHEDULE] Ejecutando regla automática: ${rule.query} (${rule.platform})`,
+                    message: `[RADAR-SCHEDULE] Ejecutando regla automática: ${rule.query} (${mode})`,
                 });
 
                 await agenda.now(RADAR_JOB_NAME, { jobId });

@@ -6687,6 +6687,18 @@ export function KdpFactoryApp() {
             { id: "etsy",         label: "Etsy",         icon: "🛍️", url: (q: string) => `https://www.etsy.com/search?q=${encodeURIComponent(q)}` },
             { id: "redbubble",    label: "Redbubble",    icon: "🫧", url: (q: string) => `https://www.redbubble.com/shop/?query=${encodeURIComponent(q)}` },
         ];
+
+        // Radar modes available for scheduling
+        const RADAR_RULE_MODES: { id: string; label: string; icon: string; platform: SearchPlatform; color: string }[] = [
+            { id: "etsy-niches",    label: "Etsy KDP",        icon: "🛍️", platform: "etsy",    color: "amber" },
+            { id: "amazon-niches",  label: "Amazon KDP",      icon: "📦", platform: "amazon",  color: "orange" },
+            { id: "trends-niches",  label: "Google Trends",   icon: "📈", platform: "trends",  color: "emerald" },
+            { id: "reddit-niches",  label: "Reddit",          icon: "💬", platform: "reddit",  color: "rose" },
+            { id: "opportunity",    label: "Oportunidad",     icon: "🎯", platform: "amazon",  color: "sky" },
+            { id: "amazon-movers",  label: "Amazon Movers",   icon: "🚀", platform: "amazon",  color: "violet" },
+            { id: "cross-niche",    label: "Cross-Nicho",     icon: "🔗", platform: "trends",  color: "indigo" },
+            { id: "gap-finder",     label: "Gap Finder",      icon: "🔍", platform: "general", color: "teal" },
+        ];
         const toggleDay = (d: number) => setApDays(prev => { const s = new Set(prev); s.has(d) ? s.delete(d) : s.add(d); return s; });
         const toggleRuleDay = (d: number) => setRuleDraft(prev => { const days = prev.days ?? []; return { ...prev, days: days.includes(d) ? days.filter(x => x !== d) : [...days, d] }; });
         const cronPreview = buildCron();
@@ -6713,7 +6725,7 @@ export function KdpFactoryApp() {
             <div className="space-y-8">
 
             {/* ── AUTO-PILOT ──────────────────────────────────────────────── */}
-            {configSection === "autopilot" && <section className="space-y-5">
+            {configSection === "autopilot" && <section className="space-y-5 max-h-[calc(100vh-260px)] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                 <SectionHeader icon={<Zap size={15} />} title="Auto-Pilot" subtitle="Automatiza el pipeline completo de producción" color="amber" size="sm" />
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -7116,15 +7128,45 @@ export function KdpFactoryApp() {
                                 </div>
                             </div>
 
-                            {/* SearchQueryBuilder */}
-                            <div className="space-y-1.5">
+                            {/* Radar mode selector */}
+                            <div className="space-y-2">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Modo de búsqueda</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {RADAR_RULE_MODES.map(m => {
+                                        const isActive = (ruleDraft.mode ?? "etsy-niches") === m.id;
+                                        const colorMap: Record<string, string> = {
+                                            amber: "bg-amber-500/20 border-amber-500/40 text-amber-300",
+                                            orange: "bg-orange-500/20 border-orange-500/40 text-orange-300",
+                                            emerald: "bg-emerald-500/20 border-emerald-500/40 text-emerald-300",
+                                            rose: "bg-rose-500/20 border-rose-500/40 text-rose-300",
+                                            sky: "bg-sky-500/20 border-sky-500/40 text-sky-300",
+                                            violet: "bg-violet-500/20 border-violet-500/40 text-violet-300",
+                                            indigo: "bg-indigo-500/20 border-indigo-500/40 text-indigo-300",
+                                            teal: "bg-teal-500/20 border-teal-500/40 text-teal-300",
+                                        };
+                                        return (
+                                            <button key={m.id}
+                                                onClick={() => {
+                                                    setRuleDraft(d => ({ ...d, mode: m.id, platform: m.platform }));
+                                                    setRuleSearchConfig(c => ({ ...c, platform: m.platform, url: m.id === "gap-finder" ? "_gap_finder_" : c.platform !== m.platform ? "" : c.url }));
+                                                }}
+                                                className={`flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[10px] font-black border transition-all ${isActive ? colorMap[m.color] : "bg-white/[0.03] border-white/8 text-neutral-600 hover:text-neutral-400"}`}>
+                                                <span>{m.icon}</span>{m.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* SearchQueryBuilder — hidden for gap-finder (no URL needed) */}
+                            {(ruleDraft.mode ?? "etsy-niches") !== "gap-finder" && <div className="space-y-1.5">
                                 <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Búsqueda</p>
                                 <SearchQueryBuilder
                                     apiUrl={API_BASE_URL}
                                     value={ruleSearchConfig}
                                     onChange={cfg => setRuleSearchConfig(cfg)}
                                 />
-                            </div>
+                            </div>}
 
                             <div className="flex gap-2">
                                 {editingRuleId ? (
@@ -7159,7 +7201,7 @@ export function KdpFactoryApp() {
                     ) : (
                         <div className="space-y-2">
                             {apRules.map(rule => {
-                                const plat = PLATFORM_OPTIONS.find(p => p.id === rule.platform);
+                                const ruleMode = RADAR_RULE_MODES.find(m => m.id === rule.mode) ?? RADAR_RULE_MODES.find(m => m.platform === rule.platform) ?? RADAR_RULE_MODES[0];
                                 const isEditing = editingRuleId === rule.id;
                                 return (
                                     <div key={rule.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all ${isEditing ? "border-sky-500/30 bg-sky-500/[0.04]" : rule.enabled ? "border-white/[0.07] bg-white/[0.02] hover:bg-white/[0.04]" : "border-white/[0.04] bg-white/[0.01] opacity-50"}`}>
@@ -7172,10 +7214,10 @@ export function KdpFactoryApp() {
                                             </div>
                                             <span className="text-[10px] font-black text-neutral-500 bg-white/[0.04] border border-white/8 rounded-md px-1.5 py-0.5">{String(rule.hour ?? 9).padStart(2, "0")}h</span>
                                         </div>
-                                        <span className="text-base shrink-0">{plat?.icon ?? "🔍"}</span>
+                                        <span className="text-base shrink-0">{ruleMode?.icon ?? "🔍"}</span>
                                         <div className="flex-1 min-w-0">
-                                            <p className="text-[11px] font-black text-white truncate">{rule.query}</p>
-                                            <p className="text-[10px] text-neutral-600">{plat?.label}</p>
+                                            <p className="text-[11px] font-black text-white truncate">{rule.query || ruleMode?.label}</p>
+                                            <p className="text-[10px] text-neutral-600">{ruleMode?.label}</p>
                                         </div>
                                         {/* Edit */}
                                         <button onClick={() => { startEditRule(rule); setShowRuleForm(false); }}

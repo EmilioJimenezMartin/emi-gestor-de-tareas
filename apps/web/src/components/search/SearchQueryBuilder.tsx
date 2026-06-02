@@ -241,9 +241,9 @@ export function SearchQueryBuilder({
             {/* Platform tabs */}
             {!lockPlatform && (
                 <div className="flex gap-1 p-1 bg-white/[0.03] border border-white/8 rounded-2xl w-fit">
-                    {(["etsy", "amazon", "general", "trends"] as const).map(p => {
-                        const icons = { etsy: <ShoppingCart size={11} />, amazon: <ShoppingBag size={11} />, general: <Globe size={11} />, trends: <TrendingUp size={11} /> };
-                        const labels = { etsy: "Etsy", amazon: "Amazon", general: "General", trends: "Trends" };
+                    {(["etsy", "amazon", "general", "trends", "reddit"] as const).map(p => {
+                        const icons = { etsy: <ShoppingCart size={11} />, amazon: <ShoppingBag size={11} />, general: <Globe size={11} />, trends: <TrendingUp size={11} />, reddit: <MessageCircle size={11} /> };
+                        const labels = { etsy: "Etsy", amazon: "Amazon", general: "General", trends: "Trends", reddit: "Reddit" };
                         const isActive = platform === p;
                         return (
                             <button key={p} onClick={() => handlePlatformChange(p)}
