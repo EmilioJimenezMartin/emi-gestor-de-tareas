@@ -10838,8 +10838,8 @@ export function KdpFactoryApp() {
                                                 {/* ─ Tags ─ */}
                                                 {niche.tags.length > 0 && (
                                                     <div className="flex flex-wrap gap-1">
-                                                        {niche.tags.slice(0, 6).map(tag => (
-                                                            <span key={tag} className="text-sm px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] text-neutral-500">#{tag}</span>
+                                                        {niche.tags.slice(0, 6).map((tag, ti) => (
+                                                            <span key={`${tag}-${ti}`} className="text-sm px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06] text-neutral-500">#{tag}</span>
                                                         ))}
                                                         {niche.tags.length > 6 && <span className="text-sm text-neutral-700">+{niche.tags.length - 6} más</span>}
                                                     </div>
