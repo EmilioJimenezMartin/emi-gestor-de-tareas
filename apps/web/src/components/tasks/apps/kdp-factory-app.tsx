@@ -11185,22 +11185,31 @@ export function KdpFactoryApp() {
             </>}
 
             {/* ══ RADAR DE NICHOS — ETSY ══ */}
-            {studioSubTab === "radar" && <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
-                <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent" />
-                <div className="p-6">
-                    <NicheRadar apiUrl={API_BASE_URL} niches={niches} onStorageKeyChange={setRadarStorageKey} />
-                    <RadarResultsTable
-                        apiUrl={API_BASE_URL}
-                        storageKey="ALL"
-                        niches={niches}
-                        onNicheCreated={() => void fetchNiches()}
-                        pipelineAction={{
-                            label: "🚀 Lanzar",
-                            colorScheme: "amber",
-                            isCreated: (_row) => false,
-                            onCreate: async (row) => { await launchPipelineFromRow(row); },
-                        }}
-                    />
+            {studioSubTab === "radar" && <div className="space-y-5">
+                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                    <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent" />
+                    <div className="p-6">
+                        <NicheRadar apiUrl={API_BASE_URL} niches={niches} onStorageKeyChange={setRadarStorageKey} />
+                        <RadarResultsTable
+                            apiUrl={API_BASE_URL}
+                            storageKey="ALL"
+                            niches={niches}
+                            onNicheCreated={() => void fetchNiches()}
+                            pipelineAction={{
+                                label: "🚀 Lanzar",
+                                colorScheme: "amber",
+                                isCreated: (_row) => false,
+                                onCreate: async (row) => { await launchPipelineFromRow(row); },
+                            }}
+                        />
+                    </div>
+                </div>
+                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                    <div className="h-px w-full bg-gradient-to-r from-violet-500/60 via-indigo-400/20 to-transparent" />
+                    <div className="p-6 space-y-4">
+                        <SectionHeader icon={<Sparkles size={15} />} title="Radar Insights" subtitle="Análisis IA del historial de productos detectados" color="violet" size="sm" />
+                        <RadarInsightsPanel apiUrl={API_BASE_URL} />
+                    </div>
                 </div>
             </div>}
 

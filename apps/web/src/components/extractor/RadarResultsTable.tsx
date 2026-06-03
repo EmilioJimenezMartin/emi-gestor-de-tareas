@@ -3,12 +3,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
     CheckCircle2, Download, RefreshCw, Flame, TrendingUp, Lightbulb,
-    Star, ShoppingCart, ArrowUpDown, Plus, Loader2, Trash2, Calendar, X, Send, Sparkles,
+    Star, ArrowUpDown, Loader2, Trash2, Calendar, X, Send,
 } from "lucide-react";
 import { createApiSocket } from "@/lib/socket";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
-import { RadarInsightsPanel } from "./RadarInsightsPanel";
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -100,7 +99,6 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(10);
     const [confirmModal, setConfirmModal] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
-    const [insightsOpen, setInsightsOpen] = useState(false);
     const etsyResultRef = useRef<EtsyNicheResult | null>(null);
 
     // Keep ref in sync
@@ -320,11 +318,6 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                             )}
                         </div>
                         <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => setInsightsOpen(true)}
-                                className="flex items-center gap-1.5 h-7 px-3 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[9px] font-black uppercase hover:bg-violet-500/20 transition-all">
-                                <Sparkles size={10} /> Insights IA
-                            </button>
                             <button
                                 onClick={() => exportCSV(sortedRows)}
                                 className="flex items-center gap-1.5 h-7 px-3 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[9px] font-black uppercase hover:bg-sky-500/20 transition-all">
@@ -595,18 +588,6 @@ export function RadarResultsTable({ apiUrl, storageKey, niches = [], onNicheCrea
                     </div>
                 </div>
             </div>
-
-            {/* Insights modal */}
-            <Modal open={insightsOpen} onClose={() => setInsightsOpen(false)} maxWidth="max-w-4xl" zIndex={290}>
-                <div className="p-5 space-y-4 max-h-[85vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-                    <div className="flex items-center gap-2">
-                        <Sparkles size={14} className="text-violet-400" />
-                        <span className="text-sm font-black text-white">Insights inteligentes</span>
-                        <span className="text-[10px] text-neutral-600">· análisis IA de todos los productos detectados</span>
-                    </div>
-                    <RadarInsightsPanel apiUrl={apiUrl} />
-                </div>
-            </Modal>
 
             {/* Confirm delete modal */}
             <Modal open={!!confirmModal} onClose={() => setConfirmModal(null)} maxWidth="max-w-sm" showClose={false} zIndex={300}>

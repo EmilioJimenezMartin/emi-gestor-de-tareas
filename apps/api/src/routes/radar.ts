@@ -579,31 +579,94 @@ REGLAS:
 PRODUCTOS:
 ${productSummary}`;
 
-        const { generateTextWithLLM } = await import("../lib/ai.js");
+        // Read AI config and call with 4096 token limit (generateTextWithLLM caps at 1500)
+        const googleKeyRow = await Settings.findOne({ key: "GOOGLE_API_KEY" }).lean();
+        const hfKeyRow     = await Settings.findOne({ key: "HUGGINGFACE_API_KEY" }).lean();
+        const groqKeyRow   = await Settings.findOne({ key: "GROQ_API_KEY" }).lean();
+        const orKeyRow     = await Settings.findOne({ key: "OPENROUTER_API_KEY" }).lean();
+        const provRow      = await Settings.findOne({ key: "DEFAULT_LLM_PROVIDER" }).lean();
+        const modelRow     = await Settings.findOne({ key: "DEFAULT_LLM_MODEL" }).lean();
 
-        let raw: string;
+        const googleKey   = (googleKeyRow?.value as string) || process.env.GOOGLE_API_KEY || "";
+        const hfKey       = (hfKeyRow?.value as string)     || process.env.HUGGINGFACE_API_KEY || "";
+        const groqKey     = (groqKeyRow?.value as string)   || process.env.GROQ_API_KEY || "";
+        const orKey       = (orKeyRow?.value as string)     || process.env.OPENROUTER_API_KEY || "";
+        const aiProvider  = (provRow?.value as string)      || "google";
+        const aiModel     = (modelRow?.value as string)     || "gemini-2.5-flash";
+
+        const parseInsightJson = (text: string): any => {
+            const clean = text.replace(/^```(?:json)?\s*/im, "").replace(/```\s*$/im, "").trim();
+            // Try greedy match from first { to last }
+            const start = clean.indexOf("{");
+            const end   = clean.lastIndexOf("}");
+            if (start === -1 || end === -1) throw new Error("No JSON object found");
+            return JSON.parse(clean.slice(start, end + 1));
+        };
+
+        let raw = "";
         try {
-            raw = await generateTextWithLLM(SYSTEM, USER);
+            if (aiProvider === "google" && googleKey) {
+                const { GoogleGenAI } = await import("@google/genai");
+                const ai = new GoogleGenAI({ apiKey: googleKey });
+                const response = await ai.models.generateContent({
+                    model: aiModel || "gemini-2.5-flash",
+                    contents: USER,
+                    config: {
+                        systemInstruction: SYSTEM,
+                        thinkingConfig: { thinkingBudget: 0 },
+                        maxOutputTokens: 4096,
+                        temperature: 0.2,
+                    } as any,
+                });
+                raw = (response.text ?? "").trim();
+            } else if (aiProvider === "groq" && groqKey) {
+                const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
+                    body: JSON.stringify({
+                        model: aiModel || "llama-3.3-70b-versatile",
+                        messages: [{ role: "system", content: SYSTEM }, { role: "user", content: USER }],
+                        max_tokens: 4096, temperature: 0.2,
+                    }),
+                });
+                if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`);
+                const data = await res.json() as any;
+                raw = (data.choices[0]?.message?.content ?? "").trim();
+            } else if (aiProvider === "openrouter" && orKey) {
+                const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${orKey}`, "HTTP-Referer": "https://emi-gestor-de-tareas.local", "X-Title": "Emi Gestor" },
+                    body: JSON.stringify({
+                        model: aiModel || "google/gemini-2.5-flash",
+                        messages: [{ role: "system", content: SYSTEM }, { role: "user", content: USER }],
+                        max_tokens: 4096, temperature: 0.2,
+                    }),
+                });
+                if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
+                const data = await res.json() as any;
+                raw = (data.choices[0]?.message?.content ?? "").trim();
+            } else if (hfKey) {
+                const { HfInference } = await import("@huggingface/inference");
+                const hf = new HfInference(hfKey);
+                const response = await hf.chatCompletion({
+                    model: aiModel || "meta-llama/Llama-3.3-70B-Instruct",
+                    messages: [{ role: "system", content: SYSTEM }, { role: "user", content: USER }],
+                    max_tokens: 4096, temperature: 0.2,
+                });
+                raw = (response.choices[0]?.message?.content ?? "").trim();
+            } else {
+                return reply.status(400).send({ error: "No hay proveedor de IA configurado. Ve a Ajustes → Núcleo de Inteligencia." });
+            }
         } catch (e: any) {
             return reply.status(500).send({ error: e.message ?? "Error en IA" });
         }
 
-        // Parse JSON from response
         let analysis: any;
         try {
-            const clean = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
-            const match = clean.match(/(\{[\s\S]*\})/);
-            analysis = JSON.parse(match ? match[1] : clean);
+            analysis = parseInsightJson(raw);
         } catch {
-            return reply.status(500).send({ error: `La IA no devolvió JSON válido: ${raw.slice(0, 200)}` });
+            return reply.status(500).send({ error: `La IA no devolvió JSON válido: ${raw.slice(0, 300)}` });
         }
-
-        // Detect active AI provider name
-        let aiProvider = "google";
-        try {
-            const provRow = await Settings.findOne({ key: "DEFAULT_LLM_PROVIDER" }).lean();
-            if (provRow?.value) aiProvider = provRow.value as string;
-        } catch { /* use default */ }
 
         const { RadarInsight } = await import("../models/radar-insight.js");
         const platformsUsed = platforms.length > 0 ? platforms : Object.values(RADAR_KEYS).filter((v, i, a) => a.indexOf(v) === i);
