@@ -8,6 +8,7 @@ import { activateNextQueued } from "../lib/catalog-queue.js";
 import { sendTelegram, shouldNotify, sendTelegramImageWithButtons } from "../lib/telegram.js";
 import { withImageSlot } from "../lib/ai-semaphore.js";
 import sharp from "sharp";
+import { pollinationsFetch, isPollinationsBlocked } from "../lib/pollinations-circuit.js";
 
 async function isQualityVaultTelegramEnabled(): Promise<boolean> {
     try {
@@ -305,8 +306,8 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             return;
         }
 
-        if (catalog.status === "cancelled") {
-            console.log(`${tag} Cancelled — skipping`);
+        if (catalog.status === "cancelled" || catalog.status === "completed" || catalog.status === "failed") {
+            console.log(`${tag} Status=${catalog.status} — skipping (terminal state)`);
             return;
         }
 
@@ -402,35 +403,49 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             if (activeModel.provider === "Pollinations") {
                 const seed = Math.floor(Math.random() * 999999);
                 const modelParam = activeModel.modelId?.trim() || "flux";
-                const negParam = finalNegativePrompt ? `&negative=${encodeURIComponent(finalNegativePrompt)}` : "";
                 const enhance = productType === "coloring-book" ? "false" : "true";
-                const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=${catalog.width}&height=${catalog.height}&seed=${seed}&model=${encodeURIComponent(modelParam)}&nologo=true&enhance=${enhance}${negParam}`;
+                const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=${catalog.width}&height=${catalog.height}&seed=${seed}&model=${encodeURIComponent(modelParam)}&enhance=${enhance}`;
                 console.log(`${tag} Calling Pollinations model=${modelParam} (waiting for img-lock… priority=${nicheScore})`);
                 imageBuffer = await withImageSlot(`catalog:${catalogId}:${imageSlot}`, async () => {
                     const abortCtrl = new AbortController();
                     const hardTimeout = setTimeout(() => abortCtrl.abort(), HARD_ABORT_MS);
                     try {
-                        const response = await axios.get(pollinationsUrl, {
-                            responseType: "arraybuffer",
-                            timeout: AXIOS_TIMEOUT_MS,
-                            signal: abortCtrl.signal,
-                            validateStatus: (s) => s < 500,
-                        });
+                        const res = await pollinationsFetch(pollinationsUrl, { signal: abortCtrl.signal });
                         clearTimeout(hardTimeout);
-                        if (response.status !== 200) {
-                            throw new Error(`Pollinations HTTP ${response.status}`);
+                        const contentType = res.headers.get("content-type") ?? "";
+                        if (res.status === 402) {
+                            console.warn(`${tag} Pollinations IP bloqueada (402) — usando HuggingFace FLUX como fallback`);
+                            const hfKey = process.env.HUGGINGFACE_API_KEY || "";
+                            if (!hfKey) throw new Error("Pollinations bloqueado (402) y HUGGINGFACE_API_KEY no configurada");
+                            const hfRes = await fetch(
+                                "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+                                {
+                                    method: "POST",
+                                    headers: { Authorization: `Bearer ${hfKey.trim()}`, "Content-Type": "application/json", "x-use-cache": "false" },
+                                    body: JSON.stringify({ inputs: finalPrompt }),
+                                    signal: AbortSignal.timeout(45_000),
+                                }
+                            );
+                            const hfCt = hfRes.headers.get("content-type") ?? "";
+                            if (!hfRes.ok || !hfCt.includes("image/")) throw new Error(`HF fallback failed: status=${hfRes.status}`);
+                            const hfBuf = Buffer.from(await hfRes.arrayBuffer());
+                            const resized = await sharp(hfBuf).resize(catalog.width, catalog.height, { fit: "fill" }).jpeg({ quality: 92 }).toBuffer();
+                            console.log(`${tag} HF fallback OK (resized to ${catalog.width}x${catalog.height}) — ${resized.length} bytes`);
+                            return resized;
                         }
-                        const contentType = (response.headers["content-type"] ?? "") as string;
+                        if (!res.ok) {
+                            throw new Error(`Pollinations HTTP ${res.status}`);
+                        }
                         if (!contentType.startsWith("image/")) {
-                            const preview = Buffer.from(response.data).toString("utf8").slice(0, 300);
-                            throw new Error(`Pollinations devolvió ${contentType} en lugar de imagen: ${preview}`);
+                            const preview = await res.text();
+                            throw new Error(`Pollinations devolvió ${contentType} en lugar de imagen: ${preview.slice(0, 300)}`);
                         }
-                        const buf = Buffer.from(response.data);
+                        const buf = Buffer.from(await res.arrayBuffer());
                         console.log(`${tag} Pollinations OK — ${buf.length} bytes`);
                         return buf;
                     } catch (e: any) {
                         clearTimeout(hardTimeout);
-                        if (e?.code === "ERR_CANCELED" || abortCtrl.signal.aborted) {
+                        if (e?.name === "AbortError" || abortCtrl.signal.aborted) {
                             throw new Error(`Imagen colgada tras ${HARD_ABORT_MS / 60000} min — slot omitido automáticamente`);
                         }
                         throw e;

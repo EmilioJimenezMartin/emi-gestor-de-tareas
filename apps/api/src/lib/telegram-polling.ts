@@ -756,7 +756,7 @@ async function processUpdate(update: any): Promise<void> {
             }
 
             const seed = Math.floor(Math.random() * 99999);
-            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${model}&width=1024&height=1024&nologo=true&seed=${seed}&enhance=true`;
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${model}&width=1024&height=1024&seed=${seed}&enhance=true`;
 
             await sendTelegram(`🎨 <b>Generando imagen...</b>\n<code>${prompt.slice(0, 100)}${prompt.length > 100 ? "…" : ""}</code>\n<i>modelo: ${model}</i>`);
 

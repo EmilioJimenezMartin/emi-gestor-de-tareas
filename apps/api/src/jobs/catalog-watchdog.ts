@@ -48,13 +48,12 @@ async function triggerAutoPilotContinue(agenda: Agenda, catalogId: string, niche
 const JOB_NAME = "catalog-watchdog";
 const STUCK_THRESHOLD_MS = 10 * 60 * 1000;    // 10 min without progress = stuck (force-skip slot)
 const SMART_STUCK_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2h stuck = smart retry with simplified prompt
-const FAILED_RESTART_WINDOW_MS = 60 * 60 * 1000; // restart failed catalogs within last 1 hour
-const MAX_AUTO_RESTARTS = 5; // increased from 3 — allow more retries with escalating strategies
+const MAX_AUTO_RESTARTS = 2; // max retries for stuck-running catalogs before cancellation
 
-// FALLBACK_MODELS: try in order when a catalog keeps failing
+// FALLBACK_MODELS: try in order when a catalog keeps failing (Pollinations is IP-blocked)
 const FALLBACK_MODELS = [
-    { id: "pollinations-flux", modelId: "flux" },
-    { id: "pollinations-flux-realism", modelId: "flux-realism" },
+    { id: "hf-flux-schnell", modelId: "black-forest-labs/FLUX.1-schnell", provider: "Hugging Face", name: "FLUX.1-schnell (HF)" },
+    { id: "hf-flux-dev", modelId: "black-forest-labs/FLUX.1-dev", provider: "Hugging Face", name: "FLUX.1-dev (HF)" },
 ];
 
 function simplifyPrompt(prompt: string): string {
@@ -74,20 +73,18 @@ function getRetryStrategy(restartCount: number, originalPrompt: string, original
     if (restartCount === 0) return {}; // first retry: same prompt, same model
     if (restartCount === 1) return { overridePrompt: simplifyPrompt(originalPrompt) }; // simplify prompt
     if (restartCount === 2) {
-        // simplified prompt + fallback model 1
         const fallback = FALLBACK_MODELS[0];
         return {
             overridePrompt: simplifyPrompt(originalPrompt),
-            overrideModel: { ...fallback, name: "FLUX (Pollinations)", provider: "Pollinations" },
+            overrideModel: { id: fallback.id, modelId: fallback.modelId, name: fallback.name, provider: fallback.provider },
         };
     }
     if (restartCount >= 3) {
-        // ultra-simplified prompt + fallback model 2
         const fallback = FALLBACK_MODELS[1] ?? FALLBACK_MODELS[0];
         const ultraSimple = simplifyPrompt(originalPrompt).split(" ").slice(0, 10).join(" ");
         return {
             overridePrompt: ultraSimple,
-            overrideModel: { ...fallback, name: "FLUX Realism (Pollinations)", provider: "Pollinations" },
+            overrideModel: { id: fallback.id, modelId: fallback.modelId, name: fallback.name, provider: fallback.provider },
         };
     }
     return {};
@@ -221,64 +218,7 @@ export function defineCatalogWatchdog(agenda: Agenda, io: any) {
             }
         }
 
-        // ── 3. Failed catalogs with pending images: smart restart ───────────────
-        const failedCutoff = new Date(now.getTime() - FAILED_RESTART_WINDOW_MS);
-        const failed = await Catalog.find({
-            status: "failed",
-            updatedAt: { $gt: failedCutoff },
-        }).lean();
-
-        for (const catalog of failed) {
-            const catalogId = String(catalog._id);
-            const attempted = (catalog as any).images?.length + ((catalog as any).skippedImages ?? 0);
-            if (attempted >= (catalog as any).totalImages) continue; // already done
-
-            const restartCount = (catalog as any).retries ?? 0;
-            if (restartCount >= MAX_AUTO_RESTARTS) {
-                console.log(`[watchdog] Catalog ${catalogId} hit max restarts (${MAX_AUTO_RESTARTS}) — skipping`);
-                continue;
-            }
-
-            // Check if a job is already scheduled
-            try {
-                const pending = await (agenda as any).jobs({
-                    name: "generate-catalog-image",
-                    "data.catalogId": catalogId,
-                    nextRunAt: { $ne: null },
-                });
-                if (pending.length > 0) continue;
-            } catch { /* if query fails, attempt restart anyway */ }
-
-            const strategy = getRetryStrategy(restartCount, (catalog as any).overridePrompt || (catalog as any).prompt || "", (catalog as any).aiModel);
-            const strategyDesc = restartCount === 0 ? "mismo prompt" : restartCount === 1 ? "prompt simplificado" : restartCount <= 2 ? "prompt simplificado + modelo alternativo" : "prompt mínimo + modelo alternativo";
-
-            console.log(`[watchdog] Smart-restarting failed catalog ${catalogId} "${(catalog as any).name}" (restart ${restartCount + 1}/${MAX_AUTO_RESTARTS}) — ${strategyDesc}`);
-
-            await Catalog.findByIdAndUpdate(catalogId, {
-                status: "running",
-                lastError: `Smart-restart ${restartCount + 1}/${MAX_AUTO_RESTARTS}: ${strategyDesc}`,
-                retries: restartCount + 1,
-            });
-            io?.emit("catalog:progress", {
-                catalogId,
-                status: "running",
-                current: (catalog as any).images?.length ?? 0,
-                total: (catalog as any).totalImages,
-                skipped: (catalog as any).skippedImages ?? 0,
-                lastError: null,
-            });
-
-            const jobData: any = { catalogId, retryCount: restartCount + 1 };
-            if (strategy.overridePrompt) jobData.overridePrompt = strategy.overridePrompt;
-            if (strategy.overrideModel) jobData.overrideModel = strategy.overrideModel;
-            await agenda.schedule("in 10 seconds", "generate-catalog-image", jobData);
-
-            await shouldNotify("watchdog.restart").then(ok => {
-                if (ok) sendTelegram(`🔄 <b>Catálogo reiniciado</b>\n"${(catalog as any).name}" — ${strategyDesc} (intento ${restartCount + 1}/${MAX_AUTO_RESTARTS})`).catch(() => {});
-            });
-        }
-
-        // ── 4. Niches stuck in "catalog" phase with all catalogs terminal ────────
+        // ── 3. Niches stuck in "catalog" phase with all catalogs terminal ────────
         // Safety net: if checkAutoPilotContinue or autopilot-run polling missed the transition,
         // force-advance here so the pipeline never stalls indefinitely.
         try {

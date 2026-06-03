@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { Settings } from "../models/settings.js";
 import mongoose from "mongoose";
+import { setPollinationsToken } from "../lib/pollinations-circuit.js";
 
 export async function registerSettingsRoutes(app: FastifyInstance) {
     app.get("/settings", async (request, reply) => {
@@ -25,6 +26,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
             const { key, value } = request.body as { key: string; value: unknown };
             if (!key) return reply.status(400).send({ error: "key required" });
             await Settings.findOneAndUpdate({ key }, { key, value }, { upsert: true, new: true });
+            if (key === "POLLINATIONS_TOKEN") setPollinationsToken(String(value ?? ""));
             return reply.send({ success: true });
         } catch (error) {
             app.log.error(error);
@@ -50,6 +52,9 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
                         { key: update.key, value: update.value },
                         { upsert: true, new: true }
                     );
+                    if (update.key === "POLLINATIONS_TOKEN") {
+                        setPollinationsToken(String(update.value ?? ""));
+                    }
                 }
             }
 

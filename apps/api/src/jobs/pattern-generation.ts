@@ -29,7 +29,7 @@ export function definePatternGenJob(agenda: Agenda, io: any) {
             if (provider === "Pollinations") {
                 const modelParam = modelId?.trim() || "flux";
                 const negParam = negativePrompt?.trim() ? `&negative=${encodeURIComponent(negativePrompt.trim())}` : "";
-                const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&seed=${seed}&model=${encodeURIComponent(modelParam)}&nologo=true&enhance=false${negParam}`;
+                const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&seed=${seed}&model=${encodeURIComponent(modelParam)}&enhance=false${negParam}`;
                 console.log(`${tag} Calling Pollinations model=${modelParam}`);
                 const response = await axios.get(url, { responseType: "arraybuffer", timeout: 120000, validateStatus: s => s < 500 });
                 if (response.status !== 200) throw new Error(`Pollinations HTTP ${response.status}`);

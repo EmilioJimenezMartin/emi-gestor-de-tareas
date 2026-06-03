@@ -3,10 +3,11 @@ import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
 import { TelegramAction } from "../models/telegram-action.js";
 import { AutopilotRun } from "../models/autopilot-run.js";
-import { sendTelegram, sendTelegramPhoto, sendTelegramPhotoDiscovery, shouldNotify } from "../lib/telegram.js";
+import { sendTelegram, sendTelegramPhoto, sendTelegramPhotoDiscovery, sendTelegramImageWithButtons, shouldNotify } from "../lib/telegram.js";
 import { withImageSlot, withLlmSlot } from "../lib/ai-semaphore.js";
 import { buildCollage, buildHalfColored, pickCatalogImages, type CollageLayout } from "../lib/cover-collage.js";
 import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
+import { pollinationsFetch, isPollinationsBlocked, markPollinationsBlocked } from "../lib/pollinations-circuit.js";
 
 type RunStats = { discovered: number; pipelineProcessed: number; catalogsCreated: number };
 
@@ -111,8 +112,8 @@ function buildSampleUrl(nicheName: string, style: string, productType: string, e
         }
     }
 
-    const seed = Math.floor(Math.random() * 99999);
-    return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${model}&width=1024&height=1024&nologo=true&seed=${seed}`;
+    // No seed/width/height — those trigger Pollinations paid queue (max 1 concurrent free)
+    return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${model}`;
 }
 
 async function buildAiEnhancedSampleCore(
@@ -131,11 +132,10 @@ async function buildAiEnhancedSampleCore(
         });
         if (!res.ok) return null;
         const data = await res.json() as any;
-        // Combine theme + specs + details into a rich descriptive core for the image prompt
-        const parts: string[] = [data.result?.theme, data.result?.specs, data.result?.details]
-            .filter((p): p is string => !!p?.trim());
-        if (parts.length === 0) return null;
-        return parts.join(", ");
+        // niche-particulars returns { particulars: "..." }; printable-particulars same schema
+        const core = data.result?.particulars || data.result?.theme || data.result?.details;
+        if (!core?.trim()) return null;
+        return (core as string).trim().slice(0, 120);
     } catch {
         return null;
     }
@@ -272,7 +272,68 @@ async function runDiscovery(
             sampleUrl = buildSampleUrl(niche.name, niche.styleCategory ?? "generic", niche.productType ?? "coloring-book");
         }
         await Niche.findByIdAndUpdate(niche._id, { $set: { sampleImageUrl: sampleUrl } });
-        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🖼️ Imagen de muestra generada para "${niche.name}"` });
+        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⏳ Descargando imagen de muestra para "${niche.name}"…` });
+
+        // Fetch image bytes — primary URL first, then ultra-simple fallback
+        const simpleFallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(niche.name + " coloring page black white line art")}?model=flux`;
+        let imageBytes: Buffer | null = null;
+        let finalImageUrl = sampleUrl;
+        let pollinationsBlocked = false;
+        for (const [label, urlToFetch] of [["primary", sampleUrl], ["fallback", simpleFallbackUrl]] as const) {
+            if (imageBytes || pollinationsBlocked) break;
+            try {
+                const imgRes = await pollinationsFetch(urlToFetch, { signal: AbortSignal.timeout(40_000) });
+                const ct = imgRes.headers.get("content-type") ?? "";
+                if (imgRes.ok && ct.startsWith("image/")) {
+                    imageBytes = Buffer.from(await imgRes.arrayBuffer());
+                    finalImageUrl = urlToFetch;
+                } else {
+                    console.error(`[discovery] Pollinations ${label} non-image: status=${imgRes.status} ct=${ct}`);
+                    if (imgRes.status === 402) { pollinationsBlocked = true; break; }
+                }
+            } catch (e: any) {
+                console.error(`[discovery] Pollinations ${label} error: ${e?.message}`);
+            }
+            if (!imageBytes && !pollinationsBlocked && label === "primary") await delay(2_000);
+        }
+
+        // Fallback HF: si Pollinations falló
+        if (!imageBytes) {
+            try {
+                const hfKey = process.env.HUGGINGFACE_API_KEY || "";
+                if (hfKey) {
+                    console.log(`[discovery] Pollinations bloqueado, intentando HuggingFace FLUX para "${niche.name}"`);
+                    const pt = niche.productType ?? "coloring-book";
+                    const hfPrompt = pt === "printable-poster"
+                        ? `${niche.name}, professional printable wall art poster, vibrant colors, premium illustration`
+                        : `${niche.name}, coloring page illustration, thick black outlines, white background, line art`;
+                    const hfRes = await fetch(
+                        "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+                        {
+                            method: "POST",
+                            headers: {
+                                Authorization: `Bearer ${hfKey.trim()}`,
+                                "Content-Type": "application/json",
+                                "x-use-cache": "false",
+                            },
+                            body: JSON.stringify({ inputs: hfPrompt }),
+                            signal: AbortSignal.timeout(45_000),
+                        }
+                    );
+                    const ct = hfRes.headers.get("content-type") ?? "";
+                    if (hfRes.ok && ct.includes("image/")) {
+                        imageBytes = Buffer.from(await hfRes.arrayBuffer());
+                        console.log(`[discovery] HuggingFace OK para "${niche.name}"`);
+                    } else {
+                        console.warn(`[discovery] HuggingFace falló: status=${hfRes.status} ct=${ct}`);
+                    }
+                }
+            } catch (hfErr: any) {
+                console.warn(`[discovery] HuggingFace error: ${hfErr?.message}`);
+            }
+        }
+
+        io?.emit("autopilot:log", { nicheId: String(niche._id), message: imageBytes ? `🖼️ Imagen lista para "${niche.name}"` : `⚠️ No se pudo descargar imagen, enviando URL` });
 
         // Create pending action
         const action = await TelegramAction.create({
@@ -303,11 +364,22 @@ async function runDiscovery(
         ].filter(Boolean).join("\n");
 
         const canDiscovery = await shouldNotify("autopilot.discovery");
-        const msgId = canDiscovery ? await sendTelegramPhotoDiscovery({
-            imageUrl: sampleUrl,
-            caption,
-            actionId: String(action._id),
-        }) : null;
+        let msgId: number | null = null;
+        if (canDiscovery) {
+            if (imageBytes) {
+                // Binary upload: more reliable, no URL-download race condition with Pollinations
+                const rows = [[
+                    { text: "🚀 Continuar", callback_data: `continuar:${String(action._id)}` },
+                    { text: "⏭️ Omitir", callback_data: `omitir:${String(action._id)}` },
+                    { text: "🗑️ Descartar", callback_data: `descartar:${String(action._id)}` },
+                ]];
+                msgId = await sendTelegramImageWithButtons(imageBytes, caption, rows);
+            }
+            if (!msgId) {
+                // Fallback: URL-based (or text-only if photo also fails)
+                msgId = await sendTelegramPhotoDiscovery({ imageUrl: finalImageUrl, caption, actionId: String(action._id) });
+            }
+        }
 
         if (msgId) { action.messageId = msgId; await action.save(); }
         io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📩 Esperando tu decisión en Telegram para "${niche.name}"` });
@@ -1006,20 +1078,56 @@ async function runPipeline(
 
                 for (let variant = 0; variant < aiVariantsNeeded; variant++) {
                     const seed = Math.floor(Math.random() * 999999);
-                    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(coverPrompt)}?model=${model}&width=768&height=1024&nologo=true&seed=${seed}`;
+                    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(coverPrompt)}?model=${model}&width=768&height=1024&seed=${seed}`;
+                    let imgBuf: Buffer | null = null;
                     try {
-                        const imgBuf = await withImageSlot(`cover-v${variant}:${nicheIdStr}`, async () => {
-                            const imgRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(90_000) });
-                            if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
-                            return Buffer.from(await imgRes.arrayBuffer());
-                        }, nicheScore);
+                        if (!isPollinationsBlocked()) {
+                            imgBuf = await withImageSlot(`cover-v${variant}:${nicheIdStr}`, async () => {
+                                const imgRes = await pollinationsFetch(pollinationsUrl, { signal: AbortSignal.timeout(90_000) });
+                                if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
+                                const ct = imgRes.headers.get("content-type") ?? "";
+                                if (!ct.startsWith("image/")) throw new Error(`Pollinations returned ${ct}`);
+                                return Buffer.from(await imgRes.arrayBuffer());
+                            }, nicheScore);
+                        }
+                    } catch (pollErr: any) {
+                        console.warn(`[autopilot] cover Pollinations variant ${variant + 1} failed: ${pollErr.message}`);
+                    }
 
-                        // Upload the buffer directly — avoids a second Pollinations round-trip
-                        const candidateUrl = await uploadBuffer(imgBuf, `ai-cover-${variant}`) ?? pollinationsUrl;
-                        candidateUrls.push(candidateUrl);
-                        io?.emit("autopilot:log", { nicheId: nicheIdStr, message: `🖼️ Variante IA ${variant + 1}/${aiVariantsNeeded} lista` });
-                    } catch (varErr: any) {
-                        console.warn(`[autopilot] cover AI variant ${variant + 1} failed: ${varErr.message}`);
+                    // HF fallback si Pollinations falló o está bloqueado
+                    if (!imgBuf) {
+                        try {
+                            const hfKey = process.env.HUGGINGFACE_API_KEY || "";
+                            if (hfKey) {
+                                io?.emit("autopilot:log", { nicheId: nicheIdStr, message: `↩️ Pollinations bloqueado — usando HF para portada ${variant + 1}` });
+                                const hfRes = await fetch(
+                                    "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+                                    {
+                                        method: "POST",
+                                        headers: { Authorization: `Bearer ${hfKey}`, "Content-Type": "application/json", "x-use-cache": "false" },
+                                        body: JSON.stringify({ inputs: coverPrompt }),
+                                        signal: AbortSignal.timeout(45_000),
+                                    }
+                                );
+                                if (hfRes.ok && (hfRes.headers.get("content-type") ?? "").includes("image/")) {
+                                    const raw = Buffer.from(await hfRes.arrayBuffer());
+                                    const sharpMod = await import("sharp");
+                                    imgBuf = await sharpMod.default(raw).resize(768, 1024, { fit: "fill" }).jpeg({ quality: 92 }).toBuffer();
+                                }
+                            }
+                        } catch (hfErr: any) {
+                            console.warn(`[autopilot] cover HF variant ${variant + 1} failed: ${hfErr.message}`);
+                        }
+                    }
+
+                    if (imgBuf) {
+                        const candidateUrl = await uploadBuffer(imgBuf, `ai-cover-${variant}`) ?? "";
+                        if (candidateUrl) {
+                            candidateUrls.push(candidateUrl);
+                            io?.emit("autopilot:log", { nicheId: nicheIdStr, message: `🖼️ Variante IA ${variant + 1}/${aiVariantsNeeded} lista` });
+                        }
+                    } else {
+                        console.warn(`[autopilot] cover AI variant ${variant + 1} — sin imagen`);
                     }
                 }
 

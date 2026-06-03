@@ -39,6 +39,8 @@ type ServerToClientEvents = {
   "telegram:notification": (payload: { message: string; type?: "success" | "info" | "warning" | "error" }) => void;
   "telegram:open-pdf": (payload: { nicheId: string; nicheName: string; catalogIds: string[] }) => void;
   "catalogs:updated": () => void;
+  "logs:line": (payload: { t: number; level: "info" | "warn" | "error"; msg: string }) => void;
+  "vault:rejected": (payload: { id: string; catalogId: string; catalogName: string; nicheIds: string[]; imageUrl: string; reason: string; score: number }) => void;
 };
 
 type ClientToServerEvents = Record<string, never>;

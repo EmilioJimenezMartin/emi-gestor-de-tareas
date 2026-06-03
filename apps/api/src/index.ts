@@ -35,6 +35,8 @@ import { registerBookDraftRoutes } from "./routes/book-drafts.js";
 import { registerRejectedImageRoutes } from "./routes/rejected-images.js";
 import { startTelegramPolling } from "./lib/telegram-polling.js";
 import { Settings } from "./models/settings.js";
+import { initLogStreamer, getLogBuffer } from "./lib/log-streamer.js";
+import { getPollinationsStatus, setPollinationsToken } from "./lib/pollinations-circuit.js";
 
 const env = loadEnv(process.env);
 
@@ -46,8 +48,14 @@ await app.register(cors, {
 });
 
 const io = registerSocket(app, env);
+initLogStreamer(io);
 
 app.get("/health", async () => ({ ok: true, mongo: getMongoStatus() }));
+app.get("/system/logs", async () => ({ logs: getLogBuffer() }));
+app.get("/system/status", async () => ({
+    mongo: getMongoStatus(),
+    pollinations: getPollinationsStatus(),
+}));
 
 const deps: { io: typeof io; agenda?: Agenda } = { io };
 
@@ -234,6 +242,11 @@ const seedSettings = async () => {
       { $setOnInsert: { key: "QUALITY_VAULT_TELEGRAM_NOTIFY", value: "0", is_secret: false } },
       { upsert: true, new: true }
     );
+    await Settings.findOneAndUpdate(
+      { key: "POLLINATIONS_TOKEN" },
+      { $setOnInsert: { key: "POLLINATIONS_TOKEN", value: process.env.POLLINATIONS_TOKEN || "", is_secret: true } },
+      { upsert: true, new: true }
+    );
     // Migrate pipeline flags for niches that predate the flags
     try {
         const { Niche: NicheModel } = await import("./models/niche.js");
@@ -302,6 +315,11 @@ const onMongoConnected = async () => {
     await seedSettings();
     seeded = true;
   }
+  // Load Pollinations token from DB into the circuit breaker cache
+  try {
+    const tokenSetting = await Settings.findOne({ key: "POLLINATIONS_TOKEN" });
+    if (tokenSetting?.value) setPollinationsToken(String(tokenSetting.value));
+  } catch { /* ignore if DB not ready yet */ }
   await startAgendaOnce();
   // Always call so agenda is injected even on reconnects / late agenda start
   startTelegramPolling(io, deps.agenda);

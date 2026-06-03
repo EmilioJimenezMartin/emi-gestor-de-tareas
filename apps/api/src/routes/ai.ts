@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import axios from "axios";
 import { Settings } from "../models/settings.js";
 import { getMongoStatus } from "../lib/mongo.js";
+import { isPollinationsBlocked, markPollinationsBlocked } from "../lib/pollinations-circuit.js";
 
 const nextAllowedAtByKey = new Map<string, number>();
 
@@ -317,105 +318,84 @@ export async function registerAIRoutes(app: FastifyInstance) {
             // --- HUGGING FACE ---
             if (provider === "Hugging Face" && apiKey) {
                 try {
-                    app.log.info({ provider, modelId }, "AI image: trying Hugging Face");
-                    // Formato robusto de URL para Inference API
-                    const hfUrl = `https://api-inference.huggingface.co/models/${modelId.trim()}`;
+                    const hfModelId = typeof modelId === "string" && modelId.trim().length > 0
+                        ? modelId.trim()
+                        : "black-forest-labs/FLUX.1-schnell";
+                    const hfUrl = `https://router.huggingface.co/hf-inference/models/${hfModelId}`;
+                    app.log.info({ hfUrl }, "AI image: trying Hugging Face");
 
                     const attempts = 3;
                     let lastErr: any = null;
 
                     for (let attempt = 1; attempt <= attempts; attempt++) {
                         try {
-                            const response = await axios({
-                                url: hfUrl,
+                            const hfBody = JSON.stringify({
+                                inputs: prompt,
+                                parameters: {
+                                    ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
+                                    ...(steps ? { num_inference_steps: steps } : {}),
+                                    ...(guidanceScale ? { guidance_scale: guidanceScale } : {}),
+                                },
+                            });
+                            const hfRes = await fetch(hfUrl, {
                                 method: "POST",
                                 headers: {
                                     Authorization: `Bearer ${apiKey.trim()}`,
                                     "Content-Type": "application/json",
-                                    Accept: "image/png",
                                     "x-use-cache": "false",
                                 },
-                                data: {
-                                    inputs: prompt,
-                                    parameters: {
-                                        wait_for_model: true,
-                                        ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),
-                                        ...(steps ? { num_inference_steps: steps } : {}),
-                                        ...(guidanceScale ? { guidance_scale: guidanceScale } : {}),
-                                    },
-                                },
-                                responseType: "arraybuffer",
-                                timeout: 30000, // 30s
+                                body: hfBody,
+                                signal: AbortSignal.timeout(45_000),
                             });
 
-                            const contentType = String(response.headers?.["content-type"] || "");
-                            if (!contentType.includes("image/")) {
-                                // A veces HF responde JSON de error aunque pidamos arraybuffer.
-                                lastErr = new Error(`Hugging Face devolvió content-type no imagen: ${contentType}`);
-                                app.log.warn({ contentType }, "AI image: Hugging Face non-image response");
-                                break;
+                            const ct = hfRes.headers.get("content-type") ?? "";
+                            if (hfRes.ok && ct.includes("image/")) {
+                                return reply.type(ct).send(Buffer.from(await hfRes.arrayBuffer()));
                             }
-                            return reply.type("image/png").send(Buffer.from(response.data));
-                        } catch (e: any) {
-                            lastErr = e;
-                            const status = e?.response?.status;
-                            app.log.warn({ err: e, attempt, status }, "AI image: Hugging Face attempt failed");
-                            // 503 suele ser "Loading model" => espera 5s y reintenta
+
+                            const status = hfRes.status;
+                            lastErr = new Error(`HF status=${status} ct=${ct}`);
+                            app.log.warn({ status, ct, attempt }, "AI image: Hugging Face non-image response");
+
                             if (status === 503) {
-                                await new Promise((r) => setTimeout(r, 5000));
+                                await new Promise(r => setTimeout(r, 5000));
                                 continue;
                             }
                             if (status === 429) {
-                                const retryAfterSeconds = getRetryAfterSecondsFromError(e, 15);
-                                nextAllowedAtByKey.set(cooldownKey, Date.now() + retryAfterSeconds * 1000);
-                                const backoffMs = attempt === 1 ? 1000 : 3000;
-                                await new Promise((r) => setTimeout(r, backoffMs));
+                                const retryAfter = parseInt(hfRes.headers.get("retry-after") ?? "15", 10) || 15;
+                                nextAllowedAtByKey.set(cooldownKey, Date.now() + retryAfter * 1000);
+                                await new Promise(r => setTimeout(r, attempt === 1 ? 1000 : 3000));
+                                continue;
                             }
+                            break; // other error, don't retry
+                        } catch (e: any) {
+                            lastErr = e;
+                            app.log.warn({ err: e, attempt }, "AI image: Hugging Face attempt failed");
+                            if (attempt < attempts) await new Promise(r => setTimeout(r, 3000));
                         }
                     }
 
-                    const lastStatus = lastErr?.response?.status;
-                    if (lastStatus === 429) {
-                        // No devolvemos aquí: seguimos al fallback (Pollinations) para intentar servir algo.
-                        app.log.warn("AI image: Hugging Face rate limited, trying fallback");
-                    } else if (lastStatus === 401 || lastStatus === 403) {
-                        // Token inválido / sin permisos => fallback silencioso
-                        app.log.warn("AI image: Hugging Face auth failed, trying fallback");
-                    } else {
-                        app.log.warn({ err: lastErr }, "AI image: Hugging Face failed, trying fallback");
-                    }
+                    app.log.warn({ err: lastErr }, "AI image: Hugging Face failed, trying fallback");
                 } catch (hfError: any) {
                     app.log.warn({ err: hfError }, "AI image: Hugging Face failed, using fallback");
-                    // Si falla HF, seguimos al fallback de Pollinations abajo
                 }
             }
 
             // --- POLLINATIONS (explicit, passes model param) ---
-            if (provider === "Pollinations") {
+            if (provider === "Pollinations" && !isPollinationsBlocked()) {
                 try {
                     const modelParam = typeof modelId === "string" && modelId.trim().length > 0 ? modelId.trim() : "flux";
-                    const seed = fixedSeed ?? Math.floor(Math.random() * 1000000);
-                    const negParam = negativePrompt ? `&negative=${encodeURIComponent(negativePrompt)}` : "";
-                    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${encodeURIComponent(modelParam)}&width=${width || 1024}&height=${height || 1024}&seed=${seed}&nologo=true${negParam}`;
+                    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${encodeURIComponent(modelParam)}`;
                     app.log.info({ modelParam }, "AI image: using Pollinations direct");
-                    const response = await axios({
-                        url: pollinationsUrl,
-                        method: "GET",
-                        responseType: "arraybuffer",
-                        timeout: 30000,
-                    });
-                    return reply.type("image/png").send(Buffer.from(response.data));
-                } catch (pollErr: any) {
-                    const status = pollErr?.response?.status;
-                    if (status === 429) {
-                        const retryAfterSeconds = getRetryAfterSecondsFromError(pollErr, 20);
-                        nextAllowedAtByKey.set(cooldownKey, Date.now() + retryAfterSeconds * 1000);
-                        return reply
-                            .status(429)
-                            .header("Retry-After", String(retryAfterSeconds))
-                            .send({ error: "Límite de peticiones alcanzado", details: `Espera ${retryAfterSeconds}s` });
+                    const res = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(45_000) });
+                    const ct = res.headers.get("content-type") ?? "";
+                    if (res.ok && ct.startsWith("image/")) {
+                        return reply.type(ct).send(Buffer.from(await res.arrayBuffer()));
                     }
-                    app.log.warn({ err: pollErr, status }, "AI image: Pollinations direct failed, trying fallback");
+                    if (res.status === 402) markPollinationsBlocked();
+                    app.log.warn({ status: res.status, ct }, "AI image: Pollinations direct failed, trying fallback");
+                } catch (pollErr: any) {
+                    app.log.warn({ err: pollErr }, "AI image: Pollinations direct failed, trying fallback");
                 }
             }
 
@@ -560,64 +540,61 @@ export async function registerAIRoutes(app: FastifyInstance) {
                 }
             }
 
-            // --- FALLBACK / GOOGLE / SIMULACION ---
-            // Pollinations es el motor de respaldo más fiable para evitar el error 500
-            try {
-                const attempts = 3;
-                let lastErr: any = null;
-
-                for (let attempt = 1; attempt <= attempts; attempt++) {
-                    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width || 1024}&height=${height || 1024}&seed=${Math.floor(Math.random() * 1000000)}&nologo=true&enhance=false`;
-                    try {
-                        app.log.info({ attempt }, "AI image: trying Pollinations fallback");
-                        const response = await axios({
-                            url: pollinationsUrl,
-                            method: 'GET',
-                            responseType: 'arraybuffer',
-                            timeout: 20000 // 20s
-                        });
-                        return reply.type("image/png").send(Buffer.from(response.data));
-                    } catch (e: any) {
-                        lastErr = e;
-                        const status = e?.response?.status;
-                        app.log.warn({ err: e, attempt }, "AI image: Pollinations attempt failed");
-                        // Si nos rate-limitan, hacemos backoff corto y devolvemos 429 si no se recupera.
-                        if (status === 429) {
-                            const retryAfterSeconds = getRetryAfterSecondsFromError(e, 20);
-                            nextAllowedAtByKey.set(cooldownKey, Date.now() + retryAfterSeconds * 1000);
-                            const backoffMs = attempt === 1 ? 1000 : 3000;
-                            await new Promise((r) => setTimeout(r, backoffMs));
+            // --- FALLBACK 1: HuggingFace FLUX (always available, fastest) ---
+            const hfFallbackKey = process.env.HUGGINGFACE_API_KEY || apiKey || "";
+            if (hfFallbackKey && provider !== "Hugging Face") {
+                try {
+                    app.log.info("AI image: trying HF universal fallback");
+                    const hfRes = await fetch(
+                        "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+                        {
+                            method: "POST",
+                            headers: {
+                                Authorization: `Bearer ${hfFallbackKey.trim()}`,
+                                "Content-Type": "application/json",
+                                "x-use-cache": "false",
+                            },
+                            body: JSON.stringify({ inputs: prompt }),
+                            signal: AbortSignal.timeout(45_000),
                         }
+                    );
+                    const ct = hfRes.headers.get("content-type") ?? "";
+                    if (hfRes.ok && ct.includes("image/")) {
+                        return reply.type(ct).send(Buffer.from(await hfRes.arrayBuffer()));
                     }
+                    app.log.warn({ status: hfRes.status, ct }, "AI image: HF universal fallback failed");
+                } catch (e: any) {
+                    app.log.warn({ err: e }, "AI image: HF universal fallback failed");
                 }
-
-                const lastStatus = lastErr?.response?.status;
-                if (lastStatus === 429) {
-                    const retryAfter =
-                        (typeof lastErr?.response?.headers?.["retry-after"] === "string" && lastErr.response.headers["retry-after"]) ||
-                        "10";
-                    nextAllowedAtByKey.set(cooldownKey, Date.now() + Number(retryAfter) * 1000);
-                    return reply
-                        .status(429)
-                        .header("Retry-After", retryAfter)
-                        .send({
-                            error: "Límite de peticiones alcanzado",
-                            details: lastErr?.message || "Rate limited",
-                        });
-                }
-
-                return reply.status(503).send({
-                    error: "Servicio de generación de imágenes no disponible",
-                    details: lastErr?.message || "Pollinations failed",
-                });
-            } catch (pollError: any) {
-                // Último recurso: devolvemos un PNG válido para que el usuario no vea error
-                app.log.error({ err: pollError }, "AI image: fallback failed, returning transparent PNG");
-                return reply
-                    .header("X-AI-Fallback", "transparent-png")
-                    .type("image/png")
-                    .send(TRANSPARENT_PNG);
             }
+
+            // --- FALLBACK 2: Pollinations (solo si no está bloqueado) ---
+            if (!isPollinationsBlocked()) {
+                try {
+                    for (let attempt = 1; attempt <= 3; attempt++) {
+                        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=flux`;
+                        try {
+                            app.log.info({ attempt }, "AI image: trying Pollinations fallback");
+                            const res = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(45_000) });
+                            const ct = res.headers.get("content-type") ?? "";
+                            if (res.ok && ct.startsWith("image/")) {
+                                return reply.type(ct).send(Buffer.from(await res.arrayBuffer()));
+                            }
+                            if (res.status === 402) {
+                                markPollinationsBlocked();
+                                app.log.warn("AI image: Pollinations 402 (IP bloqueada) — skipping");
+                                break;
+                            }
+                            app.log.warn({ status: res.status, ct, attempt }, "AI image: Pollinations fallback non-image");
+                        } catch (e: any) {
+                            app.log.warn({ err: e, attempt }, "AI image: Pollinations fallback attempt failed");
+                        }
+                        if (attempt < 3) await new Promise(r => setTimeout(r, 3000));
+                    }
+                } catch { /* continue to 503 */ }
+            }
+
+            return reply.status(503).send({ error: "Servicio de generación de imágenes no disponible", details: "All providers failed" });
 
         } catch (error: any) {
             app.log.error({ err: error }, "AI image: critical proxy error");
@@ -1085,7 +1062,7 @@ Generate exactly 15 diverse, actionable trends. Focus on currently profitable an
 
         try {
             const response = await axios.post(
-                "https://api-inference.huggingface.co/models/caidas/swin2SR-realworld-sr-x4-64",
+                "https://router.huggingface.co/hf-inference/models/caidas/swin2SR-realworld-sr-x4-64",
                 imageBuffer,
                 {
                     headers: {

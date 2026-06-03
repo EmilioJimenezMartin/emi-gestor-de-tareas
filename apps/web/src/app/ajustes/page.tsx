@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,14 +24,30 @@ import {
     Store,
     Send,
     MessageCircle,
+    Terminal,
+    AlertTriangle,
+    CheckCircle2,
+    XCircle,
+    ArrowDown,
+    Trash2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { createApiSocket } from "@/lib/socket";
 import { toast } from "sonner";
 
+interface LogEntry { t: number; level: "info" | "warn" | "error"; msg: string; }
+
 export default function AjustesPage() {
     const [dbStatus, setDbStatus] = useState<"unknown" | "connected" | "disconnected" | "connecting" | "disconnecting">("connecting");
     const [isSaving, setIsSaving] = useState(false);
+
+    // Monitor del sistema
+    const [logs, setLogs] = useState<LogEntry[]>([]);
+    const [logFilter, setLogFilter] = useState<"all" | "warn" | "error">("all");
+    const [logSearch, setLogSearch] = useState("");
+    const [autoScroll, setAutoScroll] = useState(true);
+    const [pollinationsBlocked, setPollinationsBlocked] = useState(false);
+    const logsEndRef = useRef<HTMLDivElement>(null);
 
     const [defaultProvider, setDefaultProvider] = useState("google");
     const [defaultModel, setDefaultModel] = useState("gemini-2.5-flash");
@@ -47,6 +63,9 @@ export default function AjustesPage() {
 
     const [hfInferenceKey, setHfInferenceKey] = useState("");
     const [showHfInferenceKey, setShowHfInferenceKey] = useState(false);
+
+    const [pollinationsToken, setPollinationsToken] = useState("");
+    const [showPollinationsToken, setShowPollinationsToken] = useState(false);
 
     const [cloudinaryCloudName, setCloudinaryCloudName] = useState("af6b2f473a2cd3539b6d7bef68fb37");
     const [cloudinaryApiKey, setCloudinaryApiKey] = useState("");
@@ -99,6 +118,7 @@ export default function AjustesPage() {
                 if (map.has("GROQ_API_KEY")) setGroqApiKey(map.get("GROQ_API_KEY"));
                 if (map.has("OPENROUTER_API_KEY")) setOpenrouterApiKey(map.get("OPENROUTER_API_KEY"));
                 if (map.has("HUGGINGFACE_API_KEY")) setHfInferenceKey(map.get("HUGGINGFACE_API_KEY"));
+                if (map.has("POLLINATIONS_TOKEN")) setPollinationsToken(map.get("POLLINATIONS_TOKEN"));
                 if (map.has("CLOUDINARY_CLOUD_NAME")) setCloudinaryCloudName(map.get("CLOUDINARY_CLOUD_NAME"));
                 if (map.has("CLOUDINARY_API_KEY")) setCloudinaryApiKey(map.get("CLOUDINARY_API_KEY"));
                 if (map.has("CLOUDINARY_API_SECRET")) setCloudinaryApiSecret(map.get("CLOUDINARY_API_SECRET"));
@@ -129,10 +149,44 @@ export default function AjustesPage() {
                 setDbStatus(data.status);
             }
         });
+        socket.on("logs:line", (entry: LogEntry) => {
+            setLogs(prev => {
+                const next = [...prev, entry];
+                return next.length > 400 ? next.slice(-400) : next;
+            });
+        });
         socket.on("disconnect", () => setDbStatus("unknown"));
         socket.on("connect_error", () => setDbStatus("unknown"));
         return () => { socket.disconnect() };
     }, [apiUrl]);
+
+    // Carga historial de logs y estado del sistema al montar
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const [logsRes, statusRes] = await Promise.all([
+                    fetch(`${apiUrl}/system/logs`),
+                    fetch(`${apiUrl}/system/status`),
+                ]);
+                if (logsRes.ok) {
+                    const data = await logsRes.json() as { logs: LogEntry[] };
+                    setLogs(data.logs ?? []);
+                }
+                if (statusRes.ok) {
+                    const data = await statusRes.json() as { pollinations: { blocked: boolean } };
+                    setPollinationsBlocked(data.pollinations?.blocked ?? false);
+                }
+            } catch { /* silencioso */ }
+        };
+        load();
+    }, [apiUrl]);
+
+    // Auto-scroll al fondo cuando llegan nuevos logs
+    useEffect(() => {
+        if (autoScroll && logsEndRef.current) {
+            logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+        }
+    }, [logs, autoScroll]);
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -144,6 +198,7 @@ export default function AjustesPage() {
                 { key: "GROQ_API_KEY", value: groqApiKey },
                 { key: "OPENROUTER_API_KEY", value: openrouterApiKey },
                 { key: "HUGGINGFACE_API_KEY", value: hfInferenceKey },
+                { key: "POLLINATIONS_TOKEN", value: pollinationsToken },
                 { key: "CLOUDINARY_CLOUD_NAME", value: cloudinaryCloudName },
                 { key: "CLOUDINARY_API_KEY", value: cloudinaryApiKey },
                 { key: "CLOUDINARY_API_SECRET", value: cloudinaryApiSecret },
@@ -675,6 +730,89 @@ export default function AjustesPage() {
                                 </div>
                                 <p className="text-[10px] text-neutral-600 italic">Gratis en <span className="text-amber-400">huggingface.co/settings/tokens</span> · Crea un token de tipo "Read" o "Inference"</p>
                             </div>
+
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* Pollinations Image Engine */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Pollinations Image Engine</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20">IMÁGENES</Badge>
+                        <div className={`ml-auto flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[9px] font-bold ${pollinationsBlocked ? "bg-red-500/10 border-red-500/20 text-red-400" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"}`}>
+                            <div className={`w-1.5 h-1.5 rounded-full ${pollinationsBlocked ? "bg-red-400" : "bg-emerald-400 animate-pulse"}`} />
+                            {pollinationsBlocked ? "IP BLOQUEADA" : "OPERATIVO"}
+                        </div>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-fuchsia-500 to-pink-600 flex items-center justify-center text-white shadow-lg shadow-fuchsia-500/20 text-xl">
+                                    <Sparkles size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Pollinations · FLUX generativo</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Catálogos · Portadas · Descubrimiento · Fallback de HF</p>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/[0.04] p-4 space-y-3">
+                                <p className="text-[10px] font-black text-fuchsia-400 uppercase tracking-widest">Cómo funciona</p>
+                                <div className="space-y-2">
+                                    {[
+                                        { icon: "1", title: "Generación gratuita", desc: "image.pollinations.ai es gratis. El token no consume el saldo por imagen — desbloquea la IP y elimina rate limits." },
+                                        { icon: "2", title: "El saldo ($5)", desc: "El crédito no se recarga automáticamente. Solo se usaría si activamos features premium explícitas. Con uso normal de FLUX no se consume." },
+                                        { icon: "3", title: "Fallback automático", desc: "Si Pollinations falla → HuggingFace FLUX.1-schnell. Circuit breaker activo: si la IP se bloquea, salta a HF y lo reintenta cada hora." },
+                                    ].map(s => (
+                                        <div key={s.icon} className="flex gap-3">
+                                            <span className="w-5 h-5 rounded-full bg-fuchsia-500/15 border border-fuchsia-500/25 text-fuchsia-400 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">{s.icon}</span>
+                                            <div>
+                                                <p className="text-xs font-black text-white">{s.title}</p>
+                                                <p className="text-[11px] text-neutral-500 mt-0.5 leading-relaxed">{s.desc}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="space-y-2 max-w-xl">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">POLLINATIONS_TOKEN (Secret Key)</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showPollinationsToken ? "text" : "password"}
+                                            value={pollinationsToken}
+                                            onChange={(e) => setPollinationsToken(e.target.value)}
+                                            className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-fuchsia-500/40 transition-all"
+                                            placeholder="sk_..."
+                                        />
+                                        <button type="button" onClick={() => setShowPollinationsToken(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                            {showPollinationsToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] text-neutral-600 italic">
+                                        Con <span className="text-fuchsia-400">sk_</span> → sin bloqueo de IP, sin rate limit.
+                                        Obtener en <span className="text-fuchsia-400">auth.pollinations.ai</span>
+                                    </p>
+                                </div>
+
+                                <div className="rounded-xl border border-white/5 bg-white/[0.02] p-4 space-y-2">
+                                    <p className="text-[10px] font-black text-neutral-500 uppercase tracking-widest">Modelos gratuitos disponibles</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {["flux", "flux-realism", "flux-anime", "flux-3d", "turbo", "flux-pro", "stable-diffusion-3-5-large"].map(m => (
+                                            <span key={m} className="px-2 py-0.5 rounded-md bg-fuchsia-500/10 border border-fuchsia-500/15 text-[9px] font-mono text-fuchsia-300">{m}</span>
+                                        ))}
+                                    </div>
+                                    <p className="text-[10px] text-neutral-600 italic mt-1">Todos gratuitos via <span className="font-mono">image.pollinations.ai</span>. Actualmente usamos <span className="text-white font-mono">flux</span> por defecto.</p>
+                                </div>
+                            </div>
+
                             <div className="flex justify-end border-t border-white/5 pt-4">
                                 <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
                                     {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
@@ -1168,6 +1306,82 @@ export default function AjustesPage() {
                         </div>
                     </Card>
                 </div>
+
+                {/* ── MONITOR DEL SISTEMA ──────────────────────────────── */}
+                <section className="space-y-3 pt-6 border-t border-white/5">
+                    {/* Header */}
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                <Terminal size={16} />
+                            </div>
+                            <div>
+                                <h2 className="text-sm font-black text-white">Monitor del Sistema</h2>
+                                <p className="text-[10px] text-neutral-500">Logs en tiempo real · WebSocket</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[9px] font-bold ${pollinationsBlocked ? "bg-red-500/10 border-red-500/20 text-red-400" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"}`}>
+                                <div className={`w-1.5 h-1.5 rounded-full ${pollinationsBlocked ? "bg-red-400" : "bg-emerald-400 animate-pulse"}`} />
+                                {pollinationsBlocked ? "Pollinations BLOCKED" : "Pollinations OK"}
+                            </div>
+                            {logs.length > 0 && (
+                                <button onClick={() => setLogs([])} className="text-[9px] font-black uppercase text-neutral-700 hover:text-neutral-400 transition-colors tracking-widest">
+                                    Limpiar
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Filtros */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {(["all", "warn", "error"] as const).map(f => (
+                            <button key={f} onClick={() => setLogFilter(f)}
+                                className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-colors ${logFilter === f ? "bg-white/10 text-white" : "text-neutral-700 hover:text-neutral-400"}`}>
+                                {f === "all" ? "Todo" : f === "warn" ? "⚠ Avisos" : "✕ Errores"}
+                            </button>
+                        ))}
+                        <input type="text" placeholder="Buscar…" value={logSearch} onChange={e => setLogSearch(e.target.value)}
+                            className="ml-auto h-5 px-2 rounded bg-white/5 border border-white/8 text-[10px] text-neutral-300 placeholder:text-neutral-700 outline-none focus:border-white/20 w-40" />
+                    </div>
+
+                    {/* Terminal al estilo scraper */}
+                    <div className="rounded-2xl border border-white/8 bg-[#040404] overflow-hidden flex flex-col shadow-2xl">
+                        <div className="h-9 bg-white/[0.02] border-b border-white/5 flex items-center px-4 gap-2 shrink-0">
+                            <div className="flex gap-1.5">
+                                <div className="w-2.5 h-2.5 rounded-full bg-rose-500/40 border border-rose-500/60" />
+                                <div className="w-2.5 h-2.5 rounded-full bg-amber-500/40 border border-amber-500/60" />
+                                <div className={`w-2.5 h-2.5 rounded-full border ${logs.length > 0 ? "bg-emerald-500/60 border-emerald-500 animate-pulse" : "bg-emerald-500/20 border-emerald-500/40"}`} />
+                            </div>
+                            <span className="text-[9px] font-mono text-neutral-700 tracking-wider">system.log</span>
+                            <span className="ml-auto text-[9px] text-neutral-800">{logs.filter(l => (logFilter === "all" || l.level === logFilter) && (!logSearch || l.msg.toLowerCase().includes(logSearch.toLowerCase()))).length} líneas</span>
+                        </div>
+                        <div className="h-72 overflow-y-auto p-4 font-mono text-[10px] space-y-1 scrollbar-thin scrollbar-thumb-white/5">
+                            {logs.filter(l => (logFilter === "all" || l.level === logFilter) && (!logSearch || l.msg.toLowerCase().includes(logSearch.toLowerCase()))).length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-full gap-2 text-neutral-800">
+                                    <Terminal size={20} className="stroke-1 opacity-20" />
+                                    <p className="italic text-[9px]">Esperando logs…</p>
+                                </div>
+                            ) : (
+                                logs
+                                    .filter(l => (logFilter === "all" || l.level === logFilter) && (!logSearch || l.msg.toLowerCase().includes(logSearch.toLowerCase())))
+                                    .map((entry, i) => {
+                                        const time = new Date(entry.t).toTimeString().slice(0, 8);
+                                        const color = entry.level === "error" ? "text-rose-400 font-bold" : entry.level === "warn" ? "text-amber-400" : "text-neutral-400";
+                                        const prefix = entry.level === "error" ? "✕" : entry.level === "warn" ? "▲" : "›";
+                                        return (
+                                            <div key={i} className="flex gap-2.5 leading-relaxed animate-in fade-in duration-150">
+                                                <span className="text-neutral-800 shrink-0 select-none opacity-50 text-[9px]">{time}</span>
+                                                <span className={`shrink-0 select-none ${color}`}>{prefix}</span>
+                                                <span className={`${color} tracking-tight break-all`}>{entry.msg}</span>
+                                            </div>
+                                        );
+                                    })
+                            )}
+                            <div ref={logsEndRef} />
+                        </div>
+                    </div>
+                </section>
 
                 <div className="flex flex-col sm:flex-row items-center justify-between pt-10 gap-4 border-t border-white/5 overflow-hidden">
                     <div className="flex items-center gap-6">
