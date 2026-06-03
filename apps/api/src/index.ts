@@ -238,6 +238,31 @@ const seedSettings = async () => {
       { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
+      { key: "IMAGE_QUALITY_FILTER_ENABLED" },
+      { $setOnInsert: { key: "IMAGE_QUALITY_FILTER_ENABLED", value: "0", is_secret: false } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "IMAGE_QUALITY_MIN_WHITE_RATIO" },
+      { $setOnInsert: { key: "IMAGE_QUALITY_MIN_WHITE_RATIO", value: "0.45", is_secret: false } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "GUMROAD_ENABLED" },
+      { $setOnInsert: { key: "GUMROAD_ENABLED", value: "0", is_secret: false } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "GUMROAD_ACCESS_TOKEN" },
+      { $setOnInsert: { key: "GUMROAD_ACCESS_TOKEN", value: "", is_secret: true } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "GUMROAD_DEFAULT_PRICE" },
+      { $setOnInsert: { key: "GUMROAD_DEFAULT_PRICE", value: "4.99", is_secret: false } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    await Settings.findOneAndUpdate(
       { key: "QUALITY_VAULT_TELEGRAM_NOTIFY" },
       { $setOnInsert: { key: "QUALITY_VAULT_TELEGRAM_NOTIFY", value: "0", is_secret: false } },
       { upsert: true, returnDocument: 'after' }

@@ -8,6 +8,8 @@ import { withImageSlot, withLlmSlot } from "../lib/ai-semaphore.js";
 import { buildCollage, buildHalfColored, pickCatalogImages, type CollageLayout } from "../lib/cover-collage.js";
 import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
 import { pollinationsFetch, isPollinationsBlocked, markPollinationsBlocked } from "../lib/pollinations-circuit.js";
+import { getAmazonKeywords } from "../lib/amazon-autocomplete.js";
+import { createGumroadProduct } from "../lib/gumroad.js";
 
 type RunStats = { discovered: number; pipelineProcessed: number; catalogsCreated: number };
 
@@ -414,6 +416,69 @@ async function runDiscovery(
     return count;
 }
 
+function escapeXml(str: string): string {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function wrapText(text: string, maxChars: number): string[] {
+    const words = text.split(" ");
+    const lines: string[] = [];
+    let line = "";
+    for (const word of words) {
+        if (line.length + word.length + 1 <= maxChars) {
+            line = line ? line + " " + word : word;
+        } else {
+            if (line) lines.push(line);
+            line = word;
+        }
+    }
+    if (line) lines.push(line);
+    return lines.slice(0, 3); // max 3 lines
+}
+
+async function addCoverText(imageBuffer: Buffer, title: string, subtitle?: string): Promise<Buffer> {
+    const sharpMod = await import("sharp");
+    const meta = await sharpMod.default(imageBuffer).metadata();
+    const W = meta.width ?? 768;
+    const H = meta.height ?? 1024;
+
+    const fontSize = Math.min(56, Math.max(22, Math.floor(W / 13)));
+    const maxCharsPerLine = Math.floor(W / (fontSize * 0.58));
+    const lines = wrapText(title, maxCharsPerLine);
+    const lineHeight = fontSize * 1.35;
+    const blockHeight = lines.length * lineHeight + (subtitle ? fontSize * 0.65 + 10 : 0);
+    const textY = H - blockHeight - 32;
+    const gradientTop = Math.max(textY - 40, H * 0.5);
+
+    let textElements = "";
+    for (let i = 0; i < lines.length; i++) {
+        const y = textY + i * lineHeight + fontSize;
+        textElements += `<text x="${W / 2}" y="${y}" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="${fontSize}" font-weight="bold" fill="white">${escapeXml(lines[i])}</text>\n`;
+    }
+    if (subtitle) {
+        const subFontSize = Math.floor(fontSize * 0.48);
+        const subY = textY + lines.length * lineHeight + fontSize * 0.55;
+        textElements += `<text x="${W / 2}" y="${subY}" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="${subFontSize}" fill="rgba(255,255,255,0.82)">${escapeXml(subtitle)}</text>\n`;
+    }
+
+    const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}">
+  <defs>
+    <linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="black" stop-opacity="0"/>
+      <stop offset="100%" stop-color="black" stop-opacity="0.78"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="${gradientTop}" width="${W}" height="${H - gradientTop}" fill="url(#tg)"/>
+  ${textElements}
+</svg>`;
+
+    return sharpMod.default(imageBuffer)
+        .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
+        .jpeg({ quality: 92 })
+        .toBuffer();
+}
+
 function buildCoverPrompt(subject: string, style: string, productType: string): string {
     if (productType === "printable-poster") {
         return `Vibrant colorful wall art poster of ${subject}, decorative illustration, beautiful colors, portrait orientation, no text, no watermarks, clean design`;
@@ -742,7 +807,16 @@ async function runPipeline(
 
                     // ── 4. Image pages + blank after each ────────────────────────
                     let pagesAdded = 0;
+                    let qualitySkipped = 0;
                     const isColoringBook = (niche.productType ?? "coloring-book") === "coloring-book";
+
+                    // Load quality filter settings once before the loop
+                    const [qualFilterRow, minWhiteRow] = await Promise.all([
+                        Settings.findOne({ key: "IMAGE_QUALITY_FILTER_ENABLED" }).lean(),
+                        Settings.findOne({ key: "IMAGE_QUALITY_MIN_WHITE_RATIO" }).lean(),
+                    ]);
+                    const qualityFilterEnabled = (qualFilterRow as any)?.value === "1";
+                    const minWhiteRatio = parseFloat((minWhiteRow as any)?.value ?? "0.45") || 0.45;
 
                     for (let imgIdx = 0; imgIdx < allUrls.length; imgIdx++) {
                         if (imgIdx % 5 === 0) {
@@ -752,6 +826,21 @@ async function runPipeline(
                             const imgRes = await fetch(allUrls[imgIdx], { signal: AbortSignal.timeout(30_000) });
                             if (!imgRes.ok) continue;
                             const rawBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+                            // Quality filter: reject coloring pages that are too dark (not enough white pixels)
+                            if (qualityFilterEnabled && isColoringBook) {
+                                try {
+                                    const { data: grayPx, info: grayInfo } = await sharp.default(rawBuffer).greyscale().raw().toBuffer({ resolveWithObject: true });
+                                    const totalPx = grayInfo.width * grayInfo.height;
+                                    let whitePx = 0;
+                                    for (let p = 0; p < grayPx.length; p++) if (grayPx[p] > 200) whitePx++;
+                                    const whiteRatio = whitePx / totalPx;
+                                    if (whiteRatio < minWhiteRatio) {
+                                        qualitySkipped++;
+                                        continue;
+                                    }
+                                } catch { /* if check fails, include the image */ }
+                            }
 
                             let cleanBuffer = rawBuffer;
                             if (isColoringBook) {
@@ -789,6 +878,9 @@ async function runPipeline(
                         }
                     }
 
+                    if (qualitySkipped > 0) {
+                        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🔍 Filtro de calidad: ${qualitySkipped} imagen${qualitySkipped !== 1 ? "es" : ""} rechazada${qualitySkipped !== 1 ? "s" : ""} de ${allUrls.length} totales` });
+                    }
                     if (pagesAdded === 0) throw new Error("No se pudieron insertar imágenes en el PDF");
 
                     const pdfBytes = await pdfDoc.save();
@@ -883,6 +975,15 @@ async function runPipeline(
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📝 Generando listings KDP (EN + ES) para "${niche.name}"…` });
             let seoOk = false;
             try {
+                // Get real Amazon search terms to anchor keywords in the listing
+                const amazonKws = await getAmazonKeywords(niche.name, 8);
+                const extrasCtx = amazonKws.length > 0
+                    ? `Real Amazon search terms for this niche: ${amazonKws.join(", ")}`
+                    : undefined;
+                if (amazonKws.length > 0) {
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🔍 Keywords Amazon reales: ${amazonKws.slice(0, 4).join(", ")}…` });
+                }
+
                 const fetchListing = (lang: string) => withLlmSlot(`seo-${lang}:${String(niche._id)}`, () =>
                     fetch(`${base}/ai/generate-text`, {
                         method: "POST",
@@ -892,6 +993,7 @@ async function runPipeline(
                             niche: niche.name,
                             productType: niche.productType ?? "coloring-book",
                             language: lang,
+                            ...(extrasCtx ? { extras: extrasCtx } : {}),
                         }),
                         signal: AbortSignal.timeout(90_000),
                     })
@@ -1034,9 +1136,16 @@ async function runPipeline(
                 const base = `http://localhost:${port}`;
                 const isColoringBook = (niche.productType ?? "coloring-book") === "coloring-book";
 
-                // Helper: upload a local buffer to Cloudinary, returns URL
-                const uploadBuffer = async (buf: Buffer, label: string): Promise<string | null> => {
+                // Helper: add title text overlay then upload to Cloudinary
+                const titleText = listing?.title || coverSubject;
+                const uploadBuffer = async (rawBuf: Buffer, label: string): Promise<string | null> => {
                     try {
+                        let buf = rawBuf;
+                        try {
+                            buf = await addCoverText(rawBuf, titleText);
+                        } catch (textErr: any) {
+                            console.warn(`[autopilot] cover text overlay failed for ${label}: ${textErr.message}`);
+                        }
                         const dataUrl = `data:image/jpeg;base64,${buf.toString("base64")}`;
                         const r = await fetch(`${base}/cloudinary/upload`, {
                             method: "POST",
@@ -1166,6 +1275,40 @@ async function runPipeline(
                     nicheId: String(niche._id),
                     message: `✅ ${candidateUrls.length} portada${candidateUrls.length > 1 ? "s" : ""} generada${candidateUrls.length > 1 ? "s" : ""} → "${niche.name}" PUBLICADO`,
                 });
+
+                // ── Gumroad auto-publish (if enabled) ──────────────────────────
+                try {
+                    const [gmEnabledRow, gmTokenRow, gmPriceRow] = await Promise.all([
+                        Settings.findOne({ key: "GUMROAD_ENABLED" }).lean(),
+                        Settings.findOne({ key: "GUMROAD_ACCESS_TOKEN" }).lean(),
+                        Settings.findOne({ key: "GUMROAD_DEFAULT_PRICE" }).lean(),
+                    ]);
+                    const gmEnabled = (gmEnabledRow as any)?.value === "1";
+                    const gmToken = ((gmTokenRow as any)?.value ?? "").trim();
+                    if (gmEnabled && gmToken) {
+                        const mainListing = (niche.listings ?? [])[0];
+                        const gmPriceCents = Math.round(parseFloat((gmPriceRow as any)?.value ?? "4.99") * 100) || 499;
+                        const pdfUrl = (niche as any).bookPdfUrl as string | undefined;
+                        if (pdfUrl) {
+                            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `💚 Publicando en Gumroad…` });
+                            const product = await createGumroadProduct({
+                                accessToken: gmToken,
+                                name: mainListing?.title || niche.name,
+                                description: mainListing?.description || niche.name,
+                                priceInCents: gmPriceCents,
+                                contentUrl: pdfUrl,
+                                previewUrl: coverUrl,
+                            });
+                            if (product) {
+                                await Niche.findByIdAndUpdate(niche._id, { $set: { gumroadUrl: product.shortUrl } });
+                                io?.emit("niches:updated");
+                                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✅ Gumroad: ${product.shortUrl}` });
+                            }
+                        }
+                    }
+                } catch (gmErr: any) {
+                    console.warn(`[autopilot] Gumroad publish failed: ${gmErr.message}`);
+                }
 
                 if (await shouldNotify("pipeline.complete")) {
                     const listing0 = (niche.listings ?? [])[0];

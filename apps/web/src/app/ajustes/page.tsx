@@ -97,6 +97,16 @@ export default function AjustesPage() {
     const [showTelegramToken, setShowTelegramToken] = useState(false);
     const [testingTelegram, setTestingTelegram] = useState(false);
 
+    // Image quality filter
+    const [qualityFilterEnabled, setQualityFilterEnabled] = useState(false);
+    const [qualityMinWhite, setQualityMinWhite] = useState("45");
+
+    // Gumroad
+    const [gumroadEnabled, setGumroadEnabled] = useState(false);
+    const [gumroadToken, setGumroadToken] = useState("");
+    const [showGumroadToken, setShowGumroadToken] = useState(false);
+    const [gumroadPrice, setGumroadPrice] = useState("4.99");
+
     const apiUrl = useMemo(() => (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, ""), []);
 
     useEffect(() => {
@@ -133,6 +143,11 @@ export default function AjustesPage() {
                 if (map.has("HUGGINGFACE_USERNAME")) setHfUsername(map.get("HUGGINGFACE_USERNAME"));
                 if (map.has("TELEGRAM_BOT_TOKEN")) setTelegramToken(map.get("TELEGRAM_BOT_TOKEN"));
                 if (map.has("TELEGRAM_CHAT_ID")) setTelegramChatId(map.get("TELEGRAM_CHAT_ID"));
+                if (map.has("IMAGE_QUALITY_FILTER_ENABLED")) setQualityFilterEnabled(map.get("IMAGE_QUALITY_FILTER_ENABLED") === "1");
+                if (map.has("IMAGE_QUALITY_MIN_WHITE_RATIO")) setQualityMinWhite(String(Math.round(parseFloat(map.get("IMAGE_QUALITY_MIN_WHITE_RATIO")) * 100)));
+                if (map.has("GUMROAD_ENABLED")) setGumroadEnabled(map.get("GUMROAD_ENABLED") === "1");
+                if (map.has("GUMROAD_ACCESS_TOKEN")) setGumroadToken(map.get("GUMROAD_ACCESS_TOKEN"));
+                if (map.has("GUMROAD_DEFAULT_PRICE")) setGumroadPrice(map.get("GUMROAD_DEFAULT_PRICE"));
 
             } catch (err) {
                 console.error(err);
@@ -213,7 +228,11 @@ export default function AjustesPage() {
                 { key: "HUGGINGFACE_USERNAME", value: hfUsername },
                 { key: "TELEGRAM_BOT_TOKEN", value: telegramToken },
                 { key: "TELEGRAM_CHAT_ID", value: telegramChatId },
-
+                { key: "IMAGE_QUALITY_FILTER_ENABLED", value: qualityFilterEnabled ? "1" : "0" },
+                { key: "IMAGE_QUALITY_MIN_WHITE_RATIO", value: String(parseFloat(qualityMinWhite) / 100 || 0.45) },
+                { key: "GUMROAD_ENABLED", value: gumroadEnabled ? "1" : "0" },
+                { key: "GUMROAD_ACCESS_TOKEN", value: gumroadToken },
+                { key: "GUMROAD_DEFAULT_PRICE", value: gumroadPrice },
             ];
             const res = await fetch(`${apiUrl}/settings`, {
                 method: "PATCH",
@@ -1379,6 +1398,94 @@ export default function AjustesPage() {
                                     })
                             )}
                             <div ref={logsEndRef} />
+                        </div>
+                    </div>
+                </section>
+
+                {/* ── Filtro de calidad de imágenes ─────────────────────────── */}
+                <section className="space-y-6">
+                    <div className="flex flex-col gap-1">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Filtro de Calidad de Imágenes</h2>
+                        <p className="text-sm text-neutral-500">Descarta imágenes demasiado oscuras antes de incluirlas en el PDF del libro.</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-6 space-y-5">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-bold text-white">Activar filtro de calidad</p>
+                                <p className="text-xs text-neutral-500 mt-0.5">Solo aplica a libros de colorear. Las páginas con menos blanco del umbral se descartan.</p>
+                            </div>
+                            <button
+                                onClick={() => setQualityFilterEnabled(v => !v)}
+                                className={`relative w-12 h-6 rounded-full transition-colors ${qualityFilterEnabled ? "bg-emerald-500" : "bg-white/10"}`}
+                            >
+                                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${qualityFilterEnabled ? "left-6" : "left-0.5"}`} />
+                            </button>
+                        </div>
+                        <div className={`space-y-2 transition-opacity ${qualityFilterEnabled ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
+                            <label className="text-xs font-black uppercase tracking-widest text-neutral-500">Mínimo de píxeles blancos (%)</label>
+                            <div className="flex items-center gap-4">
+                                <input
+                                    type="range" min="20" max="80" step="5"
+                                    value={qualityMinWhite}
+                                    onChange={e => setQualityMinWhite(e.target.value)}
+                                    className="flex-1 accent-emerald-500"
+                                />
+                                <span className="text-lg font-black text-white w-12 text-right">{qualityMinWhite}%</span>
+                            </div>
+                            <p className="text-[10px] text-neutral-600">Valor recomendado: 45%. Una página de colorear bien generada tiene 60–80% de blanco. Por debajo de 45% la imagen suele estar quemada o mal generada.</p>
+                        </div>
+                    </div>
+                </section>
+
+                {/* ── Gumroad ──────────────────────────────────────────────── */}
+                <section className="space-y-6">
+                    <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-2xl font-bold text-white tracking-tight italic">Gumroad</h2>
+                            <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400 border border-white/10">Desactivado</span>
+                        </div>
+                        <p className="text-sm text-neutral-500">Publica automáticamente el PDF en Gumroad al completar el pipeline. Requiere Access Token de la API de Gumroad.</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-6 space-y-5">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-bold text-white">Publicación automática</p>
+                                <p className="text-xs text-neutral-500 mt-0.5">Crea el producto en Gumroad tras generar la portada. El PDF se sube con el listing SEO generado.</p>
+                            </div>
+                            <button
+                                onClick={() => setGumroadEnabled(v => !v)}
+                                className={`relative w-12 h-6 rounded-full transition-colors ${gumroadEnabled ? "bg-emerald-500" : "bg-white/10"}`}
+                            >
+                                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${gumroadEnabled ? "left-6" : "left-0.5"}`} />
+                            </button>
+                        </div>
+                        <div className="space-y-4">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-black uppercase tracking-widest text-neutral-500">Access Token</label>
+                                <div className="relative">
+                                    <input
+                                        type={showGumroadToken ? "text" : "password"}
+                                        value={gumroadToken}
+                                        placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                        onChange={e => setGumroadToken(e.target.value)}
+                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white placeholder-neutral-600 focus:outline-none focus:border-emerald-500/40 transition-all pr-10"
+                                    />
+                                    <button type="button" onClick={() => setShowGumroadToken(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                        {showGumroadToken ? "🙈" : "👁️"}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-neutral-600">Genera tu token en gumroad.com → Settings → Advanced → Access Token.</p>
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-black uppercase tracking-widest text-neutral-500">Precio por defecto ($)</label>
+                                <input
+                                    type="number" min="0" step="0.01"
+                                    value={gumroadPrice}
+                                    onChange={e => setGumroadPrice(e.target.value)}
+                                    className="w-32 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white focus:outline-none focus:border-emerald-500/40 transition-all"
+                                />
+                                <p className="text-[10px] text-neutral-600">0 = gratis. Se aplica a todos los libros publicados automáticamente.</p>
+                            </div>
                         </div>
                     </div>
                 </section>
