@@ -9491,12 +9491,6 @@ export function KdpFactoryApp() {
                     )}
                 </div>
 
-            {/* ══ SECCIÓN: RADAR INSIGHTS ═══════════════════════════════════ */}
-            <section className="space-y-5">
-                <SectionHeader icon={<Sparkles size={16} />} title="Radar Insights" subtitle="Análisis IA del historial de productos detectados" color="violet" size="md" />
-                <RadarInsightsPanel apiUrl={API_BASE_URL} />
-            </section>
-
             </div>
         );
     };

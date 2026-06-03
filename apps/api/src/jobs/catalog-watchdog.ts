@@ -3,6 +3,48 @@ import { Catalog } from "../models/catalog.js";
 import { activateNextQueued } from "../lib/catalog-queue.js";
 import { sendTelegram, shouldNotify } from "../lib/telegram.js";
 
+async function triggerAutoPilotContinue(agenda: Agenda, catalogId: string, nicheIds: string[], io: any): Promise<void> {
+    if (!nicheIds.length) return;
+    try {
+        const { Niche } = await import("../models/niche.js");
+        for (const nicheId of nicheIds) {
+            const niche = await Niche.findById(nicheId).lean();
+            if (!(niche as any)?.autoPilotEnabled || (niche as any).phase !== "catalog") continue;
+            const allCats = await Catalog.find({ nicheIds: nicheId }).lean();
+            if (!allCats.length) continue;
+            const allDone = allCats.every(
+                (c: any) => c.status === "completed" || c.status === "cancelled" || c.status === "failed"
+            );
+            if (!allDone) continue;
+
+            const allImages: string[] = [];
+            for (const cat of allCats) {
+                for (const img of (cat as any).images ?? []) {
+                    if (img.url) allImages.push(img.url as string);
+                }
+            }
+            for (let i = allImages.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [allImages[i], allImages[j]] = [allImages[j], allImages[i]];
+            }
+            await Niche.findByIdAndUpdate(nicheId, { $set: { phase: "libro", catalogImageOrder: allImages } });
+            io?.emit("niches:updated");
+            io?.emit("autopilot:log", { nicheId, message: `✅ [Watchdog] ${allImages.length} imágenes listas → generando libro PDF` });
+            console.log(`[watchdog] checkAutoPilotContinue: niche ${nicheId} advanced to libro, ${allImages.length} images`);
+
+            let scheduled = false;
+            try { await agenda.schedule("in 5 seconds", "autopilot-run", {}); scheduled = true; } catch { /* fallback below */ }
+            if (!scheduled) {
+                const port = process.env.PORT || 3001;
+                void fetch(`http://localhost:${port}/autopilot/run`, { method: "POST" }).catch(() => {});
+            }
+            break;
+        }
+    } catch (e: any) {
+        console.error(`[watchdog] triggerAutoPilotContinue failed for catalog ${catalogId}:`, e?.message);
+    }
+}
+
 const JOB_NAME = "catalog-watchdog";
 const STUCK_THRESHOLD_MS = 10 * 60 * 1000;    // 10 min without progress = stuck (force-skip slot)
 const SMART_STUCK_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2h stuck = smart retry with simplified prompt
@@ -113,6 +155,7 @@ export function defineCatalogWatchdog(agenda: Agenda, io: any) {
                     io?.emit("catalog:progress", { catalogId, status: "cancelled", current: fresh.images.length, total: fresh.totalImages, skipped: fresh.skippedImages ?? 0, lastError: fresh.lastError });
                     io?.emit("catalog:completed", { catalogId });
                     void activateNextQueued(agenda, io);
+                    void triggerAutoPilotContinue(agenda, catalogId, fresh.nicheIds ?? [], io);
                     await shouldNotify("watchdog.restart").then(ok => {
                         if (ok) sendTelegram(`⛔ <b>Catálogo cancelado</b>\n"${fresh.name}" — ${MAX_AUTO_RESTARTS} reintentos fallidos. Libera el slot.`).catch(() => {});
                     });
@@ -142,6 +185,7 @@ export function defineCatalogWatchdog(agenda: Agenda, io: any) {
                 if (isComplete) {
                     io?.emit("catalog:completed", { catalogId });
                     await activateNextQueued(agenda, io);
+                    void triggerAutoPilotContinue(agenda, catalogId, fresh.nicheIds ?? [], io);
                 } else {
                     await agenda.schedule("in 5 seconds", "generate-catalog-image", { catalogId });
                 }
@@ -232,6 +276,33 @@ export function defineCatalogWatchdog(agenda: Agenda, io: any) {
             await shouldNotify("watchdog.restart").then(ok => {
                 if (ok) sendTelegram(`🔄 <b>Catálogo reiniciado</b>\n"${(catalog as any).name}" — ${strategyDesc} (intento ${restartCount + 1}/${MAX_AUTO_RESTARTS})`).catch(() => {});
             });
+        }
+
+        // ── 4. Niches stuck in "catalog" phase with all catalogs terminal ────────
+        // Safety net: if checkAutoPilotContinue or autopilot-run polling missed the transition,
+        // force-advance here so the pipeline never stalls indefinitely.
+        try {
+            const { Niche } = await import("../models/niche.js");
+            const catalogPhaseNiches = await Niche.find({
+                autoPilotEnabled: true,
+                status: "active",
+                phase: "catalog",
+            }).lean();
+
+            for (const niche of catalogPhaseNiches) {
+                const nicheId = String(niche._id);
+                const allCats = await Catalog.find({ nicheIds: nicheId }).lean();
+                if (!allCats.length) continue;
+                const allDone = allCats.every(
+                    (c: any) => c.status === "completed" || c.status === "cancelled" || c.status === "failed"
+                );
+                if (!allDone) continue;
+
+                console.log(`[watchdog] Niche ${nicheId} "${(niche as any).name}" stuck in catalog phase — all ${allCats.length} catalogs terminal, forcing libro transition`);
+                void triggerAutoPilotContinue(agenda, "", [nicheId], io);
+            }
+        } catch (e: any) {
+            console.error(`[watchdog] Error in catalog-phase safety net: ${e?.message}`);
         }
     });
 }

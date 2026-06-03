@@ -263,11 +263,19 @@ async function checkAutoPilotContinue(tag: string, catalogId: string, nicheIds: 
             });
             console.log(`${tag} All catalogs done for niche ${nicheId} — advanced to libro, ${allImages.length} images shuffled`);
 
-            // Schedule autopilot-run to handle SEO + cover (persisted in MongoDB, survives restarts)
+            // Schedule autopilot-run to handle libro → seo → cover (Agenda + direct HTTP fallback)
+            let scheduled = false;
             try {
                 await agenda.schedule("in 5 seconds", "autopilot-run", {});
+                scheduled = true;
             } catch (schedErr) {
                 console.error(`${tag} Failed to schedule follow-up autopilot-run:`, schedErr);
+            }
+            if (!scheduled) {
+                const port = process.env.PORT || 3001;
+                void fetch(`http://localhost:${port}/autopilot/run`, { method: "POST" }).catch(
+                    (e: any) => console.error(`${tag} HTTP fallback trigger failed:`, e)
+                );
             }
             break;
         }

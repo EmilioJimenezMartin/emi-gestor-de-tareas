@@ -539,7 +539,9 @@ async function runPipeline(
                 ).catch(() => {});
             }
 
-            await agenda.schedule("in 10 seconds", "autopilot-run", {}).catch((e: any) => console.error("[autopilot] catalog follow-up schedule failed:", e));
+            // Process libro in the same run — don't break the chain with a scheduled job
+            // (scheduled fallback stays as safety net in case this run aborts early)
+            await agenda.now("autopilot-run", {}).catch((e: any) => console.error("[autopilot] catalog follow-up schedule failed:", e));
             processed++;
             continue;
         }
