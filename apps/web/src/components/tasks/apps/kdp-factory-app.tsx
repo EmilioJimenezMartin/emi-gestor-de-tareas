@@ -4900,7 +4900,7 @@ export function KdpFactoryApp() {
                         {pipelineNiches.length === 0 && (
                             <p className="text-sm text-neutral-600 text-center py-8">No hay nichos.</p>
                         )}
-                        <div className={`space-y-3${inConfig ? " max-h-[320px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent" : ""}`}>
+                        <div className={`space-y-3 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent ${inConfig ? "max-h-[320px]" : "max-h-[60vh]"}`}>
                             {pipelineNiches.map(n => {
                                 const isStuck = computeIsStuck(n);
                                 const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
@@ -5003,8 +5003,8 @@ export function KdpFactoryApp() {
                                                     {nichos.length}
                                                 </span>
                                             </div>
-                                            {/* Niche cards — scrollable in config */}
-                                            <div className={`space-y-2${inConfig ? " max-h-[300px] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent" : ""}`}>
+                                            {/* Niche cards — always scrollable, height differs by context */}
+                                            <div className={`space-y-2 overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent ${inConfig ? "max-h-[300px]" : "max-h-[55vh]"}`}>
                                             {nichos.map(n => {
                                                 const isStuck = computeIsStuck(n);
                                                 const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;

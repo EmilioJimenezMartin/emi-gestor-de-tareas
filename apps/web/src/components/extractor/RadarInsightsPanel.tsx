@@ -228,8 +228,8 @@ export function RadarInsightsPanel({ apiUrl }: Props) {
                     </div>
 
                     {/* Summary card */}
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-                        <p className="text-[11px] text-neutral-300 leading-relaxed">{current.analysis.summary}</p>
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+                        <p className="text-sm text-neutral-200 leading-relaxed">{current.analysis.summary}</p>
                     </div>
 
                     {/* Charts row */}
@@ -264,24 +264,24 @@ export function RadarInsightsPanel({ apiUrl }: Props) {
                     {/* Emerging niches + Recommendations */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Emerging niches */}
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-4">
                             <div className="flex items-center gap-2">
-                                <Zap size={12} className="text-amber-400" />
-                                <span className="text-[10px] font-black text-white uppercase tracking-widest italic">Nichos emergentes</span>
+                                <Zap size={13} className="text-amber-400" />
+                                <span className="text-xs font-black text-white uppercase tracking-widest italic">Nichos emergentes</span>
                             </div>
                             {current.analysis.emergingNiches.length === 0 ? (
-                                <p className="text-[9px] text-neutral-700 italic">Sin nichos emergentes detectados</p>
+                                <p className="text-[11px] text-neutral-700 italic">Sin nichos emergentes detectados</p>
                             ) : (
-                                <div className="space-y-2">
+                                <div className="space-y-3">
                                     {current.analysis.emergingNiches.map((n, i) => (
-                                        <div key={i} className="space-y-0.5">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[10px] font-black text-white">{n.name}</span>
-                                                <span className={`inline-flex items-center h-4 px-1.5 rounded text-[7px] font-black uppercase border ${CONFIDENCE_STYLE[n.confidence]}`}>
+                                        <div key={i} className="space-y-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-[13px] font-black text-white">{n.name}</span>
+                                                <span className={`inline-flex items-center h-5 px-2 rounded text-[8px] font-black uppercase border ${CONFIDENCE_STYLE[n.confidence]}`}>
                                                     {n.confidence}
                                                 </span>
                                             </div>
-                                            <p className="text-[9px] text-neutral-500 leading-snug">{n.reason}</p>
+                                            <p className="text-[11px] text-neutral-400 leading-snug">{n.reason}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -289,19 +289,19 @@ export function RadarInsightsPanel({ apiUrl }: Props) {
                         </div>
 
                         {/* Recommendations */}
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 space-y-4">
                             <div className="flex items-center gap-2">
-                                <Sparkles size={12} className="text-emerald-400" />
-                                <span className="text-[10px] font-black text-white uppercase tracking-widest italic">Recomendaciones</span>
+                                <Sparkles size={13} className="text-emerald-400" />
+                                <span className="text-xs font-black text-white uppercase tracking-widest italic">Recomendaciones</span>
                             </div>
                             {current.analysis.recommendations.length === 0 ? (
-                                <p className="text-[9px] text-neutral-700 italic">Sin recomendaciones</p>
+                                <p className="text-[11px] text-neutral-700 italic">Sin recomendaciones</p>
                             ) : (
-                                <ol className="space-y-2">
+                                <ol className="space-y-3">
                                     {current.analysis.recommendations.map((r, i) => (
-                                        <li key={i} className="flex items-start gap-2">
-                                            <span className="shrink-0 w-4 h-4 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-[8px] font-black flex items-center justify-center mt-0.5">{i + 1}</span>
-                                            <span className="text-[9px] text-neutral-400 leading-snug">{r}</span>
+                                        <li key={i} className="flex items-start gap-2.5">
+                                            <span className="shrink-0 w-5 h-5 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-[9px] font-black flex items-center justify-center mt-0.5">{i + 1}</span>
+                                            <span className="text-[11px] text-neutral-300 leading-relaxed">{r}</span>
                                         </li>
                                     ))}
                                 </ol>
@@ -333,15 +333,15 @@ export function RadarInsightsPanel({ apiUrl }: Props) {
                                     className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left hover:bg-white/[0.02] transition-colors ${current?._id === h._id ? "bg-violet-500/5" : ""}`}
                                 >
                                     <div className="flex items-center gap-2 min-w-0">
-                                        <span className="text-[9px] text-neutral-400 shrink-0">
+                                        <span className="text-[10px] text-neutral-400 shrink-0">
                                             {new Date(h.createdAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit" })}
                                         </span>
-                                        <span className="text-[8px] text-neutral-600 truncate">
-                                            {h.filters.totalProducts} productos · {h.filters.platforms.join(", ") || "todas"}
+                                        <span className="text-[9px] text-neutral-600 truncate">
+                                            {h.filters.totalProducts} productos · {h.filters.platforms.slice(0, 3).join(", ")}{h.filters.platforms.length > 3 ? ` +${h.filters.platforms.length - 3}` : ""}
                                         </span>
                                     </div>
                                     {current?._id === h._id && (
-                                        <span className="shrink-0 h-4 px-1.5 rounded-full bg-violet-500/15 border border-violet-500/25 text-[7px] text-violet-400 font-black uppercase">activo</span>
+                                        <span className="shrink-0 h-4 px-1.5 rounded-full bg-violet-500/15 border border-violet-500/25 text-[8px] text-violet-400 font-black uppercase">activo</span>
                                     )}
                                 </button>
                             ))}
@@ -354,7 +354,7 @@ export function RadarInsightsPanel({ apiUrl }: Props) {
             {historyLoaded && history.length === 0 && !analyzing && (
                 <div className="flex flex-col items-center justify-center gap-3 py-12 rounded-2xl border border-white/8 border-dashed">
                     <Sparkles size={24} className="text-neutral-700" />
-                    <p className="text-[10px] text-neutral-600 font-medium">Pulsa &quot;Analizar&quot; para generar tu primer insight</p>
+                    <p className="text-[11px] text-neutral-600 font-medium">Pulsa &quot;Analizar&quot; para generar tu primer insight</p>
                 </div>
             )}
         </div>
