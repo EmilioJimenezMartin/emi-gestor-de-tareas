@@ -229,23 +229,57 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             }
 
             // Build Pollinations sample image URL
-            // Use the first line of the AI-generated (or rule-based) prompt as scene description
             const sceneDesc = (prompt.split("\n")[0]?.trim()) || (niche as any).name;
+
+            // Detect subject type for targeted anatomy safeguards
+            const sceneLC = sceneDesc.toLowerCase();
+            const hasAnimal = /\b(cat|dog|fox|rabbit|bunny|bear|wolf|lion|tiger|horse|dragon|bird|owl|butterfly|fish|deer|unicorn|panda|koala|puppy|kitten|elephant|giraffe|penguin|turtle|dinosaur|frog|snake|parrot|hamster|hedgehog|sloth|octopus|whale|dolphin|crab|duck)\b/.test(sceneLC);
+            const hasPerson = /\b(girl|boy|woman|man|person|child|fairy|mermaid|witch|princess|prince|angel|elf|wizard|baby|kid|human|figure|warrior|knight|pirate)\b/.test(sceneLC);
+
+            const anatomyGuard = [
+                hasAnimal ? "anatomically correct, correct number of limbs, well-proportioned body" : "",
+                hasPerson ? "correct human anatomy, exactly two arms and two legs, five fingers per hand, proper body proportions" : "",
+            ].filter(Boolean).join(", ");
+
+            // Negative prompt covers the most common Flux failure modes
+            const negativeBase = "extra limbs, deformed anatomy, bad proportions, mutated, disfigured, extra fingers, fused fingers, missing limbs, malformed, blurry, low quality, watermark, signature, text, logo";
+            const negativeAnimal = hasAnimal ? ", extra legs, wrong number of legs, deformed paws, fused limbs" : "";
+            const negativePerson = hasPerson ? ", three arms, three legs, extra hands, bad hands, extra limbs, wrong anatomy" : "";
+            const negativePrompt = negativeBase + negativeAnimal + negativePerson;
+
             let samplePrompt: string;
             let sampleModel = "flux";
+
             if (productType === "printable-poster") {
-                samplePrompt = `${sceneDesc}, professional printable wall art poster, vibrant cohesive color palette, premium illustration quality, balanced centered composition, suitable for A4 print, no text no watermarks`;
+                samplePrompt = [
+                    sceneDesc,
+                    anatomyGuard,
+                    "professional printable wall art poster, vibrant cohesive color palette, premium flat illustration quality, balanced centered composition, clean vector art style, suitable for A4 print, no text no watermarks no borders",
+                ].filter(Boolean).join(", ");
                 sampleModel = "flux-realism";
             } else if (style === "anime") {
-                samplePrompt = `${sceneDesc}, anime coloring page illustration, ultra thick crisp black outlines 4px weight, pure white background, zero shading zero grey tones, black and white line art only, high contrast, intricate detailed scene, professional adult coloring book quality`;
+                samplePrompt = [
+                    sceneDesc,
+                    anatomyGuard,
+                    "anime manga coloring book page, ultra thick crisp black outlines 4px weight, pure white background, zero shading zero grey tones, black and white line art only, high contrast, detailed scene, professional adult coloring book quality, flat 2D style",
+                ].filter(Boolean).join(", ");
                 sampleModel = "flux-anime";
             } else if (style === "children") {
-                samplePrompt = `${sceneDesc}, children's coloring page, thick clean black outlines, pure white background, simple friendly rounded shapes, cute kawaii style, zero shading zero grey tones, professional coloring book illustration`;
+                samplePrompt = [
+                    sceneDesc,
+                    anatomyGuard,
+                    "children's coloring book page, thick clean black outlines, pure white background, simple friendly rounded shapes, cute kawaii style, zero shading zero grey tones, single centered subject, professional coloring book illustration, flat 2D line art",
+                ].filter(Boolean).join(", ");
             } else {
-                samplePrompt = `${sceneDesc}, professional adult coloring page illustration, ultra thick crisp black outlines 3-4px weight, pure white background, zero grey tones zero shading, black and white line art only, high contrast, intricate detailed scene, masterful illustration quality`;
+                samplePrompt = [
+                    sceneDesc,
+                    anatomyGuard,
+                    "professional adult coloring book page illustration, ultra thick crisp black outlines 3-4px weight, pure white background, zero grey tones zero shading, black and white line art only, high contrast, intricate detailed composition, masterful illustration quality, flat 2D style",
+                ].filter(Boolean).join(", ");
             }
+
             const seed = Math.floor(Math.random() * 99999);
-            const sampleUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(samplePrompt)}?model=${sampleModel}&width=1024&height=1024&nologo=true&seed=${seed}`;
+            const sampleUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(samplePrompt)}?model=${sampleModel}&width=1024&height=1024&nologo=true&seed=${seed}&negative=${encodeURIComponent(negativePrompt)}`;
             // Save the full Pollinations-ready prompt so catalog generation uses exactly this prompt
             await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: sampleUrl, discoveryImagePrompt: samplePrompt } });
             deps.io?.emit("niches:updated");

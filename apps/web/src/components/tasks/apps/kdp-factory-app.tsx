@@ -6045,6 +6045,12 @@ export function KdpFactoryApp() {
             </Card>
             )}
 
+            {/* ── Radar Insights ── */}
+            <section className="space-y-5">
+                <SectionHeader icon={<Sparkles size={16} />} title="Radar Insights" subtitle="Análisis IA del historial de productos detectados" color="violet" size="md" />
+                <RadarInsightsPanel apiUrl={API_BASE_URL} />
+            </section>
+
             {/* ── Productos ── */}
             <section className="space-y-6">
                 <div className="flex items-center justify-between gap-4">
