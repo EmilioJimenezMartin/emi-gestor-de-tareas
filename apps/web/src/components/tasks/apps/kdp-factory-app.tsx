@@ -4873,7 +4873,7 @@ export function KdpFactoryApp() {
                     </div>
                 </div>
 
-                <div className={`space-y-6${inConfig ? " max-h-[360px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent" : ""}`}>
+                <div className="space-y-6">
 
                     {/* ── LIST VIEW ── */}
                     {pipelineViewMode === "list" && <>
@@ -4900,7 +4900,7 @@ export function KdpFactoryApp() {
                         {pipelineNiches.length === 0 && (
                             <p className="text-sm text-neutral-600 text-center py-8">No hay nichos.</p>
                         )}
-                        <div className="space-y-3">
+                        <div className={`space-y-3${inConfig ? " max-h-[320px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent" : ""}`}>
                             {pipelineNiches.map(n => {
                                 const isStuck = computeIsStuck(n);
                                 const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
@@ -4993,8 +4993,8 @@ export function KdpFactoryApp() {
                                     const PhaseIcon = phase.icon;
                                     return (
                                         <div key={phase.id} className="flex-1 min-w-0 flex flex-col gap-2">
-                                            {/* Column header */}
-                                            <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${nichos.length > 0 ? `${phase.bg} ${phase.border}` : "border-white/5 bg-white/[0.01]"}`}>
+                                            {/* Column header — stays fixed */}
+                                            <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border shrink-0 ${nichos.length > 0 ? `${phase.bg} ${phase.border}` : "border-white/5 bg-white/[0.01]"}`}>
                                                 <PhaseIcon size={11} className={nichos.length > 0 ? phase.text : "text-neutral-700"} />
                                                 <span className={`text-[10px] font-black uppercase tracking-widest flex-1 ${nichos.length > 0 ? phase.text : "text-neutral-700"}`}>
                                                     {phase.label}
@@ -5003,7 +5003,8 @@ export function KdpFactoryApp() {
                                                     {nichos.length}
                                                 </span>
                                             </div>
-                                            {/* Niche cards */}
+                                            {/* Niche cards — scrollable in config */}
+                                            <div className={`space-y-2${inConfig ? " max-h-[300px] overflow-y-auto pr-0.5 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent" : ""}`}>
                                             {nichos.map(n => {
                                                 const isStuck = computeIsStuck(n);
                                                 const imgPct = n.catalogs.imgsTotal > 0 ? Math.round((n.catalogs.imgsDone / n.catalogs.imgsTotal) * 100) : 0;
@@ -5064,6 +5065,7 @@ export function KdpFactoryApp() {
                                                     <span className="text-[10px] text-neutral-800 font-black">—</span>
                                                 </div>
                                             )}
+                                            </div>
                                         </div>
                                     );
                                 })}
