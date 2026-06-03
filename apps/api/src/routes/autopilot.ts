@@ -32,6 +32,53 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
         }
     });
 
+    // ── EMERGENCY STOP — kills everything immediately ────────────────────────
+    app.post("/autopilot/emergency-stop", async (_req, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const results: Record<string, number | string> = {};
+
+            // 1. Set abort flag (persistent so new runs don't start)
+            await Settings.findOneAndUpdate(
+                { key: "AUTOPILOT_ABORT" },
+                { key: "AUTOPILOT_ABORT", value: "1" },
+                { upsert: true }
+            );
+
+            // 2. Cancel ALL pending agenda jobs
+            if (deps.agenda) {
+                const cancelled = await deps.agenda.cancel({});
+                results.agendaJobsCancelled = cancelled;
+            }
+
+            // 3. Cancel all running/queued catalogs
+            const { Catalog } = await import("../models/catalog.js");
+            const { modifiedCount } = await (Catalog as any).updateMany(
+                { status: { $in: ["running", "queued"] } },
+                { $set: { status: "cancelled", lastError: "Freno de emergencia activado" } }
+            );
+            results.catalogsCancelled = modifiedCount;
+
+            // 4. Mark any running autopilot runs as aborted
+            const { AutopilotRun: AR } = await import("../models/autopilot-run.js");
+            await (AR as any).updateMany(
+                { status: "running" },
+                { $set: { status: "aborted", finishedAt: new Date(), abortReason: "Freno de emergencia activado" } }
+            );
+
+            deps.io?.emit("autopilot:log", { message: "🚨 FRENO DE EMERGENCIA — todos los procesos detenidos" });
+            deps.io?.emit("autopilot:done", { processed: 0, timestamp: new Date().toISOString() });
+            deps.io?.emit("catalogs:updated");
+            deps.io?.emit("niches:updated");
+
+            console.log(`[emergency-stop] Jobs cancelados=${results.agendaJobsCancelled} Catálogos cancelados=${results.catalogsCancelled}`);
+
+            return reply.send({ ok: true, ...results });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // ── Force-advance a niche to the next pipeline phase ────────────────────
     app.post("/autopilot/niche/:id/advance", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
@@ -101,6 +148,12 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
         if (!ensureMongo(reply)) return;
         try {
             if (!deps.agenda) return reply.status(503).send({ error: "Agenda no disponible" });
+            // Clear abort flag so the run actually executes
+            await Settings.findOneAndUpdate(
+                { key: "AUTOPILOT_ABORT" },
+                { key: "AUTOPILOT_ABORT", value: "0" },
+                { upsert: true }
+            );
             await deps.agenda.now("autopilot-run", {});
             await sendTelegram("🚀 <b>Auto-Pilot</b>\nEjecución manual iniciada");
             return reply.send({ ok: true, message: "Auto-Pilot lanzado" });

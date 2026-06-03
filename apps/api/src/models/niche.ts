@@ -55,6 +55,7 @@ export interface INiche extends Document {
     pipelineHasPdf?: boolean;
     pipelineHasListings?: boolean;
     pipelineHasCover?: boolean;
+    pipelineErrors?: number;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -115,6 +116,7 @@ const NicheSchema = new Schema<INiche>(
         pipelineHasPdf: { type: Boolean, default: false },
         pipelineHasListings: { type: Boolean, default: false },
         pipelineHasCover: { type: Boolean, default: false },
+        pipelineErrors: { type: Number, default: 0 },
     },
     { timestamps: true }
 );

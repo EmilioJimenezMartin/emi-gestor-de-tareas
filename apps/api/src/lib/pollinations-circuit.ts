@@ -33,6 +33,10 @@ let _cachedToken = "";
 /** Llamar después de cargar settings desde MongoDB para cachear el token. */
 export function setPollinationsToken(token: string) {
     _cachedToken = token;
+    if (token) {
+        blockedUntil = 0; // con token la IP da igual — limpiar bloqueo existente
+        console.log("[pollinations-circuit] Token configurado — bloqueo de IP eliminado");
+    }
 }
 
 /** Headers de autenticación para Pollinations. Con sk_ token → sin x402, sin rate limit. */

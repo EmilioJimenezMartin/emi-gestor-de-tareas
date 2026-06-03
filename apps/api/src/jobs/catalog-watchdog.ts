@@ -198,6 +198,7 @@ export function defineCatalogWatchdog(agenda: Agenda, io: any) {
             updatedAt: { $lt: queuedStuckCutoff },
         }).lean();
 
+        const MAX_QUEUE_REACTIVATIONS = 3;
         for (const catalog of stuckQueued) {
             const catalogId = String(catalog._id);
             try {
@@ -209,8 +210,21 @@ export function defineCatalogWatchdog(agenda: Agenda, io: any) {
                 });
                 if (pending.length > 0) continue;
 
-                console.log(`[watchdog] Activating stuck queued catalog ${catalogId} "${(catalog as any).name}"`);
-                await Catalog.findByIdAndUpdate(catalogId, { status: "running" });
+                const reactivations = (catalog as any).retries ?? 0;
+                if (reactivations >= MAX_QUEUE_REACTIVATIONS) {
+                    await Catalog.findByIdAndUpdate(catalogId, {
+                        status: "cancelled",
+                        lastError: `Watchdog: cancelado tras ${MAX_QUEUE_REACTIVATIONS} reactivaciones sin éxito en estado queued`,
+                    });
+                    io?.emit("catalog:progress", { catalogId, status: "cancelled", current: 0, total: (catalog as any).totalImages, skipped: 0, lastError: "Watchdog: cancelado" });
+                    io?.emit("catalog:completed", { catalogId });
+                    console.warn(`[watchdog] Catalog ${catalogId} "${(catalog as any).name}" cancelled — ${MAX_QUEUE_REACTIVATIONS} queue reactivations exhausted`);
+                    sendTelegram(`⛔ <b>Catálogo cancelado</b>\n"${(catalog as any).name}" — ${MAX_QUEUE_REACTIVATIONS} intentos de activación fallidos`).catch(() => {});
+                    continue;
+                }
+
+                console.log(`[watchdog] Activating stuck queued catalog ${catalogId} "${(catalog as any).name}" (reactivation ${reactivations + 1}/${MAX_QUEUE_REACTIVATIONS})`);
+                await Catalog.findByIdAndUpdate(catalogId, { status: "running", $inc: { retries: 1 } });
                 io?.emit("catalog:progress", { catalogId, status: "running", current: (catalog as any).images?.length ?? 0, total: (catalog as any).totalImages, skipped: (catalog as any).skippedImages ?? 0, lastError: null });
                 await agenda.schedule("in 10 seconds", "generate-catalog-image", { catalogId });
             } catch (e: any) {

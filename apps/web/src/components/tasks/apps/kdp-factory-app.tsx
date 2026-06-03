@@ -1963,6 +1963,22 @@ export function KdpFactoryApp() {
         }
     };
 
+    const [emergencyStopping, setEmergencyStopping] = useState(false);
+    const emergencyStop = async () => {
+        setEmergencyStopping(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/autopilot/emergency-stop`, { method: "POST" });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            setApRunning(false);
+            toast.success(`🚨 Todo parado — ${data.agendaJobsCancelled ?? 0} jobs y ${data.catalogsCancelled ?? 0} catálogos cancelados`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error en freno de emergencia");
+        } finally {
+            setEmergencyStopping(false);
+        }
+    };
+
     const forceAdvanceNiche = async (nicheId: string, targetPhase?: string) => {
         try {
             const res = await fetch(`${API_BASE_URL}/autopilot/niche/${nicheId}/advance`, {
@@ -6797,6 +6813,18 @@ export function KdpFactoryApp() {
                                 </div>
                             );
                         })()}
+
+                        {/* EMERGENCY STOP */}
+                        <button
+                            onClick={() => void emergencyStop()}
+                            disabled={emergencyStopping}
+                            className="relative w-full flex items-center justify-center gap-2 h-12 rounded-xl bg-red-500/15 border border-red-500/40 text-red-400 hover:bg-red-500 hover:text-white hover:border-red-500 active:scale-95 transition-all text-sm font-black uppercase tracking-widest disabled:opacity-60 shadow-[0_0_20px_rgba(239,68,68,0.15)]"
+                        >
+                            {emergencyStopping
+                                ? <><span className="w-4 h-4 rounded-full border-2 border-red-400 border-t-transparent animate-spin" /> Parando todo…</>
+                                : <><StopCircle size={16} /> Freno de emergencia</>
+                            }
+                        </button>
 
                         {/* Action buttons */}
                         <div className="relative flex gap-2">

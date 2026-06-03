@@ -264,6 +264,8 @@ async function runDiscovery(
             );
             if (aiCore) {
                 sampleUrl = buildSampleUrl(niche.name, niche.styleCategory ?? "generic", niche.productType ?? "coloring-book", aiCore);
+                // Persist the enhanced prompt so catalog generation can build on it
+                await Niche.findByIdAndUpdate(niche._id, { $set: { discoveryImagePrompt: aiCore } });
                 io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ Prompt mejorado por IA → generando muestra…` });
             } else {
                 sampleUrl = buildSampleUrl(niche.name, niche.styleCategory ?? "generic", niche.productType ?? "coloring-book");
@@ -474,13 +476,14 @@ async function runPipeline(
                 const productType = niche.productType ?? "coloring-book";
                 const style = niche.styleCategory ?? "generic";
                 const fallbackPrompt = niche.generatedPrompt || niche.name;
+                const discoveryPrompt = (niche as any).discoveryImagePrompt as string | undefined;
 
-                // Generate a unique AI image prompt for every catalog slot
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🤖 Generando ${cfg.catalogsPerNiche} prompts únicos por IA…` });
+                // Generate a unique AI image prompt for every catalog slot, using the discovery prompt as anchor
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🤖 Generando ${cfg.catalogsPerNiche} prompts únicos por IA${discoveryPrompt ? " (usando prompt de muestra)" : ""}…` });
                 const catalogPrompts: string[] = [];
                 for (let i = 0; i < cfg.catalogsPerNiche; i++) {
                     const generated = await withLlmSlot(`catalog-prompt-${i}:${String(niche._id)}`, () =>
-                        generateCatalogPrompt(base, niche.name, productType, style)
+                        generateCatalogPrompt(base, niche.name, productType, style, discoveryPrompt, i)
                     );
                     catalogPrompts.push((generated as string | null) || fallbackPrompt);
                 }
@@ -965,9 +968,28 @@ async function runPipeline(
             if (!abort.aborted) {
                 processed++;
                 stats.pipelineProcessed++;
-                // Always schedule follow-up — on success (cover phase), on failure (retry seo)
-                const delay = seoOk ? "in 10 seconds" : "in 60 seconds";
-                await agenda.schedule(delay, "autopilot-run", {}).catch((e: any) => console.error("[autopilot] seo follow-up schedule failed:", e));
+                if (!seoOk) {
+                    // Increment persistent cross-run error counter
+                    const updated = await Niche.findByIdAndUpdate(
+                        niche._id,
+                        { $inc: { pipelineErrors: 1 } },
+                        { returnDocument: 'after' }
+                    );
+                    const errCount = updated?.pipelineErrors ?? 1;
+                    const MAX_PIPELINE_ERRORS = 5;
+                    if (errCount >= MAX_PIPELINE_ERRORS) {
+                        await Niche.findByIdAndUpdate(niche._id, { $set: { autoPilotEnabled: false } });
+                        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⛔ "${niche.name}": SEO falló ${errCount} veces — autopilot desactivado` });
+                        sendTelegram(`⛔ <b>Autopilot desactivado</b>\n"${niche.name}" — SEO falló ${errCount} veces seguidas. Intervención manual necesaria.`).catch(() => {});
+                    } else {
+                        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🔄 "${niche.name}": reintentando SEO en 60s (fallo ${errCount}/${MAX_PIPELINE_ERRORS})` });
+                        await agenda.schedule("in 60 seconds", "autopilot-run", {}).catch((e: any) => console.error("[autopilot] seo follow-up schedule failed:", e));
+                    }
+                } else {
+                    // SEO success — reset error counter and advance
+                    await Niche.findByIdAndUpdate(niche._id, { $set: { pipelineErrors: 0 } });
+                    await agenda.schedule("in 10 seconds", "autopilot-run", {}).catch((e: any) => console.error("[autopilot] seo follow-up schedule failed:", e));
+                }
             }
             continue;
         }
@@ -1163,15 +1185,29 @@ async function runPipeline(
                 }
 
             } catch (e: any) {
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error generando portada: ${e.message} — reintentando en 60s` });
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ Error generando portada: ${e.message}` });
                 consecutiveErrors++;
                 if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
                     abort.aborted = true;
                     abort.reason = `${MAX_CONSECUTIVE_ERRORS} errores consecutivos en generación de portada`;
                     io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⛔ ${abort.reason}. Deteniendo ciclo.` });
                 } else {
-                    // Retry cover after delay
-                    await agenda.schedule("in 60 seconds", "autopilot-run", {}).catch((e2: any) => console.error("[autopilot] cover retry schedule failed:", e2));
+                    // Increment persistent cross-run counter before retrying
+                    const updated = await Niche.findByIdAndUpdate(
+                        niche._id,
+                        { $inc: { pipelineErrors: 1 } },
+                        { returnDocument: 'after' }
+                    );
+                    const errCount = updated?.pipelineErrors ?? 1;
+                    const MAX_PIPELINE_ERRORS = 5;
+                    if (errCount >= MAX_PIPELINE_ERRORS) {
+                        await Niche.findByIdAndUpdate(niche._id, { $set: { autoPilotEnabled: false } });
+                        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⛔ "${niche.name}": portada falló ${errCount} veces — autopilot desactivado` });
+                        sendTelegram(`⛔ <b>Autopilot desactivado</b>\n"${niche.name}" — portada falló ${errCount} veces. Intervención manual necesaria.`).catch(() => {});
+                    } else {
+                        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🔄 "${niche.name}": reintentando portada en 60s (fallo ${errCount}/${MAX_PIPELINE_ERRORS})` });
+                        await agenda.schedule("in 60 seconds", "autopilot-run", {}).catch((e2: any) => console.error("[autopilot] cover retry schedule failed:", e2));
+                    }
                 }
             }
             if (!abort.aborted) { processed++; stats.pipelineProcessed++; }
@@ -1196,7 +1232,7 @@ async function checkUserAbort(abort: AbortSignal): Promise<void> {
 
 export function defineAutoPilotJob(agenda: Agenda, io: any) {
     // concurrency: 1 ensures only one autopilot run at a time — extra triggers queue automatically
-    agenda.define(AUTOPILOT_JOB_NAME, { concurrency: 1, lockLifetime: 45 * 60 * 1000 }, async (_job: Job) => {
+    agenda.define(AUTOPILOT_JOB_NAME, async (_job: Job) => {
         const port = process.env.PORT || 3001;
         const base = `http://localhost:${port}`;
         const tag = "[autopilot]";
@@ -1206,8 +1242,13 @@ export function defineAutoPilotJob(agenda: Agenda, io: any) {
         const abort: AbortSignal = { aborted: false, reason: "" };
         const stats: RunStats = { discovered: 0, pipelineProcessed: 0, catalogsCreated: 0 };
 
-        // Clear any stale abort flag from a previous /parar
-        await Settings.findOneAndUpdate({ key: "AUTOPILOT_ABORT" }, { value: "0" }).catch(() => {});
+        // Check if emergency stop / abort is active — if so, exit immediately without clearing the flag
+        // The flag is only cleared by an explicit /autopilot/run or /emergency-stop reset
+        const abortCheck = await Settings.findOne({ key: "AUTOPILOT_ABORT" }).lean().catch(() => null);
+        if ((abortCheck as any)?.value === "1") {
+            console.log(`[autopilot] Abort flag set — skipping run`);
+            return;
+        }
 
         // Clear stale phase-approve actions — these were used before the pipeline became fully automatic.
         // Any that remain would permanently block hasPendingAction() for their niche.
@@ -1255,5 +1296,5 @@ export function defineAutoPilotJob(agenda: Agenda, io: any) {
                 (processed > 0 ? `⚙️ ${processed} paso${processed !== 1 ? "s" : ""} de pipeline procesado${processed !== 1 ? "s" : ""}` : `ℹ️ Sin cambios en este ciclo`)
             ).catch(() => {});
         }
-    });
+    }, { concurrency: 1, lockLifetime: 45 * 60 * 1000 });
 }
