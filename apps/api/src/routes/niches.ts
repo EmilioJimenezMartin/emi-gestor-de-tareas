@@ -242,12 +242,23 @@ Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": st
 - description: HTML. Estructura: (1) <p> hook emocional con <strong> en 2-3 keywords, (2) <ul><li> 4-5 beneficios concretos, (3) <p> llamada a la acción. 450-650 chars visibles.
 - keywords: exactamente 7 frases de cola larga (2-5 palabras c/u), sin repetir palabras del título.`;
 
+                // Fetch latest radar insight summary for market context
+                let radarMarketContext = "";
+                try {
+                    const { RadarInsight } = await import("../models/radar-insight.js");
+                    const latestInsight = await RadarInsight.findOne({}).sort({ createdAt: -1 }).lean();
+                    if (latestInsight?.analysis?.summary) {
+                        radarMarketContext = `En cuanto a productos similares detectados recientemente, hemos obtenido la siguiente información de mercado: ${latestInsight.analysis.summary}`;
+                    }
+                } catch { /* non-blocking */ }
+
                 const context = [
                     `Nicho: ${(niche as any).name}`,
                     `Tipo de producto: ${pt}`,
                     ((niche as any).tags as string[]).length > 0 ? `Tags: ${((niche as any).tags as string[]).join(", ")}` : "",
                     (niche as any).styleCategory && (niche as any).styleCategory !== "generic" ? `Estilo visual: ${(niche as any).styleCategory}` : "",
                     (niche as any).description ? `Descripción del nicho: ${(niche as any).description}` : "",
+                    radarMarketContext,
                 ].filter(Boolean).join("\n");
 
                 const text = await generateTextWithLLM(KDP_SYSTEM, context);
