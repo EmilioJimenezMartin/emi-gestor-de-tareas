@@ -99,7 +99,7 @@ async function handleNicheDiscovery(
         const niche = await Niche.findByIdAndUpdate(
             tAction.nicheId,
             { $set: { autoPilotEnabled: true, status: "active", phase: "catalog" } },
-            { new: true }
+            { returnDocument: 'after' }
         ).lean();
 
         _io?.emit("niches:updated");

@@ -67,7 +67,7 @@ export async function registerIntegrationRoutes(app: FastifyInstance) {
             if (body.statusLabel !== undefined) update.statusLabel = body.statusLabel.trim();
             if (body.desc !== undefined) update.desc = body.desc.trim();
             if (body.url !== undefined) update.url = body.url.trim();
-            const integration = await Integration.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
+            const integration = await Integration.findByIdAndUpdate(id, { $set: update }, { returnDocument: 'after' }).lean();
             if (!integration) return reply.status(404).send({ error: "Integración no encontrada" });
             return reply.send({ integration });
         } catch (e: any) {

@@ -76,7 +76,7 @@ export async function registerFinanceRoutes(
     const updated = await FinanceMovementModel.findByIdAndUpdate(
       id,
       mongoUpdate,
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!updated) return reply.status(404).send({ error: "Movement not found" });

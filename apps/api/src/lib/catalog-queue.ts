@@ -35,7 +35,7 @@ export async function activateNextQueued(agenda: Agenda, io: any): Promise<void>
     const next = await Catalog.findOneAndUpdate(
         { status: "queued" },
         { $set: { status: "running" } },
-        { new: true, sort: { queueOrder: 1, createdAt: 1 } }
+        { returnDocument: 'after', sort: { queueOrder: 1, createdAt: 1 } }
     );
 
     if (!next) {

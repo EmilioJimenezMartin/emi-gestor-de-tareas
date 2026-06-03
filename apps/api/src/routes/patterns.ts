@@ -96,7 +96,7 @@ export async function registerPatternRoutes(app: FastifyInstance) {
             for (const k of allowed) {
                 if ((request.body ?? {})[k] !== undefined) update[k] = request.body[k];
             }
-            const pattern = await Pattern.findByIdAndUpdate(request.params.id, update, { new: true }).lean();
+            const pattern = await Pattern.findByIdAndUpdate(request.params.id, update, { returnDocument: 'after' }).lean();
             if (!pattern) return reply.status(404).send({ error: "Patrón no encontrado" });
             return reply.send({ pattern });
         } catch (err: any) {

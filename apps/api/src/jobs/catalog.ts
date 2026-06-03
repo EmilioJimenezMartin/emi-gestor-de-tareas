@@ -131,7 +131,7 @@ async function trackPromptMetric(prompt: string, productType: string, success: b
                 $set: { promptPreview: preview, lastUsed: new Date() },
                 $inc: { attempts: 1, successes: success ? 1 : 0, skips: success ? 0 : 1, totalScore: score },
             },
-            { upsert: true, new: true }
+            { upsert: true, returnDocument: 'after' }
         );
         if (doc) {
             doc.avgScore = doc.attempts > 0 ? Math.round(doc.totalScore / doc.attempts) : 0;

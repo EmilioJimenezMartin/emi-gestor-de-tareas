@@ -188,7 +188,7 @@ export async function registerExtractorRoutes(
             const doc = await ExtractedData.findOneAndUpdate(
                 { id },
                 { ...data, id },
-                { upsert: true, new: true }
+                { upsert: true, returnDocument: 'after' }
             );
             return reply.send({ success: true, data: doc });
         } catch (error: any) {

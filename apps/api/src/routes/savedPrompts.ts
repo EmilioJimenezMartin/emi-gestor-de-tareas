@@ -60,7 +60,7 @@ export async function registerSavedPromptsRoutes(app: FastifyInstance) {
                 if (promptParts.particulars !== undefined) update["promptParts.particulars"] = promptParts.particulars.trim();
             }
             if (aiModel) update.aiModel = aiModel;
-            const prompt = await SavedPrompt.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
+            const prompt = await SavedPrompt.findByIdAndUpdate(id, { $set: update }, { returnDocument: 'after' }).lean();
             if (!prompt) return reply.status(404).send({ error: "not found" });
             return reply.send({ prompt });
         } catch (e: any) {

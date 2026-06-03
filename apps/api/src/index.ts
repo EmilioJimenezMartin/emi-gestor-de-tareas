@@ -115,7 +115,7 @@ const seedSettings = async () => {
             is_secret: true,
           },
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
     }
     if (process.env.GOOGLE_API_KEY) {
@@ -128,124 +128,124 @@ const seedSettings = async () => {
             is_secret: true,
           },
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
     }
     await Settings.findOneAndUpdate(
       { key: "DEFAULT_LLM_PROVIDER" },
       { $setOnInsert: { key: "DEFAULT_LLM_PROVIDER", value: "google", is_secret: false } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "DEFAULT_LLM_MODEL" },
       { $setOnInsert: { key: "DEFAULT_LLM_MODEL", value: "gemini-2.5-flash", is_secret: false } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     // Cloudinary — cloud_name seeded; api_key and api_secret left empty for user to fill via UI
     await Settings.findOneAndUpdate(
       { key: "CLOUDINARY_CLOUD_NAME" },
       { $setOnInsert: { key: "CLOUDINARY_CLOUD_NAME", value: process.env.CLOUDINARY_CLOUD_NAME || "af6b2f473a2cd3539b6d7bef68fb37", is_secret: false } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "CLOUDINARY_API_KEY" },
       { $setOnInsert: { key: "CLOUDINARY_API_KEY", value: process.env.CLOUDINARY_API_KEY || "", is_secret: true } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "CLOUDINARY_API_SECRET" },
       { $setOnInsert: { key: "CLOUDINARY_API_SECRET", value: process.env.CLOUDINARY_API_SECRET || "", is_secret: true } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "IDEOGRAM_API_KEY" },
       { $setOnInsert: { key: "IDEOGRAM_API_KEY", value: process.env.IDEOGRAM_API_KEY || "", is_secret: true } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "FALAI_API_KEY" },
       { $setOnInsert: { key: "FALAI_API_KEY", value: process.env.FALAI_API_KEY || "", is_secret: true } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "SEGMIND_API_KEY" },
       { $setOnInsert: { key: "SEGMIND_API_KEY", value: process.env.SEGMIND_API_KEY || "", is_secret: true } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "GELATO_API_KEY" },
       { $setOnInsert: { key: "GELATO_API_KEY", value: process.env.GELATO_API_KEY || "", is_secret: true } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "GELATO_STORE_ID" },
       { $setOnInsert: { key: "GELATO_STORE_ID", value: process.env.GELATO_STORE_ID || "", is_secret: false } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "ETSY_API_KEY" },
       { $setOnInsert: { key: "ETSY_API_KEY", value: process.env.ETSY_API_KEY || "", is_secret: true } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "ETSY_API_SECRET" },
       { $setOnInsert: { key: "ETSY_API_SECRET", value: process.env.ETSY_API_SECRET || "", is_secret: true } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "ETSY_SHOP_ID" },
       { $setOnInsert: { key: "ETSY_SHOP_ID", value: process.env.ETSY_SHOP_ID || "", is_secret: false } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "ETSY_ACCESS_TOKEN" },
       { $setOnInsert: { key: "ETSY_ACCESS_TOKEN", value: "", is_secret: true } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "ETSY_REFRESH_TOKEN" },
       { $setOnInsert: { key: "ETSY_REFRESH_TOKEN", value: "", is_secret: true } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "PUBLIC_API_URL" },
       { $setOnInsert: { key: "PUBLIC_API_URL", value: "", is_secret: false } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "HUGGINGFACE_WRITE_TOKEN" },
       { $setOnInsert: { key: "HUGGINGFACE_WRITE_TOKEN", value: process.env.HUGGINGFACE_WRITE_TOKEN || "", is_secret: true } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "HUGGINGFACE_USERNAME" },
       { $setOnInsert: { key: "HUGGINGFACE_USERNAME", value: process.env.HUGGINGFACE_USERNAME || "", is_secret: false } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "KAGGLE_USERNAME" },
       { $setOnInsert: { key: "KAGGLE_USERNAME", value: process.env.KAGGLE_USERNAME || "", is_secret: false } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "KAGGLE_KEY" },
       { $setOnInsert: { key: "KAGGLE_KEY", value: process.env.KAGGLE_KEY || "", is_secret: true } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "QUALITY_CHECK_ENABLED" },
       { $setOnInsert: { key: "QUALITY_CHECK_ENABLED", value: "1", is_secret: false } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "QUALITY_VAULT_TELEGRAM_NOTIFY" },
       { $setOnInsert: { key: "QUALITY_VAULT_TELEGRAM_NOTIFY", value: "0", is_secret: false } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
       { key: "POLLINATIONS_TOKEN" },
       { $setOnInsert: { key: "POLLINATIONS_TOKEN", value: process.env.POLLINATIONS_TOKEN || "", is_secret: true } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     // Migrate pipeline flags for niches that predate the flags
     try {

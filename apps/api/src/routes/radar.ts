@@ -267,7 +267,7 @@ export async function registerRadarRoutes(
         const job = await RadarJob.findOneAndUpdate(
             {},
             { $set: { preNichos } },
-            { sort: { createdAt: -1 }, new: true }
+            { sort: { createdAt: -1 }, returnDocument: 'after' }
         ).lean();
         if (!job) return reply.status(404).send({ error: "No hay jobs" });
         return reply.send({ success: true });

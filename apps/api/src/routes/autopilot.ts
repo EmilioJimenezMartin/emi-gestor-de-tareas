@@ -145,7 +145,7 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
         try {
             const { id } = request.params as { id: string };
             const { enabled } = request.body as { enabled: boolean };
-            const niche = await Niche.findByIdAndUpdate(id, { $set: { autoPilotEnabled: enabled } }, { new: true }).lean();
+            const niche = await Niche.findByIdAndUpdate(id, { $set: { autoPilotEnabled: enabled } }, { returnDocument: 'after' }).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
             // When enabling autopilot on a niche already in a pipeline phase, kick off autopilot-run immediately
             if (enabled && deps.agenda) {

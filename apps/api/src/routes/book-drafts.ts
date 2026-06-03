@@ -52,7 +52,7 @@ export async function registerBookDraftRoutes(app: FastifyInstance) {
             if (body.pages !== undefined) { update.pages = body.pages; update.pageCount = body.pages.length; }
             if (body.pdfUrl !== undefined) update.pdfUrl = body.pdfUrl;
             if (body.nicheId !== undefined) update.nicheId = body.nicheId;
-            const draft = await BookDraft.findByIdAndUpdate(id, { $set: update }, { new: true });
+            const draft = await BookDraft.findByIdAndUpdate(id, { $set: update }, { returnDocument: 'after' });
             if (!draft) return reply.status(404).send({ error: "Draft no encontrado" });
             return reply.send({ draft });
         } catch (e: any) {

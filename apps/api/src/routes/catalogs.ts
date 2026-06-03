@@ -157,7 +157,7 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
             const updated = await Catalog.findByIdAndUpdate(
                 request.params.id,
                 { $pull: { images: { publicId } } },
-                { new: true }
+                { returnDocument: 'after' }
             );
 
             return reply.send({ success: true, catalog: updated });
@@ -202,7 +202,7 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
                 update.nicheIds = newNicheIds;
             }
             if (body.name?.trim()) update.name = body.name.trim();
-            const catalog = await Catalog.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
+            const catalog = await Catalog.findByIdAndUpdate(id, { $set: update }, { returnDocument: 'after' }).lean();
             if (!catalog) return reply.status(404).send({ error: "Catálogo no encontrado" });
             return reply.send({ catalog });
         } catch (e: any) {

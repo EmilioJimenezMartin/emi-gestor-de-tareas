@@ -836,7 +836,7 @@ async function runPipeline(
                                     nicheId: String(niche._id),
                                 },
                             },
-                            { upsert: true, new: true }
+                            { upsert: true, returnDocument: 'after' }
                         );
                         io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📚 Borrador de libro guardado en base de datos` });
                     } catch (draftErr: any) {

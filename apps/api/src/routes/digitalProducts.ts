@@ -71,7 +71,7 @@ export async function registerDigitalProductRoutes(app: FastifyInstance) {
             const op: Record<string, any> = { $set: update };
             if (push.earningsHistory) op.$push = { earningsHistory: push.earningsHistory };
 
-            const product = await DigitalProduct.findByIdAndUpdate(id, op, { new: true }).lean();
+            const product = await DigitalProduct.findByIdAndUpdate(id, op, { returnDocument: 'after' }).lean();
             if (!product) return reply.status(404).send({ error: "Producto no encontrado" });
             return reply.send({ product });
         } catch (e: any) {

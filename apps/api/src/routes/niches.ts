@@ -134,7 +134,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             if (request.body.pipelineHasListings !== undefined) update.pipelineHasListings = Boolean(request.body.pipelineHasListings);
             if (Array.isArray(request.body.coverCandidates)) update.coverCandidates = request.body.coverCandidates;
             if (request.body.backCoverUrl !== undefined) update.backCoverUrl = request.body.backCoverUrl;
-            const niche = await Niche.findByIdAndUpdate(id, { $set: update }, { new: true }).lean();
+            const niche = await Niche.findByIdAndUpdate(id, { $set: update }, { returnDocument: 'after' }).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
             // When autopilot is enabled on a niche that's already past the catalog phase, kick off autopilot-run
             if (update.autoPilotEnabled === true) {
@@ -158,7 +158,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             const niche = await Niche.findByIdAndUpdate(
                 id,
                 { $push: { royalties: { month: month.trim(), sales: Number(sales) || 0, revenue: Number(revenue) || 0 } } },
-                { new: true }
+                { returnDocument: 'after' }
             ).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
             return reply.send({ niche });
@@ -174,7 +174,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             const niche = await Niche.findByIdAndUpdate(
                 id,
                 { $pull: { royalties: { month: decodeURIComponent(month) } } },
-                { new: true }
+                { returnDocument: 'after' }
             ).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
             return reply.send({ niche });
@@ -283,7 +283,7 @@ Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": st
             const niche = await Niche.findByIdAndUpdate(
                 id,
                 { $push: { listings: { ...listingData, generatedAt: new Date() } }, $set: { pipelineHasListings: true } },
-                { new: true }
+                { returnDocument: 'after' }
             ).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
             return reply.send({ niche });
@@ -306,7 +306,7 @@ Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": st
             const niche = await Niche.findOneAndUpdate(
                 { _id: id, "listings._id": listingId },
                 { $set: update },
-                { new: true }
+                { returnDocument: 'after' }
             ).lean();
             if (!niche) return reply.status(404).send({ error: "Listing no encontrado" });
             return reply.send({ niche });
@@ -323,7 +323,7 @@ Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": st
             const niche = await Niche.findByIdAndUpdate(
                 id,
                 { $pull: { listings: { _id: listingId } } },
-                { new: true }
+                { returnDocument: 'after' }
             ).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
             // Clear flag if no listings remain

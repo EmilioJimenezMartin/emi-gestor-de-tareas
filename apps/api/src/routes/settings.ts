@@ -25,7 +25,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
         try {
             const { key, value } = request.body as { key: string; value: unknown };
             if (!key) return reply.status(400).send({ error: "key required" });
-            await Settings.findOneAndUpdate({ key }, { key, value }, { upsert: true, new: true });
+            await Settings.findOneAndUpdate({ key }, { key, value }, { upsert: true, returnDocument: 'after' });
             if (key === "POLLINATIONS_TOKEN") setPollinationsToken(String(value ?? ""));
             return reply.send({ success: true });
         } catch (error) {
@@ -50,7 +50,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
                     await Settings.findOneAndUpdate(
                         { key: update.key },
                         { key: update.key, value: update.value },
-                        { upsert: true, new: true }
+                        { upsert: true, returnDocument: 'after' }
                     );
                     if (update.key === "POLLINATIONS_TOKEN") {
                         setPollinationsToken(String(update.value ?? ""));

@@ -86,11 +86,11 @@ export async function registerTaskRoutes(
             const query = buildTaskQuery(id);
 
             // Using the Mongoose model but with strict: false (set in the model file)
-            // findOneAndUpdate with { new: true } returns the updated document
+            // findOneAndUpdate with { returnDocument: 'after' } returns the updated document
             const task = await Task.findOneAndUpdate(
                 query,
                 { $set: updateProps },
-                { new: true, runValidators: false }
+                { returnDocument: 'after', runValidators: false }
             );
 
             if (!task) {
@@ -128,7 +128,7 @@ export async function registerTaskRoutes(
             const task = await Task.findOneAndUpdate(
                 query,
                 { $push: { comments: comment } },
-                { new: true, runValidators: false }
+                { returnDocument: 'after', runValidators: false }
             );
 
             if (!task) {
@@ -163,7 +163,7 @@ export async function registerTaskRoutes(
                         "comments.$.updatedAt": new Date()
                     }
                 },
-                { new: true, runValidators: false }
+                { returnDocument: 'after', runValidators: false }
             );
 
             if (!task) {
@@ -187,7 +187,7 @@ export async function registerTaskRoutes(
             const task = await Task.findOneAndUpdate(
                 query,
                 { $pull: { comments: { id: commentId } } },
-                { new: true, runValidators: false }
+                { returnDocument: 'after', runValidators: false }
             );
 
             if (!task) {
