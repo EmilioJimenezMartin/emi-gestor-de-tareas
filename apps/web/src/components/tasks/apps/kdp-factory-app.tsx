@@ -3714,14 +3714,15 @@ export function KdpFactoryApp() {
         });
 
         socket.on("catalog:completed", (data: { catalogId: string }) => {
+            let label = "Catálogo";
             setIaCatalogs((prev) => {
                 const updated: IACatalogFE[] = prev.map((c) => (c._id === data.catalogId ? { ...c, status: "completed" as const, lastError: "" } : c));
                 const catalog = updated.find(c => c._id === data.catalogId);
-                const label = catalog?.name ?? "Catálogo";
+                label = catalog?.name ?? "Catálogo";
                 toast.success(`"${label}" completado · ${catalog?.images?.length ?? 0} imágenes`);
-                speak(`Catálogo ${label} completado`);
                 return updated;
             });
+            speak(`Catálogo ${label} completado`);
         });
 
         socket.on("catalog:queue-activated", (data: { catalogId: string; status: string; name: string }) => {
@@ -3756,6 +3757,8 @@ export function KdpFactoryApp() {
             setApCurrentNicheId(data.nicheId);
             const stageVoice: Record<string, string> = {
                 discovery: `Descubriendo nicho ${data.nicheName}`,
+                prompt: `Generando prompt para ${data.nicheName}`,
+                sample: `Generando imagen de muestra para ${data.nicheName}`,
                 catalog: `Generando catálogos para ${data.nicheName}`,
                 libro: `Creando libro para ${data.nicheName}`,
                 listing: `Generando SEO para ${data.nicheName}`,
@@ -3818,6 +3821,7 @@ export function KdpFactoryApp() {
             setKdpTemplateOpen(true);
             changeTab("creation");
             toast.success(`📄 PDF de "${data.nicheName}" — ${data.catalogIds.length} catálogo${data.catalogIds.length > 1 ? "s" : ""} pre-seleccionado${data.catalogIds.length > 1 ? "s" : ""}`, { duration: 6000 });
+            speak(`Solicitado PDF de ${data.nicheName} desde Telegram`);
         });
 
         socket.on("telegram:notification", (data) => {
@@ -3826,6 +3830,15 @@ export function KdpFactoryApp() {
                 : data.type === "success" ? toast.success
                 : toast.info;
             fn(data.message, { duration: 5000 });
+            const clean = (data.message as string)
+                .replace(/desde Telegram\s*·?\s*/gi, "")
+                .replace(/\s*·\s*/g, ". ")
+                .replace(/→/g, " a ")
+                // strip anything that isn't a Unicode letter, digit, space or basic punctuation
+                .replace(/[^\p{L}\p{N}\s.,;:!?'"()\-]/gu, "")
+                .replace(/\s+/g, " ")
+                .trim();
+            speak(clean || data.message.replace(/[^\p{L}\p{N}\s]/gu, " ").trim());
         });
 
         (socket as any).on("vault:rejected", (data: { id: string; catalogId: string; catalogName: string; nicheIds: string[]; imageUrl: string; reason: string; score: number }) => {
