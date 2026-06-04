@@ -80,6 +80,7 @@ import {
     SkipForward,
     CheckCheck,
     Mic,
+    Link2,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1209,6 +1210,13 @@ export function KdpFactoryApp() {
     const [qualityCheckEnabled, setQualityCheckEnabled] = useState(true);
     const [qualityVaultTelegramEnabled, setQualityVaultTelegramEnabled] = useState(false);
     const [weeklyDigestEnabled, setWeeklyDigestEnabled] = useState(true);
+    // Orphan image linking
+    const [orphanLinkCatalogId, setOrphanLinkCatalogId] = useState<string | null>(null);
+    const [orphanLinkCatalogNiche, setOrphanLinkCatalogNiche] = useState<string>("");
+    const [orphanLinkingCatalog, setOrphanLinkingCatalog] = useState(false);
+    const [orphanLinkImgKey, setOrphanLinkImgKey] = useState<string | null>(null); // "catalogId:publicId"
+    const [orphanLinkImgNiche, setOrphanLinkImgNiche] = useState<string>("");
+    const [orphanLinkingImg, setOrphanLinkingImg] = useState(false);
     // Quality control vault
     const [rejectedImages, setRejectedImages] = useState<{ _id: string; catalogId: string; catalogName: string; nicheIds: string[]; imageUrl: string; reason: string; score: number; prompt: string; createdAt: string }[]>([]);
     const [vaultLoadingId, setVaultLoadingId] = useState<string | null>(null);
@@ -2881,6 +2889,51 @@ export function KdpFactoryApp() {
             toast.error(e.message ?? "Error al vincular");
         } finally {
             setLinkingNicheForCloud(null);
+        }
+    };
+
+    const linkOrphanCatalogToNiche = async (catalogId: string, nicheId: string) => {
+        setOrphanLinkingCatalog(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/catalogs/${catalogId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ nicheIds: [nicheId] }),
+            });
+            if (!res.ok) throw new Error("Error al vincular");
+            setIaCatalogs(prev => prev.map(c => c._id === catalogId ? { ...c, nicheIds: [nicheId] } : c));
+            setNiches(prev => prev.map(n => n._id === nicheId ? { ...n, catalogIds: [...(n.catalogIds ?? []).filter(id => id !== catalogId), catalogId] } : n));
+            setOrphanLinkCatalogId(null);
+            setOrphanLinkCatalogNiche("");
+            toast.success("Catálogo vinculado al nicho");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al vincular");
+        } finally {
+            setOrphanLinkingCatalog(false);
+        }
+    };
+
+    const linkOrphanImageToNiche = async (publicId: string, nicheId: string) => {
+        setOrphanLinkingImg(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/cloudinary/niche`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ publicId, nicheId }),
+            });
+            if (!res.ok) throw new Error("Error al vincular");
+            setCloudinaryImages(prev => {
+                const exists = prev.find(img => img.publicId === publicId);
+                if (exists) return prev.map(img => img.publicId === publicId ? { ...img, nicheId } : img);
+                return prev;
+            });
+            setOrphanLinkImgKey(null);
+            setOrphanLinkImgNiche("");
+            toast.success("Imagen vinculada al nicho");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al vincular");
+        } finally {
+            setOrphanLinkingImg(false);
         }
     };
 
@@ -9533,71 +9586,179 @@ export function KdpFactoryApp() {
                             <div className="flex-1 min-w-0">
                                 <h3 className="text-base font-black text-white">Imágenes huérfanas</h3>
                                 <p className="text-xs text-neutral-500 mt-0.5">
-                                    {totalOrphans} imagen{totalOrphans !== 1 ? "es" : ""} de nichos eliminados sin referencia activa
+                                    {totalOrphans} imagen{totalOrphans !== 1 ? "es" : ""} de nichos eliminados · vincúlalas para recuperarlas
                                 </p>
                             </div>
                             <Badge variant="neutral" className="shrink-0 bg-amber-500/10 border-amber-500/20 text-amber-400 text-xs font-black">{totalOrphans}</Badge>
                         </div>
 
                         <div className="px-6 pb-6 space-y-6">
-                            {orphanCatalogs.map(cat => (
-                                <div key={cat._id} className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                        <Layers size={11} className="text-neutral-600 shrink-0" />
-                                        <span className="text-xs font-black text-neutral-400 uppercase tracking-wider truncate">{cat.name}</span>
-                                        <span className="ml-auto shrink-0 text-[10px] text-neutral-700 font-mono">{cat.images.length} imgs · {cat.productType ?? "—"}</span>
-                                    </div>
-                                    <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-1.5">
-                                        {cat.images.map((img, imgIdx) => (
-                                            <div key={img.publicId} className="group relative aspect-square rounded-xl overflow-hidden bg-white/5 border border-white/8 hover:border-amber-500/30 transition-all cursor-pointer">
-                                                <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
-                                                    <button
-                                                        onClick={() => { setPreviewImage(img.url); setPreviewContext({ urls: cat.images.map(i => i.url), index: imgIdx, catalogCtx: { id: cat._id, images: cat.images } }); }}
-                                                        className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all"
-                                                    >
-                                                        <Maximize size={11} className="text-white" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setConfirmDeleteImageInfo({ catalogId: cat._id, publicId: img.publicId })}
-                                                        className="w-7 h-7 rounded-lg bg-red-500/20 hover:bg-red-500/40 flex items-center justify-center transition-all"
-                                                    >
-                                                        <Trash2 size={11} className="text-red-400" />
-                                                    </button>
-                                                </div>
+                            {orphanCatalogs.map(cat => {
+                                const isCatLinking = orphanLinkCatalogId === cat._id;
+                                return (
+                                    <div key={cat._id} className="space-y-3">
+                                        {/* Catalog header + catalog-level link */}
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <Layers size={11} className="text-neutral-600 shrink-0" />
+                                            <span className="text-xs font-black text-neutral-400 uppercase tracking-wider truncate">{cat.name}</span>
+                                            <span className="text-[10px] text-neutral-700 font-mono">{cat.images.length} imgs · {cat.productType ?? "—"}</span>
+                                            <button
+                                                onClick={() => { setOrphanLinkCatalogId(isCatLinking ? null : cat._id); setOrphanLinkCatalogNiche(""); setOrphanLinkImgKey(null); }}
+                                                className={`ml-auto flex items-center gap-1.5 px-3 py-1 rounded-lg border text-[10px] font-black transition-all ${isCatLinking ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400" : "border-white/10 text-neutral-500 hover:text-emerald-400 hover:border-emerald-500/30"}`}
+                                            >
+                                                <Link2 size={9} />Vincular catálogo
+                                            </button>
+                                        </div>
+
+                                        {/* Catalog-level niche selector */}
+                                        {isCatLinking && (
+                                            <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+                                                <select
+                                                    value={orphanLinkCatalogNiche}
+                                                    onChange={e => setOrphanLinkCatalogNiche(e.target.value)}
+                                                    className="flex-1 h-8 rounded-lg bg-white/5 border border-white/10 text-xs text-white px-2 focus:outline-none focus:border-emerald-500/40"
+                                                >
+                                                    <option value="">— Selecciona un nicho —</option>
+                                                    {niches.map(n => <option key={n._id} value={n._id}>{n.nickname?.trim() || n.name}</option>)}
+                                                </select>
+                                                <button
+                                                    disabled={!orphanLinkCatalogNiche || orphanLinkingCatalog}
+                                                    onClick={() => void linkOrphanCatalogToNiche(cat._id, orphanLinkCatalogNiche)}
+                                                    className="h-8 px-4 rounded-lg bg-emerald-500 text-white text-xs font-black hover:bg-emerald-400 transition-all disabled:opacity-40 flex items-center gap-1.5"
+                                                >
+                                                    {orphanLinkingCatalog ? <Loader2 size={10} className="animate-spin" /> : <Link2 size={10} />}
+                                                    Vincular
+                                                </button>
+                                                <button onClick={() => setOrphanLinkCatalogId(null)} className="h-8 w-8 rounded-lg border border-white/10 text-neutral-600 hover:text-white transition-all flex items-center justify-center">
+                                                    <X size={10} />
+                                                </button>
                                             </div>
-                                        ))}
+                                        )}
+
+                                        {/* Image grid */}
+                                        <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-1.5">
+                                            {cat.images.map((img, imgIdx) => {
+                                                const imgKey = `${cat._id}:${img.publicId}`;
+                                                const isImgLinking = orphanLinkImgKey === imgKey;
+                                                return (
+                                                    <div key={img.publicId} className="space-y-1">
+                                                        <div className={`group relative aspect-square rounded-xl overflow-hidden bg-white/5 border transition-all cursor-pointer ${isImgLinking ? "border-sky-500/50" : "border-white/8 hover:border-amber-500/30"}`}>
+                                                            <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                                                <button
+                                                                    onClick={() => { setPreviewImage(img.url); setPreviewContext({ urls: cat.images.map(i => i.url), index: imgIdx, catalogCtx: { id: cat._id, images: cat.images } }); }}
+                                                                    className="w-6 h-6 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all"
+                                                                    title="Ver"
+                                                                >
+                                                                    <Maximize size={9} className="text-white" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => { setOrphanLinkImgKey(isImgLinking ? null : imgKey); setOrphanLinkImgNiche(""); setOrphanLinkCatalogId(null); }}
+                                                                    className="w-6 h-6 rounded-lg bg-sky-500/20 hover:bg-sky-500/40 flex items-center justify-center transition-all"
+                                                                    title="Vincular a nicho"
+                                                                >
+                                                                    <Link2 size={9} className="text-sky-400" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setConfirmDeleteImageInfo({ catalogId: cat._id, publicId: img.publicId })}
+                                                                    className="w-6 h-6 rounded-lg bg-red-500/20 hover:bg-red-500/40 flex items-center justify-center transition-all"
+                                                                    title="Eliminar"
+                                                                >
+                                                                    <Trash2 size={9} className="text-red-400" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        {/* Per-image inline niche selector */}
+                                                        {isImgLinking && (
+                                                            <div className="flex flex-col gap-1 p-2 rounded-lg bg-sky-500/5 border border-sky-500/20 col-span-2">
+                                                                <select
+                                                                    value={orphanLinkImgNiche}
+                                                                    onChange={e => setOrphanLinkImgNiche(e.target.value)}
+                                                                    className="w-full h-6 rounded-md bg-white/5 border border-white/10 text-[10px] text-white px-1.5 focus:outline-none focus:border-sky-500/40"
+                                                                >
+                                                                    <option value="">Nicho…</option>
+                                                                    {niches.map(n => <option key={n._id} value={n._id}>{n.nickname?.trim() || n.name}</option>)}
+                                                                </select>
+                                                                <button
+                                                                    disabled={!orphanLinkImgNiche || orphanLinkingImg}
+                                                                    onClick={() => void linkOrphanImageToNiche(img.publicId, orphanLinkImgNiche)}
+                                                                    className="w-full h-6 rounded-md bg-sky-500 text-white text-[9px] font-black hover:bg-sky-400 transition-all disabled:opacity-40 flex items-center justify-center gap-1"
+                                                                >
+                                                                    {orphanLinkingImg ? <Loader2 size={8} className="animate-spin" /> : <Link2 size={8} />}
+                                                                    OK
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
 
                             {orphanCloudinary.length > 0 && (
-                                <div className="space-y-2">
+                                <div className="space-y-3">
                                     <div className="flex items-center gap-2">
                                         <Cloud size={11} className="text-neutral-600 shrink-0" />
                                         <span className="text-xs font-black text-neutral-400 uppercase tracking-wider">Cloudinary sin nicho</span>
                                         <span className="ml-auto shrink-0 text-[10px] text-neutral-700 font-mono">{orphanCloudinary.length} imgs</span>
                                     </div>
                                     <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-1.5">
-                                        {orphanCloudinary.map(img => (
-                                            <div key={img.publicId} className="group relative aspect-square rounded-xl overflow-hidden bg-white/5 border border-white/8 hover:border-amber-500/30 transition-all cursor-pointer">
-                                                <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
-                                                    <button
-                                                        onClick={() => openCloudinaryImagePreview(cloudinaryImages.indexOf(img))}
-                                                        className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all"
-                                                    >
-                                                        <Maximize size={11} className="text-white" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setConfirmDeleteCloudinaryId(img.publicId)}
-                                                        className="w-7 h-7 rounded-lg bg-red-500/20 hover:bg-red-500/40 flex items-center justify-center transition-all"
-                                                    >
-                                                        <Trash2 size={11} className="text-red-400" />
-                                                    </button>
+                                        {orphanCloudinary.map(img => {
+                                            const imgKey = `cloud:${img.publicId}`;
+                                            const isImgLinking = orphanLinkImgKey === imgKey;
+                                            return (
+                                                <div key={img.publicId} className="space-y-1">
+                                                    <div className={`group relative aspect-square rounded-xl overflow-hidden bg-white/5 border transition-all cursor-pointer ${isImgLinking ? "border-sky-500/50" : "border-white/8 hover:border-amber-500/30"}`}>
+                                                        <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                                            <button
+                                                                onClick={() => openCloudinaryImagePreview(cloudinaryImages.indexOf(img))}
+                                                                className="w-6 h-6 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all"
+                                                                title="Ver"
+                                                            >
+                                                                <Maximize size={9} className="text-white" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => { setOrphanLinkImgKey(isImgLinking ? null : imgKey); setOrphanLinkImgNiche(""); setOrphanLinkCatalogId(null); }}
+                                                                className="w-6 h-6 rounded-lg bg-sky-500/20 hover:bg-sky-500/40 flex items-center justify-center transition-all"
+                                                                title="Vincular a nicho"
+                                                            >
+                                                                <Link2 size={9} className="text-sky-400" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setConfirmDeleteCloudinaryId(img.publicId)}
+                                                                className="w-6 h-6 rounded-lg bg-red-500/20 hover:bg-red-500/40 flex items-center justify-center transition-all"
+                                                                title="Eliminar"
+                                                            >
+                                                                <Trash2 size={9} className="text-red-400" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    {isImgLinking && (
+                                                        <div className="flex flex-col gap-1 p-2 rounded-lg bg-sky-500/5 border border-sky-500/20">
+                                                            <select
+                                                                value={orphanLinkImgNiche}
+                                                                onChange={e => setOrphanLinkImgNiche(e.target.value)}
+                                                                className="w-full h-6 rounded-md bg-white/5 border border-white/10 text-[10px] text-white px-1.5 focus:outline-none focus:border-sky-500/40"
+                                                            >
+                                                                <option value="">Nicho…</option>
+                                                                {niches.map(n => <option key={n._id} value={n._id}>{n.nickname?.trim() || n.name}</option>)}
+                                                            </select>
+                                                            <button
+                                                                disabled={!orphanLinkImgNiche || orphanLinkingImg}
+                                                                onClick={() => void linkOrphanImageToNiche(img.publicId, orphanLinkImgNiche)}
+                                                                className="w-full h-6 rounded-md bg-sky-500 text-white text-[9px] font-black hover:bg-sky-400 transition-all disabled:opacity-40 flex items-center justify-center gap-1"
+                                                            >
+                                                                {orphanLinkingImg ? <Loader2 size={8} className="animate-spin" /> : <Link2 size={8} />}
+                                                                OK
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}
