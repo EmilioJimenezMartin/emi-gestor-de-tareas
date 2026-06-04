@@ -28,16 +28,17 @@ export async function registerVoiceRoutes(app: FastifyInstance) {
         }
     });
 
-    // POST /voice/tts — accepts { text: string } → returns audio/flac binary
+    // POST /voice/tts — accepts { text: string } → returns audio/mpeg binary
     app.post("/voice/tts", async (request: any, reply) => {
         const { text } = request.body as any;
         if (!text?.trim()) return reply.status(400).send({ error: "text field required" });
 
         try {
-            const audio = await synthesizeSpeech(text.trim());
-            if (!audio) return reply.status(503).send({ error: "TTS no disponible (verifica HUGGINGFACE_API_KEY)" });
-            reply.header("Content-Type", "audio/flac");
-            return reply.send(audio);
+            const result = await synthesizeSpeech(text.trim());
+            if (!result) return reply.status(503).send({ error: "TTS no disponible" });
+            reply.header("Content-Type", result.mimeType);
+            reply.header("Cache-Control", "no-store");
+            return reply.send(result.buffer);
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
         }

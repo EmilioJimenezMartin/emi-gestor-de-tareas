@@ -31,6 +31,9 @@ import {
     XCircle,
     ArrowDown,
     Trash2,
+    Volume2,
+    VolumeX,
+    Play,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { createApiSocket } from "@/lib/socket";
@@ -101,6 +104,13 @@ export default function AjustesPage() {
     // Image quality filter
     const [qualityFilterEnabled, setQualityFilterEnabled] = useState(false);
     const [qualityMinWhite, setQualityMinWhite] = useState("45");
+
+    // Voice TTS
+    const [voiceEnabled, setVoiceEnabled] = useState(() => {
+        if (typeof window === "undefined") return true;
+        return localStorage.getItem("voice_enabled") !== "false";
+    });
+    const [voiceTesting, setVoiceTesting] = useState(false);
 
     // Gumroad
     const [gumroadEnabled, setGumroadEnabled] = useState(false);
@@ -268,6 +278,32 @@ export default function AjustesPage() {
             toast.error("Error de conexión");
         } finally {
             setTestingTelegram(false);
+        }
+    };
+
+    const toggleVoice = (val: boolean) => {
+        setVoiceEnabled(val);
+        localStorage.setItem("voice_enabled", val ? "true" : "false");
+    };
+
+    const testVoice = async () => {
+        setVoiceTesting(true);
+        try {
+            const res = await fetch(`${apiUrl}/voice/tts`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: "Hola, la voz está funcionando correctamente." }),
+            });
+            if (!res.ok) { toast.error("TTS no disponible"); return; }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            audio.onended = () => URL.revokeObjectURL(url);
+            await audio.play();
+        } catch {
+            toast.error("Error probando la voz");
+        } finally {
+            setVoiceTesting(false);
         }
     };
 
@@ -1510,6 +1546,43 @@ export default function AjustesPage() {
                                 <span className="text-lg font-black text-white w-12 text-right">{qualityMinWhite}%</span>
                             </div>
                             <p className="text-[10px] text-neutral-600">Valor recomendado: 45%. Una página de colorear bien generada tiene 60–80% de blanco. Por debajo de 45% la imagen suele estar quemada o mal generada.</p>
+                        </div>
+                    </div>
+                </section>
+
+                {/* ── Voz / TTS ─────────────────────────────────────────────── */}
+                <section className="space-y-6">
+                    <div className="flex flex-col gap-1">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Voz del Sistema</h2>
+                        <p className="text-sm text-neutral-500">Notificaciones y eventos por voz usando síntesis de texto a audio.</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-6 space-y-5">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                {voiceEnabled
+                                    ? <Volume2 size={18} className="text-emerald-400" />
+                                    : <VolumeX size={18} className="text-neutral-600" />}
+                                <div>
+                                    <p className="text-sm font-bold text-white">Activar voz</p>
+                                    <p className="text-xs text-neutral-500 mt-0.5">La app hablará cuando terminen catálogos, lleguen mensajes de Telegram, etc.</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => toggleVoice(!voiceEnabled)}
+                                className={`relative w-12 h-6 rounded-full transition-colors ${voiceEnabled ? "bg-emerald-500" : "bg-white/10"}`}
+                            >
+                                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${voiceEnabled ? "left-6" : "left-0.5"}`} />
+                            </button>
+                        </div>
+                        <div className={`transition-opacity ${voiceEnabled ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
+                            <button
+                                onClick={() => void testVoice()}
+                                disabled={voiceTesting}
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-black hover:bg-emerald-500/20 transition-all disabled:opacity-50"
+                            >
+                                {voiceTesting ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                                Probar voz
+                            </button>
                         </div>
                     </div>
                 </section>

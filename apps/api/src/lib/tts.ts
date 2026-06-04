@@ -1,30 +1,19 @@
-/**
- * Text-to-speech via HuggingFace MMS-TTS (Spanish).
- * Requiere HUGGINGFACE_API_KEY. Devuelve buffer de audio (flac).
- */
-export async function synthesizeSpeech(text: string): Promise<Buffer | null> {
+// Returns { buffer, mimeType } using Google Translate TTS (fast, no API key needed).
+export async function synthesizeSpeech(text: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
     try {
-        const hfKey = (process.env.HUGGINGFACE_API_KEY ?? "").trim();
-        if (!hfKey) return null;
-
-        const res = await fetch(
-            "https://router.huggingface.co/hf-inference/models/facebook/mms-tts-spa",
-            {
-                method: "POST",
-                headers: {
-                    Authorization: `Bearer ${hfKey}`,
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ inputs: text }),
-                signal: AbortSignal.timeout(15_000),
-            }
-        );
-        const ct = res.headers.get("content-type") ?? "";
-        if (!res.ok || !ct.includes("audio")) {
-            console.warn(`[tts] HuggingFace TTS failed: ${res.status} ${ct}`);
+        const clean = text.replace(/[^\p{L}\p{N}\s.,;:!?'"()\-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+        if (!clean) return null;
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(clean)}&tl=es&client=tw-ob`;
+        const res = await fetch(url, {
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; TTS-proxy/1.0)" },
+            signal: AbortSignal.timeout(8_000),
+        });
+        if (!res.ok) {
+            console.warn(`[tts] Google TTS failed: ${res.status}`);
             return null;
         }
-        return Buffer.from(await res.arrayBuffer());
+        const buffer = Buffer.from(await res.arrayBuffer());
+        return { buffer, mimeType: "audio/mpeg" };
     } catch (e: any) {
         console.warn(`[tts] Error: ${e?.message}`);
         return null;

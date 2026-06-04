@@ -1970,8 +1970,8 @@ async function processUpdate(update: any): Promise<void> {
             });
             if (res.ok) {
                 await sendTelegram(`✅ Nicho <b>${displayName}</b> creado.\nYa está en cola para descubrimiento automático.`);
-                const ttsAudio = await synthesizeSpeech(`Nicho ${displayName} creado correctamente`);
-                if (ttsAudio) await sendTelegramAudio(ttsAudio);
+                const ttsResult = await synthesizeSpeech(`Nicho ${displayName} creado correctamente`);
+                if (ttsResult) await sendTelegramAudio(ttsResult.buffer);
             } else {
                 await sendTelegram(`❌ Error al crear el nicho (${res.status})`);
             }

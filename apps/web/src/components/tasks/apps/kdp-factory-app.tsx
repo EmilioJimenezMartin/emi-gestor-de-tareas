@@ -1308,11 +1308,6 @@ export function KdpFactoryApp() {
     const studioSubTabRef = useRef<"niches" | "radar" | "pipeline">("niches");
     // Keep ref in sync so socket handlers read current tab without stale closure
     studioSubTabRef.current = studioSubTab;
-    type PromptMetricFE = { _id: string; promptPreview: string; productType: string; attempts: number; successes: number; skips: number; avgScore: number; successRate: number; lastUsed: string };
-    const [promptMetrics, setPromptMetrics] = useState<PromptMetricFE[]>([]);
-    const [promptMetricsLoading, setPromptMetricsLoading] = useState(false);
-    const [promptMetricsProductType, setPromptMetricsProductType] = useState<string>("coloring-book");
-
     // --- Ventas / KDP Sales state ---
     type KdpSaleFE = { _id: string; period: string; asin: string; nicheId: string | null; title: string; marketplace: string; unitsSold: number; royaltiesUsd: number };
     const [salesData, setSalesData] = useState<KdpSaleFE[]>([]);
@@ -4690,13 +4685,6 @@ export function KdpFactoryApp() {
         }
     };
 
-    const fetchPromptMetrics = async (productType = promptMetricsProductType) => {
-        setPromptMetricsLoading(true);
-        try {
-            const res = await fetch(`${API_BASE_URL}/pipeline/prompt-metrics?productType=${productType}&limit=30`);
-            if (res.ok) { const d = await res.json(); setPromptMetrics(d.metrics ?? []); }
-        } catch { } finally { setPromptMetricsLoading(false); }
-    };
     const fetchSalesData = async (period = salesPeriodFilter) => {
         setSalesLoading(true);
         try {
@@ -5136,54 +5124,6 @@ export function KdpFactoryApp() {
                         </div>
                     )}
 
-                        {/* Prompt metrics (shared) */}
-                        <div className="space-y-3">
-                            <div className="flex items-center justify-between flex-wrap gap-2">
-                                <div>
-                                    <h3 className="text-base font-black text-white">Métricas de prompts</h3>
-                                    <p className="text-xs text-neutral-600">Prompts con mejor tasa de éxito · mínimo 3 intentos</p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    {["coloring-book", "printable-poster", "seamless-pattern"].map(pt => (
-                                        <button key={pt} onClick={() => { setPromptMetricsProductType(pt); void fetchPromptMetrics(pt); }}
-                                            className={`px-2 py-1 rounded-lg border text-[10px] font-black transition-all ${promptMetricsProductType === pt ? "bg-sky-500/20 border-sky-500/40 text-sky-400" : "border-white/10 text-neutral-600 hover:text-neutral-400"}`}>
-                                            {pt === "coloring-book" ? "Coloring" : pt === "printable-poster" ? "Poster" : "Pattern"}
-                                        </button>
-                                    ))}
-                                    <button onClick={() => void fetchPromptMetrics()} disabled={promptMetricsLoading}
-                                        className="h-7 w-7 rounded-lg border border-white/10 text-neutral-600 hover:text-white transition-all flex items-center justify-center disabled:opacity-40">
-                                        {promptMetricsLoading ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
-                                    </button>
-                                </div>
-                            </div>
-                            {promptMetrics.length === 0 && !promptMetricsLoading && (
-                                <button onClick={() => void fetchPromptMetrics()} className="w-full py-8 rounded-2xl border border-dashed border-white/10 text-neutral-600 hover:text-neutral-400 transition-colors text-xs font-black">
-                                    Cargar métricas
-                                </button>
-                            )}
-                            {promptMetrics.length > 0 && (
-                                <div className="space-y-1.5">
-                                    {promptMetrics.map(m => (
-                                        <Card key={m._id} variant="glass" className="p-3 border-white/5 bg-white/[0.01]">
-                                            <div className="flex items-start gap-3">
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-[10px] text-neutral-400 leading-relaxed line-clamp-2">{m.promptPreview}</p>
-                                                </div>
-                                                <div className="shrink-0 text-right space-y-0.5">
-                                                    <div className={`text-sm font-black ${m.successRate >= 80 ? "text-emerald-400" : m.successRate >= 60 ? "text-amber-400" : "text-rose-400"}`}>{m.successRate}%</div>
-                                                    <div className="text-[9px] text-neutral-600">{m.successes}/{m.attempts} OK</div>
-                                                    <div className="text-[9px] text-neutral-700">score {m.avgScore}</div>
-                                                </div>
-                                            </div>
-                                            <div className="mt-1.5 h-0.5 bg-white/5 rounded-full overflow-hidden">
-                                                <div className={`h-full rounded-full ${m.successRate >= 80 ? "bg-emerald-500/60" : m.successRate >= 60 ? "bg-amber-500/60" : "bg-rose-500/60"}`}
-                                                    style={{ width: `${m.successRate}%` }} />
-                                            </div>
-                                        </Card>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
                 </div>
             </div>
         );
@@ -9570,11 +9510,103 @@ export function KdpFactoryApp() {
         );
     };
 
-    const renderCreation = () => (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-            {renderAIStudio()}
-        </div>
-    );
+    const renderCreation = () => {
+        const nicheSet = new Set(niches.map(n => n._id));
+        const orphanCatalogs = iaCatalogs.filter(c =>
+            c.images.length > 0 &&
+            (!c.nicheIds || c.nicheIds.length === 0 || c.nicheIds.every(nid => !nicheSet.has(nid)))
+        );
+        const orphanCloudinary = cloudinaryImages.filter(img => img.nicheId && !nicheSet.has(img.nicheId));
+        const totalOrphans = orphanCatalogs.reduce((s, c) => s + c.images.length, 0) + orphanCloudinary.length;
+
+        return (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6">
+                {renderAIStudio()}
+
+                {totalOrphans > 0 && (
+                    <div className="rounded-3xl border border-amber-500/20 bg-amber-500/[0.02] backdrop-blur-xl overflow-hidden">
+                        <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/30 to-transparent" />
+                        <div className="px-6 py-5 flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center shrink-0">
+                                <AlertTriangle size={18} className="text-amber-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <h3 className="text-base font-black text-white">Imágenes huérfanas</h3>
+                                <p className="text-xs text-neutral-500 mt-0.5">
+                                    {totalOrphans} imagen{totalOrphans !== 1 ? "es" : ""} de nichos eliminados sin referencia activa
+                                </p>
+                            </div>
+                            <Badge variant="neutral" className="shrink-0 bg-amber-500/10 border-amber-500/20 text-amber-400 text-xs font-black">{totalOrphans}</Badge>
+                        </div>
+
+                        <div className="px-6 pb-6 space-y-6">
+                            {orphanCatalogs.map(cat => (
+                                <div key={cat._id} className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <Layers size={11} className="text-neutral-600 shrink-0" />
+                                        <span className="text-xs font-black text-neutral-400 uppercase tracking-wider truncate">{cat.name}</span>
+                                        <span className="ml-auto shrink-0 text-[10px] text-neutral-700 font-mono">{cat.images.length} imgs · {cat.productType ?? "—"}</span>
+                                    </div>
+                                    <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-1.5">
+                                        {cat.images.map((img, imgIdx) => (
+                                            <div key={img.publicId} className="group relative aspect-square rounded-xl overflow-hidden bg-white/5 border border-white/8 hover:border-amber-500/30 transition-all cursor-pointer">
+                                                <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                                                    <button
+                                                        onClick={() => { setPreviewImage(img.url); setPreviewContext({ urls: cat.images.map(i => i.url), index: imgIdx, catalogCtx: { id: cat._id, images: cat.images } }); }}
+                                                        className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all"
+                                                    >
+                                                        <Maximize size={11} className="text-white" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setConfirmDeleteImageInfo({ catalogId: cat._id, publicId: img.publicId })}
+                                                        className="w-7 h-7 rounded-lg bg-red-500/20 hover:bg-red-500/40 flex items-center justify-center transition-all"
+                                                    >
+                                                        <Trash2 size={11} className="text-red-400" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+
+                            {orphanCloudinary.length > 0 && (
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                        <Cloud size={11} className="text-neutral-600 shrink-0" />
+                                        <span className="text-xs font-black text-neutral-400 uppercase tracking-wider">Cloudinary sin nicho</span>
+                                        <span className="ml-auto shrink-0 text-[10px] text-neutral-700 font-mono">{orphanCloudinary.length} imgs</span>
+                                    </div>
+                                    <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-1.5">
+                                        {orphanCloudinary.map(img => (
+                                            <div key={img.publicId} className="group relative aspect-square rounded-xl overflow-hidden bg-white/5 border border-white/8 hover:border-amber-500/30 transition-all cursor-pointer">
+                                                <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                                                    <button
+                                                        onClick={() => openCloudinaryImagePreview(cloudinaryImages.indexOf(img))}
+                                                        className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-all"
+                                                    >
+                                                        <Maximize size={11} className="text-white" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setConfirmDeleteCloudinaryId(img.publicId)}
+                                                        className="w-7 h-7 rounded-lg bg-red-500/20 hover:bg-red-500/40 flex items-center justify-center transition-all"
+                                                    >
+                                                        <Trash2 size={11} className="text-red-400" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     const statusBadge = (status: IACatalogFE["status"]) => {
         const map: Record<IACatalogFE["status"], { label: string; cls: string }> = {
