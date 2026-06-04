@@ -79,6 +79,7 @@ import {
     Bell,
     SkipForward,
     CheckCheck,
+    Mic,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -101,6 +102,7 @@ import { StatusGroupFilter, type StatusGroupOption } from "@/components/tasks/ap
 import { SearchQueryBuilder, type SearchConfig, type SearchPlatform } from "@/components/search/SearchQueryBuilder";
 import { useSpeech } from "@/hooks/useSpeech";
 import { VoiceButton } from "@/components/ui/VoiceButton";
+import { VoiceRecorderModal } from "@/components/ui/VoiceRecorderModal";
 
 interface ProductPlatform {
     name: string;
@@ -1129,6 +1131,7 @@ export function KdpFactoryApp() {
     const [fullEditingPromptId, setFullEditingPromptId] = useState<string | null>(null);
     const [fullEditingPrompt, setFullEditingPrompt] = useState<Partial<SavedPromptFE>>({});
     const { speak } = useSpeech();
+    const [voiceModalMode, setVoiceModalMode] = useState<"niche" | "image" | null>(null);
     const [niches, setNiches] = useState<NicheFE[]>([]);
     const [isLoadingNiches, setIsLoadingNiches] = useState(false);
     const [nicheFormOpen, setNicheFormOpen] = useState(false);
@@ -3726,6 +3729,7 @@ export function KdpFactoryApp() {
                 prev.map((c) => (c._id === data.catalogId ? { ...c, status: "running" } : c))
             );
             toast.info(`Cola: iniciando "${data.name}" — primera imagen en 2 min`);
+            speak(`Generando catálogo ${data.name.slice(0, 40)}`);
         });
 
         socket.on("catalog:error", (data: { catalogId: string; error: string }) => {
@@ -3733,11 +3737,17 @@ export function KdpFactoryApp() {
                 prev.map((c) => (c._id === data.catalogId ? { ...c, status: "failed", lastError: data.error } : c))
             );
             toast.error(`Error en catálogo: ${data.error}`);
+            speak(`Error en catálogo: ${data.error.slice(0, 60)}`);
         });
 
         socket.on("autopilot:log", (data: { nicheId: string; message: string }) => {
             setApRunning(true);
             setApLogs(prev => [...prev.slice(-49), { nicheId: data.nicheId, message: data.message, ts: Date.now() }]);
+            // Speak key milestones only
+            const raw = data.message.replace(/[✓✅🎨🔍📝🎯]/g, "").trim();
+            if (/descubrimiento completado|discovery completado/i.test(raw)) speak(`Descubrimiento completado`);
+            else if (/usando .* prompts pre.generados/i.test(raw)) speak(`Usando prompts pre-generados del discovery`);
+            else if (/nichos? encontrado/i.test(raw)) speak(raw.slice(0, 70));
         });
 
         socket.on("autopilot:stage", (data: { stage: "discovery" | "prompt" | "sample" | "catalog" | "libro" | "listing" | "cover"; nicheId: string; nicheName: string }) => {
@@ -3781,6 +3791,7 @@ export function KdpFactoryApp() {
             const msg = `⛔ Detenido: ${data.message}`;
             setApLogs(prev => [...prev.slice(-49), { nicheId: "", message: msg, ts: Date.now() }]);
             toast.error(`Auto-Pilot detenido — ${data.message}`, { duration: 8000 });
+            speak(`Auto pilot detenido: ${data.message.slice(0, 60)}`);
             void fetchApRuns();
         });
 
@@ -10298,6 +10309,16 @@ export function KdpFactoryApp() {
                                     <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="0" y="0" width="3.5" height="13" rx="1" fill="currentColor"/><rect x="4.75" y="0" width="3.5" height="13" rx="1" fill="currentColor"/><rect x="9.5" y="0" width="3.5" height="13" rx="1" fill="currentColor"/></svg>
                                 </button>
                             </div>
+                            <button onClick={() => setVoiceModalMode("image")} title="Generar imagen con voz"
+                                className="flex items-center gap-1.5 h-10 px-3 rounded-2xl bg-white/5 border border-white/10 text-neutral-500 hover:text-amber-300 hover:bg-amber-500/15 hover:border-amber-500/30 transition-all">
+                                <Mic size={13} />
+                                <span className="text-[9px] font-black uppercase tracking-widest hidden sm:inline">Imagen</span>
+                            </button>
+                            <button onClick={() => setVoiceModalMode("niche")} title="Crear nicho con voz"
+                                className="flex items-center gap-1.5 h-10 px-3 rounded-2xl bg-white/5 border border-white/10 text-neutral-500 hover:text-sky-300 hover:bg-sky-500/15 hover:border-sky-500/30 transition-all">
+                                <Mic size={13} />
+                                <span className="text-[9px] font-black uppercase tracking-widest hidden sm:inline">Nicho</span>
+                            </button>
                             <button onClick={() => openNicheForm()}
                                 className="flex items-center gap-2 h-10 px-5 rounded-2xl bg-gradient-to-r from-sky-600 to-sky-600 hover:from-sky-500 hover:to-sky-500 text-white text-sm font-black uppercase tracking-widest transition-all shadow-[0_4px_20px_rgba(14,165,233,0.4)]">
                                 <Plus size={14} /> Nuevo nicho
@@ -13459,6 +13480,23 @@ export function KdpFactoryApp() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Voice Recorder Modal */}
+            {voiceModalMode && (
+                <VoiceRecorderModal
+                    mode={voiceModalMode}
+                    isOpen={true}
+                    onClose={() => setVoiceModalMode(null)}
+                    apiUrl={API_URL}
+                    onNicheCreated={(name) => {
+                        setVoiceModalMode(null);
+                        void fetchNiches();
+                    }}
+                    onImageGenerated={(_url, prompt) => {
+                        speak(`Imagen generada: ${prompt.slice(0, 50)}`);
+                    }}
+                />
             )}
 
             {/* Niche Form Modal */}
