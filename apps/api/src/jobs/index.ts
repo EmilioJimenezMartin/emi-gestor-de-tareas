@@ -8,7 +8,8 @@ import { defineRadarScheduleJob, RADAR_SCHEDULE_JOB_NAME } from "./radar-schedul
 import { defineKdpPublisherJob, KDP_PUBLISHER_JOB_NAME } from "./kdp-publisher.js";
 import { defineAlertsJob, scheduleAlerts, ALERTS_JOB_NAME } from "./alerts.js";
 import { defineWeeklyDigestJob, scheduleWeeklyDigest, WEEKLY_DIGEST_JOB_NAME } from "./weekly-digest.js";
-export { AUTOPILOT_JOB_NAME, KDP_PUBLISHER_JOB_NAME, ALERTS_JOB_NAME, WEEKLY_DIGEST_JOB_NAME };
+import { defineSeasonalCheckJob, scheduleSeasonalCheck, SEASONAL_CHECK_JOB_NAME } from "./seasonal-check.js";
+export { AUTOPILOT_JOB_NAME, KDP_PUBLISHER_JOB_NAME, ALERTS_JOB_NAME, WEEKLY_DIGEST_JOB_NAME, SEASONAL_CHECK_JOB_NAME };
 
 export function defineJobs(agenda: Agenda, io?: any) {
     agenda.define("dummy-task", async (job: Job) => {
@@ -35,6 +36,7 @@ export function defineJobs(agenda: Agenda, io?: any) {
         defineKdpPublisherJob(agenda, io);
         defineAlertsJob(agenda, io);
         defineWeeklyDigestJob(agenda, io);
+        defineSeasonalCheckJob(agenda, io);
     }
 }
 
@@ -44,4 +46,4 @@ export async function scheduleRadarRules(agenda: Agenda): Promise<void> {
     await agenda.every("0 * * * *", RADAR_SCHEDULE_JOB_NAME);
 }
 
-export { scheduleWatchdog, scheduleAlerts, scheduleWeeklyDigest };
+export { scheduleWatchdog, scheduleAlerts, scheduleWeeklyDigest, scheduleSeasonalCheck };

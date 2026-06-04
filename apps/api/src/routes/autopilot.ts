@@ -6,6 +6,8 @@ import { AutopilotRun } from "../models/autopilot-run.js";
 import { getMongoStatus } from "../lib/mongo.js";
 import { sendTelegram, sendTelegramPhotoDiscovery, sendTelegramImageWithButtons, sendTelegramApproval } from "../lib/telegram.js";
 import { pollinationsFetch } from "../lib/pollinations-circuit.js";
+import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
+import { withLlmSlot } from "../lib/ai-semaphore.js";
 
 function ensureMongo(reply: any): boolean {
     if (getMongoStatus() !== "connected") {
@@ -305,6 +307,23 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
 
             const port = process.env.PORT || 3001;
             const base = `http://localhost:${port}`;
+
+            // Pre-generate catalog prompts in background while image fetches
+            void (async () => {
+                try {
+                    const fallback = (niche as any).generatedPrompt || (niche as any).name as string;
+                    const prompts: string[] = [];
+                    for (let i = 0; i < catalogsPerNiche; i++) {
+                        const p = await withLlmSlot(`pre-catalog-prompt-${i}:${nicheId}`, () =>
+                            generateCatalogPrompt(base, (niche as any).name, productType, style, samplePrompt, i)
+                        );
+                        prompts.push((p as string | null) || fallback);
+                    }
+                    await Niche.findByIdAndUpdate(nicheId, { $set: { pendingCatalogPrompts: prompts } });
+                    deps.io?.emit("niches:updated");
+                } catch { /* non-critical */ }
+            })();
+
             let imageBytes: Buffer | null = null;
             let telegramImageUrl = sampleUrl;
 

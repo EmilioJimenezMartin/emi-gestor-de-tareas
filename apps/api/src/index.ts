@@ -7,7 +7,7 @@ import type { Agenda } from "agenda";
 import { loadEnv } from "./lib/env.js";
 import { getMongoStatus, startMongo } from "./lib/mongo.js";
 import { initAgenda, startAgenda } from "./lib/agenda.js";
-import { scheduleWatchdog, scheduleRadarRules, scheduleAlerts, scheduleWeeklyDigest } from "./jobs/index.js";
+import { scheduleWatchdog, scheduleRadarRules, scheduleAlerts, scheduleWeeklyDigest, scheduleSeasonalCheck } from "./jobs/index.js";
 import { registerSocket } from "./lib/socket.js";
 import { registerItemRoutes } from "./routes/items.js";
 import { registerTaskRoutes } from "./routes/tasks.js";
@@ -33,6 +33,7 @@ import { registerKdpSalesRoutes } from "./routes/kdp-sales.js";
 import { registerPipelineRoutes } from "./routes/pipeline.js";
 import { registerBookDraftRoutes } from "./routes/book-drafts.js";
 import { registerRejectedImageRoutes } from "./routes/rejected-images.js";
+import { registerVoiceRoutes } from "./routes/voice.js";
 import { startTelegramPolling } from "./lib/telegram-polling.js";
 import { Settings } from "./models/settings.js";
 import { initLogStreamer, getLogBuffer } from "./lib/log-streamer.js";
@@ -82,6 +83,7 @@ await registerAutoPilotRoutes(app, deps);
 await registerKdpSalesRoutes(app);
 await registerBookDraftRoutes(app);
 await registerRejectedImageRoutes(app, { io });
+await registerVoiceRoutes(app);
 await registerPipelineRoutes(app, deps);
 
 app.setErrorHandler((error, _req, reply) => {
@@ -263,6 +265,16 @@ const seedSettings = async () => {
       { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
+      { key: "SEASONAL_CHECK_ENABLED" },
+      { $setOnInsert: { key: "SEASONAL_CHECK_ENABLED", value: "1", is_secret: false } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    await Settings.findOneAndUpdate(
+      { key: "SEASONAL_WEEKS_AHEAD" },
+      { $setOnInsert: { key: "SEASONAL_WEEKS_AHEAD", value: "12", is_secret: false } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    await Settings.findOneAndUpdate(
       { key: "QUALITY_VAULT_TELEGRAM_NOTIFY" },
       { $setOnInsert: { key: "QUALITY_VAULT_TELEGRAM_NOTIFY", value: "0", is_secret: false } },
       { upsert: true, returnDocument: 'after' }
@@ -328,6 +340,7 @@ const startAgendaOnce = async () => {
     scheduleRadarRules(agenda).catch(e => app.log.error(e, "Failed to schedule radar rules"));
     scheduleAlerts(agenda).catch(e => app.log.error(e, "Failed to schedule pipeline alerts"));
     scheduleWeeklyDigest(agenda).catch(e => app.log.error(e, "Failed to schedule weekly digest"));
+    scheduleSeasonalCheck(agenda).catch(e => app.log.error(e, "Failed to schedule seasonal check"));
   } catch (e) {
     app.log.error(e, "Agenda failed to start");
   }

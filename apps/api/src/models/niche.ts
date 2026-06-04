@@ -45,6 +45,7 @@ export interface INiche extends Document {
     scoreBreakdown?: { demand: number; competition: number; uniqueness: number; potential: number };
     scoreReason?: string;
     scoredAt?: Date;
+    pendingCatalogPrompts?: string[];
     autoPilotEnabled?: boolean;
     sampleImageUrl?: string;
     catalogImageOrder?: string[];
@@ -107,6 +108,7 @@ const NicheSchema = new Schema<INiche>(
         },
         scoreReason: { type: String },
         scoredAt: { type: Date },
+        pendingCatalogPrompts: [{ type: String }],
         autoPilotEnabled: { type: Boolean, default: false },
         sampleImageUrl: { type: String },
         catalogImageOrder: [{ type: String }],

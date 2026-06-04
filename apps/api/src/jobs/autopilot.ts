@@ -268,7 +268,28 @@ async function runDiscovery(
                 sampleUrl = buildSampleUrl(niche.name, niche.styleCategory ?? "generic", niche.productType ?? "coloring-book", aiCore);
                 // Persist the enhanced prompt so catalog generation can build on it
                 await Niche.findByIdAndUpdate(niche._id, { $set: { discoveryImagePrompt: aiCore } });
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ Prompt mejorado por IA → generando muestra…` });
+                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ Prompt mejorado por IA → pre-generando prompts de catálogo…` });
+                // Pre-generate catalog prompts in background (ready when Telegram approves)
+                const _nicheName = niche.name;
+                const _nicheId = String(niche._id);
+                const _productType = niche.productType ?? "coloring-book";
+                const _style = niche.styleCategory ?? "generic";
+                const _fallback = niche.generatedPrompt || niche.name;
+                void (async () => {
+                    try {
+                        const prompts: string[] = [];
+                        for (let i = 0; i < cfg.catalogsPerNiche; i++) {
+                            const p = await withLlmSlot(`pre-catalog-prompt-${i}:${_nicheId}`, () =>
+                                generateCatalogPrompt(base, _nicheName, _productType, _style, aiCore, i)
+                            );
+                            prompts.push((p as string | null) || _fallback);
+                        }
+                        await Niche.findByIdAndUpdate(_nicheId, { $set: { pendingCatalogPrompts: prompts } });
+                        io?.emit("autopilot:log", { nicheId: _nicheId, message: `✓ ${prompts.length} prompts de catálogo pre-generados para "${_nicheName}"` });
+                    } catch (e: any) {
+                        io?.emit("autopilot:log", { nicheId: _nicheId, message: `⚠️ Error pre-generando prompts: ${e?.message}` });
+                    }
+                })();
             } else {
                 sampleUrl = buildSampleUrl(niche.name, niche.styleCategory ?? "generic", niche.productType ?? "coloring-book");
             }
@@ -543,17 +564,24 @@ async function runPipeline(
                 const fallbackPrompt = niche.generatedPrompt || niche.name;
                 const discoveryPrompt = (niche as any).discoveryImagePrompt as string | undefined;
 
-                // Generate a unique AI image prompt for every catalog slot, using the discovery prompt as anchor
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🤖 Generando ${cfg.catalogsPerNiche} prompts únicos por IA${discoveryPrompt ? " (usando prompt de muestra)" : ""}…` });
-                const catalogPrompts: string[] = [];
-                for (let i = 0; i < cfg.catalogsPerNiche; i++) {
-                    const generated = await withLlmSlot(`catalog-prompt-${i}:${String(niche._id)}`, () =>
-                        generateCatalogPrompt(base, niche.name, productType, style, discoveryPrompt, i)
-                    );
-                    catalogPrompts.push((generated as string | null) || fallbackPrompt);
+                // Use pre-generated prompts if available, otherwise generate on-the-fly
+                const pendingCatalogPrompts = (niche as any).pendingCatalogPrompts as string[] | undefined;
+                let catalogPrompts: string[];
+                if (pendingCatalogPrompts && pendingCatalogPrompts.length >= cfg.catalogsPerNiche) {
+                    catalogPrompts = pendingCatalogPrompts.slice(0, cfg.catalogsPerNiche);
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ Usando ${catalogPrompts.length} prompts pre-generados del descubrimiento` });
+                } else {
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🤖 Generando ${cfg.catalogsPerNiche} prompts únicos por IA${discoveryPrompt ? " (usando prompt de muestra)" : ""}…` });
+                    catalogPrompts = [];
+                    for (let i = 0; i < cfg.catalogsPerNiche; i++) {
+                        const generated = await withLlmSlot(`catalog-prompt-${i}:${String(niche._id)}`, () =>
+                            generateCatalogPrompt(base, niche.name, productType, style, discoveryPrompt, i)
+                        );
+                        catalogPrompts.push((generated as string | null) || fallbackPrompt);
+                    }
+                    const aiCount = catalogPrompts.filter(p => p !== fallbackPrompt).length;
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ ${aiCount}/${cfg.catalogsPerNiche} prompts generados por IA` });
                 }
-                const aiCount = catalogPrompts.filter(p => p !== fallbackPrompt).length;
-                io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ ${aiCount}/${cfg.catalogsPerNiche} prompts generados por IA` });
 
                 for (let i = 0; i < cfg.catalogsPerNiche; i++) {
                     const prompt = catalogPrompts[i];

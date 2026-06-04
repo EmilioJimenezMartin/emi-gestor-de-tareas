@@ -278,6 +278,45 @@ export async function answerCallbackQuery(callbackQueryId: string, text?: string
     } catch { /* best-effort */ }
 }
 
+// Download a file from Telegram servers by file_id
+export async function downloadTelegramFile(fileId: string): Promise<Buffer | null> {
+    const cfg = await getTelegramConfig();
+    if (!cfg) return null;
+    try {
+        const pathRes = await fetch(`https://api.telegram.org/bot${cfg.botToken}/getFile?file_id=${fileId}`, {
+            signal: AbortSignal.timeout(10_000),
+        });
+        const pathData = await pathRes.json() as any;
+        const filePath: string | undefined = pathData?.result?.file_path;
+        if (!filePath) return null;
+
+        const fileRes = await fetch(`https://api.telegram.org/file/bot${cfg.botToken}/${filePath}`, {
+            signal: AbortSignal.timeout(30_000),
+        });
+        if (!fileRes.ok) return null;
+        return Buffer.from(await fileRes.arrayBuffer());
+    } catch {
+        return null;
+    }
+}
+
+// Send audio file as a Telegram audio message
+export async function sendTelegramAudio(audioBuffer: Buffer, caption = ""): Promise<void> {
+    const cfg = await getTelegramConfig();
+    if (!cfg) return;
+    try {
+        const form = new FormData();
+        form.append("chat_id", cfg.chatId);
+        form.append("audio", new Blob([audioBuffer], { type: "audio/flac" }), "respuesta.flac");
+        if (caption) form.append("caption", caption);
+        await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendAudio`, {
+            method: "POST",
+            body: form,
+            signal: AbortSignal.timeout(30_000),
+        });
+    } catch { /* best-effort */ }
+}
+
 // Get pending updates (used by the polling loop)
 export async function getUpdates(offset: number): Promise<any[]> {
     const cfg = await getTelegramConfig();

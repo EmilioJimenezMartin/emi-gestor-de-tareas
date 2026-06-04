@@ -1,4 +1,6 @@
-import { getUpdates, answerCallbackQuery, editTelegramMessage, sendTelegram, pinTelegramMessage, sendTelegramImageBinary, sendTelegramImageWithButtons, sendTelegramButtons } from "./telegram.js";
+import { getUpdates, answerCallbackQuery, editTelegramMessage, sendTelegram, pinTelegramMessage, sendTelegramImageBinary, sendTelegramImageWithButtons, sendTelegramButtons, downloadTelegramFile, sendTelegramAudio } from "./telegram.js";
+import { transcribeAudio } from "./whisper.js";
+import { synthesizeSpeech } from "./tts.js";
 import { TelegramAction } from "../models/telegram-action.js";
 import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
@@ -1854,6 +1856,129 @@ async function processUpdate(update: any): Promise<void> {
                 await sendTelegram(lines);
             }
         }
+    }
+
+    // ── Voice / audio message → transcribe → detect intent ──────────────────────
+    if (update.message?.voice || update.message?.audio) {
+        const fileObj = update.message.voice ?? update.message.audio;
+        const fileId: string = fileObj.file_id;
+
+        await sendTelegram("🎤 Transcribiendo audio…");
+
+        const audioBuffer = await downloadTelegramFile(fileId);
+        if (!audioBuffer) {
+            await sendTelegram("❌ No pude descargar el audio");
+            return;
+        }
+
+        const transcript = await transcribeAudio(audioBuffer, "audio/ogg");
+        if (!transcript) {
+            await sendTelegram("❌ No pude transcribir el audio. Comprueba que tienes HUGGINGFACE_API_KEY configurado.");
+            return;
+        }
+
+        const t = transcript.toLowerCase().trim();
+
+        // ── Intent: image generation ─────────────────────────────────────────
+        const IMAGE_PREFIXES = [
+            /^genera(?:me)?\s+(?:una?\s+)?imagen\s+(?:de\s+)?/i,
+            /^genera(?:me)?\s+/i,
+            /^dibuja(?:me)?\s+(?:una?\s+)?/i,
+            /^crea(?:me)?\s+(?:una?\s+)?imagen\s+(?:de\s+)?/i,
+            /^(?:una?\s+)?imagen\s+de\s+/i,
+            /^foto(?:grafía)?\s+de\s+/i,
+            /^ilustra(?:ción)?\s+de\s+/i,
+            /^pinta(?:me)?\s+(?:una?\s+)?/i,
+            /^hazme\s+(?:una?\s+)?imagen\s+(?:de\s+)?/i,
+        ];
+
+        const isImageIntent = IMAGE_PREFIXES.some(rx => rx.test(t))
+            || (t.includes("imagen") && !t.includes("nicho"))
+            || t.includes("dibuja")
+            || t.includes("genera una")
+            || t.includes("genera un");
+
+        if (isImageIntent) {
+            // Extract prompt by stripping all known image intent phrases
+            let imagePrompt = transcript;
+            for (const rx of IMAGE_PREFIXES) {
+                imagePrompt = imagePrompt.replace(rx, "");
+            }
+            imagePrompt = imagePrompt.trim();
+            if (!imagePrompt) imagePrompt = transcript.trim();
+            imagePrompt = imagePrompt.charAt(0).toUpperCase() + imagePrompt.slice(1);
+
+            // Pick model: anime if mentioned, else flux-realism
+            const model = /\banime\b/i.test(imagePrompt) ? "flux-anime" : "flux-realism";
+            const seed = Math.floor(Math.random() * 99999);
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?model=${model}&width=1024&height=1024&seed=${seed}&enhance=true`;
+
+            await sendTelegram(`🎤 Escuché: «<i>${transcript}</i>»\n\n🎨 Generando: <b>${imagePrompt.slice(0, 80)}${imagePrompt.length > 80 ? "…" : ""}</b>`);
+
+            setImmediate(async () => {
+                try {
+                    const imgBuffer = await withImageSlot(`voice-img:${Date.now()}`, async () => {
+                        const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(90_000) });
+                        if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
+                        return Buffer.from(await imgRes.arrayBuffer());
+                    });
+
+                    const tAction = await TelegramAction.create({
+                        type: "img-test",
+                        nicheId: "",
+                        nicheName: imagePrompt.slice(0, 120),
+                        imageUrl,
+                        status: "pending",
+                        autoApproveAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                    });
+
+                    const caption = `🖼️ <b>${imagePrompt.slice(0, 100)}${imagePrompt.length > 100 ? "…" : ""}</b>`;
+                    const msgId = await sendTelegramImageWithButtons(imgBuffer, caption, [
+                        [{ text: "➕ Añadir al primer nicho", callback_data: `img_add_niche:${tAction._id}` }],
+                    ]);
+                    if (!msgId) {
+                        await sendTelegram(`🖼️ <b>Imagen lista</b>\n<a href="${imageUrl}">Ver imagen →</a>`).catch(() => {});
+                    }
+                } catch (e: any) {
+                    console.error("[telegram-poll voice-img] Error:", e.message);
+                    await sendTelegram(`🖼️ <b>Imagen lista</b>\n<a href="${imageUrl}">Ver imagen →</a>`).catch(() => {});
+                }
+            });
+            return;
+        }
+
+        // ── Intent: niche creation (default) ────────────────────────────────
+        const nicheName = transcript
+            .replace(/^(crea|crear|añade|añadir|nuevo nicho de|nueva categoría de|un nicho de|crea un nicho de|crea nicho)\s+/i, "")
+            .replace(/^(nuevo|nueva)\s+/i, "")
+            .trim();
+        const displayName = nicheName.charAt(0).toUpperCase() + nicheName.slice(1);
+
+        await sendTelegram(`🎤 Escuché: «<i>${transcript}</i>»\n\n⏳ Creando nicho <b>${displayName}</b>…`);
+
+        try {
+            const port = process.env.PORT || 3001;
+            const res = await fetch(`http://localhost:${port}/niches`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: displayName,
+                    status: "found",
+                    description: `Creado por voz: "${transcript}"`,
+                }),
+                signal: AbortSignal.timeout(10_000),
+            });
+            if (res.ok) {
+                await sendTelegram(`✅ Nicho <b>${displayName}</b> creado.\nYa está en cola para descubrimiento automático.`);
+                const ttsAudio = await synthesizeSpeech(`Nicho ${displayName} creado correctamente`);
+                if (ttsAudio) await sendTelegramAudio(ttsAudio);
+            } else {
+                await sendTelegram(`❌ Error al crear el nicho (${res.status})`);
+            }
+        } catch (e: any) {
+            await sendTelegram(`❌ Error: ${e?.message}`);
+        }
+        return;
     }
 }
 

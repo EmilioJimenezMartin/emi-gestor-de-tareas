@@ -99,6 +99,8 @@ import { AppTabNav, type AppTab } from "@/components/tasks/apps/shared/app-tab-n
 import { NicheFilterBar, type NicheFilterStatus } from "@/components/tasks/apps/shared/niche-filter-bar";
 import { StatusGroupFilter, type StatusGroupOption } from "@/components/tasks/apps/shared/status-group-filter";
 import { SearchQueryBuilder, type SearchConfig, type SearchPlatform } from "@/components/search/SearchQueryBuilder";
+import { useSpeech } from "@/hooks/useSpeech";
+import { VoiceButton } from "@/components/ui/VoiceButton";
 
 interface ProductPlatform {
     name: string;
@@ -219,6 +221,8 @@ interface NicheFE {
     styleCategories?: NicheStyle[];
     notes: string;
     generatedPrompt?: string;
+    discoveryImagePrompt?: string;
+    pendingCatalogPrompts?: string[];
     catalogIds?: string[];
     phase?: "niche" | "catalog" | "libro" | "seo" | "pdf" | "cover" | "published";
     publishedAt?: string;
@@ -1124,6 +1128,7 @@ export function KdpFactoryApp() {
     const [editingPromptName, setEditingPromptName] = useState("");
     const [fullEditingPromptId, setFullEditingPromptId] = useState<string | null>(null);
     const [fullEditingPrompt, setFullEditingPrompt] = useState<Partial<SavedPromptFE>>({});
+    const { speak } = useSpeech();
     const [niches, setNiches] = useState<NicheFE[]>([]);
     const [isLoadingNiches, setIsLoadingNiches] = useState(false);
     const [nicheFormOpen, setNicheFormOpen] = useState(false);
@@ -1276,6 +1281,8 @@ export function KdpFactoryApp() {
     // Niche detail modal
     const [nicheDetailId, setNicheDetailId] = useState<string | null>(null);
     const [nicheDetailTab, setNicheDetailTab] = useState<"images" | "catalogs" | "seo" | "book" | "actions">("images");
+    const [discoveryPromptEditing, setDiscoveryPromptEditing] = useState(false);
+    const [discoveryPromptDraft, setDiscoveryPromptDraft] = useState("");
     const [imagePromptSuggestion, setImagePromptSuggestion] = useState<string | null>(null);
     const [isGeneratingImagePrompt, setIsGeneratingImagePrompt] = useState(false);
     const [editingListingId, setEditingListingId] = useState<string | null>(null);
@@ -1885,9 +1892,11 @@ export function KdpFactoryApp() {
             if (nicheEditTarget) {
                 setNiches(prev => prev.map(n => n._id === nicheEditTarget._id ? data.niche : n));
                 toast.success("Nicho actualizado");
+                speak(`Nicho ${nicheFormName.trim()} actualizado`);
             } else {
                 setNiches(prev => [data.niche, ...prev]);
                 toast.success("Nicho creado");
+                speak(`Nicho ${nicheFormName.trim()} creado`);
             }
             setNicheFormOpen(false);
         } catch (e: any) {
@@ -3705,7 +3714,9 @@ export function KdpFactoryApp() {
             setIaCatalogs((prev) => {
                 const updated: IACatalogFE[] = prev.map((c) => (c._id === data.catalogId ? { ...c, status: "completed" as const, lastError: "" } : c));
                 const catalog = updated.find(c => c._id === data.catalogId);
-                toast.success(`"${catalog?.name ?? "Catálogo"}" completado · ${catalog?.images?.length ?? 0} imágenes`);
+                const label = catalog?.name ?? "Catálogo";
+                toast.success(`"${label}" completado · ${catalog?.images?.length ?? 0} imágenes`);
+                speak(`Catálogo ${label} completado`);
                 return updated;
             });
         });
@@ -3733,6 +3744,15 @@ export function KdpFactoryApp() {
             setApStage(data.stage);
             setApCurrentNicheName(data.nicheName);
             setApCurrentNicheId(data.nicheId);
+            const stageVoice: Record<string, string> = {
+                discovery: `Descubriendo nicho ${data.nicheName}`,
+                catalog: `Generando catálogos para ${data.nicheName}`,
+                libro: `Creando libro para ${data.nicheName}`,
+                listing: `Generando SEO para ${data.nicheName}`,
+                cover: `Generando portada para ${data.nicheName}`,
+            };
+            const msg = stageVoice[data.stage];
+            if (msg) speak(msg);
         });
 
         socket.on("autopilot:done", (data: { processed: number; timestamp?: string }) => {
@@ -3748,6 +3768,7 @@ export function KdpFactoryApp() {
             const msg = `✅ Completado · ${data.processed} nicho${data.processed !== 1 ? "s" : ""} procesado${data.processed !== 1 ? "s" : ""}`;
             setApLogs(prev => [...prev.slice(-49), { nicheId: "", message: msg, ts: Date.now() }]);
             toast.success(msg);
+            if (data.processed > 0) speak(`Auto pilot completado. ${data.processed} nicho${data.processed !== 1 ? "s" : ""} procesado${data.processed !== 1 ? "s" : ""}`);
             void fetchNiches();
             void fetchApRuns();
         });
@@ -4460,7 +4481,9 @@ export function KdpFactoryApp() {
                 throw new Error(err.error ?? "Error lanzando pipeline en servidor");
             }
 
-            toast.success(`Pipeline de "${niche.nickname?.trim() || niche.name}" iniciado en servidor`);
+            const displayName = niche.nickname?.trim() || niche.name;
+            toast.success(`Pipeline de "${displayName}" iniciado en servidor`);
+            speak(`Pipeline lanzado para ${displayName}`);
             changeTab("niches");
         } catch (e: any) {
             toast.error(e.message ?? "Error en el pipeline");
@@ -13450,8 +13473,11 @@ export function KdpFactoryApp() {
                             {/* Name */}
                             <div className="space-y-1.5">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Nombre *</label>
-                                <input value={nicheFormName} onChange={e => setNicheFormName(e.target.value)} placeholder="Ej: Mandalas zen para adultos"
-                                    className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all" />
+                                <div className="flex items-center gap-1.5">
+                                    <input value={nicheFormName} onChange={e => setNicheFormName(e.target.value)} placeholder="Ej: Mandalas zen para adultos"
+                                        className="flex-1 h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all" />
+                                    <VoiceButton apiUrl={API_BASE_URL} onTranscript={t => setNicheFormName(t)} size={13} />
+                                </div>
                             </div>
                             {/* Nickname */}
                             <div className="space-y-1.5">
@@ -14803,6 +14829,49 @@ export function KdpFactoryApp() {
                                                     <button onClick={() => { navigator.clipboard.writeText(detailNiche.generatedPrompt!); toast.success("Copiado"); }} className="p-1 rounded text-neutral-700 hover:text-white transition-colors"><Copy size={9} /></button>
                                                 </div>
                                                 <p className="text-sm text-neutral-400 leading-relaxed">{detailNiche.generatedPrompt}</p>
+                                            </div>
+                                        )}
+                                        {detailNiche.discoveryImagePrompt && (
+                                            <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.03] p-4 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <p className="text-sm font-black uppercase tracking-widest text-violet-400/80">Prompt de muestra IA</p>
+                                                        {detailNiche.pendingCatalogPrompts && detailNiche.pendingCatalogPrompts.length > 0 && (
+                                                            <p className="text-[9px] text-violet-500/60 mt-0.5">{detailNiche.pendingCatalogPrompts.length} prompts de catálogo pre-generados</p>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <button onClick={() => { setDiscoveryPromptDraft(detailNiche.discoveryImagePrompt!); setDiscoveryPromptEditing(v => !v); }} className="p-1 rounded text-neutral-700 hover:text-violet-400 transition-colors"><Pencil size={9} /></button>
+                                                        <button onClick={() => { navigator.clipboard.writeText(detailNiche.discoveryImagePrompt!); toast.success("Copiado"); }} className="p-1 rounded text-neutral-700 hover:text-white transition-colors"><Copy size={9} /></button>
+                                                    </div>
+                                                </div>
+                                                {discoveryPromptEditing ? (
+                                                    <div className="space-y-2">
+                                                        <textarea
+                                                            value={discoveryPromptDraft}
+                                                            onChange={e => setDiscoveryPromptDraft(e.target.value)}
+                                                            rows={4}
+                                                            className="w-full bg-white/[0.04] border border-violet-500/25 rounded-xl px-3 py-2 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/50 resize-none transition-all"
+                                                        />
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={async () => {
+                                                                    const trimmed = discoveryPromptDraft.trim();
+                                                                    if (!trimmed) return;
+                                                                    await fetch(`${API_BASE_URL}/niches/${detailNiche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ discoveryImagePrompt: trimmed, pendingCatalogPrompts: [] }) }).catch(() => {});
+                                                                    setNiches(prev => prev.map(n => n._id === detailNiche._id ? { ...n, discoveryImagePrompt: trimmed, pendingCatalogPrompts: [] } : n));
+                                                                    setDiscoveryPromptEditing(false);
+                                                                    toast.success("Prompt guardado — los prompts de catálogo se regenerarán al aprobar");
+                                                                }}
+                                                                className="flex-1 h-8 rounded-xl bg-violet-500/20 border border-violet-500/30 text-sm font-black text-violet-300 hover:bg-violet-500/30 transition-all">
+                                                                Guardar
+                                                            </button>
+                                                            <button onClick={() => setDiscoveryPromptEditing(false)} className="h-8 px-3 rounded-xl bg-white/[0.04] border border-white/8 text-sm text-neutral-500 hover:text-white transition-all">Cancelar</button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-sm text-violet-300/60 leading-relaxed">{detailNiche.discoveryImagePrompt}</p>
+                                                )}
                                             </div>
                                         )}
                                         {pipelineDraft ? (

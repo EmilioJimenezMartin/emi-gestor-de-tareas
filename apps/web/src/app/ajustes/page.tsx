@@ -22,6 +22,7 @@ import {
     Package,
     ShoppingBag,
     Store,
+    Tag,
     Send,
     MessageCircle,
     Terminal,
@@ -1116,6 +1117,82 @@ export default function AjustesPage() {
                     </Card>
                 </section>
 
+                {/* Gumroad */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Gumroad</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-violet-500/10 text-violet-400 border-violet-500/20">MARKET</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-violet-500/20">
+                                    <Tag size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Gumroad API v2</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Publicación automática · PDF digital · Precio libre</p>
+                                </div>
+                            </div>
+                            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-4">
+                                <p className="text-xs text-violet-300 font-medium mb-1">Cómo obtener el Access Token:</p>
+                                <ol className="text-[11px] text-neutral-400 space-y-1 list-decimal list-inside">
+                                    <li>Ve a <span className="text-violet-400 font-mono">app.gumroad.com/settings/advanced</span></li>
+                                    <li>Genera un <span className="font-bold text-white">Access Token</span> con permisos <code className="text-violet-400">edit_products</code></li>
+                                    <li>Pega el token aquí y activa la publicación automática</li>
+                                    <li>Al completar el pipeline, el PDF se publica automáticamente</li>
+                                </ol>
+                            </div>
+                            <div className="space-y-5">
+                                <div className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.02] px-5 py-4">
+                                    <div>
+                                        <p className="text-sm font-bold text-white">Publicación automática</p>
+                                        <p className="text-xs text-neutral-500 mt-0.5">Crea el producto en Gumroad al completar el pipeline (portada + PDF + listing SEO).</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setGumroadEnabled(v => !v)}
+                                        className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${gumroadEnabled ? "bg-violet-500" : "bg-white/10"}`}
+                                    >
+                                        <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${gumroadEnabled ? "left-6" : "left-0.5"}`} />
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Access Token</label>
+                                        <div className="relative">
+                                            <input
+                                                type={showGumroadToken ? "text" : "password"}
+                                                value={gumroadToken}
+                                                placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                                                onChange={e => setGumroadToken(e.target.value)}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white placeholder-neutral-600 focus:outline-none focus:border-violet-500/40 transition-all pr-10"
+                                            />
+                                            <button type="button" onClick={() => setShowGumroadToken(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                                {showGumroadToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">Precio por defecto ($)</label>
+                                        <input
+                                            type="number" min="0" step="0.01"
+                                            value={gumroadPrice}
+                                            onChange={e => setGumroadPrice(e.target.value)}
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white focus:outline-none focus:border-violet-500/40 transition-all"
+                                        />
+                                        <p className="text-[10px] text-neutral-600 ml-1">0 = gratis. Se aplica a todos los libros publicados automáticamente.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </section>
+
                 {/* Servidor / Túnel */}
                 <section className="space-y-2 pt-4">
                     <div className="flex items-center gap-3">
@@ -1433,59 +1510,6 @@ export default function AjustesPage() {
                                 <span className="text-lg font-black text-white w-12 text-right">{qualityMinWhite}%</span>
                             </div>
                             <p className="text-[10px] text-neutral-600">Valor recomendado: 45%. Una página de colorear bien generada tiene 60–80% de blanco. Por debajo de 45% la imagen suele estar quemada o mal generada.</p>
-                        </div>
-                    </div>
-                </section>
-
-                {/* ── Gumroad ──────────────────────────────────────────────── */}
-                <section className="space-y-6">
-                    <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-3">
-                            <h2 className="text-2xl font-bold text-white tracking-tight italic">Gumroad</h2>
-                            <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400 border border-white/10">Desactivado</span>
-                        </div>
-                        <p className="text-sm text-neutral-500">Publica automáticamente el PDF en Gumroad al completar el pipeline. Requiere Access Token de la API de Gumroad.</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-6 space-y-5">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-sm font-bold text-white">Publicación automática</p>
-                                <p className="text-xs text-neutral-500 mt-0.5">Crea el producto en Gumroad tras generar la portada. El PDF se sube con el listing SEO generado.</p>
-                            </div>
-                            <button
-                                onClick={() => setGumroadEnabled(v => !v)}
-                                className={`relative w-12 h-6 rounded-full transition-colors ${gumroadEnabled ? "bg-emerald-500" : "bg-white/10"}`}
-                            >
-                                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${gumroadEnabled ? "left-6" : "left-0.5"}`} />
-                            </button>
-                        </div>
-                        <div className="space-y-4">
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-black uppercase tracking-widest text-neutral-500">Access Token</label>
-                                <div className="relative">
-                                    <input
-                                        type={showGumroadToken ? "text" : "password"}
-                                        value={gumroadToken}
-                                        placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                                        onChange={e => setGumroadToken(e.target.value)}
-                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white placeholder-neutral-600 focus:outline-none focus:border-emerald-500/40 transition-all pr-10"
-                                    />
-                                    <button type="button" onClick={() => setShowGumroadToken(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
-                                        {showGumroadToken ? "🙈" : "👁️"}
-                                    </button>
-                                </div>
-                                <p className="text-[10px] text-neutral-600">Genera tu token en gumroad.com → Settings → Advanced → Access Token.</p>
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-black uppercase tracking-widest text-neutral-500">Precio por defecto ($)</label>
-                                <input
-                                    type="number" min="0" step="0.01"
-                                    value={gumroadPrice}
-                                    onChange={e => setGumroadPrice(e.target.value)}
-                                    className="w-32 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm font-mono text-white focus:outline-none focus:border-emerald-500/40 transition-all"
-                                />
-                                <p className="text-[10px] text-neutral-600">0 = gratis. Se aplica a todos los libros publicados automáticamente.</p>
-                            </div>
                         </div>
                     </div>
                 </section>

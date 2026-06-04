@@ -3,10 +3,10 @@
 import { useState, useEffect } from "react";
 import {
     ShoppingCart, ShoppingBag, Globe, Sparkles, Loader2,
-    X, ChevronRight, Wand2, TrendingUp, MessageCircle,
+    X, ChevronRight, Wand2, TrendingUp, MessageCircle, Tag,
 } from "lucide-react";
 
-export type SearchPlatform = "etsy" | "amazon" | "general" | "trends" | "reddit";
+export type SearchPlatform = "etsy" | "amazon" | "general" | "trends" | "reddit" | "gumroad";
 
 export interface SearchConfig {
     platform: SearchPlatform;
@@ -60,6 +60,15 @@ const REDDIT_PRESETS: { label: string; url: string; hint?: string }[] = [
     { label: "KDP Top Month", url: "https://www.reddit.com/r/kdp/top.json?t=month&limit=100", hint: "más votados del mes en r/kdp" },
 ];
 
+const GUMROAD_PRESETS: { label: string; url: string; hint?: string }[] = [
+    { label: "Coloring Books", url: "https://gumroad.com/discover?query=coloring+book", hint: "coloring book digital" },
+    { label: "KDP Templates", url: "https://gumroad.com/discover?query=kdp+template", hint: "kdp low content templates" },
+    { label: "Printable Planner", url: "https://gumroad.com/discover?query=printable+planner", hint: "printable planner digital" },
+    { label: "Wall Art Prints", url: "https://gumroad.com/discover?query=wall+art+print", hint: "wall art digital download" },
+    { label: "Activity Sheets", url: "https://gumroad.com/discover?query=activity+sheets+kids", hint: "kids activity sheets" },
+    { label: "Seamless Patterns", url: "https://gumroad.com/discover?query=seamless+pattern", hint: "seamless pattern bundle" },
+];
+
 const TRENDS_PRESETS: { label: string; url: string; hint?: string }[] = [
     // Root + Modifier comparisons — the most powerful technique
     { label: "Compare Formatos", url: "https://trends.google.com/trends/explore?q=coloring+book+adults,activity+book+adults,coloring+book+seniors&geo=US&date=today+5-y", hint: "Compara 3 formatos · 5 años" },
@@ -70,7 +79,7 @@ const TRENDS_PRESETS: { label: string; url: string; hint?: string }[] = [
     { label: "Trending Hoy", url: "https://trends.google.com/trends/trendingsearches/daily?geo=US", hint: "Búsquedas virales del día" },
 ];
 
-type AccentKey = "sky" | "orange" | "amber" | "emerald" | "rose";
+type AccentKey = "sky" | "orange" | "amber" | "emerald" | "rose" | "violet";
 
 const PLATFORM_ACCENT: Record<SearchPlatform, AccentKey> = {
     etsy: "sky",
@@ -78,6 +87,7 @@ const PLATFORM_ACCENT: Record<SearchPlatform, AccentKey> = {
     general: "amber",
     trends: "emerald",
     reddit: "rose",
+    gumroad: "violet",
 };
 
 const accentClasses = {
@@ -120,6 +130,14 @@ const accentClasses = {
         input: "focus-within:border-rose-500/40",
         button: "bg-gradient-to-r from-rose-500 to-orange-500 shadow-rose-500/20 hover:from-rose-400 hover:to-orange-400",
         ai: "bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20",
+    },
+    violet: {
+        tab: "bg-violet-500/15 border-violet-500/25 text-violet-300",
+        preset: "bg-violet-500/15 border-violet-500/25 text-violet-300",
+        presetHover: "hover:text-violet-400 hover:border-violet-500/20",
+        input: "focus-within:border-violet-500/40",
+        button: "bg-gradient-to-r from-violet-500 to-purple-500 shadow-violet-500/20 hover:from-violet-400 hover:to-purple-400",
+        ai: "bg-violet-500/10 border-violet-500/20 text-violet-400 hover:bg-violet-500/20",
     },
 };
 
@@ -165,7 +183,7 @@ export function SearchQueryBuilder({
     const amazonPresets = [...AMAZON_PRESETS, ...extraAmazonPresets];
     const generalPresets = [...GENERAL_PRESETS, ...extraGeneralPresets];
 
-    const presetsForPlatform = platform === "etsy" ? etsyPresets : platform === "amazon" ? amazonPresets : platform === "trends" ? TRENDS_PRESETS : platform === "reddit" ? REDDIT_PRESETS : generalPresets;
+    const presetsForPlatform = platform === "etsy" ? etsyPresets : platform === "amazon" ? amazonPresets : platform === "trends" ? TRENDS_PRESETS : platform === "reddit" ? REDDIT_PRESETS : platform === "gumroad" ? GUMROAD_PRESETS : generalPresets;
 
     const emit = (newPlatform: SearchPlatform, newUrl: string, preset?: string) => {
         const term = newUrl.match(/[?&](?:q|k)=([^&]+)/)?.[1]?.replace(/\+/g, " ") ?? "";
@@ -234,16 +252,16 @@ export function SearchQueryBuilder({
         }
     };
 
-    const platformIcon = platform === "etsy" ? <ShoppingCart size={11} /> : platform === "amazon" ? <ShoppingBag size={11} /> : platform === "reddit" ? <MessageCircle size={11} /> : <Globe size={11} />;
+    const platformIcon = platform === "etsy" ? <ShoppingCart size={11} /> : platform === "amazon" ? <ShoppingBag size={11} /> : platform === "reddit" ? <MessageCircle size={11} /> : platform === "gumroad" ? <Tag size={11} /> : <Globe size={11} />;
 
     return (
         <div className={`space-y-3 ${className}`}>
             {/* Platform tabs */}
             {!lockPlatform && (
                 <div className="flex gap-1 p-1 bg-white/[0.03] border border-white/8 rounded-2xl w-fit">
-                    {(["etsy", "amazon", "general", "trends", "reddit"] as const).map(p => {
-                        const icons = { etsy: <ShoppingCart size={11} />, amazon: <ShoppingBag size={11} />, general: <Globe size={11} />, trends: <TrendingUp size={11} />, reddit: <MessageCircle size={11} /> };
-                        const labels = { etsy: "Etsy", amazon: "Amazon", general: "General", trends: "Trends", reddit: "Reddit" };
+                    {(["etsy", "amazon", "general", "trends", "reddit", "gumroad"] as const).map(p => {
+                        const icons = { etsy: <ShoppingCart size={11} />, amazon: <ShoppingBag size={11} />, general: <Globe size={11} />, trends: <TrendingUp size={11} />, reddit: <MessageCircle size={11} />, gumroad: <Tag size={11} /> };
+                        const labels = { etsy: "Etsy", amazon: "Amazon", general: "General", trends: "Trends", reddit: "Reddit", gumroad: "Gumroad" };
                         const isActive = platform === p;
                         return (
                             <button key={p} onClick={() => handlePlatformChange(p)}
@@ -267,6 +285,7 @@ export function SearchQueryBuilder({
                         : platform === "amazon" ? "https://www.amazon.com/s?k=..."
                         : platform === "trends" ? "https://trends.google.com/trends/explore?q=..."
                         : platform === "reddit" ? "https://www.reddit.com/r/kdp/new.json?limit=100"
+                        : platform === "gumroad" ? "https://gumroad.com/discover?query=..."
                         : "https://..."
                     }
                     className="flex-1 bg-transparent text-[11px] text-white placeholder:text-neutral-700 focus:outline-none font-mono"
