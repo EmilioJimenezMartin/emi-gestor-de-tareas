@@ -7,7 +7,8 @@ import { sendTelegram, sendTelegramPhoto, sendTelegramPhotoDiscovery, sendTelegr
 import { withImageSlot, withLlmSlot } from "../lib/ai-semaphore.js";
 import { buildCollage, buildHalfColored, pickCatalogImages, type CollageLayout } from "../lib/cover-collage.js";
 import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
-import { pollinationsFetch, isPollinationsBlocked, markPollinationsBlocked } from "../lib/pollinations-circuit.js";
+import { pollinationsFetch } from "../lib/pollinations-circuit.js";
+import { generateImage } from "../lib/image-gen.js";
 import { getAmazonKeywords } from "../lib/amazon-autocomplete.js";
 import { createGumroadProduct } from "../lib/gumroad.js";
 
@@ -33,7 +34,7 @@ function styleToAiModel(styleCategory: string) {
         celestial: "flux-realism",
     };
     const modelId = modelIds[styleCategory] ?? "flux";
-    return { id: `pollinations-${modelId}`, name: "FLUX (Pollinations)", provider: "Pollinations", modelId };
+    return { id: "pollinations-flux", name: "FLUX (Pollinations)", provider: "Pollinations", modelId };
 }
 
 type AutoPilotConfig = {
@@ -322,39 +323,16 @@ async function runDiscovery(
             if (!imageBytes && !pollinationsBlocked && label === "primary") await delay(2_000);
         }
 
-        // Fallback HF: si Pollinations falló
+        // Fallback: si Pollinations falló, usar generateImage (Pollinations → HF cascade)
         if (!imageBytes) {
             try {
-                const hfKey = process.env.HUGGINGFACE_API_KEY || "";
-                if (hfKey) {
-                    console.log(`[discovery] Pollinations bloqueado, intentando HuggingFace FLUX para "${niche.name}"`);
-                    const pt = niche.productType ?? "coloring-book";
-                    const hfPrompt = pt === "printable-poster"
-                        ? `${niche.name}, professional printable wall art poster, vibrant colors, premium illustration`
-                        : `${niche.name}, coloring page illustration, thick black outlines, white background, line art`;
-                    const hfRes = await fetch(
-                        "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
-                        {
-                            method: "POST",
-                            headers: {
-                                Authorization: `Bearer ${hfKey.trim()}`,
-                                "Content-Type": "application/json",
-                                "x-use-cache": "false",
-                            },
-                            body: JSON.stringify({ inputs: hfPrompt }),
-                            signal: AbortSignal.timeout(45_000),
-                        }
-                    );
-                    const ct = hfRes.headers.get("content-type") ?? "";
-                    if (hfRes.ok && ct.includes("image/")) {
-                        imageBytes = Buffer.from(await hfRes.arrayBuffer());
-                        console.log(`[discovery] HuggingFace OK para "${niche.name}"`);
-                    } else {
-                        console.warn(`[discovery] HuggingFace falló: status=${hfRes.status} ct=${ct}`);
-                    }
-                }
-            } catch (hfErr: any) {
-                console.warn(`[discovery] HuggingFace error: ${hfErr?.message}`);
+                const pt = niche.productType ?? "coloring-book";
+                const fbPrompt = pt === "printable-poster"
+                    ? `${niche.name}, professional printable wall art poster, vibrant colors, premium illustration`
+                    : `${niche.name}, coloring page illustration, thick black outlines, white background, line art`;
+                imageBytes = await generateImage(fbPrompt);
+            } catch (fbErr: any) {
+                console.warn(`[discovery] generateImage fallback error: ${fbErr?.message}`);
             }
         }
 
@@ -1236,47 +1214,14 @@ async function runPipeline(
                 io?.emit("autopilot:log", { nicheId: nicheIdStr, message: `🤖 Generando ${aiVariantsNeeded} variante${aiVariantsNeeded > 1 ? "s" : ""} IA…` });
 
                 for (let variant = 0; variant < aiVariantsNeeded; variant++) {
-                    const seed = Math.floor(Math.random() * 999999);
-                    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(coverPrompt)}?model=${model}&width=768&height=1024&seed=${seed}`;
                     let imgBuf: Buffer | null = null;
                     try {
-                        if (!isPollinationsBlocked()) {
-                            imgBuf = await withImageSlot(`cover-v${variant}:${nicheIdStr}`, async () => {
-                                const imgRes = await pollinationsFetch(pollinationsUrl, { signal: AbortSignal.timeout(90_000) });
-                                if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
-                                const ct = imgRes.headers.get("content-type") ?? "";
-                                if (!ct.startsWith("image/")) throw new Error(`Pollinations returned ${ct}`);
-                                return Buffer.from(await imgRes.arrayBuffer());
-                            }, nicheScore);
-                        }
-                    } catch (pollErr: any) {
-                        console.warn(`[autopilot] cover Pollinations variant ${variant + 1} failed: ${pollErr.message}`);
-                    }
-
-                    // HF fallback si Pollinations falló o está bloqueado
-                    if (!imgBuf) {
-                        try {
-                            const hfKey = process.env.HUGGINGFACE_API_KEY || "";
-                            if (hfKey) {
-                                io?.emit("autopilot:log", { nicheId: nicheIdStr, message: `↩️ Pollinations bloqueado — usando HF para portada ${variant + 1}` });
-                                const hfRes = await fetch(
-                                    "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
-                                    {
-                                        method: "POST",
-                                        headers: { Authorization: `Bearer ${hfKey}`, "Content-Type": "application/json", "x-use-cache": "false" },
-                                        body: JSON.stringify({ inputs: coverPrompt }),
-                                        signal: AbortSignal.timeout(45_000),
-                                    }
-                                );
-                                if (hfRes.ok && (hfRes.headers.get("content-type") ?? "").includes("image/")) {
-                                    const raw = Buffer.from(await hfRes.arrayBuffer());
-                                    const sharpMod = await import("sharp");
-                                    imgBuf = await sharpMod.default(raw).resize(768, 1024, { fit: "fill" }).jpeg({ quality: 92 }).toBuffer();
-                                }
-                            }
-                        } catch (hfErr: any) {
-                            console.warn(`[autopilot] cover HF variant ${variant + 1} failed: ${hfErr.message}`);
-                        }
+                        imgBuf = await withImageSlot(`cover-v${variant}:${nicheIdStr}`, () =>
+                            generateImage(coverPrompt, { width: 768, height: 1024, model }),
+                            nicheScore
+                        );
+                    } catch (coverErr: any) {
+                        console.warn(`[autopilot] cover variant ${variant + 1} failed: ${coverErr.message}`);
                     }
 
                     if (imgBuf) {

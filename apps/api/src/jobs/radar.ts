@@ -102,7 +102,7 @@ async function runWithRetry<T>(fn: () => Promise<T>, onWait: (secs: number, atte
     throw lastErr;
 }
 
-const LISTING_MODES = new Set(["etsy-niches", "amazon-niches", "trends-niches", "opportunity", "amazon-movers", "reddit-niches", "cross-niche", "gap-finder", "pinterest-niches"]);
+const LISTING_MODES = new Set(["etsy-niches", "amazon-niches", "trends-niches", "opportunity", "amazon-movers", "reddit-niches", "cross-niche", "gap-finder", "pinterest-niches", "gumroad-niches"]);
 
 function buildRadarSystemPrompt(mode: string, nicheName?: string, context?: string): string {
     const isListingMode = LISTING_MODES.has(mode);
@@ -494,6 +494,149 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 } catch { /* non-critical */ }
 
                 io?.emit("radar:result", { jobId, mode, storageKey, data });
+                io?.emit("radar:done", { jobId });
+                return;
+            }
+
+            // ── Gumroad: Jina AI reader → Bing → DDG (todos bypass Cloudflare) ────
+            if (mode === "gumroad-niches") {
+                pushLog(jobDoc, io, "info", `[FETCH] Gumroad — intentando bypass Cloudflare...`);
+                await jobDoc.save();
+
+                // Extract query term from any gumroad URL
+                let searchQuery = "digital products printables coloring books";
+                try {
+                    const parsedUrl = new URL(url);
+                    const q = parsedUrl.searchParams.get("query") ?? parsedUrl.searchParams.get("q") ?? parsedUrl.searchParams.get("search") ?? "";
+                    if (q.trim()) searchQuery = q.trim();
+                } catch { /* keep default */ }
+
+                function stripToText(html: string): string {
+                    return html
+                        .replace(/<script[\s\S]*?<\/script>/gi, "")
+                        .replace(/<style[\s\S]*?<\/style>/gi, "")
+                        .replace(/<[^>]+>/g, " ")
+                        .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&nbsp;/g, " ")
+                        .replace(/\s+/g, " ")
+                        .trim();
+                }
+
+                let gumroadText = "";
+                let fetchSource = "";
+
+                // Strategy 1: Jina AI reader (renders Cloudflare-protected pages via headless)
+                try {
+                    const jinaUrl = `https://r.jina.ai/${url}`;
+                    pushLog(jobDoc, io, "info", `[FETCH] Estrategia 1: Jina AI reader...`);
+                    await jobDoc.save();
+                    const res = await fetch(jinaUrl, {
+                        headers: {
+                            "Accept": "text/plain,text/markdown,*/*",
+                            "User-Agent": "Mozilla/5.0 (compatible; RadarBot/1.0)",
+                        },
+                        signal: AbortSignal.timeout(30_000),
+                    });
+                    if (res.ok) {
+                        const text = await res.text();
+                        if (text.length > 300) {
+                            gumroadText = `Gumroad — productos (vía Jina reader):\n\n${text}`.slice(0, 80_000);
+                            fetchSource = "Jina AI";
+                        }
+                    }
+                } catch { /* try next */ }
+
+                // Strategy 2: Bing site:gumroad.com search
+                if (!gumroadText) {
+                    try {
+                        const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(`site:gumroad.com ${searchQuery}`)}&count=20&setlang=en`;
+                        pushLog(jobDoc, io, "info", `[FETCH] Estrategia 2: Bing site:gumroad.com...`);
+                        await jobDoc.save();
+                        const res = await fetch(bingUrl, {
+                            headers: {
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                                "Accept-Language": "en-US,en;q=0.9",
+                            },
+                            signal: AbortSignal.timeout(20_000),
+                        });
+                        if (res.ok) {
+                            const text = stripToText(await res.text());
+                            if (text.length > 300) {
+                                gumroadText = `Resultados Bing para Gumroad "${searchQuery}":\n\n${text}`.slice(0, 80_000);
+                                fetchSource = "Bing";
+                            }
+                        }
+                    } catch { /* try next */ }
+                }
+
+                // Strategy 3: DuckDuckGo HTML
+                if (!gumroadText) {
+                    pushLog(jobDoc, io, "info", `[FETCH] Estrategia 3: DuckDuckGo site:gumroad.com...`);
+                    await jobDoc.save();
+                    const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(`site:gumroad.com ${searchQuery}`)}&kl=us-en`;
+                    const res = await fetch(ddgUrl, {
+                        headers: {
+                            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                            "Accept-Language": "en-US,en;q=0.9",
+                        },
+                        signal: AbortSignal.timeout(20_000),
+                    });
+                    if (!res.ok) throw new Error(`Todas las estrategias fallaron. Último error: DuckDuckGo ${res.status}`);
+                    const text = stripToText(await res.text());
+                    if (text.length < 200) throw new Error("Ningún motor de búsqueda devolvió resultados útiles para Gumroad");
+                    gumroadText = `Resultados DuckDuckGo para Gumroad "${searchQuery}":\n\n${text}`.slice(0, 80_000);
+                    fetchSource = "DuckDuckGo";
+                }
+
+                pushLog(jobDoc, io, "info", `[FETCH] ✓ ${gumroadText.length.toLocaleString()} chars extraídos vía ${fetchSource} (query: "${searchQuery}")`);
+                await jobDoc.save();
+
+                pushLog(jobDoc, io, "info", `[AI] Analizando resultados Gumroad con IA...`);
+                await jobDoc.save();
+
+                const systemPrompt = buildRadarSystemPrompt(mode);
+                const data = await analyzePageForRadar(gumroadText, systemPrompt, {
+                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                });
+
+                const count = (data?.nichos_detectados ?? []).length;
+                pushLog(jobDoc, io, "success", `[AI] ✓ ${count} productos detectados en Gumroad`);
+
+                if (data?.nichos_detectados) {
+                    const ts = new Date().toISOString();
+                    data.nichos_detectados = (data.nichos_detectados as any[]).map((n: any) => ({
+                        ...n, fecha_detectado: n.fecha_detectado ?? ts, fuente: "gumroad",
+                    }));
+                }
+
+                jobDoc.status = "completed";
+                jobDoc.result = data;
+                await jobDoc.save();
+
+                let gumroadToEmit: any = { nichos_detectados: [], ...(data ?? {}) };
+                try {
+                    const { Settings } = await import("../models/settings.js");
+                    const existing = await Settings.findOne({ key: storageKey }).lean() as any;
+                    if (existing?.value) {
+                        try {
+                            const saved = JSON.parse(existing.value as string);
+                            if (saved?.nichos_detectados?.length) {
+                                const incoming: any[] = gumroadToEmit.nichos_detectados;
+                                const incomingTitles = new Set(incoming.map((r: any) => r.titulo_producto));
+                                const preserved = (saved.nichos_detectados as any[]).filter((r: any) => !incomingTitles.has(r.titulo_producto));
+                                const merged = incoming.map((r: any) => ({
+                                    ...r,
+                                    _nichoCreado: (saved.nichos_detectados as any[]).find((s: any) => s.titulo_producto === r.titulo_producto)?._nichoCreado ?? r._nichoCreado,
+                                }));
+                                gumroadToEmit = { ...gumroadToEmit, nichos_detectados: [...merged, ...preserved] };
+                            }
+                        } catch { /* keep as-is */ }
+                    }
+                    await Settings.findOneAndUpdate({ key: storageKey }, { key: storageKey, value: JSON.stringify(gumroadToEmit) }, { upsert: true });
+                } catch { /* non-critical */ }
+
+                io?.emit("radar:result", { jobId, mode, storageKey, data: gumroadToEmit });
                 io?.emit("radar:done", { jobId });
                 return;
             }
@@ -944,7 +1087,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 throw new Error(`Página bloqueada por anti-bot: "${pageTitle}". Intenta de nuevo en unos minutos.`);
             }
 
-            if (mode === "etsy-niches" || mode === "amazon-niches" || mode === "opportunity" || mode === "amazon-movers" || mode === "gumroad-niches") {
+            if (mode === "etsy-niches" || mode === "amazon-niches" || mode === "opportunity" || mode === "amazon-movers") {
                 pushLog(jobDoc, io, "info", `[FETCH] Scroll para cargar resultados lazy...`);
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)");
                 await page.waitForTimeout(1500);

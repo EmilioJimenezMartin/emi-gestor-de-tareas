@@ -15,8 +15,10 @@ export function markPollinationsBlocked() {
 }
 
 export function isPollinationsBlocked(): boolean {
+    // With a token, IP blocking doesn't apply — token bypasses rate limits
+    if (_cachedToken || process.env.POLLINATIONS_TOKEN) return false;
     if (blockedUntil && Date.now() > blockedUntil) {
-        blockedUntil = 0; // TTL expirado, intentar de nuevo
+        blockedUntil = 0;
     }
     return blockedUntil > 0;
 }
@@ -26,6 +28,11 @@ export function getPollinationsStatus(): { blocked: boolean; unblockAt: number |
         blocked: isPollinationsBlocked(),
         unblockAt: blockedUntil > 0 ? blockedUntil : null,
     };
+}
+
+export function resetPollinationsBlock() {
+    blockedUntil = 0;
+    console.log("[pollinations-circuit] Circuit breaker reseteado manualmente");
 }
 
 let _cachedToken = "";
@@ -51,9 +58,12 @@ export function pollinationsAuthHeaders(): Record<string, string> {
  * Con token la 402 no debería ocurrir.
  */
 export async function pollinationsFetch(url: string, opts: RequestInit = {}): Promise<Response> {
-    const headers = { ...pollinationsAuthHeaders(), ...(opts.headers as Record<string, string> ?? {}) };
+    const authHeaders = pollinationsAuthHeaders();
+    const sentToken = !!authHeaders.Authorization;
+    const headers = { ...authHeaders, ...(opts.headers as Record<string, string> ?? {}) };
     const res = await fetch(url, { ...opts, headers });
-    if (res.status === 402 && !_cachedToken && !process.env.POLLINATIONS_TOKEN) {
+    // Only mark IP-blocked when no token was sent — with a token, 402 means something else (invalid token, etc.)
+    if (res.status === 402 && !sentToken) {
         markPollinationsBlocked();
     }
     return res;

@@ -309,9 +309,45 @@ export async function analyzePageForRadar(
 
     const parseJson = (text: string): any => {
         const clean = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
-        const match = clean.match(/(\{[\s\S]*\})/);
-        if (!match) throw new Error(`La respuesta no contiene JSON válido: ${text.slice(0, 200)}`);
-        return JSON.parse(match[1]);
+
+        // 1. Try direct parse of the full text
+        try { return JSON.parse(clean); } catch { /* continue */ }
+
+        // 2. Extract outermost { ... } and try again
+        const start = clean.indexOf("{");
+        const end = clean.lastIndexOf("}");
+        if (start !== -1 && end !== -1 && end > start) {
+            try { return JSON.parse(clean.slice(start, end + 1)); } catch { /* continue */ }
+        }
+
+        // 3. JSON was truncated mid-array — recover complete objects from nichos_detectados
+        const arrStart = clean.indexOf('"nichos_detectados"');
+        if (arrStart !== -1) {
+            const bracketOpen = clean.indexOf("[", arrStart);
+            if (bracketOpen !== -1) {
+                // Collect complete {...} entries from the array
+                const entries: any[] = [];
+                let depth = 0, inStr = false, escape = false, objStart = -1;
+                for (let i = bracketOpen + 1; i < clean.length; i++) {
+                    const ch = clean[i];
+                    if (escape) { escape = false; continue; }
+                    if (ch === "\\") { escape = true; continue; }
+                    if (ch === '"') { inStr = !inStr; continue; }
+                    if (inStr) continue;
+                    if (ch === "{") { if (depth === 0) objStart = i; depth++; }
+                    else if (ch === "}") {
+                        depth--;
+                        if (depth === 0 && objStart !== -1) {
+                            try { entries.push(JSON.parse(clean.slice(objStart, i + 1))); } catch { /* skip malformed */ }
+                            objStart = -1;
+                        }
+                    } else if (ch === "]" && depth === 0) break;
+                }
+                if (entries.length > 0) return { nichos_detectados: entries };
+            }
+        }
+
+        throw new Error(`La respuesta no contiene JSON válido: ${clean.slice(0, 200)}`);
     };
 
     // Build ordered list: configured provider first, then the rest

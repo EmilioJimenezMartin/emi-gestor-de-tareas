@@ -34,6 +34,7 @@ import {
     Volume2,
     VolumeX,
     Play,
+    RefreshCw,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { createApiSocket } from "@/lib/socket";
@@ -67,6 +68,8 @@ export default function AjustesPage() {
 
     const [hfInferenceKey, setHfInferenceKey] = useState("");
     const [showHfInferenceKey, setShowHfInferenceKey] = useState(false);
+    const [segmindApiKey, setSegmindApiKey] = useState("");
+    const [showSegmindKey, setShowSegmindKey] = useState(false);
 
     const [pollinationsToken, setPollinationsToken] = useState("");
     const [showPollinationsToken, setShowPollinationsToken] = useState(false);
@@ -112,6 +115,24 @@ export default function AjustesPage() {
     });
     const [voiceTesting, setVoiceTesting] = useState(false);
 
+    // fal.ai
+    const [falAiKey, setFalAiKey] = useState("");
+    const [showFalAiKey, setShowFalAiKey] = useState(false);
+
+    // Cloudflare Workers AI
+    const [cfAccountId, setCfAccountId] = useState("");
+    const [cfApiToken, setCfApiToken] = useState("");
+    const [showCfToken, setShowCfToken] = useState(false);
+    const [cfUsage, setCfUsage] = useState<{ date: string; images: number; neurons: number; remaining: number; limit: number } | null>(null);
+
+    // Together AI
+    const [togetherApiKey, setTogetherApiKey] = useState("");
+    const [showTogetherKey, setShowTogetherKey] = useState(false);
+
+    // Stable Horde
+    const [stableHordeApiKey, setStableHordeApiKey] = useState("");
+    const [showStableHordeKey, setShowStableHordeKey] = useState(false);
+
     // Gumroad
     const [gumroadEnabled, setGumroadEnabled] = useState(false);
     const [gumroadToken, setGumroadToken] = useState("");
@@ -139,6 +160,7 @@ export default function AjustesPage() {
                 if (map.has("GROQ_API_KEY")) setGroqApiKey(map.get("GROQ_API_KEY"));
                 if (map.has("OPENROUTER_API_KEY")) setOpenrouterApiKey(map.get("OPENROUTER_API_KEY"));
                 if (map.has("HUGGINGFACE_API_KEY")) setHfInferenceKey(map.get("HUGGINGFACE_API_KEY"));
+                if (map.has("SEGMIND_API_KEY")) setSegmindApiKey(map.get("SEGMIND_API_KEY"));
                 if (map.has("POLLINATIONS_TOKEN")) setPollinationsToken(map.get("POLLINATIONS_TOKEN"));
                 if (map.has("CLOUDINARY_CLOUD_NAME")) setCloudinaryCloudName(map.get("CLOUDINARY_CLOUD_NAME"));
                 if (map.has("CLOUDINARY_API_KEY")) setCloudinaryApiKey(map.get("CLOUDINARY_API_KEY"));
@@ -159,6 +181,16 @@ export default function AjustesPage() {
                 if (map.has("GUMROAD_ENABLED")) setGumroadEnabled(map.get("GUMROAD_ENABLED") === "1");
                 if (map.has("GUMROAD_ACCESS_TOKEN")) setGumroadToken(map.get("GUMROAD_ACCESS_TOKEN"));
                 if (map.has("GUMROAD_DEFAULT_PRICE")) setGumroadPrice(map.get("GUMROAD_DEFAULT_PRICE"));
+                if (map.has("FALAI_API_KEY")) setFalAiKey(map.get("FALAI_API_KEY"));
+                if (map.has("CF_ACCOUNT_ID")) setCfAccountId(map.get("CF_ACCOUNT_ID"));
+                if (map.has("CF_API_TOKEN")) setCfApiToken(map.get("CF_API_TOKEN"));
+                // Cargar uso de neurons
+                try {
+                    const usageRes = await fetch(`${apiUrl}/system/cf-usage`);
+                    if (usageRes.ok) setCfUsage(await usageRes.json());
+                } catch { /* silencioso */ }
+                if (map.has("TOGETHER_API_KEY")) setTogetherApiKey(map.get("TOGETHER_API_KEY"));
+                if (map.has("STABLE_HORDE_API_KEY")) setStableHordeApiKey(map.get("STABLE_HORDE_API_KEY"));
 
             } catch (err) {
                 console.error(err);
@@ -224,6 +256,7 @@ export default function AjustesPage() {
                 { key: "GROQ_API_KEY", value: groqApiKey },
                 { key: "OPENROUTER_API_KEY", value: openrouterApiKey },
                 { key: "HUGGINGFACE_API_KEY", value: hfInferenceKey },
+                { key: "SEGMIND_API_KEY", value: segmindApiKey },
                 { key: "POLLINATIONS_TOKEN", value: pollinationsToken },
                 { key: "CLOUDINARY_CLOUD_NAME", value: cloudinaryCloudName },
                 { key: "CLOUDINARY_API_KEY", value: cloudinaryApiKey },
@@ -244,6 +277,11 @@ export default function AjustesPage() {
                 { key: "GUMROAD_ENABLED", value: gumroadEnabled ? "1" : "0" },
                 { key: "GUMROAD_ACCESS_TOKEN", value: gumroadToken },
                 { key: "GUMROAD_DEFAULT_PRICE", value: gumroadPrice },
+                { key: "FALAI_API_KEY", value: falAiKey },
+                { key: "CF_ACCOUNT_ID", value: cfAccountId },
+                { key: "CF_API_TOKEN", value: cfApiToken },
+                { key: "TOGETHER_API_KEY", value: togetherApiKey },
+                { key: "STABLE_HORDE_API_KEY", value: stableHordeApiKey },
             ];
             const res = await fetch(`${apiUrl}/settings`, {
                 method: "PATCH",
@@ -755,6 +793,46 @@ export default function AjustesPage() {
                     </Card>
                 </section>
 
+                {/* Segmind */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Segmind</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-green-500/10 text-green-400 border-green-500/20">100/DÍA GRATIS</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white shadow-lg shadow-green-500/20 text-lg font-black">S</div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Segmind · FLUX Schnell</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">100 imágenes gratis/día · Sin tarjeta · ~5-10s</p>
+                                </div>
+                            </div>
+                            <div className="space-y-2 max-w-xl">
+                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">SEGMIND_API_KEY</label>
+                                <div className="relative">
+                                    <input
+                                        type={showSegmindKey ? "text" : "password"}
+                                        value={segmindApiKey}
+                                        onChange={(e) => setSegmindApiKey(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-green-500/40 transition-all"
+                                        placeholder="SG_..."
+                                    />
+                                    <button type="button" onClick={() => setShowSegmindKey(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                        {showSegmindKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-neutral-600 italic">Regístrate gratis en <span className="text-green-400">segmind.com</span> · Sin tarjeta · 100 imágenes/día</p>
+                            </div>
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </section>
+
                 {/* HuggingFace Inference Key */}
                 <section className="space-y-2 pt-4">
                     <div className="flex items-center gap-3">
@@ -801,9 +879,24 @@ export default function AjustesPage() {
                     <div className="flex items-center gap-3">
                         <h2 className="text-2xl font-bold text-white tracking-tight italic">Pollinations Image Engine</h2>
                         <Badge variant="neutral" className="text-[8px] font-black uppercase bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20">IMÁGENES</Badge>
-                        <div className={`ml-auto flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[9px] font-bold ${pollinationsBlocked ? "bg-red-500/10 border-red-500/20 text-red-400" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"}`}>
-                            <div className={`w-1.5 h-1.5 rounded-full ${pollinationsBlocked ? "bg-red-400" : "bg-emerald-400 animate-pulse"}`} />
-                            {pollinationsBlocked ? "IP BLOQUEADA" : "OPERATIVO"}
+                        <div className="ml-auto flex items-center gap-2">
+                            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[9px] font-bold ${pollinationsBlocked ? "bg-red-500/10 border-red-500/20 text-red-400" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"}`}>
+                                <div className={`w-1.5 h-1.5 rounded-full ${pollinationsBlocked ? "bg-red-400" : "bg-emerald-400 animate-pulse"}`} />
+                                {pollinationsBlocked ? "IP BLOQUEADA" : "OPERATIVO"}
+                            </div>
+                            {pollinationsBlocked && (
+                                <button
+                                    onClick={async () => {
+                                        try {
+                                            const res = await fetch(`${apiUrl}/system/reset-pollinations`, { method: "POST" });
+                                            if (res.ok) { setPollinationsBlocked(false); toast.success("Circuit breaker reseteado — Pollinations activo"); }
+                                        } catch { toast.error("Error reseteando"); }
+                                    }}
+                                    className="flex items-center gap-1 px-2 py-1 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-400 text-[9px] font-black hover:bg-fuchsia-500/20 transition-all uppercase tracking-widest"
+                                >
+                                    <RefreshCw size={9} /> Resetear
+                                </button>
+                            )}
                         </div>
                     </div>
                     <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
@@ -867,6 +960,276 @@ export default function AjustesPage() {
                                     </div>
                                     <p className="text-[10px] text-neutral-600 italic mt-1">Todos gratuitos via <span className="font-mono">image.pollinations.ai</span>. Actualmente usamos <span className="text-white font-mono">flux</span> por defecto.</p>
                                 </div>
+                            </div>
+
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* fal.ai Image Engine */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">fal.ai Image Engine</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-violet-500/10 text-violet-400 border-violet-500/20">IMÁGENES</Badge>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-emerald-500/10 text-emerald-400 border-emerald-500/20">GRATIS</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-violet-500/20 text-lg font-black italic">F</div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">fal.ai · FLUX.1-schnell</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Fallback de Pollinations · Sin bloqueo geo · Sin CGNAT</p>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.04] p-4 space-y-2">
+                                <p className="text-[10px] font-black text-violet-400 uppercase tracking-widest">Cadena de fallback actual</p>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {["Pollinations", "fal.ai", "Google Gemini", "HuggingFace"].map((p, i, arr) => (
+                                        <div key={p} className="flex items-center gap-2">
+                                            <span className="px-2 py-0.5 rounded-md bg-violet-500/10 border border-violet-500/15 text-[9px] font-mono text-violet-300">{p}</span>
+                                            {i < arr.length - 1 && <span className="text-neutral-600 text-xs">→</span>}
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="text-[10px] text-neutral-500 mt-1">Si Pollinations falla (CGNAT, rate limit), fal.ai es el primer fallback. Tier gratuito: ~500 imágenes/mes.</p>
+                            </div>
+
+                            <div className="space-y-2 max-w-xl">
+                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">FALAI_API_KEY</label>
+                                <div className="relative">
+                                    <input
+                                        type={showFalAiKey ? "text" : "password"}
+                                        value={falAiKey}
+                                        onChange={(e) => setFalAiKey(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-violet-500/40 transition-all"
+                                        placeholder="fal_key_..."
+                                    />
+                                    <button type="button" onClick={() => setShowFalAiKey(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                        {showFalAiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-neutral-600 italic">
+                                    Crear key en <span className="text-violet-400">fal.ai/dashboard/keys</span> · Tier gratuito disponible sin tarjeta
+                                </p>
+                            </div>
+
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* Cloudflare Workers AI */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Cloudflare Workers AI</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-orange-500/10 text-orange-400 border-orange-500/20">IMÁGENES</Badge>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-emerald-500/10 text-emerald-400 border-emerald-500/20">~30/DÍA GRATIS</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-yellow-500 flex items-center justify-center text-white shadow-lg shadow-orange-500/20 text-xl font-black">⚡</div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Cloudflare · FLUX.1-schnell</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Sin bloqueo geo · ~5s/imagen · 10k neurons/día gratis</p>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-orange-500/20 bg-orange-500/[0.04] p-4 space-y-2">
+                                <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest">Cómo configurarlo (2 min)</p>
+                                <ol className="text-[11px] text-neutral-400 space-y-1 list-decimal list-inside leading-relaxed">
+                                    <li>Ve a <span className="text-orange-400 font-mono">dash.cloudflare.com</span> → cuenta gratuita</li>
+                                    <li>Copia tu <span className="text-neutral-300">Account ID</span> del panel principal (barra lateral derecha)</li>
+                                    <li>Ve a <span className="text-neutral-300">My Profile → API Tokens → Create Token</span></li>
+                                    <li>Usa la plantilla <span className="text-orange-300">Workers AI</span> o permisos: <span className="font-mono text-orange-300">Workers AI:Read</span></li>
+                                    <li>Pega ambos aquí y pulsa Guardar</li>
+                                </ol>
+                            </div>
+
+                            {/* Contador de neurons */}
+                            {cfUsage && (
+                                <div className="rounded-2xl border border-orange-500/20 bg-orange-500/[0.04] p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest">Uso hoy — {cfUsage.date}</p>
+                                        <span className="text-[10px] font-black text-neutral-400">{cfUsage.neurons.toLocaleString()} / {cfUsage.limit.toLocaleString()} neurons</span>
+                                    </div>
+                                    <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full rounded-full transition-all duration-500"
+                                            style={{
+                                                width: `${Math.min(100, (cfUsage.neurons / cfUsage.limit) * 100)}%`,
+                                                background: cfUsage.neurons / cfUsage.limit > 0.8 ? "rgb(239,68,68)" : cfUsage.neurons / cfUsage.limit > 0.5 ? "rgb(234,179,8)" : "rgb(249,115,22)"
+                                            }}
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-between text-[10px]">
+                                        <span className="text-neutral-500">{cfUsage.images} imágenes generadas</span>
+                                        <span className={cfUsage.remaining < 1500 ? "text-red-400 font-black" : "text-emerald-400 font-black"}>
+                                            ~{Math.floor(cfUsage.remaining / 300)} imágenes restantes hoy
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">CF_ACCOUNT_ID</label>
+                                    <input
+                                        type="text"
+                                        value={cfAccountId}
+                                        onChange={(e) => setCfAccountId(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-mono text-white outline-none focus:border-orange-500/40 transition-all"
+                                        placeholder="a1b2c3d4e5f6..."
+                                    />
+                                    <p className="text-[10px] text-neutral-600 italic">Panel Cloudflare → barra lateral derecha</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">CF_API_TOKEN</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showCfToken ? "text" : "password"}
+                                            value={cfApiToken}
+                                            onChange={(e) => setCfApiToken(e.target.value)}
+                                            className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-orange-500/40 transition-all"
+                                            placeholder="..."
+                                        />
+                                        <button type="button" onClick={() => setShowCfToken(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                            {showCfToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] text-neutral-600 italic">My Profile → API Tokens → Workers AI template</p>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* Together AI */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Together AI</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-orange-500/10 text-orange-400 border-orange-500/20">IMÁGENES</Badge>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-emerald-500/10 text-emerald-400 border-emerald-500/20">$5 GRATIS</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white shadow-lg shadow-orange-500/20 text-xl font-black">T</div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Together AI · FLUX.1-schnell</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Sin bloqueo geo · Sin CGNAT · Rápido · $5 crédito inicial</p>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-orange-500/20 bg-orange-500/[0.04] p-4 space-y-2">
+                                <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest">Cómo obtener $5 gratis (sin tarjeta)</p>
+                                <ol className="text-[11px] text-neutral-400 space-y-1 list-decimal list-inside leading-relaxed">
+                                    <li>Ve a <span className="text-orange-400 font-mono">api.together.xyz</span> y crea una cuenta</li>
+                                    <li>No necesitas tarjeta — te dan $5 de crédito automáticamente</li>
+                                    <li>Ve a <span className="text-neutral-300">Settings → API Keys → Create</span></li>
+                                    <li>Pega la key aquí y pulsa Guardar</li>
+                                </ol>
+                                <p className="text-[10px] text-neutral-500 mt-1">Usa el modelo <span className="font-mono text-orange-300">FLUX.1-schnell-Free</span> — ~$0.0001/imagen, los $5 dan para ~50.000 imágenes.</p>
+                            </div>
+
+                            <div className="space-y-2 max-w-xl">
+                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">TOGETHER_API_KEY</label>
+                                <div className="relative">
+                                    <input
+                                        type={showTogetherKey ? "text" : "password"}
+                                        value={togetherApiKey}
+                                        onChange={(e) => setTogetherApiKey(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-orange-500/40 transition-all"
+                                        placeholder="..."
+                                    />
+                                    <button type="button" onClick={() => setShowTogetherKey(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                        {showTogetherKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-neutral-600 italic">
+                                    Al seleccionar proveedor <span className="text-orange-400">Pollinations</span> o <span className="text-orange-400">Together AI</span>, el backend usa esta key para FLUX schnell
+                                </p>
+                            </div>
+
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* Stable Horde */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Stable Horde</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-sky-500/10 text-sky-400 border-sky-500/20">IMÁGENES</Badge>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-emerald-500/10 text-emerald-400 border-emerald-500/20">100% GRATIS</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/20 text-xl font-black">H</div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Stable Horde · Red Comunitaria</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">GPU voluntaria · SDXL · SD 1.5 · Sin API Key necesaria</p>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-sky-500/20 bg-sky-500/[0.04] p-4 space-y-2">
+                                <p className="text-[10px] font-black text-sky-400 uppercase tracking-widest">Cómo funciona</p>
+                                <div className="space-y-2">
+                                    {[
+                                        { icon: "1", title: "Red descentralizada", desc: "Voluntarios donan su GPU. Totalmente gratis, para siempre. Sin tarjeta, sin cuenta obligatoria." },
+                                        { icon: "2", title: "Clave anónima", desc: "Sin API key funciona con prioridad baja. Con cuenta gratuita en stablehorde.net obtienes kudos y prioridad." },
+                                        { icon: "3", title: "Tiempo de espera", desc: "Cola dinámica: normalmente 30s–3min dependiendo del modelo y carga de la red." },
+                                    ].map(s => (
+                                        <div key={s.icon} className="flex gap-3">
+                                            <span className="w-5 h-5 rounded-full bg-sky-500/15 border border-sky-500/25 text-sky-400 text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5">{s.icon}</span>
+                                            <div>
+                                                <p className="text-xs font-black text-white">{s.title}</p>
+                                                <p className="text-[11px] text-neutral-500 mt-0.5 leading-relaxed">{s.desc}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="space-y-2 max-w-xl">
+                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">STABLE_HORDE_API_KEY (opcional)</label>
+                                <div className="relative">
+                                    <input
+                                        type={showStableHordeKey ? "text" : "password"}
+                                        value={stableHordeApiKey}
+                                        onChange={(e) => setStableHordeApiKey(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-sky-500/40 transition-all"
+                                        placeholder="Sin key = anónimo (funciona igual)"
+                                    />
+                                    <button type="button" onClick={() => setShowStableHordeKey(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                        {showStableHordeKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-neutral-600 italic">
+                                    Opcional: crea cuenta gratis en <span className="text-sky-400">stablehorde.net</span> → API Key → mayor prioridad en cola
+                                </p>
                             </div>
 
                             <div className="flex justify-end border-t border-white/5 pt-4">

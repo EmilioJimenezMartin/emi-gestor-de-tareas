@@ -27,6 +27,20 @@ npm run lint           # Lint the web app
 npm run start:api      # Runs compiled JS from apps/api/dist/
 ```
 
+### Local Image Server (Apple Silicon — FLUX.1-schnell)
+```bash
+# Arranca el servidor de generación de imágenes local (puerto 3002)
+npm run start:image-server
+
+# Primera vez: crea el venv Python e instala dependencias (~2min)
+# Primera generación: descarga el modelo FLUX.1-schnell (~3.4GB desde HuggingFace)
+# Generaciones siguientes: ~15-30s por imagen en M1/M2/M3
+```
+
+Requiere Python 3.10+. Solo funciona en Mac con Apple Silicon.
+El backend lo usa automáticamente como primer proveedor cuando está activo.
+Si está offline, cae al siguiente proveedor (Pollinations → fal.ai → HuggingFace).
+
 ### MongoDB
 ```bash
 # Option A: Homebrew

@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { Settings } from "../models/settings.js";
 import mongoose from "mongoose";
 import { setPollinationsToken } from "../lib/pollinations-circuit.js";
+import { setImageHfKey, setImageGoogleKey, setImageFalKey, setImageSegmindKey } from "../lib/image-gen.js";
 
 export async function registerSettingsRoutes(app: FastifyInstance) {
     app.get("/settings", async (request, reply) => {
@@ -27,6 +28,11 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
             if (!key) return reply.status(400).send({ error: "key required" });
             await Settings.findOneAndUpdate({ key }, { key, value }, { upsert: true, returnDocument: 'after' });
             if (key === "POLLINATIONS_TOKEN") setPollinationsToken(String(value ?? ""));
+            if (key === "HUGGINGFACE_API_KEY") setImageHfKey(String(value ?? ""));
+            if (key === "GOOGLE_API_KEY") setImageGoogleKey(String(value ?? ""));
+            if (key === "FALAI_API_KEY") setImageFalKey(String(value ?? ""));
+            if (key === "SEGMIND_API_KEY") setImageSegmindKey(String(value ?? ""));
+            if (key === "TOGETHER_API_KEY") { /* stored in MongoDB, leído en ai.ts por request */ }
             return reply.send({ success: true });
         } catch (error) {
             app.log.error(error);
@@ -52,9 +58,11 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
                         { key: update.key, value: update.value },
                         { upsert: true, returnDocument: 'after' }
                     );
-                    if (update.key === "POLLINATIONS_TOKEN") {
-                        setPollinationsToken(String(update.value ?? ""));
-                    }
+                    if (update.key === "POLLINATIONS_TOKEN") setPollinationsToken(String(update.value ?? ""));
+                    if (update.key === "HUGGINGFACE_API_KEY") setImageHfKey(String(update.value ?? ""));
+                    if (update.key === "GOOGLE_API_KEY") setImageGoogleKey(String(update.value ?? ""));
+                    if (update.key === "FALAI_API_KEY") setImageFalKey(String(update.value ?? ""));
+                    if (update.key === "SEGMIND_API_KEY") setImageSegmindKey(String(update.value ?? ""));
                 }
             }
 

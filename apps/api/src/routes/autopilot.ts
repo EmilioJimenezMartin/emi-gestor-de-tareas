@@ -6,6 +6,7 @@ import { AutopilotRun } from "../models/autopilot-run.js";
 import { getMongoStatus } from "../lib/mongo.js";
 import { sendTelegram, sendTelegramPhotoDiscovery, sendTelegramImageWithButtons, sendTelegramApproval } from "../lib/telegram.js";
 import { pollinationsFetch } from "../lib/pollinations-circuit.js";
+import { generateImage } from "../lib/image-gen.js";
 import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
 import { withLlmSlot } from "../lib/ai-semaphore.js";
 
@@ -350,36 +351,9 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                 }
             }
 
-            // Fallback HF: si Pollinations falló (IP bloqueada o cualquier error)
+            // Fallback: si Pollinations falló, usar generateImage (Pollinations → HF cascade)
             if (!imageBytes) {
-                try {
-                    const hfKey = process.env.HUGGINGFACE_API_KEY || "";
-                    if (hfKey) {
-                        console.log("[discover] Pollinations failed, trying HuggingFace FLUX");
-                        const hfRes = await fetch(
-                            "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
-                            {
-                                method: "POST",
-                                headers: {
-                                    Authorization: `Bearer ${hfKey.trim()}`,
-                                    "Content-Type": "application/json",
-                                    "x-use-cache": "false",
-                                },
-                                body: JSON.stringify({ inputs: samplePrompt }),
-                                signal: AbortSignal.timeout(45_000),
-                            }
-                        );
-                        const ct = hfRes.headers.get("content-type") ?? "";
-                        if (hfRes.ok && ct.includes("image/")) {
-                            imageBytes = Buffer.from(await hfRes.arrayBuffer());
-                            console.log("[discover] HuggingFace FLUX OK, got image");
-                        } else {
-                            console.warn(`[discover] HuggingFace failed: status=${hfRes.status} ct=${ct}`);
-                        }
-                    }
-                } catch (hfErr: any) {
-                    console.warn(`[discover] HuggingFace error: ${hfErr?.message}`);
-                }
+                imageBytes = await generateImage(samplePrompt);
             }
 
             // Upload to Cloudinary for a stable persistent URL (best-effort)

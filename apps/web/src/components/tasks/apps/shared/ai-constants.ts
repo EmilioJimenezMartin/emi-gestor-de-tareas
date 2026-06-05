@@ -42,6 +42,18 @@ export const AI_MODELS: AIModel[] = [
     { id: "segmind-flux-schnell", name: "FLUX Schnell (Segmind)", provider: "Segmind", type: "100 gratis/día · Rápido", modelId: "flux-schnell" },
     { id: "segmind-sdxl", name: "SDXL 1.0 (Segmind)", provider: "Segmind", type: "100 gratis/día · General", modelId: "sdxl1.0" },
     { id: "segmind-canny", name: "SDXL Canny (Segmind)", provider: "Segmind", type: "100 gratis/día · Línea art", modelId: "canny-sdxl" },
+    // Cloudflare Workers AI — 10k neurons/día gratis, sin bloqueos geo
+    { id: "cf-flux-schnell", name: "FLUX Schnell (Cloudflare)", provider: "Cloudflare", type: "Gratis · ~33img/día · FLUX · ~5s", modelId: "@cf/black-forest-labs/flux-1-schnell" },
+    { id: "cf-sdxl-lightning", name: "SDXL Lightning (Cloudflare)", provider: "Cloudflare", type: "Gratis · Ultrarrápido · Alta calidad", modelId: "@cf/bytedance/stable-diffusion-xl-lightning" },
+    { id: "cf-sdxl", name: "SDXL Base (Cloudflare)", provider: "Cloudflare", type: "Gratis · Detallado · SDXL 1.0", modelId: "@cf/stabilityai/stable-diffusion-xl-base-1.0" },
+    { id: "cf-dreamshaper", name: "DreamShaper LCM (Cloudflare)", provider: "Cloudflare", type: "Gratis · Artístico · Estilos creativos", modelId: "@cf/lykon/dreamshaper-8-lcm" },
+    // Together AI — $5 gratis sin tarjeta, FLUX schnell
+    { id: "together-flux-schnell", name: "FLUX Schnell (Together AI)", provider: "Together AI", type: "$5 gratis · Sin bloqueo geo · ~5-10s", modelId: "black-forest-labs/FLUX.1-schnell-Free" },
+    // Stable Horde — totalmente gratis, comunidad voluntaria
+    { id: "stable-horde-sdxl", name: "SDXL 1.0 (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · ~1-3min", modelId: "SDXL 1.0" },
+    { id: "stable-horde-sd15", name: "SD 1.5 (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · Rápido", modelId: "stable_diffusion" },
+    { id: "stable-horde-dreamshaper", name: "DreamShaper 8 (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · Artístico", modelId: "dreamshaper_8" },
+    { id: "stable-horde-albedo", name: "AlbedoBase XL (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · SDXL", modelId: "AlbedoBase XL (SDXL)" },
 ];
 
 export const AI_DIMENSIONS: AIDimension[] = [
@@ -105,12 +117,6 @@ export async function generateImageBlobUrl(
         const retryAfter = Math.max(3, Number(res.headers.get("Retry-After") || "15"));
         onRetry?.(retryAfter, retryCount + 1);
         await new Promise(r => setTimeout(r, retryAfter * 1000));
-        return generateImageBlobUrl(apiBase, { ...params, retryCount: retryCount + 1 });
-    }
-
-    if (res.status === 503 && retryCount < 2) {
-        onRetry?.(5, retryCount + 1);
-        await new Promise(r => setTimeout(r, 5000));
         return generateImageBlobUrl(apiBase, { ...params, retryCount: retryCount + 1 });
     }
 

@@ -13,6 +13,7 @@ import { Modal } from "@/components/ui/modal";
 import { SectionHeader } from "@/components/ui/section-header";
 import { toast } from "sonner";
 import { SearchQueryBuilder, type SearchConfig } from "@/components/search/SearchQueryBuilder";
+import { useSpeech } from "@/hooks/useSpeech";
 
 // Re-export shared types so consumers can import from one place
 export type { EtsyListing, EtsyNicheResult, RowAction } from "./RadarResultsTable";
@@ -105,7 +106,7 @@ function getModePlatform(m: Mode): SearchConfig["platform"] {
     if (m === "etsy-niches" || m === "opportunity") return "etsy";
     if (m === "trends-niches" || m === "cross-niche") return "trends";
     if (m === "reddit-niches") return "reddit";
-    if (m === "gumroad-niches") return "general";
+    if (m === "gumroad-niches") return "gumroad";
     return "general";
 }
 
@@ -154,6 +155,8 @@ export function NicheRadar({
     const logsEndRef = useRef<HTMLDivElement>(null);
     const isFirstLog = useRef(true);
     const activeJobId = useRef<string | null>(null);
+    const pendingResultRef = useRef<{ count: number; mode: string } | null>(null);
+    const { speak } = useSpeech();
 
     // Notify parent of initial mode so radarStorageKey is correct from the start
     useEffect(() => {
@@ -215,12 +218,23 @@ export function NicheRadar({
                 setGeneralResult(data.data);
                 if (data.data) setHistory(prev => [{ url, insight: data.data, ts: Date.now() }, ...prev.slice(0, 4)]);
             }
+            const count = (data?.data?.nichos_detectados ?? []).length;
+            if (count > 0) pendingResultRef.current = { count, mode: data.mode ?? "" };
         });
 
         socket.on("radar:done", () => {
             setIsAnalyzing(false);
             activeJobId.current = null;
             toast.success("Análisis completado");
+            const result = pendingResultRef.current;
+            pendingResultRef.current = null;
+            if (result && result.count > 0) {
+                const word = result.mode === "gap-finder" ? "huecos"
+                    : result.mode === "trends-niches" || result.mode === "cross-niche" ? "tendencias"
+                    : result.mode === "reddit-niches" ? "posts detectados"
+                    : "productos detectados";
+                speak(`Radar completado. ${result.count} ${word}.`);
+            }
         });
 
         socket.on("radar:error", (data: any) => {
@@ -527,32 +541,18 @@ export function NicheRadar({
                     )}
 
                     {mode === "gumroad-niches" && (
-                        <div className="rounded-xl bg-emerald-500/[0.05] border border-emerald-500/15 p-3 space-y-2">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-emerald-400/80">URLs sugeridas</p>
-                            <div className="space-y-1 mb-2">
-                                {[
-                                    "https://gumroad.com/discover?query=coloring+book",
-                                    "https://gumroad.com/discover?query=printable",
-                                    "https://gumroad.com/discover?query=coloring+pages",
-                                ].map(u => (
-                                    <button key={u} onClick={() => setSearchConfig({ platform: "general", url: u })}
-                                        className="w-full text-left text-[9px] font-mono text-emerald-400/70 hover:text-emerald-300 truncate transition-colors">
-                                        {u}
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="space-y-1 border-t border-white/5 pt-2">
-                                {[
-                                    { icon: DollarSign, label: "Nº ventas reales (validación de mercado)" },
-                                    { icon: Tag, label: "Precio típico por categoría" },
-                                    { icon: Flame, label: "Sub-nichos populares en Gumroad" },
-                                ].map(({ icon: Icon, label }) => (
-                                    <div key={label} className="flex items-center gap-2 text-[9px] text-neutral-500">
-                                        <Icon size={9} className="text-emerald-400/60 shrink-0" />
-                                        {label}
-                                    </div>
-                                ))}
-                            </div>
+                        <div className="rounded-xl bg-violet-500/[0.05] border border-violet-500/15 p-3 space-y-1.5">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/80">Señales detectadas</p>
+                            {[
+                                { icon: DollarSign, label: "Nº ventas reales (validación de mercado)" },
+                                { icon: Tag, label: "Precio típico por categoría" },
+                                { icon: Flame, label: "Sub-nichos con alta demanda" },
+                            ].map(({ icon: Icon, label }) => (
+                                <div key={label} className="flex items-center gap-2 text-[9px] text-neutral-500">
+                                    <Icon size={9} className="text-violet-400/60 shrink-0" />
+                                    {label}
+                                </div>
+                            ))}
                         </div>
                     )}
 

@@ -6,6 +6,7 @@ import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
 import { activateNextQueued } from "./catalog-queue.js";
 import { withImageSlot } from "./ai-semaphore.js";
+import { generateImage } from "./image-gen.js";
 import { generateCatalogPrompt } from "./catalog-prompt.js";
 
 // ── Command registry — add entries here to auto-include them in /ayuda ────────
@@ -764,10 +765,11 @@ async function processUpdate(update: any): Promise<void> {
 
             setImmediate(async () => {
                 try {
-                    const imgBuffer = await withImageSlot(`/img:${Date.now()}`, async () => {
-                        const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(90_000) });
-                        if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
-                        return Buffer.from(await imgRes.arrayBuffer());
+                    const imgBuffer = await withImageSlot(`/img:${Date.now()}`, () =>
+                        generateImage(prompt, { model, width: 1024, height: 1024, enhance: true })
+                    ).then(buf => {
+                        if (!buf) throw new Error("Todos los proveedores fallaron");
+                        return buf;
                     });
 
                     // Upload to Cloudinary so the URL is stable when the user accepts
@@ -1917,10 +1919,11 @@ async function processUpdate(update: any): Promise<void> {
 
             setImmediate(async () => {
                 try {
-                    const imgBuffer = await withImageSlot(`voice-img:${Date.now()}`, async () => {
-                        const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(90_000) });
-                        if (!imgRes.ok) throw new Error(`Pollinations HTTP ${imgRes.status}`);
-                        return Buffer.from(await imgRes.arrayBuffer());
+                    const imgBuffer = await withImageSlot(`voice-img:${Date.now()}`, () =>
+                        generateImage(imagePrompt, { model, width: 1024, height: 1024, enhance: true })
+                    ).then(buf => {
+                        if (!buf) throw new Error("Todos los proveedores fallaron");
+                        return buf;
                     });
 
                     const tAction = await TelegramAction.create({

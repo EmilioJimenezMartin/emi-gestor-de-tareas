@@ -37,7 +37,9 @@ import { registerVoiceRoutes } from "./routes/voice.js";
 import { startTelegramPolling } from "./lib/telegram-polling.js";
 import { Settings } from "./models/settings.js";
 import { initLogStreamer, getLogBuffer } from "./lib/log-streamer.js";
-import { getPollinationsStatus, setPollinationsToken } from "./lib/pollinations-circuit.js";
+import { getPollinationsStatus, setPollinationsToken, resetPollinationsBlock } from "./lib/pollinations-circuit.js";
+import { getCfUsage } from "./routes/ai.js";
+import { setImageHfKey, setImageGoogleKey, setImageFalKey } from "./lib/image-gen.js";
 
 const env = loadEnv(process.env);
 
@@ -57,6 +59,11 @@ app.get("/system/status", async () => ({
     mongo: getMongoStatus(),
     pollinations: getPollinationsStatus(),
 }));
+app.post("/system/reset-pollinations", async () => {
+    resetPollinationsBlock();
+    return { success: true, pollinations: getPollinationsStatus() };
+});
+app.get("/system/cf-usage", async () => getCfUsage());
 
 const deps: { io: typeof io; agenda?: Agenda } = { io };
 
@@ -353,10 +360,18 @@ const onMongoConnected = async () => {
     await seedSettings();
     seeded = true;
   }
-  // Load Pollinations token from DB into the circuit breaker cache
+  // Pre-warm image generation keys from DB so Agenda jobs don't need live MongoDB
   try {
-    const tokenSetting = await Settings.findOne({ key: "POLLINATIONS_TOKEN" });
+    const [tokenSetting, hfKeySetting, googleKeySetting, falKeySetting] = await Promise.all([
+      Settings.findOne({ key: "POLLINATIONS_TOKEN" }),
+      Settings.findOne({ key: "HUGGINGFACE_API_KEY" }),
+      Settings.findOne({ key: "GOOGLE_API_KEY" }),
+      Settings.findOne({ key: "FALAI_API_KEY" }),
+    ]);
     if (tokenSetting?.value) setPollinationsToken(String(tokenSetting.value));
+    if (hfKeySetting?.value) setImageHfKey(String(hfKeySetting.value));
+    if (googleKeySetting?.value) setImageGoogleKey(String(googleKeySetting.value));
+    if (falKeySetting?.value) setImageFalKey(String(falKeySetting.value));
   } catch { /* ignore if DB not ready yet */ }
   await startAgendaOnce();
   // Always call so agenda is injected even on reconnects / late agenda start

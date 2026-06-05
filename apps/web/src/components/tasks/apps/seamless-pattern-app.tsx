@@ -199,7 +199,7 @@ export function SeamlessPatternApp() {
     const [selectedPalette, setSelectedPalette] = useState(COLOR_PALETTES[0]);
     const [customPrompt, setCustomPrompt] = useState("");
     const [customNeg, setCustomNeg] = useState("");
-    const [selectedModelId, setSelectedModelId] = useState("pollinations-flux");
+    const [selectedModelId, setSelectedModelId] = useState("cf-flux-schnell");
     const [showModelPicker, setShowModelPicker] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -256,7 +256,7 @@ export function SeamlessPatternApp() {
     const [lightboxPattern, setLightboxPattern] = useState<SavedPattern | null>(null);
     const [lightboxTile, setLightboxTile] = useState<TileMode>("2x2");
 
-    const currentModel: AIModel = AI_MODELS.find(m => m.id === selectedModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
+    const currentModel: AIModel = AI_MODELS.find(m => m.id === selectedModelId) ?? AI_MODELS.find(m => m.id === "stable-horde-sdxl")!;
     const modelsByProvider = groupModelsByProvider(AI_MODELS);
 
     const tabs: AppTab[] = [

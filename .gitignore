@@ -8,3 +8,8 @@ dist
 out
 .turbo
 .DS_Store
+
+# Image server (Python)
+apps/image-server/.venv/
+apps/image-server/__pycache__/
+apps/image-server/*.pyc

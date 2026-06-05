@@ -124,8 +124,12 @@ export const CatalogCard = React.memo(function CatalogCard({
         ? { bar: "bg-blue-500/50", gradient: "from-blue-500 via-blue-400 to-cyan-400", border: "hover:border-blue-500/20", glow: "hover:shadow-[0_0_28px_rgba(59,130,246,0.10)]", blob: "bg-blue-500/8", badge: "bg-blue-500/10 border-blue-500/20 text-blue-300", dot: "bg-blue-400" }
         : catalog.aiModel?.provider === "Leonardo"
         ? { bar: "bg-amber-500/50", gradient: "from-amber-500 via-orange-400 to-amber-300", border: "hover:border-amber-500/20", glow: "hover:shadow-[0_0_28px_rgba(245,158,11,0.10)]", blob: "bg-amber-500/8", badge: "bg-amber-500/10 border-amber-500/20 text-amber-300", dot: "bg-amber-400" }
+        : catalog.aiModel?.provider === "Segmind"
+        ? { bar: "bg-green-500/50", gradient: "from-green-500 via-emerald-400 to-teal-400", border: "hover:border-green-500/20", glow: "hover:shadow-[0_0_28px_rgba(34,197,94,0.10)]", blob: "bg-green-500/8", badge: "bg-green-500/10 border-green-500/20 text-green-300", dot: "bg-green-400" }
         : catalog.aiModel?.provider === "Pollinations"
         ? { bar: "bg-emerald-500/50", gradient: "from-emerald-500 via-emerald-400 to-cyan-400", border: "hover:border-emerald-500/20", glow: "hover:shadow-[0_0_28px_rgba(16,185,129,0.10)]", blob: "bg-emerald-500/8", badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300", dot: "bg-emerald-400" }
+        : catalog.aiModel?.provider === "Stable Horde"
+        ? { bar: "bg-sky-500/50", gradient: "from-sky-500 via-sky-400 to-blue-400", border: "hover:border-sky-500/20", glow: "hover:shadow-[0_0_28px_rgba(14,165,233,0.10)]", blob: "bg-sky-500/8", badge: "bg-sky-500/10 border-sky-500/20 text-sky-300", dot: "bg-sky-400" }
         : { bar: "bg-sky-500/50", gradient: "from-sky-500 via-sky-400 to-cyan-400", border: "hover:border-sky-500/20", glow: "hover:shadow-[0_0_28px_rgba(14,165,233,0.10)]", blob: "bg-sky-500/8", badge: "bg-sky-500/10 border-sky-500/20 text-sky-300", dot: "bg-sky-400" };
 
     const isDraggable = catalog.status === "queued";
@@ -290,32 +294,10 @@ export const CatalogCard = React.memo(function CatalogCard({
                     </div>
                     {/* Right: destructive actions */}
                     <div className="flex items-center gap-1.5 shrink-0 pl-2 border-l border-white/[0.06]">
-                        {catalog.status === "running" && (
-                            <>
-                                <button
-                                    onClick={() => actions.skipCatalogImage(catalog._id)}
-                                    disabled={isSkippingImage}
-                                    title="Saltar imagen actual y continuar con la siguiente"
-                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-all text-sm font-black uppercase tracking-widest disabled:opacity-50"
-                                >
-                                    {isSkippingImage ? <Loader2 size={11} className="animate-spin" /> : <SkipForward size={11} />}
-                                    Saltar
-                                </button>
-                                <button
-                                    onClick={() => actions.forceCompleteCatalog(catalog._id)}
-                                    disabled={isForceCompleting}
-                                    title="Marcar como completado con las imágenes generadas hasta ahora"
-                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-violet-500/10 text-violet-400 border border-violet-500/20 hover:bg-violet-500/20 transition-all text-sm font-black uppercase tracking-widest disabled:opacity-50"
-                                >
-                                    {isForceCompleting ? <Loader2 size={11} className="animate-spin" /> : <CheckCheck size={11} />}
-                                    Forzar fin
-                                </button>
-                            </>
-                        )}
                         {isActive && (
                             <button
                                 onClick={() => actions.setConfirmStopCatalogId(catalog._id)}
-                                className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-orange-500/10 text-orange-400 border border-orange-500/20 hover:bg-orange-500 hover:text-white transition-all text-sm font-black uppercase tracking-widest"
+                                className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all text-sm font-black uppercase tracking-widest"
                             >
                                 <StopCircle size={11} /> Detener
                             </button>

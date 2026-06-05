@@ -169,6 +169,20 @@ const AI_MODELS = [
     { id: "segmind-flux-schnell", name: "FLUX Schnell (Segmind)", provider: "Segmind", type: "100 gratis/día · Rápido", modelId: "flux-schnell" },
     { id: "segmind-sdxl", name: "SDXL 1.0 (Segmind)", provider: "Segmind", type: "100 gratis/día · General", modelId: "sdxl1.0" },
     { id: "segmind-canny", name: "SDXL Canny (Segmind)", provider: "Segmind", type: "100 gratis/día · Línea art", modelId: "canny-sdxl" },
+
+    // Cloudflare Workers AI — gratis, sin bloqueos geo
+    { id: "cf-flux-schnell", name: "FLUX Schnell (Cloudflare)", provider: "Cloudflare", type: "Gratis · ~33img/día · FLUX · ~5s", modelId: "@cf/black-forest-labs/flux-1-schnell" },
+    { id: "cf-sdxl-lightning", name: "SDXL Lightning (Cloudflare)", provider: "Cloudflare", type: "Gratis · Ultrarrápido · Alta calidad", modelId: "@cf/bytedance/stable-diffusion-xl-lightning" },
+    { id: "cf-sdxl", name: "SDXL Base (Cloudflare)", provider: "Cloudflare", type: "Gratis · Detallado · SDXL 1.0", modelId: "@cf/stabilityai/stable-diffusion-xl-base-1.0" },
+    { id: "cf-dreamshaper", name: "DreamShaper LCM (Cloudflare)", provider: "Cloudflare", type: "Gratis · Artístico · Estilos creativos", modelId: "@cf/lykon/dreamshaper-8-lcm" },
+    // Together AI — $5 gratis sin tarjeta, FLUX schnell, sin bloqueo geo
+    { id: "together-flux-schnell", name: "FLUX Schnell (Together AI)", provider: "Together AI", type: "$5 gratis · Sin bloqueo geo · ~5-10s", modelId: "black-forest-labs/FLUX.1-schnell-Free" },
+
+    // Stable Horde — totalmente gratis, red comunitaria de GPUs voluntarias
+    { id: "stable-horde-sdxl", name: "SDXL 1.0 (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · ~1-3min", modelId: "SDXL 1.0" },
+    { id: "stable-horde-sd15", name: "SD 1.5 (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · Rápido", modelId: "stable_diffusion" },
+    { id: "stable-horde-dreamshaper", name: "DreamShaper 8 (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · Artístico", modelId: "dreamshaper_8" },
+    { id: "stable-horde-albedo", name: "AlbedoBase XL (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · SDXL", modelId: "AlbedoBase XL (SDXL)" },
 ];
 
 const AI_DIMENSIONS = [
@@ -268,19 +282,19 @@ const NICHE_STYLE_OPTIONS: { id: NicheStyle; label: string; desc: string }[] = [
 
 const NICHE_STYLE_MODEL: Record<NicheStyle, string> = {
     // Coloring book styles
-    generic: "pollinations-flux",
-    anime: "pollinations-flux-anime",
+    generic: "cf-flux-schnell",
+    anime: "cf-flux-schnell",
     illustration: "openjourney-v4",
     children: "coloringbook-redmond-v2",
-    realistic: "pollinations-flux-realism",
+    realistic: "cf-flux-schnell",
     watercolor: "openjourney-v4",
-    abstract: "pollinations-flux",
+    abstract: "cf-flux-schnell",
     // Printable poster styles
-    "wall-art":    "pollinations-flux-realism",
+    "wall-art":    "cf-flux-schnell",
     "botanical":   "openjourney-v4",
-    "affirmation": "pollinations-flux-realism",
-    "geometric":   "pollinations-flux-realism",
-    "celestial":   "pollinations-flux-realism",
+    "affirmation": "cf-flux-schnell",
+    "geometric":   "cf-flux-schnell",
+    "celestial":   "cf-flux-schnell",
     "retro":       "openjourney-v4",
 };
 
@@ -1543,7 +1557,7 @@ export function KdpFactoryApp() {
             setCoverTitle(niche.nickname?.trim() || niche.name);
             setCoverStyle(coverMap.style);
             setCoverColorTheme(coverMap.colorTheme);
-            setCoverModelId(NICHE_STYLE_MODEL[niche.styleCategory] ?? "pollinations-flux");
+            setCoverModelId(NICHE_STYLE_MODEL[niche.styleCategory] ?? "cf-flux-schnell");
             setShowCoverModal(true);
         } else if (phase === "published") {
             toast.info("Nicho ya publicado. Puedes añadir royalties o crear una nueva edición.");
@@ -1819,7 +1833,7 @@ export function KdpFactoryApp() {
 
                 lastPrompt = imagePrompt;
                 const modelId = NICHE_STYLE_MODEL[style] ?? NICHE_STYLE_MODEL[niche.styleCategory ?? "generic"];
-                const model = AI_MODELS.find(m => m.id === modelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
+                const model = AI_MODELS.find(m => m.id === modelId) ?? AI_MODELS.find(m => m.id === "cf-flux-schnell")!;
                 const catalogLabel = styles.length > 1 ? `${niche.name} · ${style}` : niche.name;
 
                 const catalogRes = await fetch(`${API_BASE_URL}/catalogs`, {
@@ -2960,7 +2974,7 @@ export function KdpFactoryApp() {
     const [coverSubtitle, setCoverSubtitle] = useState("");
     const [coverStyle, setCoverStyle] = useState("vibrant illustration, fantasy");
     const [coverColorTheme, setCoverColorTheme] = useState("deep blue and gold");
-    const [coverModelId, setCoverModelId] = useState("pollinations-flux");
+    const [coverModelId, setCoverModelId] = useState("cf-flux-schnell");
     const [coverImgDims, setCoverImgDims] = useState("1024x1024");
     const [isBuildingCover, setIsBuildingCover] = useState(false);
     const [generatedCoverUrl, setGeneratedCoverUrl] = useState<string | null>(null);
@@ -3887,14 +3901,15 @@ export function KdpFactoryApp() {
                 : toast.info;
             fn(data.message, { duration: 5000 });
             const clean = (data.message as string)
-                .replace(/desde Telegram\s*·?\s*/gi, "")
+                // strip emojis first so later replacements aren't disrupted
+                .replace(/[^\p{L}\p{N}\s.,;:!?'"()\-·→]/gu, "")
+                // "desde Telegram · {name}" → "para {name}"
+                .replace(/desde Telegram\s*·?\s*/gi, "para ")
                 .replace(/\s*·\s*/g, ". ")
                 .replace(/→/g, " a ")
-                // strip anything that isn't a Unicode letter, digit, space or basic punctuation
-                .replace(/[^\p{L}\p{N}\s.,;:!?'"()\-]/gu, "")
                 .replace(/\s+/g, " ")
                 .trim();
-            speak(clean || data.message.replace(/[^\p{L}\p{N}\s]/gu, " ").trim());
+            if (clean) speak(clean.slice(0, 200));
         });
 
         (socket as any).on("vault:rejected", (data: { id: string; catalogId: string; catalogName: string; nicheIds: string[]; imageUrl: string; reason: string; score: number }) => {
@@ -6975,7 +6990,7 @@ export function KdpFactoryApp() {
         const RADAR_RULE_MODES: { id: string; label: string; icon: string; platform: SearchPlatform; color: string }[] = [
             { id: "etsy-niches",    label: "Etsy KDP",        icon: "🛍️", platform: "etsy",    color: "amber" },
             { id: "amazon-niches",  label: "Amazon KDP",      icon: "📦", platform: "amazon",  color: "orange" },
-            { id: "gumroad-niches", label: "Gumroad",         icon: "💚", platform: "general", color: "emerald" },
+            { id: "gumroad-niches", label: "Gumroad",         icon: "💚", platform: "gumroad", color: "emerald" },
             { id: "trends-niches",  label: "Google Trends",   icon: "📈", platform: "trends",  color: "emerald" },
             { id: "reddit-niches",  label: "Reddit",          icon: "💬", platform: "reddit",  color: "rose" },
             { id: "opportunity",    label: "Oportunidad",     icon: "🎯", platform: "amazon",  color: "sky" },
@@ -7888,6 +7903,7 @@ export function KdpFactoryApp() {
         const currentModel = AI_MODELS.find(m => m.id === selectedModel);
         const currentDim = AI_DIMENSIONS.find(d => d.id === selectedDim);
         const providerColor: Record<string, string> = {
+            "Local": "green",
             "Pollinations": "emerald",
             "Hugging Face": "amber",
             "Google": "sky",
@@ -9776,7 +9792,7 @@ export function KdpFactoryApp() {
         setIsBuildingCover(true);
         setGeneratedCoverUrl(null);
         try {
-            const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
+            const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "cf-flux-schnell")!;
             const selectedNiche = niches.find(n => n._id === selectedCoverNicheId);
             const nicheContext = selectedNiche
                 ? `${selectedNiche.name}${selectedNiche.description ? `, ${selectedNiche.description}` : ""}`
@@ -9917,7 +9933,7 @@ export function KdpFactoryApp() {
         setIsBuildingBackCover(true);
         setGeneratedBackCoverUrl(null);
         try {
-            const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
+            const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "cf-flux-schnell")!;
             const selectedNiche = niches.find(n => n._id === selectedCoverNicheId);
             const nicheContext = selectedNiche
                 ? `${selectedNiche.name}${selectedNiche.description ? `, ${selectedNiche.description}` : ""}`
@@ -10302,7 +10318,7 @@ export function KdpFactoryApp() {
                                     setCoverSubtitle(n.productType === "coloring-book" ? "Coloring Book for Adults" : "");
                                     setCoverStyle(coverMap.style);
                                     setCoverColorTheme(coverMap.colorTheme);
-                                    setCoverModelId(NICHE_STYLE_MODEL[n.styleCategory] ?? "pollinations-flux");
+                                    setCoverModelId(NICHE_STYLE_MODEL[n.styleCategory] ?? "cf-flux-schnell");
                                     if (n.description) setCoverDescription(n.description);
                                     setShowCoverModal(true);
                                 };
@@ -12152,7 +12168,7 @@ export function KdpFactoryApp() {
                                         setCoverSubtitle(n.productType === "coloring-book" ? "Coloring Book for Adults" : n.productType === "printable-poster" ? "Premium Printable Artwork" : "");
                                         setCoverStyle(coverMap.style);
                                         setCoverColorTheme(coverMap.colorTheme);
-                                        setCoverModelId(NICHE_STYLE_MODEL[n.styleCategory] ?? "pollinations-flux");
+                                        setCoverModelId(NICHE_STYLE_MODEL[n.styleCategory] ?? "cf-flux-schnell");
                                         if (n.description) setCoverDescription(n.description);
                                         setGeneratedCoverUrl(n.coverUrl ?? null);
                                         setGeneratedBackCoverUrl(n.backCoverUrl ?? null);

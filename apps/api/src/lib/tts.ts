@@ -1,7 +1,9 @@
 // Returns { buffer, mimeType } using Google Translate TTS (fast, no API key needed).
 export async function synthesizeSpeech(text: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
     try {
-        const clean = text.replace(/[^\p{L}\p{N}\s.,;:!?'"()\-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+        const stripped = text.replace(/[^\p{L}\p{N}\s.,;:!?'"()\-]/gu, " ").replace(/\s+/g, " ").trim();
+        // Truncate at word boundary within 200 chars to avoid mid-word cuts that confuse TTS
+        const clean = stripped.length <= 200 ? stripped : stripped.slice(0, 200).replace(/\s\S*$/, "").trim();
         if (!clean) return null;
         const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(clean)}&tl=es&client=tw-ob`;
         const res = await fetch(url, {
