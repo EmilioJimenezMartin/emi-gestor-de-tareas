@@ -40,6 +40,7 @@ interface LogEntry {
 export type Mode =
     | "etsy-niches"
     | "amazon-niches"
+    | "gumroad-niches"
     | "general"
     | "trends-niches"
     | "opportunity"
@@ -51,6 +52,7 @@ export type Mode =
 export const MODE_STORAGE_KEY: Record<Mode, string> = {
     "etsy-niches": "RADAR_ETSY_RESULT",
     "amazon-niches": "RADAR_AMAZON_RESULT",
+    "gumroad-niches": "RADAR_GUMROAD_RESULT",
     "general": "RADAR_GENERAL_RESULT",
     "trends-niches": "RADAR_TRENDS_RESULT",
     "opportunity": "RADAR_OPPORTUNITY_RESULT",
@@ -103,6 +105,7 @@ function getModePlatform(m: Mode): SearchConfig["platform"] {
     if (m === "etsy-niches" || m === "opportunity") return "etsy";
     if (m === "trends-niches" || m === "cross-niche") return "trends";
     if (m === "reddit-niches") return "reddit";
+    if (m === "gumroad-niches") return "general";
     return "general";
 }
 
@@ -129,7 +132,7 @@ export function NicheRadar({
     const restoredMode = (): Mode => {
         if (typeof window === "undefined") return defaultMode;
         const saved = localStorage.getItem(RADAR_MODE_LS_KEY) as Mode | null;
-        const valid: Mode[] = ["etsy-niches","amazon-niches","general","trends-niches","opportunity","amazon-movers","reddit-niches","cross-niche","gap-finder"];
+        const valid: Mode[] = ["etsy-niches","amazon-niches","gumroad-niches","general","trends-niches","opportunity","amazon-movers","reddit-niches","cross-niche","gap-finder"];
         return saved && valid.includes(saved) ? saved : defaultMode;
     };
 
@@ -248,6 +251,7 @@ export function NicheRadar({
         const modeLabelMap: Record<Mode, string> = {
             "etsy-niches": "Etsy Nichos",
             "amazon-niches": "Amazon KDP",
+            "gumroad-niches": "Gumroad",
             "trends-niches": "Google Trends",
             "general": "Análisis General",
             "opportunity": "Oportunidad",
@@ -295,6 +299,7 @@ export function NicheRadar({
     ] as const;
 
     const ROW2_TABS = [
+        { id: "gumroad-niches" as Mode, label: "Gumroad", icon: ShoppingCart, active: "bg-emerald-500/15 border border-emerald-500/25 text-emerald-300", btn: "bg-gradient-to-r from-emerald-500 to-green-500" },
         { id: "opportunity" as Mode, label: "Oportunidad", icon: Target, active: "bg-violet-500/15 border border-violet-500/25 text-violet-300", btn: "bg-gradient-to-r from-violet-500 to-purple-500" },
         { id: "amazon-movers" as Mode, label: "Movers", icon: Rocket, active: "bg-rose-500/15 border border-rose-500/25 text-rose-300", btn: "bg-gradient-to-r from-rose-500 to-orange-500" },
         { id: "reddit-niches" as Mode, label: "Reddit KDP", icon: MessageCircle, active: "bg-orange-500/15 border border-orange-500/25 text-orange-300", btn: "bg-gradient-to-r from-orange-500 to-red-500" },
@@ -308,6 +313,7 @@ export function NicheRadar({
 
     const btnLabel = mode === "etsy-niches" ? <span className="flex items-center justify-center gap-2"><ShoppingCart size={14} className="fill-black" /> Escanear Etsy</span>
         : mode === "amazon-niches" ? <span className="flex items-center justify-center gap-2"><ShoppingBag size={14} className="fill-black" /> Escanear Amazon</span>
+        : mode === "gumroad-niches" ? <span className="flex items-center justify-center gap-2"><ShoppingCart size={14} className="fill-black" /> Escanear Gumroad</span>
         : mode === "trends-niches" ? <span className="flex items-center justify-center gap-2"><TrendingUp size={14} className="fill-black" /> Analizar Trends</span>
         : mode === "opportunity" ? <span className="flex items-center justify-center gap-2"><Target size={14} /> Buscar Oportunidades</span>
         : mode === "amazon-movers" ? <span className="flex items-center justify-center gap-2"><Rocket size={14} /> Ver Movers & Shakers</span>
@@ -513,6 +519,36 @@ export function NicheRadar({
                                 ].map(({ icon: Icon, label }) => (
                                     <div key={label} className="flex items-center gap-2 text-[9px] text-neutral-500">
                                         <Icon size={9} className="text-sky-400/60 shrink-0" />
+                                        {label}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {mode === "gumroad-niches" && (
+                        <div className="rounded-xl bg-emerald-500/[0.05] border border-emerald-500/15 p-3 space-y-2">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-emerald-400/80">URLs sugeridas</p>
+                            <div className="space-y-1 mb-2">
+                                {[
+                                    "https://gumroad.com/discover?query=coloring+book",
+                                    "https://gumroad.com/discover?query=printable",
+                                    "https://gumroad.com/discover?query=coloring+pages",
+                                ].map(u => (
+                                    <button key={u} onClick={() => setSearchConfig({ platform: "general", url: u })}
+                                        className="w-full text-left text-[9px] font-mono text-emerald-400/70 hover:text-emerald-300 truncate transition-colors">
+                                        {u}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="space-y-1 border-t border-white/5 pt-2">
+                                {[
+                                    { icon: DollarSign, label: "Nº ventas reales (validación de mercado)" },
+                                    { icon: Tag, label: "Precio típico por categoría" },
+                                    { icon: Flame, label: "Sub-nichos populares en Gumroad" },
+                                ].map(({ icon: Icon, label }) => (
+                                    <div key={label} className="flex items-center gap-2 text-[9px] text-neutral-500">
+                                        <Icon size={9} className="text-emerald-400/60 shrink-0" />
                                         {label}
                                     </div>
                                 ))}

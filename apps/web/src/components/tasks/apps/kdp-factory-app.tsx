@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { PDFDocument, rgb } from "pdf-lib";
 import {
@@ -81,11 +81,13 @@ import {
     CheckCheck,
     Mic,
     Link2,
+    Unlink,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
+import { CatalogCard, KdpCardCtx, type KdpCardActions } from "./kdp-catalog-card";
 import { Modal } from "@/components/ui/modal";
 import { KdpStatCard } from "@/components/ui/kdp-stat-card";
 import { KdpVerticalBarChart } from "@/components/ui/kdp-vertical-bar-chart";
@@ -186,7 +188,7 @@ const AI_DIMENSIONS = [
 
 const PLATFORMS = ["Amazon KDP", "Etsy", "Printify", "Creative Fabrica"];
 
-type TabID = "insights" | "creation" | "studio" | "niches" | "gelato" | "config";
+type TabID = "insights" | "creation" | "studio" | "niches" | "gelato" | "config" | "ventas";
 type PeriodID = "month" | "6months" | "year" | "all";
 
 type NicheStatus = "found" | "active" | "research" | "archived";
@@ -990,7 +992,7 @@ export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
         if (typeof window === "undefined") return "insights";
         const saved = localStorage.getItem("kdp-active-tab");
-        return (saved && ["insights", "creation", "studio", "gelato", "config"].includes(saved)) ? saved as TabID : "studio";
+        return (saved && ["insights", "creation", "studio", "gelato", "config", "ventas"].includes(saved)) ? saved as TabID : "studio";
     });
     const changeTab = (tab: TabID) => { localStorage.setItem("kdp-active-tab", tab); setActiveTab(tab); };
     const [chartPeriod, setChartPeriod] = useState<PeriodID>("month");
@@ -1101,6 +1103,7 @@ export function KdpFactoryApp() {
     const [bulkDeleteCatalogId, setBulkDeleteCatalogId] = useState<string | null>(null);
     const [bulkDeleteSelection, setBulkDeleteSelection] = useState<Set<string>>(new Set());
     const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+    const stableEmptySet = useRef(new Set<string>()).current;
     const [bookPages, setBookPages] = useState<BookPage[]>([]);
     const [directPdfCatalogId, setDirectPdfCatalogId] = useState<string | null>(null);
     const [directNichePdfId, setDirectNichePdfId] = useState<string | null>(null);
@@ -1326,6 +1329,10 @@ export function KdpFactoryApp() {
     const [salesImportPeriod, setSalesImportPeriod] = useState(() => new Date().toISOString().slice(0, 7));
     const [isImportingSales, setIsImportingSales] = useState(false);
     const [salesPeriods, setSalesPeriods] = useState<string[]>([]);
+    const [linkSaleId, setLinkSaleId] = useState<string | null>(null);
+    const [linkSaleNicheId, setLinkSaleNicheId] = useState<string>("");
+    const [deletingSaleId, setDeletingSaleId] = useState<string | null>(null);
+    const [deletingPeriod, setDeletingPeriod] = useState<string | null>(null);
 
     // --- Alert settings state (hours only — enabled is controlled via NOTIFICATION_RULES) ---
     const [alertSettings, setAlertSettings] = useState({
@@ -3723,6 +3730,7 @@ export function KdpFactoryApp() {
     useEffect(() => { void fetchCatalogs(); void fetchApRuns(); void fetchPipelineData(); void fetchRejectedImages(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => { if (activeTab === "insights") void fetchTimeseries(timeseriesDays); }, [activeTab, timeseriesDays]); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { if (activeTab === "ventas" && salesData.length === 0) void fetchSalesData(); }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Always keep catalog socket connected so images appear in real-time on any tab
     useEffect(() => {
@@ -4766,6 +4774,30 @@ export function KdpFactoryApp() {
             void fetchSalesData(salesImportPeriod);
         } catch { toast.error("Error importando"); } finally { setIsImportingSales(false); }
     };
+    const deleteSale = async (id: string) => {
+        setDeletingSaleId(id);
+        try {
+            await fetch(`${API_BASE_URL}/kdp-sales/${id}`, { method: "DELETE" });
+            setSalesData(prev => prev.filter(s => s._id !== id));
+        } catch { toast.error("Error eliminando venta"); } finally { setDeletingSaleId(null); }
+    };
+
+    const deleteSalePeriod = async (period: string) => {
+        setDeletingPeriod(period);
+        try {
+            const res = await fetch(`${API_BASE_URL}/kdp-sales/period/${encodeURIComponent(period)}`, { method: "DELETE" });
+            const d = await res.json();
+            toast.success(`${d.deleted ?? 0} entradas eliminadas`);
+            setSalesPeriods(prev => prev.filter(p => p !== period));
+            if (salesPeriodFilter === period) {
+                setSalesPeriodFilter("");
+                void fetchSalesData("");
+            } else {
+                setSalesData(prev => prev.filter(s => s.period !== period));
+            }
+        } catch { toast.error("Error eliminando período"); } finally { setDeletingPeriod(null); }
+    };
+
     const saveAlertSettings = async () => {
         setSavingAlertSettings(true);
         try {
@@ -5224,10 +5256,20 @@ export function KdpFactoryApp() {
                             Todos
                         </button>
                         {salesPeriods.map(p => (
-                            <button key={p} onClick={() => { setSalesPeriodFilter(p); void fetchSalesData(p); }}
-                                className={`px-2 py-1 rounded-lg border text-[10px] font-black transition-all ${salesPeriodFilter === p ? "bg-sky-500/20 border-sky-500/40 text-sky-400" : "border-white/10 text-neutral-600 hover:text-neutral-400"}`}>
-                                {p}
-                            </button>
+                            <div key={p} className="flex items-center gap-0.5 group/period">
+                                <button onClick={() => { setSalesPeriodFilter(p); void fetchSalesData(p); }}
+                                    className={`px-2 py-1 rounded-l-lg border-y border-l text-[10px] font-black transition-all ${salesPeriodFilter === p ? "bg-sky-500/20 border-sky-500/40 text-sky-400" : "border-white/10 text-neutral-600 hover:text-neutral-400"}`}>
+                                    {p}
+                                </button>
+                                <button
+                                    onClick={() => void deleteSalePeriod(p)}
+                                    disabled={deletingPeriod === p}
+                                    title={`Eliminar todas las ventas de ${p}`}
+                                    className="h-[26px] px-1.5 rounded-r-lg border-y border-r border-white/10 text-neutral-700 hover:text-rose-400 hover:border-rose-500/30 hover:bg-rose-500/10 transition-all opacity-0 group-hover/period:opacity-100 disabled:opacity-40"
+                                >
+                                    {deletingPeriod === p ? <Loader2 size={8} className="animate-spin" /> : <Trash2 size={8} />}
+                                </button>
+                            </div>
                         ))}
                     </div>
                 )}
@@ -5248,6 +5290,106 @@ export function KdpFactoryApp() {
                     </div>
                 )}
 
+                {/* Rentabilidad por nicho */}
+                {(niches.length > 0 || salesData.length > 0) && (() => {
+                    const nicheRows = niches.map(n => {
+                        const nSales = salesData.filter(s => s.nicheId === n._id);
+                        const revenue = nSales.reduce((s, r) => s + r.royaltiesUsd, 0);
+                        const units = nSales.reduce((s, r) => s + r.unitsSold, 0);
+                        const cats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
+                        const images = cats.reduce((s, c) => s + c.images.length, 0);
+                        const revenuePerImage = images > 0 ? revenue / images : 0;
+                        return { n, revenue, units, cats: cats.length, images, revenuePerImage };
+                    }).sort((a, b) => b.revenue - a.revenue || b.images - a.images);
+
+                    const unlinkedSales = salesData.filter(s => !s.nicheId);
+                    const unlinkedRevenue = unlinkedSales.reduce((s, r) => s + r.royaltiesUsd, 0);
+                    const unlinkedUnits = unlinkedSales.reduce((s, r) => s + r.unitsSold, 0);
+                    const maxRevenue = Math.max(nicheRows[0]?.revenue ?? 0, unlinkedRevenue, 1);
+
+                    return (
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                                <div className="w-5 h-5 rounded-lg bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center">
+                                    <TrendingUp size={10} className="text-emerald-400" />
+                                </div>
+                                <span className="text-sm font-black uppercase tracking-widest text-emerald-400/80">Rentabilidad por nicho</span>
+                            </div>
+                            <div className="space-y-1.5">
+                                {nicheRows.map(({ n, revenue, units, cats, images, revenuePerImage }, idx) => {
+                                    const barW = maxRevenue > 0 ? (revenue / maxRevenue) * 100 : 0;
+                                    const tier = revenue === 0 ? "none"
+                                        : revenue < 5 ? "low"
+                                        : revenue < 20 ? "mid"
+                                        : "high";
+                                    const tierCls = tier === "high" ? "text-emerald-400"
+                                        : tier === "mid" ? "text-sky-400"
+                                        : tier === "low" ? "text-amber-400/70"
+                                        : "text-neutral-700";
+                                    const barCls = tier === "high" ? "bg-emerald-500"
+                                        : tier === "mid" ? "bg-sky-500"
+                                        : tier === "low" ? "bg-amber-500/60"
+                                        : "bg-neutral-800";
+                                    return (
+                                        <div key={n._id} className="group flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.01] border border-white/[0.04] hover:border-white/10 hover:bg-white/[0.025] transition-all">
+                                            <span className="text-[10px] font-black text-neutral-700 tabular-nums w-4 shrink-0">{idx + 1}</span>
+                                            <div className="min-w-0 flex-1 space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm font-bold text-white truncate">{nd(n)}</span>
+                                                    <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full border ${
+                                                        n.status === "active" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/15" : "text-neutral-600 bg-white/5 border-white/8"
+                                                    }`}>{n.status}</span>
+                                                </div>
+                                                <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                                                    <div className={`h-full rounded-full transition-all duration-700 ${barCls}`} style={{ width: `${barW}%` }} />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-4 shrink-0 text-right">
+                                                <div>
+                                                    <div className={`text-sm font-black tabular-nums ${tierCls}`}>${revenue.toFixed(2)}</div>
+                                                    <div className="text-[9px] text-neutral-700">{units} u.</div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-black tabular-nums text-neutral-400">{images}</div>
+                                                    <div className="text-[9px] text-neutral-700">{cats} cat.</div>
+                                                </div>
+                                                {images > 0 && (
+                                                    <div className="w-16">
+                                                        <div className={`text-sm font-black tabular-nums ${revenuePerImage > 0 ? "text-violet-400" : "text-neutral-700"}`}>
+                                                            ${revenuePerImage.toFixed(3)}
+                                                        </div>
+                                                        <div className="text-[9px] text-neutral-700">$/img</div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                {unlinkedRevenue > 0 && (
+                                    <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.01] border border-dashed border-white/[0.06]">
+                                        <span className="text-[10px] font-black text-neutral-700 w-4 shrink-0">—</span>
+                                        <div className="min-w-0 flex-1 space-y-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-bold text-neutral-600 italic truncate">Sin vincular</span>
+                                                <span className="text-[9px] font-black text-neutral-700 bg-white/5 border border-white/8 px-1.5 py-0.5 rounded-full">{unlinkedSales.length}</span>
+                                            </div>
+                                            <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                                                <div className="h-full rounded-full bg-neutral-700/50 transition-all duration-700" style={{ width: `${(unlinkedRevenue / maxRevenue) * 100}%` }} />
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4 shrink-0 text-right">
+                                            <div>
+                                                <div className="text-sm font-black tabular-nums text-neutral-500">${unlinkedRevenue.toFixed(2)}</div>
+                                                <div className="text-[9px] text-neutral-700">{unlinkedUnits} u.</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })()}
+
                 {/* Sales table */}
                 {salesData.length === 0 && !salesLoading && (
                     <div className="text-center py-12 text-neutral-700 text-sm">No hay datos de ventas. Importa un informe CSV.</div>
@@ -5261,26 +5403,102 @@ export function KdpFactoryApp() {
                                 <thead>
                                     <tr className="text-[9px] font-black text-neutral-600 uppercase tracking-widest border-b border-white/5">
                                         <th className="text-left py-2 pr-3">Período</th>
-                                        <th className="text-left py-2 pr-3">Título</th>
+                                        <th className="text-left py-2 pr-3">Título / Nicho</th>
                                         <th className="text-left py-2 pr-3">ASIN</th>
                                         <th className="text-right py-2 pr-3">Unidades</th>
-                                        <th className="text-right py-2">Royalties</th>
+                                        <th className="text-right py-2 pr-3">Royalties</th>
+                                        <th className="w-6" />
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {salesData.map(r => {
                                         const niche = niches.find(n => n._id === r.nicheId);
+                                        const isLinking = linkSaleId === r._id;
+                                        const isDeleting = deletingSaleId === r._id;
                                         return (
-                                            <tr key={r._id} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
-                                                <td className="py-2 pr-3 text-neutral-500">{r.period}</td>
-                                                <td className="py-2 pr-3 max-w-[200px]">
-                                                    <div className="truncate text-neutral-300">{r.title || "—"}</div>
-                                                    {niche && <div className="text-[9px] text-sky-400 truncate">{nd(niche)}</div>}
-                                                </td>
-                                                <td className="py-2 pr-3 font-mono text-neutral-500">{r.asin}</td>
-                                                <td className="py-2 pr-3 text-right font-black text-white">{r.unitsSold}</td>
-                                                <td className="py-2 text-right font-black text-emerald-400">${r.royaltiesUsd.toFixed(2)}</td>
-                                            </tr>
+                                            <React.Fragment key={r._id}>
+                                                <tr className="group/row border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
+                                                    <td className="py-2 pr-3 text-neutral-500 whitespace-nowrap">{r.period}</td>
+                                                    <td className="py-2 pr-3 max-w-[220px]">
+                                                        <div className="truncate text-neutral-300">{r.title || "—"}</div>
+                                                        {niche
+                                                            ? <button
+                                                                onClick={() => { setLinkSaleId(isLinking ? null : r._id); setLinkSaleNicheId(r.nicheId ?? ""); }}
+                                                                className={`text-[9px] font-black flex items-center gap-1 transition-all ${isLinking ? "text-sky-400" : "text-sky-400/70 hover:text-sky-300"}`}
+                                                              >
+                                                                <Target size={7} /> {nd(niche)}
+                                                              </button>
+                                                            : <button
+                                                                onClick={() => { setLinkSaleId(isLinking ? null : r._id); setLinkSaleNicheId(""); }}
+                                                                className={`text-[9px] font-black flex items-center gap-1 transition-all ${isLinking ? "text-sky-400" : "text-neutral-700 hover:text-amber-400"}`}
+                                                              >
+                                                                <Link2 size={7} /> {isLinking ? "Cancelar" : "Sin nicho — vincular"}
+                                                              </button>
+                                                        }
+                                                    </td>
+                                                    <td className="py-2 pr-3 font-mono text-neutral-500">{r.asin}</td>
+                                                    <td className="py-2 pr-3 text-right font-black text-white">{r.unitsSold}</td>
+                                                    <td className="py-2 pr-3 text-right font-black text-emerald-400">${r.royaltiesUsd.toFixed(2)}</td>
+                                                    <td className="py-2">
+                                                        <button
+                                                            onClick={() => void deleteSale(r._id)}
+                                                            disabled={isDeleting}
+                                                            className="opacity-0 group-hover/row:opacity-100 text-neutral-700 hover:text-rose-400 transition-all disabled:opacity-40"
+                                                        >
+                                                            {isDeleting ? <Loader2 size={9} className="animate-spin" /> : <Trash2 size={9} />}
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                                {isLinking && (
+                                                    <tr className="border-b border-white/[0.03] bg-sky-500/[0.03]">
+                                                        <td colSpan={6} className="py-2 px-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <select
+                                                                    value={linkSaleNicheId}
+                                                                    onChange={e => setLinkSaleNicheId(e.target.value)}
+                                                                    className="flex-1 h-7 px-2 rounded-lg border border-white/10 bg-white/[0.04] text-[11px] text-white focus:outline-none focus:border-sky-500/40"
+                                                                >
+                                                                    <option value="">— Selecciona un nicho —</option>
+                                                                    {niches.map(n => <option key={n._id} value={n._id}>{nd(n)}</option>)}
+                                                                </select>
+                                                                {r.nicheId && (
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            await fetch(`${API_BASE_URL}/kdp-sales/${r._id}`, {
+                                                                                method: "PATCH",
+                                                                                headers: { "Content-Type": "application/json" },
+                                                                                body: JSON.stringify({ nicheId: null }),
+                                                                            });
+                                                                            setSalesData(prev => prev.map(s => s._id === r._id ? { ...s, nicheId: null } : s));
+                                                                            setLinkSaleId(null);
+                                                                            toast.success("Venta desvinculada");
+                                                                        }}
+                                                                        className="h-7 px-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-[10px] font-black text-rose-400 hover:bg-rose-500/20 transition-all"
+                                                                    >
+                                                                        <Unlink size={9} />
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    disabled={!linkSaleNicheId}
+                                                                    onClick={async () => {
+                                                                        await fetch(`${API_BASE_URL}/kdp-sales/${r._id}`, {
+                                                                            method: "PATCH",
+                                                                            headers: { "Content-Type": "application/json" },
+                                                                            body: JSON.stringify({ nicheId: linkSaleNicheId }),
+                                                                        });
+                                                                        setSalesData(prev => prev.map(s => s._id === r._id ? { ...s, nicheId: linkSaleNicheId } : s));
+                                                                        setLinkSaleId(null);
+                                                                        toast.success("Venta vinculada al nicho");
+                                                                    }}
+                                                                    className="h-7 px-3 rounded-lg bg-sky-500/20 border border-sky-500/30 text-[10px] font-black text-sky-400 hover:bg-sky-500/30 transition-all disabled:opacity-40"
+                                                                >
+                                                                    <Check size={9} />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
                                         );
                                     })}
                                 </tbody>
@@ -6757,6 +6975,7 @@ export function KdpFactoryApp() {
         const RADAR_RULE_MODES: { id: string; label: string; icon: string; platform: SearchPlatform; color: string }[] = [
             { id: "etsy-niches",    label: "Etsy KDP",        icon: "🛍️", platform: "etsy",    color: "amber" },
             { id: "amazon-niches",  label: "Amazon KDP",      icon: "📦", platform: "amazon",  color: "orange" },
+            { id: "gumroad-niches", label: "Gumroad",         icon: "💚", platform: "general", color: "emerald" },
             { id: "trends-niches",  label: "Google Trends",   icon: "📈", platform: "trends",  color: "emerald" },
             { id: "reddit-niches",  label: "Reddit",          icon: "💬", platform: "reddit",  color: "rose" },
             { id: "opportunity",    label: "Oportunidad",     icon: "🎯", platform: "amazon",  color: "sky" },
@@ -7553,6 +7772,117 @@ export function KdpFactoryApp() {
         </div>
         );
     };
+
+    // ── Stable callbacks for CatalogCard context ─────────────────────────────
+    const onReuseConfig = useCallback((catalog: IACatalogFE) => {
+        if (catalog.promptParts?.theme) {
+            setPromptTheme(catalog.promptParts.theme);
+            setPromptSpecs(catalog.promptParts.specs ?? "");
+            setPromptDetails(catalog.promptParts.details ?? "");
+            setPromptParticulars(catalog.promptParts.particulars ?? "");
+        } else {
+            const prefix = "Genera una imagen con la siguiente temática: ";
+            let raw = catalog.prompt;
+            if (raw.startsWith(prefix)) raw = raw.slice(prefix.length);
+            const styleIdx = raw.indexOf(". Style:");
+            if (styleIdx >= 0) raw = raw.slice(0, styleIdx);
+            const cutAt = [
+                raw.indexOf(", que tenga las siguientes especificaciones:"),
+                raw.indexOf(", con los siguientes detalles:"),
+                raw.indexOf(", y las siguientes particularidades:"),
+            ].filter(i => i >= 0).sort((a, b) => a - b)[0] ?? -1;
+            setPromptTheme(cutAt >= 0 ? raw.slice(0, cutAt) : raw);
+            setPromptSpecs(""); setPromptDetails(""); setPromptParticulars("");
+        }
+        const matchModel = AI_MODELS.find(m => m.id === catalog.aiModel?.id);
+        if (matchModel) setSelectedModel(matchModel.id);
+        const matchDim = AI_DIMENSIONS.find(d => d.width === catalog.width && d.height === catalog.height);
+        if (matchDim) setSelectedDim(matchDim.id);
+        if (catalog.productType) setCatalogProductType(catalog.productType);
+        if (catalog.creativity !== undefined) setCatalogCreativity(catalog.creativity);
+        if (catalog.negativePrompt !== undefined) setCatalogNegativePrompt(catalog.negativePrompt);
+        toast.success("Prompt, modelo y resolución cargados");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const onOpenEditor = useCallback((catalog: IACatalogFE) => {
+        const pages: BookPage[] = catalog.images.map((img, i) => ({
+            id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2),
+            type: "image" as const,
+            image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` },
+            text: defaultTextStyle(),
+        }));
+        const newDraft = { id: `catalog-${catalog._id}-${Date.now()}`, fileName: catalog.name, pages, savedAt: new Date().toISOString() };
+        void guardedLoadBookDraft(newDraft);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const onToggleNiche = useCallback((catalogId: string, nicheId: string, assigned: boolean) => {
+        let nextNicheIds: string[] = [];
+        setIaCatalogs(prev => {
+            const cat = prev.find(c => c._id === catalogId);
+            if (!cat) return prev;
+            const cur = cat.nicheIds ?? [];
+            nextNicheIds = assigned ? cur.filter(id => id !== nicheId) : [...cur, nicheId];
+            return prev.map(c => c._id === catalogId ? { ...c, nicheIds: nextNicheIds } : c);
+        });
+        setNiches(prev => prev.map(nx => {
+            if (nx._id !== nicheId) return nx;
+            const cats = nx.catalogIds ?? [];
+            return {
+                ...nx,
+                catalogIds: assigned
+                    ? cats.filter(cid => cid !== catalogId)
+                    : cats.includes(catalogId) ? cats : [...cats, catalogId],
+            };
+        }));
+        const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
+        setTimeout(() => {
+            fetch(`${apiBase}/catalogs/${catalogId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ nicheIds: nextNicheIds }),
+            }).catch(() => {});
+        }, 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const cardActions = useMemo<KdpCardActions>(() => ({
+        setDraggingId,
+        setDragOverId,
+        handleQueueReorder,
+        onReuseConfig,
+        onOpenEditor,
+        onDownloadPdf: (catalog) => void downloadCatalogPdfDirect(catalog),
+        onExportDataset: (catalog) => exportCatalogDataset(catalog),
+        retryFailedSlots,
+        skipCatalogImage,
+        forceCompleteCatalog,
+        setConfirmStopCatalogId,
+        setConfirmDeleteCatalogId,
+        setCatalogNichePickerId,
+        onToggleNiche,
+        setBulkDeleteCatalogId,
+        setBulkDeleteSelection,
+        onBulkDeleteImages: bulkDeleteSelectedImages,
+        toggleImageSelect,
+        openCatalogImagePreview,
+        toggleFavorite,
+        upscaleImage,
+        statusBadge: (status) => {
+            const map: Record<IACatalogFE["status"], { label: string; cls: string }> = {
+                queued: { label: "En espera", cls: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
+                pending: { label: "Iniciando...", cls: "bg-neutral-500/10 text-neutral-400 border-neutral-500/20" },
+                running: { label: "Generando...", cls: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
+                completed: { label: "Completado", cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+                failed: { label: "Error", cls: "bg-red-500/10 text-red-400 border-red-500/20" },
+                cancelled: { label: "Cancelado", cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+            };
+            const { label, cls } = map[status] ?? { label: status, cls: "bg-white/5 text-neutral-400 border-white/10" };
+            return <Badge variant="neutral" className={`text-sm font-black uppercase ${cls}`}>{label}</Badge>;
+        },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }), [onReuseConfig, onOpenEditor, onToggleNiche, handleQueueReorder, retryFailedSlots, skipCatalogImage, forceCompleteCatalog, downloadCatalogPdfDirect, exportCatalogDataset, bulkDeleteSelectedImages, toggleImageSelect, openCatalogImagePreview, toggleFavorite, upscaleImage]);
 
     const renderAIStudio = () => {
         const currentModel = AI_MODELS.find(m => m.id === selectedModel);
@@ -8885,470 +9215,8 @@ export function KdpFactoryApp() {
                         const doneCatalogs = filteredByCatalogNiche.filter(c => c.status === "completed" || c.status === "failed" || c.status === "cancelled");
                         const totalImages = filteredByCatalogNiche.reduce((sum, c) => sum + c.images.length, 0);
 
-                        const renderCard = (catalog: IACatalogFE) => {
-                            const progress = catalog.totalImages > 0 ? (catalog.images.length / catalog.totalImages) * 100 : 0;
-                            const isActive = catalog.status === "running" || catalog.status === "pending" || catalog.status === "queued";
-                            const queuedList = iaCatalogs.filter(c => c.status === "queued");
-                            const queuePos = catalog.status === "queued" ? queuedList.indexOf(catalog) + 1 : 0;
-                            const remainingImages = Math.max(0, catalog.totalImages - catalog.images.length - (catalog.skippedImages ?? 0));
-                            const estMin = Math.round(remainingImages * 1.5);
-                            const timeStr = estMin > 60 ? `~${Math.floor(estMin / 60)}h ${estMin % 60}m` : estMin > 0 ? `~${estMin}m` : "";
-
-                            // Image elapsed time color coding
-                            const imgElapsedMs = catalog.status === "running" && catalog.imageStartedAt
-                                ? Date.now() - catalog.imageStartedAt
-                                : 0;
-                            void imageElapsedTick; // trigger re-render each tick
-                            const imgElapsedSec = Math.floor(imgElapsedMs / 1000);
-                            const imgElapsedStr = imgElapsedMs > 0
-                                ? `${Math.floor(imgElapsedSec / 60)}:${String(imgElapsedSec % 60).padStart(2, "0")}`
-                                : null;
-                            // 0-2min: neutral, 2-4min: yellow, 4-6min: orange, 6-8min: red
-                            const imgHeatLevel = imgElapsedMs <= 0 ? 0
-                                : imgElapsedMs < 2 * 60_000 ? 0
-                                : imgElapsedMs < 4 * 60_000 ? 1
-                                : imgElapsedMs < 6 * 60_000 ? 2
-                                : 3;
-                            const heatBorderCls = imgHeatLevel === 1 ? "border-yellow-500/40"
-                                : imgHeatLevel === 2 ? "border-orange-500/50"
-                                : imgHeatLevel === 3 ? "border-red-500/60 animate-pulse"
-                                : "";
-                            const heatBarColor = imgHeatLevel === 1 ? "#eab308"
-                                : imgHeatLevel === 2 ? "#f97316"
-                                : imgHeatLevel === 3 ? "#ef4444"
-                                : null;
-                            const providerColor = catalog.aiModel?.provider === "Google" ? { bar: "bg-blue-500/50", gradient: "from-blue-500 via-blue-400 to-cyan-400", border: "hover:border-blue-500/20", glow: "hover:shadow-[0_0_28px_rgba(59,130,246,0.10)]", blob: "bg-blue-500/8", badge: "bg-blue-500/10 border-blue-500/20 text-blue-300", dot: "bg-blue-400" }
-                                : catalog.aiModel?.provider === "Leonardo" ? { bar: "bg-amber-500/50", gradient: "from-amber-500 via-orange-400 to-amber-300", border: "hover:border-amber-500/20", glow: "hover:shadow-[0_0_28px_rgba(245,158,11,0.10)]", blob: "bg-amber-500/8", badge: "bg-amber-500/10 border-amber-500/20 text-amber-300", dot: "bg-amber-400" }
-                                    : catalog.aiModel?.provider === "Pollinations" ? { bar: "bg-emerald-500/50", gradient: "from-emerald-500 via-emerald-400 to-cyan-400", border: "hover:border-emerald-500/20", glow: "hover:shadow-[0_0_28px_rgba(16,185,129,0.10)]", blob: "bg-emerald-500/8", badge: "bg-emerald-500/10 border-emerald-500/20 text-emerald-300", dot: "bg-emerald-400" }
-                                        : { bar: "bg-sky-500/50", gradient: "from-sky-500 via-sky-400 to-cyan-400", border: "hover:border-sky-500/20", glow: "hover:shadow-[0_0_28px_rgba(14,165,233,0.10)]", blob: "bg-sky-500/8", badge: "bg-sky-500/10 border-sky-500/20 text-sky-300", dot: "bg-sky-400" };
-                            const isDraggable = catalog.status === "queued";
-                            const isDragOver = dragOverId === catalog._id;
-                            return (
-                                <Card
-                                    key={catalog._id}
-                                    variant="outline"
-                                    draggable={isDraggable}
-                                    onDragStart={() => isDraggable && setDraggingId(catalog._id)}
-                                    onDragEnd={() => { setDraggingId(null); setDragOverId(null); }}
-                                    onDragOver={(e: React.DragEvent) => { if (isDraggable && draggingId) { e.preventDefault(); setDragOverId(catalog._id); } }}
-                                    onDrop={(e: React.DragEvent) => { e.preventDefault(); if (draggingId && isDraggable) void handleQueueReorder(draggingId, catalog._id); setDraggingId(null); setDragOverId(null); }}
-                                    className={`group relative bg-white/[0.01] overflow-hidden transition-all duration-300 ${imgHeatLevel > 0 ? heatBorderCls : `border-white/5 ${providerColor.border} ${providerColor.glow}`} ${isDraggable ? "cursor-grab active:cursor-grabbing" : ""} ${isDragOver ? "ring-1 ring-orange-500/50 border-orange-500/30" : ""} ${draggingId === catalog._id ? "opacity-50" : ""}`}
-                                >
-                                    {/* Blob halo */}
-                                    <div className={`absolute -right-4 -top-4 w-16 h-16 ${providerColor.blob} blur-2xl rounded-full opacity-50 transition-all duration-500 group-hover:scale-[2] group-hover:opacity-80`} />
-                                    {/* Lateral provider border */}
-                                    <div className={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${providerColor.gradient} opacity-40 group-hover:opacity-100 transition-all duration-300`} />
-                                    {/* Top accent — heat-aware progress bar */}
-                                    {heatBarColor && imgElapsedMs > 0 ? (
-                                        <div className="h-[3px] w-full bg-white/5 relative overflow-hidden">
-                                            <div className="absolute inset-y-0 left-0 transition-all duration-1000"
-                                                style={{ width: `${Math.min(100, (imgElapsedMs / (8 * 60_000)) * 100)}%`, background: heatBarColor, boxShadow: `0 0 6px ${heatBarColor}` }} />
-                                        </div>
-                                    ) : (
-                                        <div className={`h-px w-full ${providerColor.bar} opacity-60`} />
-                                    )}
-                                    <div className="p-4 pl-5 space-y-3">
-                                        {/* Header */}
-                                        <div className="flex items-start justify-between gap-4">
-                                            <div className="min-w-0 space-y-1">
-                                                <div className="flex items-center gap-2">
-                                                    {isDraggable && <GripVertical size={12} className="text-neutral-700 shrink-0" />}
-                                                    <h4 className="font-black text-white text-lg leading-tight truncate">{catalog.name}</h4>
-                                                </div>
-                                                <p className="text-sm text-neutral-500 line-clamp-1 leading-relaxed pl-0.5 italic">{catalog.prompt}</p>
-                                            </div>
-                                            <div className="flex flex-col items-end gap-1.5 shrink-0">
-                                                {statusBadge(catalog.status)}
-                                                <span className="text-sm text-neutral-600 font-mono">{new Date(catalog.createdAt).toLocaleDateString("es-ES")}</span>
-                                            </div>
-                                        </div>
-                                        {/* Model badge + meta */}
-                                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-black/50 border border-white/10 backdrop-blur-sm">
-                                                <div className={`w-1.5 h-1.5 rounded-full ${providerColor.dot} shrink-0`} />
-                                                <span className={`text-sm font-black uppercase tracking-wider ${providerColor.badge.split(" ").find(c => c.startsWith("text-")) ?? "text-neutral-400"}`}>{catalog.aiModel?.provider}</span>
-                                                <span className="text-neutral-700 text-sm">·</span>
-                                                <span className="text-sm font-mono text-neutral-400 truncate max-w-[160px]">{catalog.aiModel?.name.split(" ").slice(0, 3).join(" ")}</span>
-                                            </div>
-                                            <div className="flex items-center gap-1.5 text-sm font-mono text-neutral-600 flex-wrap">
-                                                <span>{catalog.width}×{catalog.height}</span>
-                                                <span className="text-neutral-700">·</span>
-                                                <span className="font-black text-neutral-400">{catalog.images.length}/{catalog.totalImages}</span>
-                                                {isActive && catalog.status !== "queued" && <Loader2 size={9} className="text-blue-400 animate-spin" />}
-                                                {(catalog.skippedImages ?? 0) > 0 && <span className="text-amber-500/70 not-mono">· {catalog.skippedImages} omit.</span>}
-                                                {isActive && catalog.status === "running" && timeStr && <span className="text-sky-400/70 not-mono">· {timeStr}</span>}
-                                                {imgElapsedStr && (
-                                                    <span className={`not-mono font-black px-1.5 py-0.5 rounded-md text-[10px] ${
-                                                        imgHeatLevel === 0 ? "text-neutral-600" :
-                                                        imgHeatLevel === 1 ? "text-yellow-400 bg-yellow-500/10" :
-                                                        imgHeatLevel === 2 ? "text-orange-400 bg-orange-500/10" :
-                                                        "text-red-400 bg-red-500/10"
-                                                    }`}>
-                                                        {imgHeatLevel === 3 ? "⚠ " : imgHeatLevel === 2 ? "● " : ""}{imgElapsedStr}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                        {/* Niche tags */}
-                                        {(catalog.nicheIds?.length ?? 0) > 0 && (
-                                            <div className="flex gap-1.5 flex-wrap">
-                                                {catalog.nicheIds!.map(nid => {
-                                                    const n = niches.find(n => n._id === nid);
-                                                    return n ? (
-                                                        <span key={nid} className="flex items-center gap-1 px-2 h-5 rounded-full bg-sky-500/10 border border-sky-500/20 text-xs font-bold text-sky-400">
-                                                            <Target size={7} /> {nd(n)}
-                                                        </span>
-                                                    ) : null;
-                                                })}
-                                            </div>
-                                        )}
-                                        {/* Error */}
-                                        {catalog.lastError && (
-                                            <p className="text-sm text-red-400/70 font-mono break-all leading-relaxed bg-red-500/5 border border-red-500/10 rounded-lg px-2 py-1.5">
-                                                ⚠ {catalog.lastError.length > 100 ? catalog.lastError.slice(0, 100) + "…" : catalog.lastError}
-                                            </p>
-                                        )}
-                                        {/* Action buttons — two groups */}
-                                        <div className="flex items-center justify-between gap-2">
-                                            {/* Left: utility actions */}
-                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                                <button
-                                                    onClick={() => {
-                                                        if (catalog.promptParts?.theme) {
-                                                            setPromptTheme(catalog.promptParts.theme);
-                                                            setPromptSpecs(catalog.promptParts.specs ?? "");
-                                                            setPromptDetails(catalog.promptParts.details ?? "");
-                                                            setPromptParticulars(catalog.promptParts.particulars ?? "");
-                                                        } else {
-                                                            const prefix = "Genera una imagen con la siguiente temática: ";
-                                                            let raw = catalog.prompt;
-                                                            if (raw.startsWith(prefix)) raw = raw.slice(prefix.length);
-                                                            const styleIdx = raw.indexOf(". Style:");
-                                                            if (styleIdx >= 0) raw = raw.slice(0, styleIdx);
-                                                            const cutAt = [
-                                                                raw.indexOf(", que tenga las siguientes especificaciones:"),
-                                                                raw.indexOf(", con los siguientes detalles:"),
-                                                                raw.indexOf(", y las siguientes particularidades:"),
-                                                            ].filter(i => i >= 0).sort((a, b) => a - b)[0] ?? -1;
-                                                            setPromptTheme(cutAt >= 0 ? raw.slice(0, cutAt) : raw);
-                                                            setPromptSpecs(""); setPromptDetails(""); setPromptParticulars("");
-                                                        }
-                                                        const matchModel = AI_MODELS.find(m => m.id === catalog.aiModel?.id);
-                                                        if (matchModel) setSelectedModel(matchModel.id);
-                                                        const matchDim = AI_DIMENSIONS.find(d => d.width === catalog.width && d.height === catalog.height);
-                                                        if (matchDim) setSelectedDim(matchDim.id);
-                                                        if (catalog.productType) setCatalogProductType(catalog.productType);
-                                                        if (catalog.creativity !== undefined) setCatalogCreativity(catalog.creativity);
-                                                        if (catalog.negativePrompt !== undefined) setCatalogNegativePrompt(catalog.negativePrompt);
-                                                        toast.success("Prompt, modelo y resolución cargados");
-                                                    }}
-                                                    title="Cargar prompt, modelo y resolución"
-                                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/5 text-neutral-400 hover:bg-white/10 hover:text-white transition-all border border-white/10 text-sm font-black uppercase tracking-widest"
-                                                >
-                                                    <Copy size={11} /> Reusar
-                                                </button>
-                                                {catalog.images.length > 0 && (
-                                                    <>
-                                                        <button
-                                                            onClick={() => {
-                                                                const pages: BookPage[] = catalog.images.map((img, i) => ({ id: genPageId(), type: "image" as const, image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` }, text: defaultTextStyle() }));
-                                                                const newDraft = { id: `catalog-${catalog._id}-${Date.now()}`, fileName: catalog.name, pages, savedAt: new Date().toISOString() };
-                                                                void guardedLoadBookDraft(newDraft);
-                                                            }}
-                                                            title="Editar PDF en editor"
-                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-sm font-black uppercase tracking-widest"
-                                                        >
-                                                            <FileText size={11} /> Editor
-                                                        </button>
-                                                        <button
-                                                            onClick={() => void downloadCatalogPdfDirect(catalog)}
-                                                            disabled={directPdfCatalogId === catalog._id}
-                                                            title={`Descargar PDF directo · ${catalog.images.length} páginas`}
-                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 transition-all border border-sky-500/20 text-sm font-black uppercase tracking-widest disabled:opacity-50"
-                                                        >
-                                                            {directPdfCatalogId === catalog._id ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
-                                                            PDF
-                                                        </button>
-                                                        <button
-                                                            onClick={() => exportCatalogDataset(catalog)}
-                                                            title="Exportar como dataset HuggingFace (.jsonl)"
-                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition-all border border-violet-500/20 text-sm font-black uppercase tracking-widest"
-                                                        >
-                                                            <Download size={11} /> Dataset
-                                                        </button>
-                                                    </>
-                                                )}
-                                                {(catalog.skippedImages ?? 0) > 0 && !isActive && (
-                                                    <button
-                                                        onClick={() => void retryFailedSlots(catalog._id)}
-                                                        disabled={retryingCatalogId === catalog._id}
-                                                        title={`Reintentar ${catalog.skippedImages} fallados`}
-                                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all border border-rose-500/20 text-sm font-black uppercase tracking-widest disabled:opacity-50"
-                                                    >
-                                                        {retryingCatalogId === catalog._id ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                                                        {catalog.skippedImages} fallidos
-                                                    </button>
-                                                )}
-                                                {(() => {
-                                                    const linkedNiches = niches.filter(n => (catalog.nicheIds ?? []).includes(n._id));
-                                                    const isOpen = catalogNichePickerId === catalog._id;
-                                                    const hasNiches = niches.length > 0;
-                                                    return (
-                                                        <button
-                                                            onClick={() => hasNiches && setCatalogNichePickerId(isOpen ? null : catalog._id)}
-                                                            title={hasNiches ? "Vincular nicho" : "No hay nichos — créalos primero en la pestaña Nichos"}
-                                                            disabled={!hasNiches}
-                                                            className={`flex items-center gap-1.5 h-8 px-2.5 rounded-xl border transition-all text-sm font-black uppercase tracking-wider shrink-0 disabled:opacity-40 disabled:cursor-not-allowed
-                                                                ${linkedNiches.length > 0
-                                                                    ? isOpen
-                                                                        ? "bg-sky-500/20 border-sky-500/40 text-sky-300 shadow-[0_0_12px_rgba(14,165,233,0.2)]"
-                                                                        : "bg-sky-500/10 border-sky-500/25 text-sky-400 hover:bg-sky-500/20 hover:border-sky-500/40"
-                                                                    : isOpen
-                                                                        ? "bg-violet-500/15 border-violet-500/35 text-violet-300"
-                                                                        : "border-dashed border-white/15 text-neutral-500 hover:border-sky-500/30 hover:text-sky-400 hover:bg-sky-500/[0.06]"
-                                                                }`}
-                                                        >
-                                                            <Target size={11} className="shrink-0" />
-                                                            {linkedNiches.length > 0
-                                                                ? <span className="max-w-[80px] truncate">{linkedNiches.length === 1 ? linkedNiches[0].name : `${linkedNiches.length} nichos`}</span>
-                                                                : "Nicho"
-                                                            }
-                                                        </button>
-                                                    );
-                                                })()}
-                                            </div>
-                                            {/* Right: destructive actions */}
-                                            <div className="flex items-center gap-1.5 shrink-0 pl-2 border-l border-white/[0.06]">
-                                                {catalog.status === "running" && (
-                                                    <>
-                                                        <button
-                                                            onClick={() => skipCatalogImage(catalog._id)}
-                                                            disabled={skippingImageCatalogId === catalog._id}
-                                                            title="Saltar imagen actual y continuar con la siguiente"
-                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-all text-sm font-black uppercase tracking-widest disabled:opacity-50"
-                                                        >
-                                                            {skippingImageCatalogId === catalog._id
-                                                                ? <Loader2 size={11} className="animate-spin" />
-                                                                : <SkipForward size={11} />}
-                                                            Saltar
-                                                        </button>
-                                                        <button
-                                                            onClick={() => forceCompleteCatalog(catalog._id)}
-                                                            disabled={forceCompletingCatalogId === catalog._id}
-                                                            title="Marcar como completado con las imágenes generadas hasta ahora"
-                                                            className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-violet-500/10 text-violet-400 border border-violet-500/20 hover:bg-violet-500/20 transition-all text-sm font-black uppercase tracking-widest disabled:opacity-50"
-                                                        >
-                                                            {forceCompletingCatalogId === catalog._id
-                                                                ? <Loader2 size={11} className="animate-spin" />
-                                                                : <CheckCheck size={11} />}
-                                                            Forzar fin
-                                                        </button>
-                                                    </>
-                                                )}
-                                                {isActive && (
-                                                    <button
-                                                        onClick={() => setConfirmStopCatalogId(catalog._id)}
-                                                        className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-orange-500/10 text-orange-400 border border-orange-500/20 hover:bg-orange-500 hover:text-white transition-all text-sm font-black uppercase tracking-widest"
-                                                    >
-                                                        <StopCircle size={11} /> Detener
-                                                    </button>
-                                                )}
-                                                <button onClick={() => setConfirmDeleteCatalogId(catalog._id)} disabled={deletingCatalogId === catalog._id} title="Eliminar catálogo" className="p-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all border border-red-500/20 disabled:opacity-50">
-                                                    {deletingCatalogId === catalog._id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {/* Progress bar */}
-                                    {isActive && (
-                                        <div className="px-4 pb-3 space-y-1.5 border-t border-white/5 pt-3">
-                                            <div className="flex justify-between text-sm uppercase tracking-widest text-neutral-600">
-                                                <span className="flex items-center gap-1.5"><Loader2 size={8} className="animate-spin text-blue-400" />{catalog.status === "queued" ? `En cola · posición ${queuePos}` : catalog.status === "pending" ? "Iniciando..." : "Generando"}</span>
-                                                {catalog.status !== "queued" && <span className="font-black text-neutral-400">{Math.round(progress)}% {timeStr && <span className="text-sky-400/80 normal-case">{timeStr}</span>}</span>}
-                                            </div>
-                                            <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                                                {catalog.status === "queued"
-                                                    ? <div className="h-full w-1/3 bg-gradient-to-r from-orange-500/30 to-orange-400/60 rounded-full animate-pulse" />
-                                                    : <div className="h-full bg-gradient-to-r from-sky-500 to-blue-400 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
-                                                }
-                                            </div>
-                                        </div>
-                                    )}
-                                    {/* Niche picker inline */}
-                                    {catalogNichePickerId === catalog._id && (
-                                        <div className="px-4 pb-4 border-t border-sky-500/10 pt-3 space-y-3 bg-gradient-to-b from-sky-500/[0.04] to-transparent">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-5 h-5 rounded-lg bg-sky-500/15 border border-sky-500/25 flex items-center justify-center">
-                                                        <Target size={10} className="text-sky-400" />
-                                                    </div>
-                                                    <span className="text-sm font-black uppercase tracking-widest text-sky-400/80">Vincular nichos</span>
-                                                </div>
-                                                <button onClick={() => setCatalogNichePickerId(null)} className="w-5 h-5 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-neutral-600 hover:text-white hover:bg-white/10 transition-all">
-                                                    <X size={9} />
-                                                </button>
-                                            </div>
-                                            <div className="rounded-2xl border border-white/8 bg-white/[0.015] overflow-hidden max-h-48 overflow-y-auto">
-                                                {niches.map((n, ni) => {
-                                                    const assigned = (catalog.nicheIds ?? []).includes(n._id);
-                                                    const catCount = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).length;
-                                                    return (
-                                                        <button key={n._id}
-                                                            onClick={() => {
-                                                                const cur = catalog.nicheIds ?? [];
-                                                                const next = assigned ? cur.filter(id => id !== n._id) : [...cur, n._id];
-                                                                setIaCatalogs(prev => prev.map(c => c._id === catalog._id ? { ...c, nicheIds: next } : c));
-                                                                setNiches(prev => prev.map(nx => {
-                                                                    if (nx._id === n._id) {
-                                                                        const cats = nx.catalogIds ?? [];
-                                                                        return {
-                                                                            ...nx,
-                                                                            catalogIds: assigned
-                                                                                ? cats.filter(cid => cid !== catalog._id)
-                                                                                : cats.includes(catalog._id) ? cats : [...cats, catalog._id],
-                                                                        };
-                                                                    }
-                                                                    return nx;
-                                                                }));
-                                                                fetch(`${API_BASE_URL}/catalogs/${catalog._id}`, {
-                                                                    method: "PATCH",
-                                                                    headers: { "Content-Type": "application/json" },
-                                                                    body: JSON.stringify({ nicheIds: next }),
-                                                                }).catch(() => { });
-                                                            }}
-                                                            className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-all ${ni > 0 ? "border-t border-white/[0.05]" : ""} ${assigned ? "bg-sky-500/[0.07]" : "hover:bg-white/[0.03]"}`}
-                                                        >
-                                                            <div className={`w-4 h-4 rounded-md border-2 flex items-center justify-center shrink-0 transition-all ${assigned ? "bg-sky-500 border-sky-400 shadow-[0_0_8px_rgba(14,165,233,0.4)]" : "border-neutral-700 bg-transparent"}`}>
-                                                                {assigned && <Check size={8} className="text-white" strokeWidth={3} />}
-                                                            </div>
-                                                            <span className={`text-sm font-bold flex-1 truncate ${assigned ? "text-white" : "text-neutral-400"}`}>{nd(n)}</span>
-                                                            <div className="flex items-center gap-1.5 shrink-0">
-                                                                {catCount > 0 && <span className="text-sm font-black text-sky-400/60 bg-sky-500/10 border border-sky-500/15 px-1.5 py-0.5 rounded-full">{catCount} cat</span>}
-                                                                {n.status && <span className={`text-sm font-black uppercase px-1.5 py-0.5 rounded-full ${n.status === "active" ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/15" : "text-neutral-600 bg-white/5 border border-white/8"}`}>{n.status}</span>}
-                                                            </div>
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-                                    {/* Image grid */}
-                                    {catalog.images.length > 0 && (
-                                        <div className="px-4 pb-4 border-t border-white/5 pt-3 space-y-2">
-                                            {/* Bulk delete toolbar */}
-                                            <div className="flex items-center justify-between gap-2">
-                                                <span className="text-sm text-neutral-700 font-mono">{catalog.images.length} imgs</span>
-                                                <div className="flex items-center gap-1.5">
-                                                    {bulkDeleteCatalogId === catalog._id && (
-                                                        <button
-                                                            onClick={() => {
-                                                                const allIds = catalog.images.map(i => i.publicId);
-                                                                const allSelected = allIds.every(id => bulkDeleteSelection.has(id));
-                                                                setBulkDeleteSelection(allSelected ? new Set() : new Set(allIds));
-                                                            }}
-                                                            className="h-6 px-2 rounded-lg bg-white/5 border border-white/10 text-sm text-neutral-500 hover:text-white transition-all">
-                                                            {catalog.images.every(i => bulkDeleteSelection.has(i.publicId)) ? "Desel. todo" : "Sel. todo"}
-                                                        </button>
-                                                    )}
-                                                    {bulkDeleteCatalogId === catalog._id && bulkDeleteSelection.size > 0 && (
-                                                        <button
-                                                            onClick={() => void bulkDeleteSelectedImages(catalog._id)}
-                                                            disabled={isBulkDeleting}
-                                                            className="flex items-center gap-1 h-6 px-2.5 rounded-lg bg-red-500/15 border border-red-500/30 text-red-400 text-sm font-black uppercase hover:bg-red-500 hover:text-white transition-all disabled:opacity-50"
-                                                        >
-                                                            {isBulkDeleting ? <Loader2 size={9} className="animate-spin" /> : <Trash2 size={9} />}
-                                                            Borrar {bulkDeleteSelection.size}
-                                                        </button>
-                                                    )}
-                                                    {bulkDeleteCatalogId === catalog._id && bulkDeleteSelection.size > 0 && (
-                                                        <button onClick={() => setBulkDeleteSelection(new Set())}
-                                                            className="h-6 px-2 rounded-lg bg-white/5 border border-white/10 text-sm text-neutral-500 hover:text-white transition-all">
-                                                            Limpiar
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        onClick={() => {
-                                                            if (bulkDeleteCatalogId === catalog._id) {
-                                                                setBulkDeleteCatalogId(null);
-                                                                setBulkDeleteSelection(new Set());
-                                                            } else {
-                                                                setBulkDeleteCatalogId(catalog._id);
-                                                                setBulkDeleteSelection(new Set());
-                                                            }
-                                                        }}
-                                                        className={`h-6 px-2.5 rounded-lg text-sm font-black uppercase transition-all border ${bulkDeleteCatalogId === catalog._id ? "bg-rose-500/15 border-rose-500/30 text-rose-400 hover:bg-rose-500/25" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
-                                                    >
-                                                        {bulkDeleteCatalogId === catalog._id ? "✕ Cancelar" : "Seleccionar"}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1.5">
-                                                {catalog.images.map((img, imgIdx) => {
-                                                    const isCatSelected = selectedImageUrls.has(img.url);
-                                                    const isBulkSel = bulkDeleteCatalogId === catalog._id && bulkDeleteSelection.has(img.publicId);
-                                                    const isBulkMode = bulkDeleteCatalogId === catalog._id;
-                                                    return (
-                                                        <div
-                                                            key={img.publicId}
-                                                            className={`aspect-square rounded-lg overflow-hidden bg-white/5 border transition-all relative group ${isBulkMode ? (isBulkSel ? "border-red-500 ring-1 ring-red-500/50 cursor-pointer" : "border-white/10 hover:border-red-500/50 cursor-pointer") : isVaultSelectMode ? (isCatSelected ? "border-sky-500 ring-1 ring-sky-500/50 cursor-pointer" : "border-white/10 hover:border-sky-500/50 cursor-pointer") : "border-white/5 cursor-zoom-in hover:border-sky-500/40"}`}
-                                                            onClick={() => {
-                                                                if (isBulkMode) {
-                                                                    setBulkDeleteSelection(prev => { const next = new Set(prev); isBulkSel ? next.delete(img.publicId) : next.add(img.publicId); return next; });
-                                                                } else if (isVaultSelectMode) {
-                                                                    toggleImageSelect(img.url);
-                                                                } else {
-                                                                    openCatalogImagePreview(catalog.images, imgIdx, catalog._id);
-                                                                }
-                                                            }}
-                                                        >
-                                                            <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
-                                                            {isBulkMode && (
-                                                                <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isBulkSel ? "bg-red-500 border-red-500" : "bg-black/50 border-white/30 backdrop-blur-sm"}`}>
-                                                                    {isBulkSel && <Check size={9} className="text-white" strokeWidth={3} />}
-                                                                </div>
-                                                            )}
-                                                            {!isBulkMode && isVaultSelectMode && (
-                                                                <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isCatSelected ? "bg-sky-500 border-sky-500" : "bg-black/50 border-white/30 backdrop-blur-sm"}`}>
-                                                                    {isCatSelected && <Check size={9} className="text-white" strokeWidth={3} />}
-                                                                </div>
-                                                            )}
-                                                            {!isBulkMode && !isVaultSelectMode && (
-                                                                <>
-                                                                    <button
-                                                                        onClick={e => { e.stopPropagation(); toggleFavorite(img.url, { label: `${catalog.name} #${imgIdx + 1}`, source: "catalog" }); }}
-                                                                        className={`absolute top-0.5 left-0.5 p-0.5 rounded-md backdrop-blur-sm transition-all ${favorites.has(img.url) ? "bg-rose-500/80 text-white opacity-100" : "bg-black/50 text-neutral-400 opacity-0 group-hover:opacity-100 hover:text-rose-400"}`}
-                                                                    >
-                                                                        <Heart size={8} className={favorites.has(img.url) ? "fill-white" : ""} />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={e => { e.stopPropagation(); void upscaleImage(img.url, img.publicId); }}
-                                                                        disabled={upscalingPublicId === img.publicId}
-                                                                        title="Upscale 4×"
-                                                                        className="absolute bottom-0.5 right-0.5 p-0.5 rounded-md bg-black/50 backdrop-blur-sm text-neutral-400 opacity-0 group-hover:opacity-100 hover:text-sky-400 transition-all disabled:opacity-100"
-                                                                    >
-                                                                        {upscalingPublicId === img.publicId
-                                                                            ? <Loader2 size={8} className="animate-spin text-sky-400" />
-                                                                            : <ArrowUpRight size={8} />}
-                                                                    </button>
-                                                                </>
-                                                            )}
-                                                            {isBulkSel && <div className="absolute inset-0 bg-red-500/10 pointer-events-none" />}
-                                                        </div>
-                                                    );
-                                                })}
-                                                {isActive && Array.from({ length: catalog.totalImages - catalog.images.length }).map((_, i) => (
-                                                    <div key={`ph-${i}`} className="aspect-square rounded-lg bg-white/[0.02] border border-dashed border-white/10 flex items-center justify-center">
-                                                        <Loader2 size={10} className="text-neutral-700 animate-spin" />
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </Card>
-                            );
-                        };
-
                         return (
+                            <KdpCardCtx.Provider value={cardActions}>
                             <div className="space-y-4">
                                 {/* Header with counter + controls */}
                                 <div className="flex items-center gap-3">
@@ -9522,7 +9390,31 @@ export function KdpFactoryApp() {
                                 {/* Active catalogs (always visible) */}
                                 {activeCatalogs.length > 0 && (
                                     <div className="space-y-3">
-                                        {activeCatalogs.map(renderCard)}
+                                        {activeCatalogs.map(c => (
+                                            <CatalogCard
+                                                key={c._id}
+                                                catalog={c}
+                                                tick={imageElapsedTick}
+                                                niches={niches}
+                                                allCatalogs={iaCatalogs}
+                                                draggingId={draggingId}
+                                                isDragOver={dragOverId === c._id}
+                                                isDragging={draggingId === c._id}
+                                                isNichePickerOpen={catalogNichePickerId === c._id}
+                                                isBulkMode={bulkDeleteCatalogId === c._id}
+                                                bulkSelection={bulkDeleteCatalogId === c._id ? bulkDeleteSelection : stableEmptySet}
+                                                isVaultSelectMode={isVaultSelectMode}
+                                                selectedUrls={selectedImageUrls}
+                                                favorites={favorites}
+                                                upscalingId={upscalingPublicId}
+                                                isRetrying={retryingCatalogId === c._id}
+                                                isDeleting={deletingCatalogId === c._id}
+                                                isForceCompleting={forceCompletingCatalogId === c._id}
+                                                isSkippingImage={skippingImageCatalogId === c._id}
+                                                isDirectPdf={directPdfCatalogId === c._id}
+                                                isBulkDeleting={isBulkDeleting}
+                                            />
+                                        ))}
                                     </div>
                                 )}
 
@@ -9541,12 +9433,37 @@ export function KdpFactoryApp() {
                                         </button>
                                         {!collapsedCompleted && (
                                             <div className="space-y-3">
-                                                {doneCatalogs.map(renderCard)}
+                                                {doneCatalogs.map(c => (
+                                                    <CatalogCard
+                                                        key={c._id}
+                                                        catalog={c}
+                                                        tick={imageElapsedTick}
+                                                        niches={niches}
+                                                        allCatalogs={iaCatalogs}
+                                                        draggingId={draggingId}
+                                                        isDragOver={dragOverId === c._id}
+                                                        isDragging={draggingId === c._id}
+                                                        isNichePickerOpen={catalogNichePickerId === c._id}
+                                                        isBulkMode={bulkDeleteCatalogId === c._id}
+                                                        bulkSelection={bulkDeleteCatalogId === c._id ? bulkDeleteSelection : stableEmptySet}
+                                                        isVaultSelectMode={isVaultSelectMode}
+                                                        selectedUrls={selectedImageUrls}
+                                                        favorites={favorites}
+                                                        upscalingId={upscalingPublicId}
+                                                        isRetrying={retryingCatalogId === c._id}
+                                                        isDeleting={deletingCatalogId === c._id}
+                                                        isForceCompleting={forceCompletingCatalogId === c._id}
+                                                        isSkippingImage={skippingImageCatalogId === c._id}
+                                                        isDirectPdf={directPdfCatalogId === c._id}
+                                                        isBulkDeleting={isBulkDeleting}
+                                                    />
+                                                ))}
                                             </div>
                                         )}
                                     </div>
                                 )}
                             </div>
+                            </KdpCardCtx.Provider>
                         );
                     })()}
 
@@ -9767,19 +9684,6 @@ export function KdpFactoryApp() {
                 )}
             </div>
         );
-    };
-
-    const statusBadge = (status: IACatalogFE["status"]) => {
-        const map: Record<IACatalogFE["status"], { label: string; cls: string }> = {
-            queued: { label: "En espera", cls: "bg-orange-500/10 text-orange-400 border-orange-500/20" },
-            pending: { label: "Iniciando...", cls: "bg-neutral-500/10 text-neutral-400 border-neutral-500/20" },
-            running: { label: "Generando...", cls: "bg-blue-500/10 text-blue-400 border-blue-500/20" },
-            completed: { label: "Completado", cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
-            failed: { label: "Error", cls: "bg-red-500/10 text-red-400 border-red-500/20" },
-            cancelled: { label: "Cancelado", cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
-        };
-        const { label, cls } = map[status] ?? { label: status, cls: "bg-white/5 text-neutral-400 border-white/10" };
-        return <Badge variant="neutral" className={`text-sm font-black uppercase ${cls}`}>{label}</Badge>;
     };
 
     // ─── STUDIO (Tendencias + Contenido) ─────────────────────────────────────
@@ -11799,6 +11703,7 @@ export function KdpFactoryApp() {
                     { id: "creation", name: "Imágenes", icon: <ImageIcon size={15} /> },
                     { id: "gelato", name: "Factory", icon: <Package size={15} /> },
                     { id: "insights", name: "Insights", icon: <Activity size={15} /> },
+                    { id: "ventas", name: "Ventas", icon: <DollarSign size={15} /> },
                     { id: "config", name: "Config", icon: <Settings size={15} /> },
                 ] satisfies AppTab[]}
                 activeTab={activeTab}
@@ -11812,6 +11717,7 @@ export function KdpFactoryApp() {
                 {activeTab === "studio" && renderStudio()}
                 {activeTab === "creation" && renderCreation()}
                 {activeTab === "insights" && renderInsights()}
+                {activeTab === "ventas" && renderVentas()}
                 {activeTab === "gelato" && <>{renderGelato()}{renderContenido()}{renderCoverFactory()}</>}
                 {activeTab === "config" && renderConfig()}
             </div>

@@ -1,6 +1,6 @@
 import type { Agenda, Job } from "agenda";
 import { RadarJob } from "../models/radar-job.js";
-import { EtsyNicheResultSchema, NicheInsightSchema, ETSY_SYSTEM_PROMPT, AMAZON_SYSTEM_PROMPT, TRENDS_SYSTEM_PROMPT, OPPORTUNITY_SYSTEM_PROMPT, MOVERS_SYSTEM_PROMPT, REDDIT_SYSTEM_PROMPT, CROSS_NICHE_SYSTEM_PROMPT, GAP_FINDER_SYSTEM_PROMPT } from "../routes/radar.js";
+import { EtsyNicheResultSchema, NicheInsightSchema, ETSY_SYSTEM_PROMPT, AMAZON_SYSTEM_PROMPT, TRENDS_SYSTEM_PROMPT, OPPORTUNITY_SYSTEM_PROMPT, MOVERS_SYSTEM_PROMPT, REDDIT_SYSTEM_PROMPT, CROSS_NICHE_SYSTEM_PROMPT, GAP_FINDER_SYSTEM_PROMPT, GUMROAD_SYSTEM_PROMPT } from "../routes/radar.js";
 import { analyzePageForRadar } from "../lib/ai.js";
 import { AUTOPILOT_JOB_NAME } from "./autopilot.js";
 
@@ -113,6 +113,7 @@ function buildRadarSystemPrompt(mode: string, nicheName?: string, context?: stri
     if (mode === "amazon-niches" || mode === "amazon-movers") return `${mode === "amazon-movers" ? MOVERS_SYSTEM_PROMPT : AMAZON_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     if (mode === "etsy-niches") return `${ETSY_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     if (mode === "pinterest-niches") return `${ETSY_SYSTEM_PROMPT}\n\nEstás analizando Pinterest Ideas. Extrae productos visuales, tendencias de diseño y estilos populares que sean aptos para KDP (libros para colorear, printables, wall art). Responde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "gumroad-niches") return `${GUMROAD_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     if (mode === "opportunity") return `${OPPORTUNITY_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     if (mode === "trends-niches") return `${TRENDS_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     if (mode === "reddit-niches") return `${REDDIT_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
@@ -943,7 +944,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 throw new Error(`Página bloqueada por anti-bot: "${pageTitle}". Intenta de nuevo en unos minutos.`);
             }
 
-            if (mode === "etsy-niches" || mode === "amazon-niches" || mode === "opportunity" || mode === "amazon-movers") {
+            if (mode === "etsy-niches" || mode === "amazon-niches" || mode === "opportunity" || mode === "amazon-movers" || mode === "gumroad-niches") {
                 pushLog(jobDoc, io, "info", `[FETCH] Scroll para cargar resultados lazy...`);
                 await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)");
                 await page.waitForTimeout(1500);
@@ -1064,6 +1065,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 const fuente = mode === "amazon-niches" || mode === "amazon-movers" ? "amazon"
                     : mode === "etsy-niches" || mode === "opportunity" ? "etsy"
                     : mode === "pinterest-niches" ? "pinterest"
+                    : mode === "gumroad-niches" ? "gumroad"
                     : mode === "trends-niches" ? "trends"
                     : mode === "reddit-niches" ? "reddit"
                     : mode === "cross-niche" ? "cross"
@@ -1130,6 +1132,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                     : mode === "cross-niche" ? "Cross-Nicho"
                     : mode === "gap-finder" ? "Detector Huecos"
                     : mode === "pinterest-niches" ? "Pinterest"
+                    : mode === "gumroad-niches" ? "Gumroad"
                     : "General";
 
                 if (await shouldNotify("radar.found") && count > 0) {

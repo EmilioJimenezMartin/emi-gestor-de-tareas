@@ -156,6 +156,24 @@ Para cada oportunidad de cross-nicho:
 
 Genera al menos 8-12 cross-nichos concretos. Piensa en: gaming, K-pop, deportes de nicho, ocupaciones (nurses, teachers, engineers), hobbies (van life, urban gardening), franquicias actuales.`;
 
+export const GUMROAD_SYSTEM_PROMPT = `Eres un analista experto en investigación de mercado para productos digitales en Gumroad. Tu objetivo es extraer y estructurar TODOS los productos visibles en la página, especialmente los relacionados con libros de colorear, coloring pages PDF, printables, ilustraciones descargables, patrones seamless o cualquier recurso digital creativo.
+
+Para CADA producto encontrado en la página, aplica estas reglas de extracción:
+1. Extrae el nombre/título completo del producto y límpialo.
+2. bestseller: true si el producto tiene muchas ventas (etiqueta de "bestseller", número de ventas > 100, o aparece destacado en resultados de búsqueda).
+3. personas_carrito: número de ventas/compras visibles (si dice "1.2k sales" → 1200; "500+ sales" → 500; si no hay dato, pon 0).
+4. total_reseñas: número de ratings/reseñas visibles. Si no aparece, pon 0.
+5. precio: el precio de venta tal como aparece (ej: "$9", "$4.99", "Pay what you want").
+6. sub_nicho_estimado: el micro-nicho específico del producto (temática, audiencia, estilo visual — aplica el mismo criterio que con Etsy).
+7. url_producto: URL directa al producto en Gumroad si está disponible (formato 'https://[creator].gumroad.com/l/[slug]' o 'https://gumroad.com/l/[slug]').
+
+SEÑALES DE OPORTUNIDAD:
+- Productos con muchas ventas y pocos competidores visibles = nicho establecido
+- Productos de precio alto ($15+) con ventas = alta disposición a pagar
+- Sub-nichos muy específicos con buenas ventas = validación de micronicho
+
+Extrae TODOS los productos visibles, no solo los más destacados. El objetivo es detectar qué tipos de productos digitales se venden bien en Gumroad para replicarlos en KDP y Etsy.`;
+
 export const GAP_FINDER_SYSTEM_PROMPT = `Eres un detector de huecos en catálogos KDP. Recibirás la lista completa de nichos que ya tiene creados un publisher. Tu misión es analizar el catálogo y detectar oportunidades NO exploradas.
 
 TIPOS DE HUECOS A BUSCAR:
@@ -309,6 +327,7 @@ export async function registerRadarRoutes(
             "RADAR_MOVERS_RESULT",
             "RADAR_CROSS_RESULT",
             "RADAR_GAP_RESULT",
+            "RADAR_GUMROAD_RESULT",
         ];
         const { Settings } = await import("../models/settings.js");
         const rows = await Settings.find({ key: { $in: ALL_KEYS } }).lean();
@@ -510,6 +529,7 @@ ${listSummary}`;
             RADAR_GAP_RESULT:         "gap",
             RADAR_PINTEREST_RESULT:   "pinterest",
             RADAR_GENERAL_RESULT:     "general",
+            RADAR_GUMROAD_RESULT:     "gumroad",
         };
 
         const { Settings } = await import("../models/settings.js");

@@ -143,6 +143,22 @@ export async function registerKdpSalesRoutes(app: FastifyInstance) {
         }
     });
 
+    // PATCH /kdp-sales/:id — update nicheId (manual linking)
+    app.patch("/kdp-sales/:id", async (request: any, reply) => {
+        try {
+            const { nicheId } = request.body ?? {};
+            const sale = await KdpSale.findByIdAndUpdate(
+                request.params.id,
+                { $set: { nicheId: nicheId || null } },
+                { new: true }
+            );
+            if (!sale) return reply.status(404).send({ error: "Venta no encontrada" });
+            return reply.send({ ok: true, sale });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // DELETE /kdp-sales/:id
     app.delete("/kdp-sales/:id", async (request: any, reply) => {
         try {
