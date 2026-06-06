@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,20 +39,20 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { createApiSocket } from "@/lib/socket";
 import { toast } from "sonner";
+import { KdpTabBar } from "@/components/ui/kdp-tab-bar";
 
 interface LogEntry { t: number; level: "info" | "warn" | "error"; msg: string; }
 
 export default function AjustesPage() {
     const [dbStatus, setDbStatus] = useState<"unknown" | "connected" | "disconnected" | "connecting" | "disconnecting">("connecting");
     const [isSaving, setIsSaving] = useState(false);
+    const [settingsTab, setSettingsTab] = useState("llm");
 
     // Monitor del sistema
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [logFilter, setLogFilter] = useState<"all" | "warn" | "error">("all");
     const [logSearch, setLogSearch] = useState("");
-    const [autoScroll, setAutoScroll] = useState(true);
     const [pollinationsBlocked, setPollinationsBlocked] = useState(false);
-    const logsEndRef = useRef<HTMLDivElement>(null);
 
     const [defaultProvider, setDefaultProvider] = useState("google");
     const [defaultModel, setDefaultModel] = useState("gemini-2.5-flash");
@@ -131,6 +131,11 @@ export default function AjustesPage() {
     const [leoBalance, setLeoBalance] = useState<{ tokens: number; renewal: string } | null>(null);
     const [checkingLeoBalance, setCheckingLeoBalance] = useState(false);
 
+    // Tensor.art — Bearer token (simple) + TAMS RSA (advanced)
+    const [tensorartApiKey, setTensorartApiKey] = useState("");
+    const [tensorartAppId, setTensorartAppId] = useState("");
+    const [tensorartPrivateKey, setTensorartPrivateKey] = useState("");
+
     // Together AI
     const [togetherApiKey, setTogetherApiKey] = useState("");
     const [showTogetherKey, setShowTogetherKey] = useState(false);
@@ -196,6 +201,9 @@ export default function AjustesPage() {
                     if (usageRes.ok) setCfUsage(await usageRes.json());
                 } catch { /* silencioso */ }
                 if (map.has("LEONARDO_API_KEY")) setLeonardoApiKey(map.get("LEONARDO_API_KEY"));
+                if (map.has("TENSORART_API_KEY")) setTensorartApiKey(map.get("TENSORART_API_KEY")!);
+                if (map.has("TENSORART_APP_ID")) setTensorartAppId(map.get("TENSORART_APP_ID")!);
+                if (map.has("TENSORART_PRIVATE_KEY")) setTensorartPrivateKey(map.get("TENSORART_PRIVATE_KEY")!);
                 if (map.has("TOGETHER_API_KEY")) setTogetherApiKey(map.get("TOGETHER_API_KEY"));
                 if (map.has("STABLE_HORDE_API_KEY")) setStableHordeApiKey(map.get("STABLE_HORDE_API_KEY"));
 
@@ -246,13 +254,6 @@ export default function AjustesPage() {
         load();
     }, [apiUrl]);
 
-    // Auto-scroll al fondo cuando llegan nuevos logs
-    useEffect(() => {
-        if (autoScroll && logsEndRef.current) {
-            logsEndRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [logs, autoScroll]);
-
     const handleSave = async () => {
         setIsSaving(true);
         try {
@@ -288,6 +289,9 @@ export default function AjustesPage() {
                 { key: "CF_ACCOUNT_ID", value: cfAccountId },
                 { key: "CF_API_TOKEN", value: cfApiToken },
                 { key: "LEONARDO_API_KEY", value: leonardoApiKey },
+                { key: "TENSORART_API_KEY", value: tensorartApiKey },
+                { key: "TENSORART_APP_ID", value: tensorartAppId },
+                { key: "TENSORART_PRIVATE_KEY", value: tensorartPrivateKey },
                 { key: "TOGETHER_API_KEY", value: togetherApiKey },
                 { key: "STABLE_HORDE_API_KEY", value: stableHordeApiKey },
             ];
@@ -382,7 +386,18 @@ export default function AjustesPage() {
                 </div>
             </header>
 
-            <div className="space-y-2">
+            <div className="space-y-4">
+                <KdpTabBar
+                    tabs={[
+                        { id: "llm",            label: "LLM",            icon: <BrainCircuit size={14} />, activeBg: "bg-blue-500/10 border-blue-500/25 text-blue-300" },
+                        { id: "imagenes",       label: "Imágenes",       icon: <Sparkles size={14} />,    activeBg: "bg-violet-500/10 border-violet-500/25 text-violet-300" },
+                        { id: "integraciones",  label: "Integraciones",  icon: <Package size={14} />,     activeBg: "bg-emerald-500/10 border-emerald-500/25 text-emerald-300" },
+                        { id: "sistema",        label: "Sistema",        icon: <Terminal size={14} />,    activeBg: "bg-neutral-500/10 border-neutral-500/25 text-neutral-300" },
+                    ]}
+                    active={settingsTab}
+                    onChange={setSettingsTab}
+                />
+                {settingsTab === "llm" && <div className="space-y-2">
                 <section className="space-y-2">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -811,7 +826,9 @@ export default function AjustesPage() {
                         </div>
                     </Card>
                 </section>
+                </div>}
 
+                {settingsTab === "imagenes" && <div className="space-y-2">
                 {/* Leonardo AI */}
                 <section className="space-y-2 pt-4">
                     <div className="flex items-center gap-3">
@@ -870,6 +887,94 @@ export default function AjustesPage() {
                                     {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
                                 </Button>
                             </div>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* Tensor.art */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Tensor.art</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-orange-500/10 text-orange-400 border-orange-500/20">100 CRÉD/DÍA GRATIS</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-white shadow-lg shadow-orange-500/20 text-xl font-black">T</div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Tensor.art · SDXL + Coloring LoRAs</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">TAMS API · Firma RSA · 100 créditos/día · Sin tarjeta</p>
+                                </div>
+                            </div>
+
+                            {/* === Aviso importante === */}
+                            <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 space-y-1.5">
+                                <p className="text-xs font-black text-red-400 uppercase tracking-widest">⚠ Requiere App en TAMS — no vale la key del perfil de tensor.art</p>
+                                <p className="text-[11px] text-neutral-400 leading-relaxed">Las keys <span className="font-mono text-white">ak_...</span> del perfil de Tensor.art <span className="text-red-300 font-bold">no funcionan</span>. Necesitas crear una App en <span className="font-mono text-orange-300">tams.tensor.art/apps</span> y usar el token o las RSA keys de esa App.</p>
+                            </div>
+
+                            {/* === Opción 1: Access Token de la App TAMS === */}
+                            <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-4 space-y-3">
+                                <p className="text-xs font-black text-orange-400 uppercase tracking-widest">Opción simple · Access Token de la App</p>
+                                <ol className="text-[11px] text-neutral-400 space-y-1 list-decimal list-inside leading-relaxed">
+                                    <li>Ve a <span className="font-mono text-orange-300">tams.tensor.art/apps</span> → crea o abre tu App</li>
+                                    <li>Busca la sección <span className="text-white font-bold">Access Token</span> (o API Token) dentro de la App</li>
+                                    <li>Copia ese token y pégalo aquí</li>
+                                </ol>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">TENSORART_API_KEY <span className="text-neutral-700 normal-case">(token de la App TAMS, no del perfil)</span></label>
+                                    <input
+                                        type="password"
+                                        value={tensorartApiKey}
+                                        onChange={(e) => setTensorartApiKey(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-mono text-white outline-none focus:border-orange-500/40 transition-all"
+                                        placeholder="access token de tu App en tams.tensor.art"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* === Opción 2: TAMS RSA (avanzado) === */}
+                            <details className="group">
+                                <summary className="cursor-pointer text-[10px] font-black text-neutral-600 uppercase tracking-widest hover:text-neutral-400 transition-colors select-none">
+                                    ▸ Opción avanzada · RSA (App ID + clave privada)
+                                </summary>
+                                <div className="mt-4 space-y-4 pl-2 border-l border-white/5">
+                                    <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 space-y-1.5">
+                                        <p className="text-xs font-black text-neutral-500 uppercase tracking-widest">Setup</p>
+                                        <ol className="text-[11px] text-neutral-500 space-y-1 list-decimal list-inside leading-relaxed">
+                                            <li>Ve a <span className="font-mono text-orange-400">tams.tensor.art/apps</span> → crea una App, copia el <span className="text-white">App ID</span></li>
+                                            <li>En terminal: <span className="font-mono text-orange-300">openssl genrsa -out private_key.pem 2048</span></li>
+                                            <li>Luego: <span className="font-mono text-orange-300">openssl rsa -pubout -in private_key.pem -out public_key.pem</span></li>
+                                            <li>Sube <span className="font-mono text-white">public_key.pem</span> a tu App en TAMS → guarda App ID y private key aquí</li>
+                                        </ol>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">TENSORART_APP_ID</label>
+                                        <input
+                                            type="text"
+                                            value={tensorartAppId}
+                                            onChange={(e) => setTensorartAppId(e.target.value)}
+                                            className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-mono text-white outline-none focus:border-orange-500/40 transition-all"
+                                            placeholder="20003093682940"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">TENSORART_PRIVATE_KEY</label>
+                                        <textarea
+                                            value={tensorartPrivateKey}
+                                            onChange={(e) => setTensorartPrivateKey(e.target.value)}
+                                            rows={5}
+                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-[10px] font-mono text-white outline-none focus:border-orange-500/40 transition-all resize-none"
+                                            placeholder={"-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----"}
+                                        />
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+                        <div className="bg-white/[0.02] border-t border-white/5 p-4 flex justify-end">
+                            <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                            </Button>
                         </div>
                     </Card>
                 </section>
@@ -1321,7 +1426,9 @@ export default function AjustesPage() {
                         </div>
                     </Card>
                 </section>
+                </div>}
 
+                {settingsTab === "integraciones" && <div className="space-y-2">
                 {/* Cloudinary Storage */}
                 <section className="space-y-2 pt-4">
                     <div className="flex items-center gap-3">
@@ -1720,15 +1827,12 @@ export default function AjustesPage() {
                                 </p>
                             </div>
 
-                            <div className="flex justify-end border-t border-white/5 pt-4">
-                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
-                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
-                                </Button>
-                            </div>
                         </div>
                     </Card>
                 </section>
+                </div>}
 
+                {settingsTab === "sistema" && <div className="space-y-2">
                 {/* Telegram Notifications */}
                 <section className="space-y-2 pt-4">
                     <div className="flex items-center gap-3">
@@ -1954,7 +2058,6 @@ export default function AjustesPage() {
                                         );
                                     })
                             )}
-                            <div ref={logsEndRef} />
                         </div>
                     </div>
                 </section>
@@ -2030,6 +2133,7 @@ export default function AjustesPage() {
                         </div>
                     </div>
                 </section>
+                </div>}
 
                 <div className="flex flex-col sm:flex-row items-center justify-between pt-10 gap-4 border-t border-white/5 overflow-hidden">
                     <div className="flex items-center gap-6">

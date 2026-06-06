@@ -208,6 +208,7 @@ export function SeamlessPatternApp() {
     const [generationLogs, setGenerationLogs] = useState<Array<{ level: string; message: string; timestamp: string }>>([]);
     const patternSocketRef = useRef<ReturnType<typeof createApiSocket> | null>(null);
     const logsEndRef = useRef<HTMLDivElement>(null);
+    const settingsLoadedRef = useRef(false);
     const [tileMode, setTileMode] = useState<TileMode>("2x2");
     const [showTiled, setShowTiled] = useState(false);
     const [seed, setSeed] = useState(() => Math.floor(Math.random() * 999999));
@@ -507,6 +508,14 @@ export function SeamlessPatternApp() {
                 // Load existing draft (completed or older generation)
                 const settingsRes = await fetch(`${API_BASE_URL}/settings`);
                 const { settings } = await settingsRes.json();
+                const modelRow = (settings as any[]).find((s: any) => s.key === "AUTOPILOT_IMAGE_MODEL");
+                if (modelRow?.value) {
+                    try {
+                        const saved = JSON.parse(modelRow.value);
+                        if (saved?.id && AI_MODELS.some(m => m.id === saved.id)) setSelectedModelId(saved.id);
+                    } catch { /* ignore */ }
+                }
+                settingsLoadedRef.current = true;
                 const row = (settings as any[]).find((s: any) => s.key === "SEAMLESS_PATTERN_DRAFT");
                 if (row?.value && row.value !== "null") {
                     const d = JSON.parse(row.value);
@@ -531,6 +540,18 @@ export function SeamlessPatternApp() {
         void restore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Auto-save selected image model to MongoDB whenever user changes it
+    useEffect(() => {
+        if (!settingsLoadedRef.current) return;
+        const model = AI_MODELS.find(m => m.id === selectedModelId);
+        if (!model) return;
+        fetch(`${API_BASE_URL}/settings`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key: "AUTOPILOT_IMAGE_MODEL", value: JSON.stringify({ id: model.id, name: model.name, provider: model.provider, modelId: model.modelId }) }),
+        }).catch(() => {});
+    }, [selectedModelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (activeTab === "insights" || activeTab === "galeria") void loadPatterns();

@@ -1,10 +1,22 @@
 import { FastifyInstance } from "fastify";
 import axios from "axios";
+import { createHash, createSign } from "crypto";
 import { Settings } from "../models/settings.js";
 import { getMongoStatus } from "../lib/mongo.js";
 import { isPollinationsBlocked, pollinationsFetch, pollinationsAuthHeaders } from "../lib/pollinations-circuit.js";
 import { getApiKey } from "../lib/keys.js";
-import { getImageHfKey, getImageLeonardoKey } from "../lib/image-gen.js";
+import { getImageHfKey, getImageLeonardoKey, getTensorartApiKey, getTensorartAppId, getTensorartPrivateKey } from "../lib/image-gen.js";
+
+/** Generates TAMS-SHA256-RSA Authorization header for Tensor.art API */
+function tamsSign(method: string, urlPath: string, appId: string, privateKeyPem: string, bodyStr: string): string {
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const nonceStr = createHash("md5").update(`${timestamp}${Math.random()}`).digest("hex");
+    const toSign = `${method.toUpperCase()}\n${urlPath}\n${timestamp}\n${nonceStr}\n${bodyStr}`;
+    const signer = createSign("RSA-SHA256");
+    signer.update(toSign, "utf8");
+    const signature = signer.sign(privateKeyPem, "base64");
+    return `TAMS-SHA256-RSA app_id=${appId},nonce_str=${nonceStr},timestamp=${timestamp},signature=${signature}`;
+}
 import { generateTextWithLLM } from "../lib/ai.js";
 
 const nextAllowedAtByKey = new Map<string, number>();
@@ -149,6 +161,20 @@ export async function registerAIRoutes(app: FastifyInstance) {
                 }
             } else if (provider === "Stable Horde") {
                 apiKey = process.env.STABLE_HORDE_API_KEY || "0000000000"; // anonymous
+            } else if (provider === "Tensor.art") {
+                // Try RSA App ID first, then fall back to simple Bearer token
+                apiKey = process.env.TENSORART_APP_ID || getTensorartAppId();
+                if (!apiKey && getMongoStatus() === "connected") {
+                    const s = await Settings.findOne({ key: "TENSORART_APP_ID" });
+                    apiKey = String(s?.value ?? "");
+                }
+                if (!apiKey) {
+                    const bearerKey = process.env.TENSORART_API_KEY || getTensorartApiKey();
+                    const bearerFromDb = (!bearerKey && getMongoStatus() === "connected")
+                        ? String((await Settings.findOne({ key: "TENSORART_API_KEY" }))?.value ?? "")
+                        : bearerKey;
+                    if (bearerFromDb) apiKey = `bearer:${bearerFromDb}`;
+                }
             }
             console.log(`[ai/generate-image] apiKey=${apiKey ? "SÍ (" + apiKey.slice(0, 12) + "...)" : "NO (vacía)"}`);
 
@@ -221,7 +247,8 @@ export async function registerAIRoutes(app: FastifyInstance) {
                     app.log.warn({ geminiModel }, "AI image: Gemini returned no image, trying fallback");
                 } catch (googleErr: any) {
                     const status = googleErr?.response?.status;
-                    app.log.warn({ err: googleErr, status }, "AI image: Google Gemini failed, trying fallback");
+                    const body = googleErr?.response?.data ? JSON.stringify(googleErr.response.data).slice(0, 500) : googleErr?.message;
+                    app.log.warn({ status, body }, "AI image: Google Gemini failed, trying fallback");
                 }
             }
 
@@ -354,6 +381,120 @@ export async function registerAIRoutes(app: FastifyInstance) {
                 } catch (leoErr: any) {
                     const status = leoErr?.response?.status;
                     app.log.warn({ err: leoErr, status }, "AI image: Leonardo failed, trying fallback");
+                }
+            }
+
+            // --- TENSOR.ART (TAMS RSA signature auth) ---
+            if (provider === "Tensor.art" && apiKey) {
+                try {
+                    const isBearerKey = apiKey.startsWith("bearer:");
+                    const bearerToken = isBearerKey ? apiKey.slice(7) : null;
+                    const appId = isBearerKey ? "" : apiKey;
+
+                    let privateKeyPem = "";
+                    if (!isBearerKey) {
+                        privateKeyPem = getTensorartPrivateKey();
+                        if (!privateKeyPem && getMongoStatus() === "connected") {
+                            const pkSetting = await Settings.findOne({ key: "TENSORART_PRIVATE_KEY" });
+                            privateKeyPem = String(pkSetting?.value ?? "");
+                        }
+                        if (!privateKeyPem) throw new Error("Tensor.art: TENSORART_PRIVATE_KEY no configurada. Ve a Ajustes → Tensor.art");
+                    }
+
+                    const taEndpoint = "https://ap-east-1.tensorart.cloud";
+                    const jobPath = "/v1/jobs";
+
+                    const rawModelId = typeof modelId === "string" && modelId.trim() ? modelId.trim() : "619225630271212879";
+                    const parts = rawModelId.split(":");
+                    const checkpointId = parts[0];
+                    const loraId = parts[1] || null;
+                    const loraWeight = parts[2] ? parseFloat(parts[2]) : 0.8;
+
+                    const requestId = createHash("md5").update(`${Date.now()}${Math.random()}`).digest("hex");
+
+                    const w = typeof width === "number" ? Math.round(width / 64) * 64 : 1024;
+                    const h = typeof height === "number" ? Math.round(height / 64) * 64 : 1024;
+
+                    const diffusion: any = {
+                        width: Math.min(Math.max(512, w), 1536),
+                        height: Math.min(Math.max(512, h), 1536),
+                        prompts: [{ text: prompt }],
+                        sdModel: checkpointId,
+                        sdVae: "Automatic",
+                        sampler: "DPM++ 2M Karras",
+                        steps: typeof steps === "number" ? Math.min(steps, 60) : 20,
+                        cfgScale: typeof guidanceScale === "number" ? guidanceScale : 7,
+                        clipSkip: 2,
+                    };
+                    if (negativePrompt) diffusion.negativePrompts = [{ text: negativePrompt }];
+                    if (loraId) diffusion.loras = [{ modelId: loraId, weight: loraWeight }];
+
+                    const bodyData = {
+                        requestId,
+                        stages: [
+                            { type: "INPUT_INITIALIZE", inputInitialize: { seed: typeof fixedSeed === "number" ? fixedSeed : -1, count: 1 } },
+                            { type: "DIFFUSION", diffusion },
+                        ],
+                    };
+
+                    const buildAuth = (method: string, path: string, body: string) =>
+                        isBearerKey
+                            ? `Bearer ${bearerToken}`
+                            : tamsSign(method, path, appId, privateKeyPem, body);
+
+                    const bodyStr = JSON.stringify(bodyData);
+                    const postAuth = buildAuth("POST", jobPath, bodyStr);
+
+                    app.log.info({ appId: appId || "bearer", requestId, checkpointId, loraId }, "Tensor.art: submitting job");
+
+                    const createResp = await axios({
+                        url: `${taEndpoint}${jobPath}`,
+                        method: "POST",
+                        headers: { "Authorization": postAuth, "Content-Type": "application/json", "Accept": "application/json" },
+                        data: bodyData,
+                        timeout: 30000,
+                    });
+
+                    app.log.info({ responseData: JSON.stringify(createResp.data).slice(0, 400) }, "Tensor.art: job create response");
+
+                    const taJobId = createResp.data?.job?.id ?? createResp.data?.jobId ?? createResp.data?.id;
+                    if (!taJobId) throw new Error(`Tensor.art: no jobId. Response: ${JSON.stringify(createResp.data).slice(0, 400)}`);
+
+                    const startedAt = Date.now();
+                    let imageUrl: string | null = null;
+
+                    while (Date.now() - startedAt < 120_000) {
+                        await new Promise(r => setTimeout(r, 4000));
+                        const pollPath = `${jobPath}/${taJobId}`;
+                        const getAuth = buildAuth("GET", pollPath, "");
+                        const statusResp = await axios({
+                            url: `${taEndpoint}${pollPath}`,
+                            method: "GET",
+                            headers: { "Authorization": getAuth, "Accept": "application/json" },
+                            timeout: 15000,
+                        });
+                        const job = statusResp.data?.job;
+                        app.log.info({ jobId: taJobId, status: job?.status }, "Tensor.art: job poll");
+                        if (job?.status === "SUCCESS" || job?.status === "COMPLETED") {
+                            imageUrl = job?.successInfo?.images?.[0]?.url
+                                ?? job?.runningInfo?.outputImages?.[0]
+                                ?? null;
+                            break;
+                        }
+                        if (job?.status === "FAILED" || job?.status === "CANCELED" || job?.status === "ERROR") {
+                            const reason = job?.failedInfo?.reason ?? job?.runningInfo?.errMsg ?? "unknown";
+                            throw new Error(`Tensor.art job ${job.status}: ${reason}`);
+                        }
+                    }
+
+                    if (!imageUrl) throw new Error("Tensor.art: generation timed out (2min)");
+
+                    const imgResp = await axios({ url: imageUrl, method: "GET", responseType: "arraybuffer", timeout: 30000 });
+                    return reply.type("image/png").send(Buffer.from(imgResp.data));
+                } catch (taErr: any) {
+                    const taStatus = taErr?.response?.status;
+                    const taBody = taErr?.response?.data ? JSON.stringify(taErr.response.data).slice(0, 400) : taErr?.message;
+                    app.log.warn({ status: taStatus, body: taBody }, "AI image: Tensor.art failed");
                 }
             }
 

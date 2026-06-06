@@ -142,7 +142,13 @@ const AI_MODELS = [
     { id: "sd-3.5", name: "Stable Diffusion 3.5", provider: "Hugging Face", type: "Versatile", modelId: "stabilityai/stable-diffusion-3.5-large-turbo" },
     { id: "openjourney-v4", name: "OpenJourney v4", provider: "Hugging Face", type: "Artistic/MJ Style", modelId: "prompthero/openjourney" },
     { id: "google-gemini-2-5", name: "Google Gemini 2.5 Flash Image", provider: "Google", type: "Fast image gen", modelId: "gemini-2.5-flash-image" },
-    { id: "leonardo", name: "Leonardo (API)", provider: "Leonardo", type: "External API", modelId: "" },
+    { id: "leo-phoenix",      name: "Phoenix 1.0 ✦ (Leonardo)",    provider: "Leonardo", type: "150 tok/día · Flagship · Fantasy · Mejor calidad", modelId: "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3" },
+    { id: "leo-kino-xl",      name: "KINO XL ✦ (Leonardo)",        provider: "Leonardo", type: "150 tok/día · Cinematográfico · Escenas épicas",    modelId: "aa77f04e-3eec-4034-9c07-d0f619684628" },
+    { id: "leo-albedo-xl",    name: "AlbedoBase XL (Leonardo)",    provider: "Leonardo", type: "150 tok/día · CG · Fantasy · Concept art",           modelId: "2067ae52-33fd-4a82-bb92-c2c55e7d2786" },
+    { id: "leo-diffusion-xl", name: "Leonardo Diffusion XL",       provider: "Leonardo", type: "150 tok/día · Versátil · Ilustración",               modelId: "1e60896f-3c26-4296-8ecc-53e2afecc132" },
+    { id: "leo-lucid-origin", name: "Lucid Origin (Leonardo)",     provider: "Leonardo", type: "150 tok/día · Generalista · Ilimitado relajado",     modelId: "7b592283-e8a7-4c5a-9ba6-d18c31f258b9" },
+    { id: "leo-lucid-real",   name: "Lucid Realism (Leonardo)",    provider: "Leonardo", type: "150 tok/día · Hiperrealista · Ilimitado relajado",   modelId: "05ce0082-2d80-4a2d-8653-4d1c85e2418e" },
+    { id: "leo-anime-xl",     name: "Leonardo Anime XL",           provider: "Leonardo", type: "150 tok/día · Anime · Ilustración 2D",               modelId: "e71a1c2f-4f80-4800-934f-2c68979d8cc8" },
 
     // Modelos con pesos públicos / licencias abiertas en Hugging Face (mejor base OSS).
     { id: "sdxl-base", name: "Stable Diffusion XL Base 1.0", provider: "Hugging Face", type: "General (OSS weights)", modelId: "stabilityai/stable-diffusion-xl-base-1.0" },
@@ -177,6 +183,15 @@ const AI_MODELS = [
     { id: "cf-dreamshaper", name: "DreamShaper LCM (Cloudflare)", provider: "Cloudflare", type: "Gratis · Artístico · Estilos creativos", modelId: "@cf/lykon/dreamshaper-8-lcm" },
     // Together AI — $5 gratis sin tarjeta, FLUX schnell, sin bloqueo geo
     { id: "together-flux-schnell", name: "FLUX Schnell (Together AI)", provider: "Together AI", type: "$5 gratis · Sin bloqueo geo · ~5-10s", modelId: "black-forest-labs/FLUX.1-schnell-Free" },
+
+    // Tensor.art — 100 créditos/día gratis · renovación diaria · sin tarjeta
+    { id: "ta-sdxl-base",        name: "SDXL 1.0 Base (Tensor.art)",          provider: "Tensor.art", type: "100 créd/día · Base SDXL · General",              modelId: "619225630271212879" },
+    { id: "ta-coloringbook-v2",  name: "ColoringBook Redmond XL (Tensor.art)", provider: "Tensor.art", type: "100 créd/día · LoRA Coloring Book · Línea limpia", modelId: "619225630271212879:656285193671448586:0.85" },
+    { id: "ta-coloringbook-dom", name: "Coloring Book Dominator (Tensor.art)", provider: "Tensor.art", type: "100 créd/día · LoRA Dominante · Línea gruesa",     modelId: "619225630271212879:647832655083339586:0.85" },
+    { id: "ta-extra-realistic",  name: "Extra Realistic XL (Tensor.art)",      provider: "Tensor.art", type: "100 créd/día · Fotorrealista · Fantasia",           modelId: "879130987013876797" },
+    { id: "ta-thinkdiffusion",   name: "ThinkDiffusion XL (Tensor.art)",       provider: "Tensor.art", type: "100 créd/día · Alta calidad · Versatil",            modelId: "651192230041814458" },
+    { id: "ta-autismmix-light",  name: "AutismMix SDXL Lightning (Tensor.art)", provider: "Tensor.art", type: "100 créd/día · Anime · Ultra rápido (4 steps)",   modelId: "705519017965662383" },
+    { id: "ta-sdxl-flash",       name: "SDXL Flash Mini (Tensor.art)",         provider: "Tensor.art", type: "100 créd/día · Ultrarrápido · Ligero",              modelId: "738164703605494864" },
 
     // Stable Horde — totalmente gratis, red comunitaria de GPUs voluntarias
     { id: "stable-horde-sdxl", name: "SDXL 1.0 (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · ~1-3min", modelId: "SDXL 1.0" },
@@ -1095,6 +1110,7 @@ export function KdpFactoryApp() {
     const dimPickerBtnRef = useRef<HTMLButtonElement>(null);
     const modelPickerRectRef = useRef<DOMRect | null>(null);
     const dimPickerRectRef = useRef<DOMRect | null>(null);
+    const settingsLoadedRef = useRef(false);
     const [cloudinaryImages, setCloudinaryImages] = useState<CloudinaryImage[]>([]);
     const [linkingNicheForCloud, setLinkingNicheForCloud] = useState<string | null>(null); // publicId being linked
     const [isLoadingCloudinary, setIsLoadingCloudinary] = useState(false);
@@ -3609,6 +3625,7 @@ export function KdpFactoryApp() {
                         if (saved?.id && AI_MODELS.some(m => m.id === saved.id)) setSelectedModel(saved.id);
                     } catch { /* ignore */ }
                 }
+                settingsLoadedRef.current = true;
                 if (settingsMap.has("QUALITY_CHECK_ENABLED")) setQualityCheckEnabled(settingsMap.get("QUALITY_CHECK_ENABLED") !== "0" && settingsMap.get("QUALITY_CHECK_ENABLED") !== "false");
                 if (settingsMap.has("QUALITY_VAULT_TELEGRAM_NOTIFY")) setQualityVaultTelegramEnabled(settingsMap.get("QUALITY_VAULT_TELEGRAM_NOTIFY") === "1" || settingsMap.get("QUALITY_VAULT_TELEGRAM_NOTIFY") === "true");
                 if (settingsMap.has("TELEGRAM_WEEKLY_DIGEST")) setWeeklyDigestEnabled(settingsMap.get("TELEGRAM_WEEKLY_DIGEST") !== "false");
@@ -3713,6 +3730,18 @@ export function KdpFactoryApp() {
             }
         };
     }, []);
+
+    // Auto-save selected image model to MongoDB whenever user changes it
+    useEffect(() => {
+        if (!settingsLoadedRef.current) return;
+        const model = AI_MODELS.find(m => m.id === selectedModel);
+        if (!model) return;
+        fetch(`${API_BASE_URL}/settings`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key: "AUTOPILOT_IMAGE_MODEL", value: JSON.stringify({ id: model.id, name: model.name, provider: model.provider, modelId: model.modelId }) }),
+        }).catch(() => {});
+    }, [selectedModel]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Load all data on mount in parallel — no tab gating so every section is ready when first visited
     useEffect(() => {
