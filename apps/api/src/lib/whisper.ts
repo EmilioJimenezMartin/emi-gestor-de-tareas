@@ -1,10 +1,12 @@
+import { getApiKey } from "./keys.js";
+
 /**
  * Speech-to-text via HuggingFace Whisper (large-v3-turbo).
- * Requiere HUGGINGFACE_API_KEY.
+ * Requiere HUGGINGFACE_API_KEY (env o MongoDB Settings).
  */
 export async function transcribeAudio(audioBuffer: Buffer, mimeType = "audio/ogg"): Promise<string | null> {
     try {
-        const hfKey = (process.env.HUGGINGFACE_API_KEY ?? "").trim();
+        const hfKey = (await getApiKey("HUGGINGFACE_API_KEY")).trim();
         if (!hfKey) {
             console.warn("[whisper] HUGGINGFACE_API_KEY not set");
             return null;

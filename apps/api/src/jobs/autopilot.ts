@@ -22,19 +22,16 @@ export const AUTOPILOT_JOB_NAME = "autopilot-run";
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-// Map niche style to a Pollinations model (mirrors NICHE_STYLE_MODEL in the frontend)
-function styleToAiModel(styleCategory: string) {
-    const modelIds: Record<string, string> = {
-        anime: "flux-anime",
-        realistic: "flux-realism",
-        illustration: "flux-realism",
-        "wall-art": "flux-realism",
-        affirmation: "flux-realism",
-        geometric: "flux-realism",
-        celestial: "flux-realism",
-    };
-    const modelId = modelIds[styleCategory] ?? "flux";
-    return { id: "pollinations-flux", name: "FLUX (Pollinations)", provider: "Pollinations", modelId };
+/** Lee el modelo de imagen configurado en Settings; si no existe usa Pollinations. */
+async function getAutopilotImageModel() {
+    try {
+        const row = await Settings.findOne({ key: "AUTOPILOT_IMAGE_MODEL" }).lean();
+        if ((row as any)?.value) {
+            const parsed = JSON.parse((row as any).value as string);
+            if (parsed?.provider && parsed?.modelId !== undefined) return parsed as { id: string; name: string; provider: string; modelId: string };
+        }
+    } catch { /* fallback */ }
+    return { id: "pollinations-flux", name: "FLUX (Pollinations)", provider: "Pollinations", modelId: "flux" };
 }
 
 type AutoPilotConfig = {
@@ -536,7 +533,7 @@ async function runPipeline(
             emitStage(io, "catalog", String(niche._id), niche.name);
             io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🖼️ Lanzando ${cfg.catalogsPerNiche} catálogos para "${niche.name}"…` });
             try {
-                const aiModel = styleToAiModel(niche.styleCategory ?? "generic");
+                const aiModel = await getAutopilotImageModel();
                 const productType = niche.productType ?? "coloring-book";
                 const style = niche.styleCategory ?? "generic";
                 const fallbackPrompt = niche.generatedPrompt || niche.name;

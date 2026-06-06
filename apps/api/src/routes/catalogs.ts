@@ -231,14 +231,14 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
     app.post("/catalogs/from-cloudinary", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const { name, images } = request.body || {};
+            const { name, images, nicheIds } = request.body || {};
             if (!name?.trim() || !Array.isArray(images) || images.length === 0) {
                 return reply.status(400).send({ error: "name e images son requeridos" });
             }
             const catalog = await Catalog.create({
                 name: name.trim(),
-                prompt: "Catálogo personalizado de Cloudinary",
-                aiModel: { id: "cloudinary", name: "Cloudinary", provider: "Cloudinary", modelId: "" },
+                prompt: "Catálogo manual (subida de imágenes)",
+                aiModel: { id: "manual", name: "Manual Upload", provider: "Manual", modelId: "" },
                 width: images[0]?.width ?? 1024,
                 height: images[0]?.height ?? 1024,
                 totalImages: images.length,
@@ -253,6 +253,7 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
                 status: "completed",
                 skippedImages: 0,
                 queueOrder: Date.now(),
+                ...(Array.isArray(nicheIds) && nicheIds.length > 0 ? { nicheIds } : {}),
             });
             return reply.status(201).send({ catalog });
         } catch (e: any) {

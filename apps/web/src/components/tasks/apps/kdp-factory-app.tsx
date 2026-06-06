@@ -202,7 +202,7 @@ const AI_DIMENSIONS = [
 
 const PLATFORMS = ["Amazon KDP", "Etsy", "Printify", "Creative Fabrica"];
 
-type TabID = "insights" | "creation" | "studio" | "niches" | "gelato" | "config" | "ventas";
+type TabID = "insights" | "creation" | "studio" | "niches" | "gelato" | "config";
 type PeriodID = "month" | "6months" | "year" | "all";
 
 type NicheStatus = "found" | "active" | "research" | "archived";
@@ -794,7 +794,13 @@ function GelatoUploadModal({
                 setMultiProgress({ current: i + 1, total: chunks.length });
                 // owner page (auto-added by buildBookPdf) + blank separator + even content pages = even total
                 const firstIsBlank = !chunks[i][0]?.image;
-                const pagesForPdf = firstIsBlank ? chunks[i] : [blankSeparator, ...chunks[i]];
+                let chunkPages = firstIsBlank ? chunks[i] : [blankSeparator, ...chunks[i]];
+                // ensure blank after first image in this chunk
+                const fii = chunkPages.findIndex(p => p.image);
+                if (fii !== -1 && chunkPages[fii + 1]?.image) {
+                    chunkPages = [...chunkPages.slice(0, fii + 1), blankSeparator, ...chunkPages.slice(fii + 1)];
+                }
+                const pagesForPdf = chunkPages;
                 const bytes = await buildPdf(pagesForPdf, i > 0);
                 if (!bytes) throw new Error(`Error generando parte ${i + 1}`);
                 const partName = `${bookFileName || "libro-kdp"}-parte${i + 1}.pdf`;
@@ -1006,7 +1012,7 @@ export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
         if (typeof window === "undefined") return "insights";
         const saved = localStorage.getItem("kdp-active-tab");
-        return (saved && ["insights", "creation", "studio", "gelato", "config", "ventas"].includes(saved)) ? saved as TabID : "studio";
+        return (saved && ["insights", "creation", "studio", "gelato", "config"].includes(saved)) ? saved as TabID : "studio";
     });
     const changeTab = (tab: TabID) => { localStorage.setItem("kdp-active-tab", tab); setActiveTab(tab); };
     const [chartPeriod, setChartPeriod] = useState<PeriodID>("month");
@@ -1173,6 +1179,12 @@ export function KdpFactoryApp() {
     const [studioSubTab, setStudioSubTab] = useState<"niches" | "radar" | "pipeline">(() =>
         (typeof window !== "undefined" && localStorage.getItem("kdp-studio-subtab") as "niches" | "radar" | "pipeline") || "niches"
     );
+    // ── Manual catalog upload state ──────────────────────────────────────────
+    type UploadedImage = { dataUrl: string; file: File; uploading: boolean; uploaded: boolean; error?: string; cloudUrl?: string; publicId?: string; width?: number; height?: number };
+    const [uploadImages, setUploadImages] = useState<UploadedImage[]>([]);
+    const [uploadCatalogName, setUploadCatalogName] = useState("");
+    const [uploadNicheId, setUploadNicheId] = useState("");
+    const [isCreatingManualCatalog, setIsCreatingManualCatalog] = useState(false);
     const [nicheGeneratingId, setNicheGeneratingId] = useState<string | null>(null);
     const [pipelineRunningId, setPipelineRunningId] = useState<string | null>(null);
     const [pipelineQueueIds, setPipelineQueueIds] = useState<string[]>([]);
@@ -1376,7 +1388,6 @@ export function KdpFactoryApp() {
     const [notificationRules, setNotificationRules] = useState<Record<string, boolean>>(
         Object.fromEntries(NOTIFICATION_EVENTS.map(e => [e.id, true]))
     );
-    const [savingNotificationRules, setSavingNotificationRules] = useState(false);
 
     // --- KDP publish CTA state ---
     const [kdpPublishStatus, setKdpPublishStatus] = useState<Record<string, "idle" | "queued" | "login" | "uploading-pdf" | "done" | "error">>({});
@@ -2041,11 +2052,13 @@ export function KdpFactoryApp() {
         try {
             const cron = buildCron();
             // Save limits alongside schedule
+            const model = AI_MODELS.find(m => m.id === selectedModel);
             const limitPairs = [
                 { key: "AUTOPILOT_CATALOGS_PER_NICHE", value: apCatalogsPer },
                 { key: "AUTOPILOT_IMAGES_PER_CATALOG", value: apImagesPerCatalog },
                 { key: "AUTOPILOT_MAX_NICHES", value: apMaxNiches },
                 { key: "MAX_ACTIVE_CATALOGS", value: apMaxActiveCatalogs },
+                ...(model ? [{ key: "AUTOPILOT_IMAGE_MODEL", value: JSON.stringify({ id: model.id, name: model.name, provider: model.provider, modelId: model.modelId }) }] : []),
             ];
             await Promise.all(limitPairs.map(p => fetch(`${API_BASE_URL}/settings`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) })));
             const res = await fetch(`${API_BASE_URL}/autopilot/schedule`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cron }) });
@@ -2481,12 +2494,13 @@ export function KdpFactoryApp() {
 
         const pages: BookPage[] = [];
 
-        // Owner/copyright first page (if enabled)
+        // Structure: owner → blank → title → blank → img → blank → img → blank → ...
         if (includeOwnerPage) {
             pages.push({ id: genPageId(), type: "owner", text: defaultTextStyle() });
+            pages.push({ id: genPageId(), type: "text", text: defaultTextStyle() }); // blank back of owner
         }
 
-        // Title page + optional blank back
+        // Title page — always followed by a blank
         const titleStyle = defaultTextStyle();
         titleStyle.content = titleText;
         titleStyle.fontSize = 24;
@@ -2494,12 +2508,13 @@ export function KdpFactoryApp() {
         titleStyle.verticalAlign = "middle";
         titleStyle.align = "center";
         pages.push({ id: genPageId(), type: "text", text: titleStyle });
-        if (!noBlankPages) pages.push({ id: genPageId(), type: "text", text: defaultTextStyle() }); // blank back
+        pages.push({ id: genPageId(), type: "text", text: defaultTextStyle() }); // blank after title (always)
 
-        // Image pages — blank back only when noBlankPages is off
-        for (const { url, label } of entries) {
+        // Image pages — always blank after each image; noBlankPages only skips blanks for images 2+
+        for (let idx = 0; idx < entries.length; idx++) {
+            const { url, label } = entries[idx];
             pages.push({ id: genPageId(), type: "image", image: { url, scale: 1, label }, text: defaultTextStyle() });
-            if (!noBlankPages) pages.push({ id: genPageId(), type: "text", text: defaultTextStyle() }); // blank back
+            if (idx === 0 || !noBlankPages) pages.push({ id: genPageId(), type: "text", text: defaultTextStyle() }); // blank back
         }
 
         const newDraft = { id: `template-${Date.now()}`, fileName: bookFileName, pages, savedAt: new Date().toISOString() };
@@ -3264,12 +3279,11 @@ export function KdpFactoryApp() {
         if (!catalog.images.length) return;
         setDirectPdfCatalogId(catalog._id);
         try {
-            const pages: BookPage[] = catalog.images.map((img, i) => ({
-                id: `dp-${i}-${Date.now()}`,
-                type: "image" as const,
-                image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` },
-                text: defaultTextStyle(),
-            }));
+            const pages: BookPage[] = [];
+            catalog.images.forEach((img, i) => {
+                pages.push({ id: `dp-${i}-${Date.now()}`, type: "image" as const, image: { url: img.url, scale: 1, label: `${catalog.name} #${i + 1}` }, text: defaultTextStyle() });
+                if (i === 0) pages.push({ id: `dp-blank-${Date.now()}`, type: "text" as const, text: defaultTextStyle() });
+            });
             const bytes = await buildBookPdf(undefined, false, pages, true);
             if (!bytes) throw new Error("No se pudo generar el PDF");
             const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
@@ -3296,12 +3310,11 @@ export function KdpFactoryApp() {
         if (!allImages.length) { toast.error("Este nicho no tiene imágenes aún"); return; }
         setDirectNichePdfId(niche._id);
         try {
-            const pages: BookPage[] = allImages.map((img, i) => ({
-                id: `np-${i}-${Date.now()}`,
-                type: "image" as const,
-                image: { url: img.url, scale: 1, label: `${niche.name} #${i + 1}` },
-                text: defaultTextStyle(),
-            }));
+            const pages: BookPage[] = [];
+            allImages.forEach((img, i) => {
+                pages.push({ id: `np-${i}-${Date.now()}`, type: "image" as const, image: { url: img.url, scale: 1, label: `${niche.name} #${i + 1}` }, text: defaultTextStyle() });
+                if (i === 0) pages.push({ id: `np-blank-${Date.now()}`, type: "text" as const, text: defaultTextStyle() });
+            });
             const bytes = await buildBookPdf(undefined, false, pages, true);
             if (!bytes) throw new Error("No se pudo generar el PDF");
             const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
@@ -3590,6 +3603,12 @@ export function KdpFactoryApp() {
                 if (settingsMap.has("AUTOPILOT_IMAGES_PER_CATALOG")) setApImagesPerCatalog(settingsMap.get("AUTOPILOT_IMAGES_PER_CATALOG")!);
                 if (settingsMap.has("AUTOPILOT_MAX_NICHES")) setApMaxNiches(settingsMap.get("AUTOPILOT_MAX_NICHES")!);
                 if (settingsMap.has("MAX_ACTIVE_CATALOGS")) setApMaxActiveCatalogs(settingsMap.get("MAX_ACTIVE_CATALOGS")!);
+                if (settingsMap.has("AUTOPILOT_IMAGE_MODEL")) {
+                    try {
+                        const saved = JSON.parse(settingsMap.get("AUTOPILOT_IMAGE_MODEL")!);
+                        if (saved?.id && AI_MODELS.some(m => m.id === saved.id)) setSelectedModel(saved.id);
+                    } catch { /* ignore */ }
+                }
                 if (settingsMap.has("QUALITY_CHECK_ENABLED")) setQualityCheckEnabled(settingsMap.get("QUALITY_CHECK_ENABLED") !== "0" && settingsMap.get("QUALITY_CHECK_ENABLED") !== "false");
                 if (settingsMap.has("QUALITY_VAULT_TELEGRAM_NOTIFY")) setQualityVaultTelegramEnabled(settingsMap.get("QUALITY_VAULT_TELEGRAM_NOTIFY") === "1" || settingsMap.get("QUALITY_VAULT_TELEGRAM_NOTIFY") === "true");
                 if (settingsMap.has("TELEGRAM_WEEKLY_DIGEST")) setWeeklyDigestEnabled(settingsMap.get("TELEGRAM_WEEKLY_DIGEST") !== "false");
@@ -3744,7 +3763,7 @@ export function KdpFactoryApp() {
     useEffect(() => { void fetchCatalogs(); void fetchApRuns(); void fetchPipelineData(); void fetchRejectedImages(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => { if (activeTab === "insights") void fetchTimeseries(timeseriesDays); }, [activeTab, timeseriesDays]); // eslint-disable-line react-hooks/exhaustive-deps
-    useEffect(() => { if (activeTab === "ventas" && salesData.length === 0) void fetchSalesData(); }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { if ((activeTab as string) === "ventas" && salesData.length === 0) void fetchSalesData(); }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Always keep catalog socket connected so images appear in real-time on any tab
     useEffect(() => {
@@ -4824,16 +4843,16 @@ export function KdpFactoryApp() {
         } catch { toast.error("Error guardando alertas"); } finally { setSavingAlertSettings(false); }
     };
 
-    const saveNotificationRules = async () => {
-        setSavingNotificationRules(true);
+    const toggleNotificationRule = async (id: string) => {
+        const newRules = { ...notificationRules, [id]: !(notificationRules[id] ?? true) };
+        setNotificationRules(newRules);
         try {
-            const rules = NOTIFICATION_EVENTS.map(e => ({ id: e.id, enabled: notificationRules[e.id] ?? true }));
+            const rules = NOTIFICATION_EVENTS.map(e => ({ id: e.id, enabled: newRules[e.id] ?? true }));
             await fetch(`${API_BASE_URL}/settings`, {
                 method: "PATCH", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify([{ key: "NOTIFICATION_RULES", value: JSON.stringify(rules) }]),
             });
-            toast.success("Eventos guardados");
-        } catch { toast.error("Error guardando eventos"); } finally { setSavingNotificationRules(false); }
+        } catch { toast.error("Error guardando"); }
     };
 
     function fmtMs(ms: number): string {
@@ -7603,7 +7622,7 @@ export function KdpFactoryApp() {
                                                     <p className="text-[10px] text-neutral-500 mt-0.5">{ev.desc}</p>
                                                 </div>
                                                 <button
-                                                    onClick={() => setNotificationRules(prev => ({ ...prev, [ev.id]: !enabled }))}
+                                                    onClick={() => void toggleNotificationRule(ev.id)}
                                                     className={`relative shrink-0 w-11 h-6 rounded-full transition-all duration-200 ${enabled ? "bg-amber-500" : "bg-white/10"}`}>
                                                     <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${enabled ? "left-[22px]" : "left-0.5"}`} />
                                                 </button>
@@ -7615,10 +7634,6 @@ export function KdpFactoryApp() {
                         ));
                     })()}
                 </div>
-                <button onClick={() => void saveNotificationRules()} disabled={savingNotificationRules}
-                    className="flex items-center gap-1.5 h-8 px-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm font-black text-amber-400 hover:bg-amber-500/20 transition-all disabled:opacity-40">
-                    {savingNotificationRules ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} Guardar eventos
-                </button>
             </section>
 
             {/* ── ALERTAS PROACTIVAS (umbrales) ──────────────────────────── */}
@@ -9505,6 +9520,77 @@ export function KdpFactoryApp() {
         const orphanCloudinary = cloudinaryImages.filter(img => img.nicheId && !nicheSet.has(img.nicheId));
         const totalOrphans = orphanCatalogs.reduce((s, c) => s + c.images.length, 0) + orphanCloudinary.length;
 
+        const handleUploadFiles = async (files: FileList | File[]) => {
+            const arr = Array.from(files).filter(f => f.type.startsWith("image/"));
+            if (!arr.length) return;
+            const newImgs: UploadedImage[] = await Promise.all(arr.map(file => new Promise<UploadedImage>((res) => {
+                const reader = new FileReader();
+                reader.onload = () => res({ dataUrl: reader.result as string, file, uploading: false, uploaded: false });
+                reader.readAsDataURL(file);
+            })));
+            setUploadImages(prev => [...prev, ...newImgs]);
+            setUploadImages(prev => prev.map(img => newImgs.some(n => n.file === img.file) ? { ...img, uploading: true } : img));
+            for (const img of newImgs) {
+                try {
+                    const res = await fetch(`${API_BASE_URL}/cloudinary/upload`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ dataUrl: img.dataUrl }),
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.image?.url) {
+                        setUploadImages(prev => prev.map(i => i.file === img.file
+                            ? { ...i, uploading: false, uploaded: true, cloudUrl: data.image.url, publicId: data.image.publicId, width: data.image.width, height: data.image.height }
+                            : i));
+                    } else {
+                        setUploadImages(prev => prev.map(i => i.file === img.file ? { ...i, uploading: false, error: data.error ?? "Error" } : i));
+                    }
+                } catch (e: any) {
+                    setUploadImages(prev => prev.map(i => i.file === img.file ? { ...i, uploading: false, error: e.message } : i));
+                }
+            }
+        };
+
+        const handlePaste = (e: React.ClipboardEvent) => {
+            const items = Array.from(e.clipboardData.items).filter(i => i.type.startsWith("image/"));
+            if (!items.length) return;
+            const files = items.map(i => i.getAsFile()).filter(Boolean) as File[];
+            void handleUploadFiles(files);
+        };
+
+        const handleDrop = (e: React.DragEvent) => {
+            e.preventDefault();
+            void handleUploadFiles(e.dataTransfer.files);
+        };
+
+        const createManualCatalog = async () => {
+            const ready = uploadImages.filter(i => i.uploaded && i.cloudUrl);
+            if (!ready.length) { toast.error("Sube al menos una imagen primero"); return; }
+            const name = uploadCatalogName.trim() || `Catálogo manual ${new Date().toLocaleDateString("es-ES")}`;
+            setIsCreatingManualCatalog(true);
+            try {
+                const res = await fetch(`${API_BASE_URL}/catalogs/from-cloudinary`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        name,
+                        images: ready.map(i => ({ url: i.cloudUrl!, publicId: i.publicId, width: i.width ?? 1024, height: i.height ?? 1024 })),
+                        ...(uploadNicheId ? { nicheIds: [uploadNicheId] } : {}),
+                    }),
+                });
+                if (!res.ok) throw new Error((await res.json()).error ?? "Error");
+                toast.success(`Catálogo "${name}" creado con ${ready.length} imagen${ready.length !== 1 ? "es" : ""}`);
+                setUploadImages([]);
+                setUploadCatalogName("");
+                setUploadNicheId("");
+                void fetchCatalogs();
+            } catch (e: any) {
+                toast.error(e.message);
+            } finally {
+                setIsCreatingManualCatalog(false);
+            }
+        };
+
         return (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6">
                 {renderAIStudio()}
@@ -9698,6 +9784,118 @@ export function KdpFactoryApp() {
                         </div>
                     </div>
                 )}
+
+                {/* ══ CATÁLOGO MANUAL ══ */}
+                <div className="space-y-5">
+                    <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                        <div className="h-px w-full bg-gradient-to-r from-emerald-500/80 via-emerald-400/40 to-transparent" />
+                        <div className="p-6 space-y-5">
+                            <SectionHeader icon={<UploadCloud size={15} />} title={<><span className="text-white">Catálogo </span><span className="bg-gradient-to-r from-emerald-300 to-teal-400 bg-clip-text text-transparent">Manual</span></>} subtitle="Pega capturas o arrastra imágenes para crear un catálogo en la nube" color="emerald" size="lg" />
+
+                            {/* Drop / paste zone */}
+                            <div
+                                className="relative rounded-2xl border-2 border-dashed border-emerald-500/30 bg-emerald-500/[0.03] hover:border-emerald-500/50 hover:bg-emerald-500/[0.06] transition-all cursor-pointer flex flex-col items-center justify-center gap-3 p-10 text-center"
+                                onPaste={handlePaste}
+                                onDrop={handleDrop}
+                                onDragOver={e => e.preventDefault()}
+                                onClick={() => { const i = document.createElement("input"); i.type = "file"; i.multiple = true; i.accept = "image/*"; i.onchange = () => i.files && void handleUploadFiles(i.files); i.click(); }}
+                                tabIndex={0}
+                                onKeyDown={e => e.key === "Enter" && (e.currentTarget as HTMLElement).click()}
+                            >
+                                <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                                    <UploadCloud size={24} className="text-emerald-400" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-semibold text-white">Arrastra imágenes o haz clic aquí</p>
+                                    <p className="text-xs text-neutral-500 mt-1">También puedes pegar con Ctrl+V · PNG, JPG, WEBP</p>
+                                </div>
+                            </div>
+
+                            {/* Image grid */}
+                            {uploadImages.length > 0 && (
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-semibold text-neutral-400 uppercase tracking-widest">{uploadImages.length} imagen{uploadImages.length !== 1 ? "es" : ""}</span>
+                                        <button onClick={() => setUploadImages([])} className="text-xs text-neutral-600 hover:text-red-400 transition-colors flex items-center gap-1">
+                                            <Trash2 size={11} /> Limpiar todo
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                                        {uploadImages.map((img, idx) => (
+                                            <div key={idx} className="relative group rounded-xl overflow-hidden aspect-square bg-white/5 border border-white/8">
+                                                <img src={img.dataUrl} alt="" className="w-full h-full object-cover" />
+                                                {img.uploading && (
+                                                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                                                        <Loader2 size={18} className="animate-spin text-emerald-400" />
+                                                    </div>
+                                                )}
+                                                {img.uploaded && (
+                                                    <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-emerald-500/90 flex items-center justify-center">
+                                                        <Check size={10} className="text-white" />
+                                                    </div>
+                                                )}
+                                                {img.error && (
+                                                    <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center p-2">
+                                                        <AlertTriangle size={14} className="text-red-400" />
+                                                        <span className="text-[9px] text-red-300 text-center mt-1 line-clamp-2">{img.error}</span>
+                                                    </div>
+                                                )}
+                                                <button
+                                                    onClick={() => setUploadImages(prev => prev.filter((_, i) => i !== idx))}
+                                                    className="absolute top-1 left-1 w-5 h-5 rounded-full bg-black/60 text-neutral-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                                                >
+                                                    <X size={10} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Config row */}
+                            {uploadImages.some(i => i.uploaded) && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-neutral-400 uppercase tracking-widest">Nombre del catálogo</label>
+                                        <input
+                                            value={uploadCatalogName}
+                                            onChange={e => setUploadCatalogName(e.target.value)}
+                                            placeholder={`Catálogo manual ${new Date().toLocaleDateString("es-ES")}`}
+                                            className="w-full h-10 px-3 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-emerald-500/50"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-neutral-400 uppercase tracking-widest">Vincular a nicho (opcional)</label>
+                                        <select
+                                            value={uploadNicheId}
+                                            onChange={e => setUploadNicheId(e.target.value)}
+                                            className="w-full h-10 px-3 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-emerald-500/50"
+                                        >
+                                            <option value="">Sin nicho</option>
+                                            {niches.filter(n => n.status === "active").map(n => (
+                                                <option key={n._id} value={n._id}>{n.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Create button */}
+                            {uploadImages.some(i => i.uploaded) && (
+                                <div className="flex justify-end pt-1">
+                                    <button
+                                        onClick={() => void createManualCatalog()}
+                                        disabled={isCreatingManualCatalog || uploadImages.some(i => i.uploading)}
+                                        className="flex items-center gap-2 h-11 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm font-black uppercase tracking-widest transition-all shadow-[0_4px_20px_rgba(16,185,129,0.4)] disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        {isCreatingManualCatalog ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                                        Crear catálogo ({uploadImages.filter(i => i.uploaded).length} imgs)
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     };
@@ -10392,8 +10590,8 @@ export function KdpFactoryApp() {
 
     const renderStudio = () => {
         const STUDIO_TABS: KdpTabDef<"niches" | "radar" | "pipeline">[] = [
-            { id: "niches",   label: "Nichos",   icon: <Target size={13} />,   color: "text-sky-400",    activeBg: "bg-sky-500/10 border-sky-500/25 text-sky-300"     },
-            { id: "radar",    label: "Radar",    icon: <Search size={13} />,   color: "text-amber-400",  activeBg: "bg-amber-500/10 border-amber-500/25 text-amber-300" },
+            { id: "niches",   label: "Nichos",   icon: <Target size={13} />,   color: "text-sky-400",    activeBg: "bg-sky-500/10 border-sky-500/25 text-sky-300"        },
+            { id: "radar",    label: "Radar",    icon: <Search size={13} />,   color: "text-amber-400",  activeBg: "bg-amber-500/10 border-amber-500/25 text-amber-300"   },
             { id: "pipeline", label: "Pipeline", icon: <Activity size={13} />, color: "text-violet-400", activeBg: "bg-violet-500/10 border-violet-500/25 text-violet-300" },
         ];
         const switchStudioTab = (t: "niches" | "radar" | "pipeline") => {
@@ -11719,7 +11917,6 @@ export function KdpFactoryApp() {
                     { id: "creation", name: "Imágenes", icon: <ImageIcon size={15} /> },
                     { id: "gelato", name: "Factory", icon: <Package size={15} /> },
                     { id: "insights", name: "Insights", icon: <Activity size={15} /> },
-                    { id: "ventas", name: "Ventas", icon: <DollarSign size={15} /> },
                     { id: "config", name: "Config", icon: <Settings size={15} /> },
                 ] satisfies AppTab[]}
                 activeTab={activeTab}
@@ -11733,7 +11930,6 @@ export function KdpFactoryApp() {
                 {activeTab === "studio" && renderStudio()}
                 {activeTab === "creation" && renderCreation()}
                 {activeTab === "insights" && renderInsights()}
-                {activeTab === "ventas" && renderVentas()}
                 {activeTab === "gelato" && <>{renderGelato()}{renderContenido()}{renderCoverFactory()}</>}
                 {activeTab === "config" && renderConfig()}
             </div>
@@ -12008,13 +12204,24 @@ export function KdpFactoryApp() {
                 // Extra blank after preamble if preamble length is odd (keeps images on right)
                 const preambleWithPad = preamble.length % 2 !== 0 ? [...preamble, blankSep] : preamble;
 
+                // Ensure blank page after first image in a page array (if not already blank)
+                const withBlankAfterFirst = (pages: BookPage[]): BookPage[] => {
+                    const firstImgIdx = pages.findIndex(p => p.image);
+                    if (firstImgIdx === -1) return pages;
+                    const next = pages[firstImgIdx + 1];
+                    if (!next || next.image) {
+                        return [...pages.slice(0, firstImgIdx + 1), blankSep, ...pages.slice(firstImgIdx + 1)];
+                    }
+                    return pages;
+                };
+
                 const handleDownloadAll = async () => {
                     setSplitProgress({ current: 0, total: chunks.length });
                     for (let i = 0; i < chunks.length; i++) {
                         setSplitProgress({ current: i + 1, total: chunks.length });
                         // First chunk already has preamble; subsequent chunks need it prepended
                         const preamblePart = i === 0 ? [] : preambleWithPad;
-                        const pagesForPdf = [blankSep, ...preamblePart, ...chunks[i]];
+                        const pagesForPdf = [blankSep, ...preamblePart, ...withBlankAfterFirst(chunks[i])];
                         let result: Uint8Array | null = null;
                         // Owner page only in first part — subsequent parts skip it
                         await buildBookPdf(bytes => { result = bytes; }, false, pagesForPdf, i > 0);

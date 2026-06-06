@@ -77,6 +77,17 @@ let pollTimer: NodeJS.Timeout | null = null;
 let _io: any = null;
 let _agenda: any = null;
 
+async function getAutopilotImageModel() {
+    try {
+        const row = await Settings.findOne({ key: "AUTOPILOT_IMAGE_MODEL" }).lean();
+        if ((row as any)?.value) {
+            const parsed = JSON.parse((row as any).value as string);
+            if (parsed?.provider && parsed?.modelId !== undefined) return parsed as { id: string; name: string; provider: string; modelId: string };
+        }
+    } catch { /* fallback */ }
+    return { id: "pollinations-flux", name: "FLUX (Pollinations)", provider: "Pollinations", modelId: "flux" };
+}
+
 async function getAutoPilotConfig() {
     try {
         const rows = await Settings.find({
@@ -150,16 +161,7 @@ async function handleNicheDiscovery(
                 const base = `http://localhost:${port}`;
                 const n = niche as any;
 
-                // Mirror the model selection from autopilot.ts styleToAiModel
-                const styleCategory = n?.styleCategory ?? "generic";
-                const modelIds: Record<string, string> = {
-                    anime: "flux-anime", realistic: "flux-realism",
-                    illustration: "flux-realism", "wall-art": "flux-realism",
-                    affirmation: "flux-realism", geometric: "flux-realism",
-                    celestial: "flux-realism",
-                };
-                const modelId = modelIds[styleCategory] ?? "flux";
-                const aiModel = { id: `pollinations-${modelId}`, name: "FLUX (Pollinations)", provider: "Pollinations", modelId };
+                const aiModel = await getAutopilotImageModel();
 
                 let created = 0;
                 for (let i = 0; i < cfg.catalogsPerNiche; i++) {
@@ -345,12 +347,7 @@ async function processUpdate(update: any): Promise<void> {
                     return;
                 }
                 const cfg = await getAutoPilotConfig();
-                const modelIds: Record<string, string> = {
-                    anime: "flux-anime", realistic: "flux-realism",
-                    illustration: "flux-realism", "wall-art": "flux-realism",
-                    affirmation: "flux-realism", geometric: "flux-realism", celestial: "flux-realism",
-                };
-                const modelId = modelIds[(niche as any).styleCategory ?? "generic"] ?? "flux";
+                const aiModel = await getAutopilotImageModel();
                 const existingCount = await Catalog.countDocuments({ nicheIds: String((niche as any)._id) });
                 const port = process.env.PORT || 3001;
                 const base = `http://localhost:${port}`;
@@ -369,7 +366,7 @@ async function processUpdate(update: any): Promise<void> {
                         name: `${(niche as any).name} — v${existingCount + 1}`,
                         prompt: catalogPrompt,
                         totalImages: cfg.imagesPerCatalog,
-                        aiModel: { id: `pollinations-${modelId}`, name: "FLUX (Pollinations)", provider: "Pollinations", modelId },
+                        aiModel,
                         nicheIds: [String((niche as any)._id)],
                         productType: (niche as any).productType ?? "coloring-book",
                     }),
@@ -1033,19 +1030,7 @@ async function processUpdate(update: any): Promise<void> {
                 const cfg = await getAutoPilotConfig();
                 const totalImages = (imgsArg && imgsArg > 0) ? Math.min(imgsArg, 25) : cfg.imagesPerCatalog;
 
-                const modelIds: Record<string, string> = {
-                    anime: "flux-anime", realistic: "flux-realism",
-                    illustration: "flux-realism", "wall-art": "flux-realism",
-                    affirmation: "flux-realism", geometric: "flux-realism",
-                    celestial: "flux-realism",
-                };
-                const modelId = modelIds[(niche as any).styleCategory ?? "generic"] ?? "flux";
-                const aiModel = {
-                    id: `pollinations-${modelId}`,
-                    name: "FLUX (Pollinations)",
-                    provider: "Pollinations",
-                    modelId,
-                };
+                const aiModel = await getAutopilotImageModel();
 
                 // Count existing catalogs to name this one
                 const existingCount = await Catalog.countDocuments({ nicheIds: String((niche as any)._id) });
@@ -1085,7 +1070,7 @@ async function processUpdate(update: any): Promise<void> {
                     await sendTelegram(
                         `✅ <b>Catálogo creado</b>\n` +
                         `📚 Nicho: <b>${(niche as any).name}</b>\n` +
-                        `🖼️ ${totalImages} imágenes · modelo <code>${modelId}</code>\n\n` +
+                        `🖼️ ${totalImages} imágenes · modelo <code>${aiModel.id}</code>\n\n` +
                         `⚙️ Encolado — se generará automáticamente`
                     );
                 } else {
