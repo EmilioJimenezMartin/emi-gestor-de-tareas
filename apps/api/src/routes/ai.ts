@@ -5,7 +5,7 @@ import { Settings } from "../models/settings.js";
 import { getMongoStatus } from "../lib/mongo.js";
 import { isPollinationsBlocked, pollinationsFetch, pollinationsAuthHeaders } from "../lib/pollinations-circuit.js";
 import { getApiKey } from "../lib/keys.js";
-import { getImageHfKey, getImageLeonardoKey, getTensorartApiKey, getTensorartAppId, getTensorartPrivateKey } from "../lib/image-gen.js";
+import { getImageHfKey, getImageLeonardoKey, getSiliconflowKey, getTensorartApiKey, getTensorartAppId, getTensorartPrivateKey } from "../lib/image-gen.js";
 
 /** Generates TAMS-SHA256-RSA Authorization header for Tensor.art API */
 function tamsSign(method: string, urlPath: string, appId: string, privateKeyPem: string, bodyStr: string): string {
@@ -158,6 +158,12 @@ export async function registerAIRoutes(app: FastifyInstance) {
                 if (!apiKey && getMongoStatus() === "connected") {
                     const s = await Settings.findOne({ key: "CF_API_TOKEN" });
                     apiKey = s?.value || "";
+                }
+            } else if (provider === "SiliconFlow") {
+                apiKey = process.env.SILICONFLOW_API_KEY || getSiliconflowKey();
+                if (!apiKey && getMongoStatus() === "connected") {
+                    const s = await Settings.findOne({ key: "SILICONFLOW_API_KEY" });
+                    apiKey = String(s?.value ?? "");
                 }
             } else if (provider === "Stable Horde") {
                 apiKey = process.env.STABLE_HORDE_API_KEY || "0000000000"; // anonymous
@@ -495,6 +501,49 @@ export async function registerAIRoutes(app: FastifyInstance) {
                     const taStatus = taErr?.response?.status;
                     const taBody = taErr?.response?.data ? JSON.stringify(taErr.response.data).slice(0, 400) : taErr?.message;
                     app.log.warn({ status: taStatus, body: taBody }, "AI image: Tensor.art failed");
+                }
+            }
+
+            // --- SILICONFLOW ---
+            if (provider === "SiliconFlow" && apiKey) {
+                try {
+                    const sfModel = typeof modelId === "string" && modelId.trim()
+                        ? modelId.trim()
+                        : "black-forest-labs/FLUX.1-schnell";
+
+                    const sfSizes: Record<string, string> = {
+                        "1:1": "1024x1024", "4:3": "1024x768", "3:4": "768x1024",
+                        "16:9": "1024x576", "9:16": "576x1024",
+                    };
+                    const sfSize = sfSizes[ratioFromDims(width, height)] ?? "1024x1024";
+
+                    const sfBody: any = {
+                        model: sfModel,
+                        prompt,
+                        image_size: sfSize,
+                        num_inference_steps: 20,
+                        seed: typeof fixedSeed === "number" ? fixedSeed : Math.floor(Math.random() * 9999999),
+                    };
+                    if (negativePrompt) sfBody.negative_prompt = negativePrompt;
+
+                    app.log.info({ sfModel, sfSize }, "SiliconFlow: submitting");
+                    const sfResp = await axios({
+                        url: "https://api.siliconflow.com/v1/images/generations",
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+                        data: sfBody,
+                        timeout: 60000,
+                    });
+
+                    const imgUrl = sfResp.data?.images?.[0]?.url ?? sfResp.data?.data?.[0]?.url;
+                    if (!imgUrl) throw new Error(`SiliconFlow: no image URL. Response: ${JSON.stringify(sfResp.data).slice(0, 300)}`);
+
+                    const imgResp = await axios({ url: imgUrl, method: "GET", responseType: "arraybuffer", timeout: 30000 });
+                    return reply.type("image/png").send(Buffer.from(imgResp.data));
+                } catch (sfErr: any) {
+                    const sfStatus = sfErr?.response?.status;
+                    const sfBody = sfErr?.response?.data ? JSON.stringify(sfErr.response.data).slice(0, 300) : sfErr?.message;
+                    app.log.warn({ status: sfStatus, body: sfBody }, "AI image: SiliconFlow failed");
                 }
             }
 

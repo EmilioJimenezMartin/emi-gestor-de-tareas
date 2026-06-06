@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { Settings } from "../models/settings.js";
 import mongoose from "mongoose";
 import { setPollinationsToken } from "../lib/pollinations-circuit.js";
-import { setImageHfKey, setImageGoogleKey, setImageFalKey, setImageSegmindKey, setImageLeonardoKey, setTensorartApiKey, setTensorartAppId, setTensorartPrivateKey } from "../lib/image-gen.js";
+import { setImageHfKey, setImageGoogleKey, setImageFalKey, setImageSegmindKey, setImageLeonardoKey, setSiliconflowKey, setTensorartApiKey, setTensorartAppId, setTensorartPrivateKey } from "../lib/image-gen.js";
 
 export async function registerSettingsRoutes(app: FastifyInstance) {
     app.get("/settings", async (request, reply) => {
@@ -33,6 +33,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
             if (key === "FALAI_API_KEY") setImageFalKey(String(value ?? ""));
             if (key === "SEGMIND_API_KEY") setImageSegmindKey(String(value ?? ""));
             if (key === "LEONARDO_API_KEY") setImageLeonardoKey(String(value ?? ""));
+            if (key === "SILICONFLOW_API_KEY") setSiliconflowKey(String(value ?? ""));
             if (key === "TENSORART_API_KEY") setTensorartApiKey(String(value ?? ""));
             if (key === "TENSORART_APP_ID") setTensorartAppId(String(value ?? ""));
             if (key === "TENSORART_PRIVATE_KEY") setTensorartPrivateKey(String(value ?? ""));
@@ -68,6 +69,7 @@ export async function registerSettingsRoutes(app: FastifyInstance) {
                     if (update.key === "FALAI_API_KEY") setImageFalKey(String(update.value ?? ""));
                     if (update.key === "SEGMIND_API_KEY") setImageSegmindKey(String(update.value ?? ""));
                     if (update.key === "LEONARDO_API_KEY") setImageLeonardoKey(String(update.value ?? ""));
+                    if (update.key === "SILICONFLOW_API_KEY") setSiliconflowKey(String(update.value ?? ""));
                     if (update.key === "TENSORART_API_KEY") setTensorartApiKey(String(update.value ?? ""));
                     if (update.key === "TENSORART_APP_ID") setTensorartAppId(String(update.value ?? ""));
                     if (update.key === "TENSORART_PRIVATE_KEY") setTensorartPrivateKey(String(update.value ?? ""));

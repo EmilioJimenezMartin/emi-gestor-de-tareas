@@ -6,6 +6,7 @@ let _cachedGoogleKey = process.env.GOOGLE_API_KEY ?? "";
 let _cachedFalKey = process.env.FALAI_API_KEY ?? "";
 let _cachedSegmindKey = process.env.SEGMIND_API_KEY ?? "";
 let _cachedLeonardoKey = process.env.LEONARDO_API_KEY ?? "";
+let _cachedSiliconflowKey = process.env.SILICONFLOW_API_KEY ?? "";
 let _cachedTensorartApiKey = process.env.TENSORART_API_KEY ?? "";
 let _cachedTensorartAppId = process.env.TENSORART_APP_ID ?? "";
 let _cachedTensorartPrivateKey = process.env.TENSORART_PRIVATE_KEY ?? "";
@@ -15,6 +16,8 @@ export function setImageGoogleKey(key: string) { if (key) _cachedGoogleKey = key
 export function setImageFalKey(key: string) { if (key) _cachedFalKey = key; }
 export function setImageSegmindKey(key: string) { if (key) _cachedSegmindKey = key; }
 export function setImageLeonardoKey(key: string) { if (key) _cachedLeonardoKey = key; }
+export function setSiliconflowKey(val: string) { if (val) _cachedSiliconflowKey = val; }
+export function getSiliconflowKey(): string { return _cachedSiliconflowKey; }
 export function setTensorartApiKey(val: string) { if (val) _cachedTensorartApiKey = val; }
 export function setTensorartAppId(val: string) { if (val) _cachedTensorartAppId = val; }
 export function setTensorartPrivateKey(val: string) { if (val) _cachedTensorartPrivateKey = val; }

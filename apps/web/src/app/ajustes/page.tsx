@@ -68,6 +68,8 @@ export default function AjustesPage() {
 
     const [hfInferenceKey, setHfInferenceKey] = useState("");
     const [showHfInferenceKey, setShowHfInferenceKey] = useState(false);
+    const [siliconflowApiKey, setSiliconflowApiKey] = useState("");
+    const [showSiliconflowKey, setShowSiliconflowKey] = useState(false);
     const [segmindApiKey, setSegmindApiKey] = useState("");
     const [showSegmindKey, setShowSegmindKey] = useState(false);
 
@@ -171,7 +173,8 @@ export default function AjustesPage() {
                 if (map.has("GROQ_API_KEY")) setGroqApiKey(map.get("GROQ_API_KEY"));
                 if (map.has("OPENROUTER_API_KEY")) setOpenrouterApiKey(map.get("OPENROUTER_API_KEY"));
                 if (map.has("HUGGINGFACE_API_KEY")) setHfInferenceKey(map.get("HUGGINGFACE_API_KEY"));
-                if (map.has("SEGMIND_API_KEY")) setSegmindApiKey(map.get("SEGMIND_API_KEY"));
+                if (map.has("SILICONFLOW_API_KEY")) setSiliconflowApiKey(map.get("SILICONFLOW_API_KEY")!);
+                if (map.has("SEGMIND_API_KEY")) setSegmindApiKey(map.get("SEGMIND_API_KEY")!);
                 if (map.has("POLLINATIONS_TOKEN")) setPollinationsToken(map.get("POLLINATIONS_TOKEN"));
                 if (map.has("CLOUDINARY_CLOUD_NAME")) setCloudinaryCloudName(map.get("CLOUDINARY_CLOUD_NAME"));
                 if (map.has("CLOUDINARY_API_KEY")) setCloudinaryApiKey(map.get("CLOUDINARY_API_KEY"));
@@ -264,6 +267,7 @@ export default function AjustesPage() {
                 { key: "GROQ_API_KEY", value: groqApiKey },
                 { key: "OPENROUTER_API_KEY", value: openrouterApiKey },
                 { key: "HUGGINGFACE_API_KEY", value: hfInferenceKey },
+                { key: "SILICONFLOW_API_KEY", value: siliconflowApiKey },
                 { key: "SEGMIND_API_KEY", value: segmindApiKey },
                 { key: "POLLINATIONS_TOKEN", value: pollinationsToken },
                 { key: "CLOUDINARY_CLOUD_NAME", value: cloudinaryCloudName },
@@ -975,6 +979,46 @@ export default function AjustesPage() {
                             <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
                                 {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
                             </Button>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* SiliconFlow */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">SiliconFlow</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-sky-500/10 text-sky-400 border-sky-500/20">FLUX GRATIS</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-sky-500/20 text-xl font-black">SF</div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">SiliconFlow · FLUX.1-schnell gratis</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">API OpenAI-compatible · FLUX.1-schnell sin coste · Sin tarjeta</p>
+                                </div>
+                            </div>
+                            <div className="space-y-2 max-w-xl">
+                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">SILICONFLOW_API_KEY</label>
+                                <div className="relative">
+                                    <input
+                                        type={showSiliconflowKey ? "text" : "password"}
+                                        value={siliconflowApiKey}
+                                        onChange={(e) => setSiliconflowApiKey(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-sky-500/40 transition-all"
+                                        placeholder="sk-..."
+                                    />
+                                    <button type="button" onClick={() => setShowSiliconflowKey(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                        {showSiliconflowKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-neutral-600 italic">Regístrate gratis en <span className="text-sky-400">siliconflow.com</span> · Sin tarjeta · FLUX.1-schnell gratuito</p>
+                            </div>
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
                         </div>
                     </Card>
                 </section>

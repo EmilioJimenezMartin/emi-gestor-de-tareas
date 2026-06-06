@@ -65,6 +65,10 @@ export const AI_MODELS: AIModel[] = [
     { id: "ta-thinkdiffusion",    name: "ThinkDiffusion XL (Tensor.art)",      provider: "Tensor.art", type: "100 créd/día · Alta calidad · Versatil",            modelId: "651192230041814458" },
     { id: "ta-autismmix-light",   name: "AutismMix SDXL Lightning (Tensor.art)", provider: "Tensor.art", type: "100 créd/día · Anime · Ultra rápido (4 steps)",  modelId: "705519017965662383" },
     { id: "ta-sdxl-flash",        name: "SDXL Flash Mini (Tensor.art)",        provider: "Tensor.art", type: "100 créd/día · Ultrarrápido · Ligero",              modelId: "738164703605494864" },
+    // SiliconFlow — FLUX.1-schnell gratis, OpenAI-compatible API
+    { id: "sf-flux-schnell",  name: "FLUX.1-schnell ✦ (SiliconFlow)", provider: "SiliconFlow", type: "Gratis · Sin límite diario · FLUX · Rápido",     modelId: "black-forest-labs/FLUX.1-schnell" },
+    { id: "sf-flux-dev",      name: "FLUX.1-dev (SiliconFlow)",        provider: "SiliconFlow", type: "Pago · Alta calidad · FLUX · ~$0.014/img",      modelId: "black-forest-labs/FLUX.1-dev" },
+    { id: "sf-sdxl",          name: "SDXL Base 1.0 (SiliconFlow)",     provider: "SiliconFlow", type: "Pago · Versátil · $0.002/img",                  modelId: "stabilityai/stable-diffusion-xl-base-1.0" },
     // Stable Horde — totalmente gratis, comunidad voluntaria
     { id: "stable-horde-sdxl", name: "SDXL 1.0 (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · ~1-3min", modelId: "SDXL 1.0" },
     { id: "stable-horde-sd15", name: "SD 1.5 (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · Rápido", modelId: "stable_diffusion" },
