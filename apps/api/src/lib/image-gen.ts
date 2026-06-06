@@ -5,13 +5,16 @@ let _cachedHfKey = process.env.HUGGINGFACE_API_KEY ?? "";
 let _cachedGoogleKey = process.env.GOOGLE_API_KEY ?? "";
 let _cachedFalKey = process.env.FALAI_API_KEY ?? "";
 let _cachedSegmindKey = process.env.SEGMIND_API_KEY ?? "";
+let _cachedLeonardoKey = process.env.LEONARDO_API_KEY ?? "";
 
 export function setImageHfKey(key: string) { if (key) _cachedHfKey = key; }
 export function setImageGoogleKey(key: string) { if (key) _cachedGoogleKey = key; }
 export function setImageFalKey(key: string) { if (key) _cachedFalKey = key; }
 export function setImageSegmindKey(key: string) { if (key) _cachedSegmindKey = key; }
+export function setImageLeonardoKey(key: string) { if (key) _cachedLeonardoKey = key; }
 export function getImageHfKey(): string { return _cachedHfKey; }
 export function getImageFalKey(): string { return _cachedFalKey; }
+export function getImageLeonardoKey(): string { return _cachedLeonardoKey; }
 
 export interface GenerateImageOpts {
     width?: number;

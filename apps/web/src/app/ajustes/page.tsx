@@ -125,6 +125,12 @@ export default function AjustesPage() {
     const [showCfToken, setShowCfToken] = useState(false);
     const [cfUsage, setCfUsage] = useState<{ date: string; images: number; neurons: number; remaining: number; limit: number } | null>(null);
 
+    // Leonardo AI
+    const [leonardoApiKey, setLeonardoApiKey] = useState("");
+    const [showLeonardoKey, setShowLeonardoKey] = useState(false);
+    const [leoBalance, setLeoBalance] = useState<{ tokens: number; renewal: string } | null>(null);
+    const [checkingLeoBalance, setCheckingLeoBalance] = useState(false);
+
     // Together AI
     const [togetherApiKey, setTogetherApiKey] = useState("");
     const [showTogetherKey, setShowTogetherKey] = useState(false);
@@ -189,6 +195,7 @@ export default function AjustesPage() {
                     const usageRes = await fetch(`${apiUrl}/system/cf-usage`);
                     if (usageRes.ok) setCfUsage(await usageRes.json());
                 } catch { /* silencioso */ }
+                if (map.has("LEONARDO_API_KEY")) setLeonardoApiKey(map.get("LEONARDO_API_KEY"));
                 if (map.has("TOGETHER_API_KEY")) setTogetherApiKey(map.get("TOGETHER_API_KEY"));
                 if (map.has("STABLE_HORDE_API_KEY")) setStableHordeApiKey(map.get("STABLE_HORDE_API_KEY"));
 
@@ -280,6 +287,7 @@ export default function AjustesPage() {
                 { key: "FALAI_API_KEY", value: falAiKey },
                 { key: "CF_ACCOUNT_ID", value: cfAccountId },
                 { key: "CF_API_TOKEN", value: cfApiToken },
+                { key: "LEONARDO_API_KEY", value: leonardoApiKey },
                 { key: "TOGETHER_API_KEY", value: togetherApiKey },
                 { key: "STABLE_HORDE_API_KEY", value: stableHordeApiKey },
             ];
@@ -303,6 +311,17 @@ export default function AjustesPage() {
     const handleProviderChange = (provider: string, model: string) => {
         setDefaultProvider(provider);
         setDefaultModel(model);
+    };
+
+    const checkLeonardoBalance = async () => {
+        setCheckingLeoBalance(true);
+        try {
+            const res = await fetch(`${apiUrl}/ai/leonardo-balance`);
+            if (!res.ok) { toast.error("No se pudo obtener el saldo (revisa la API key)"); return; }
+            const data = await res.json();
+            setLeoBalance(data);
+        } catch { toast.error("Error de conexión"); }
+        finally { setCheckingLeoBalance(false); }
     };
 
     const testTelegram = async () => {
@@ -784,6 +803,68 @@ export default function AjustesPage() {
                                     <li>Los modelos marcados (free) son gratis sin necesidad de añadir créditos</li>
                                 </ol>
                             </div>
+                            <div className="flex justify-end border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                            </div>
+                        </div>
+                    </Card>
+                </section>
+
+                {/* Leonardo AI */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Leonardo AI</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-violet-500/10 text-violet-400 border-violet-500/20">150 TOKENS/DÍA</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center text-white shadow-lg shadow-violet-500/20 text-xl font-black">L</div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Leonardo AI · Phoenix / Lucid</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">150 tokens/día · Phoenix 1.0 · Lucid Origin · Lucid Realism · Sin tarjeta</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2 max-w-xl">
+                                <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">LEONARDO_API_KEY</label>
+                                <div className="relative">
+                                    <input
+                                        type={showLeonardoKey ? "text" : "password"}
+                                        value={leonardoApiKey}
+                                        onChange={(e) => setLeonardoApiKey(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-violet-500/40 transition-all"
+                                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                                    />
+                                    <button type="button" onClick={() => setShowLeonardoKey(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                        {showLeonardoKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                    </button>
+                                </div>
+                                <p className="text-[10px] text-neutral-600 italic">Regístrate gratis en <span className="text-violet-400">leonardo.ai</span> · Perfil → API Access → Create new API key</p>
+                            </div>
+
+                            {leonardoApiKey && (
+                                <div className="flex items-center gap-4 flex-wrap">
+                                    <button
+                                        onClick={() => void checkLeonardoBalance()}
+                                        disabled={checkingLeoBalance}
+                                        className="flex items-center gap-1.5 h-8 px-4 rounded-xl bg-violet-500/10 border border-violet-500/20 text-xs font-black text-violet-400 hover:bg-violet-500/20 transition-all disabled:opacity-40"
+                                    >
+                                        {checkingLeoBalance ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                                        Ver saldo
+                                    </button>
+                                    {leoBalance && (
+                                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-violet-500/[0.06] border border-violet-500/15">
+                                            <span className="text-sm font-black text-white">{leoBalance.tokens}</span>
+                                            <span className="text-xs text-neutral-500">tokens disponibles</span>
+                                            {leoBalance.renewal && <span className="text-[10px] text-neutral-600">· renueva {leoBalance.renewal}</span>}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="flex justify-end border-t border-white/5 pt-4">
                                 <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
                                     {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}

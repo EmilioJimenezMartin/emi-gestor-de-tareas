@@ -233,7 +233,7 @@ export async function registerRadarRoutes(
     // POST /radar/analyze — crea job en DB y lo encola en Agenda
     app.post("/radar/analyze", async (request: any, reply) => {
         const { url, mode = "general", nicheName, context, geminiModel = "gemini-2.0-flash", storageKey = "RADAR_ETSY_RESULT" } = request.body || {};
-        if (mode !== "gap-finder" && !url?.trim()) return reply.status(400).send({ error: "url es requerida" });
+        if (mode !== "gap-finder" && mode !== "gumroad-niches" && !url?.trim()) return reply.status(400).send({ error: "url es requerida" });
 
         const googleKey = await getGoogleKey();
         const hfKey = await getHFKey();
@@ -243,21 +243,29 @@ export async function registerRadarRoutes(
 
         const jobId = `radar-${Date.now()}`;
 
-        const jobDoc = await RadarJob.create({
-            jobId,
-            url: url?.trim() || `[${mode}]`,
-            mode,
-            nicheName,
-            context,
-            geminiModel,
-            storageKey,
-            status: "running",
-            logs: [{ timestamp: new Date(), level: "info", message: `[INIT] Análisis encolado · modo: ${mode} · modelo: ${geminiModel}` }],
-        });
+        try {
+            await RadarJob.create({
+                jobId,
+                url: url?.trim() || `[${mode}]`,
+                mode,
+                nicheName,
+                context,
+                geminiModel,
+                storageKey,
+                status: "running",
+                logs: [{ timestamp: new Date(), level: "info", message: `[INIT] Análisis encolado · modo: ${mode} · modelo: ${geminiModel}` }],
+            });
+        } catch (e: any) {
+            return reply.status(503).send({ error: `No se pudo crear el job (¿MongoDB conectado?): ${e?.message}` });
+        }
 
         deps.io?.emit("radar:log", { timestamp: new Date(), level: "info", message: `[INIT] Análisis encolado · modo: ${mode} · URL: ${url}` });
 
-        await deps.agenda.now(RADAR_JOB_NAME, { jobId });
+        try {
+            await deps.agenda.now(RADAR_JOB_NAME, { jobId });
+        } catch (e: any) {
+            return reply.status(503).send({ error: `Agenda no pudo encolar el job: ${e?.message}` });
+        }
 
         return reply.send({ success: true, jobId });
     });

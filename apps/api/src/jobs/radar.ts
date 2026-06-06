@@ -571,22 +571,63 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
                 // Strategy 3: DuckDuckGo HTML
                 if (!gumroadText) {
-                    pushLog(jobDoc, io, "info", `[FETCH] Estrategia 3: DuckDuckGo site:gumroad.com...`);
-                    await jobDoc.save();
-                    const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(`site:gumroad.com ${searchQuery}`)}&kl=us-en`;
-                    const res = await fetch(ddgUrl, {
-                        headers: {
-                            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                            "Accept-Language": "en-US,en;q=0.9",
-                        },
-                        signal: AbortSignal.timeout(20_000),
-                    });
-                    if (!res.ok) throw new Error(`Todas las estrategias fallaron. Último error: DuckDuckGo ${res.status}`);
-                    const text = stripToText(await res.text());
-                    if (text.length < 200) throw new Error("Ningún motor de búsqueda devolvió resultados útiles para Gumroad");
-                    gumroadText = `Resultados DuckDuckGo para Gumroad "${searchQuery}":\n\n${text}`.slice(0, 80_000);
-                    fetchSource = "DuckDuckGo";
+                    try {
+                        pushLog(jobDoc, io, "info", `[FETCH] Estrategia 3: DuckDuckGo site:gumroad.com...`);
+                        await jobDoc.save();
+                        const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(`site:gumroad.com ${searchQuery}`)}&kl=us-en`;
+                        const res = await fetch(ddgUrl, {
+                            headers: {
+                                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                                "Accept-Language": "en-US,en;q=0.9",
+                            },
+                            signal: AbortSignal.timeout(20_000),
+                        });
+                        if (res.ok) {
+                            const text = stripToText(await res.text());
+                            if (text.length >= 200) {
+                                gumroadText = `Resultados DuckDuckGo para Gumroad "${searchQuery}":\n\n${text}`.slice(0, 80_000);
+                                fetchSource = "DuckDuckGo";
+                            }
+                        } else {
+                            pushLog(jobDoc, io, "warning", `[FETCH] DuckDuckGo devolvió ${res.status} — probando Google Autocomplete...`);
+                        }
+                    } catch { /* try next */ }
+                }
+
+                // Strategy 4: Google Autocomplete (never rate-limits, no key needed)
+                if (!gumroadText) {
+                    try {
+                        pushLog(jobDoc, io, "info", `[FETCH] Estrategia 4: Google Autocomplete (gumroad)...`);
+                        await jobDoc.save();
+                        const queries = [
+                            `gumroad ${searchQuery}`,
+                            `gumroad coloring book pdf`,
+                            `gumroad printable digital download`,
+                            `gumroad kdp template`,
+                        ];
+                        const parts: string[] = [];
+                        for (const q of queries) {
+                            try {
+                                const acRes = await fetch(
+                                    `https://suggestqueries.google.com/complete/search?q=${encodeURIComponent(q)}&client=firefox&hl=en&gl=US`,
+                                    { headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(10_000) }
+                                );
+                                if (!acRes.ok) continue;
+                                const acData: any = await acRes.json();
+                                const suggestions: string[] = Array.isArray(acData?.[1]) ? acData[1].slice(0, 10) : [];
+                                if (suggestions.length > 0) parts.push(`Gumroad searches for "${q}": ${suggestions.join(", ")}`);
+                            } catch { /* skip */ }
+                        }
+                        if (parts.length > 0) {
+                            gumroadText = `Gumroad — Google Autocomplete suggestions (query: "${searchQuery}"):\n\n${parts.join("\n")}`;
+                            fetchSource = "Google Autocomplete";
+                        }
+                    } catch { /* skip */ }
+                }
+
+                if (!gumroadText) {
+                    throw new Error("Todas las estrategias de acceso a Gumroad fallaron (Jina, Bing, DuckDuckGo, Google Autocomplete). Inténtalo de nuevo en unos minutos.");
                 }
 
                 pushLog(jobDoc, io, "info", `[FETCH] ✓ ${gumroadText.length.toLocaleString()} chars extraídos vía ${fetchSource} (query: "${searchQuery}")`);

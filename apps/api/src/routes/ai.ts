@@ -4,7 +4,7 @@ import { Settings } from "../models/settings.js";
 import { getMongoStatus } from "../lib/mongo.js";
 import { isPollinationsBlocked, pollinationsFetch, pollinationsAuthHeaders } from "../lib/pollinations-circuit.js";
 import { getApiKey } from "../lib/keys.js";
-import { getImageHfKey } from "../lib/image-gen.js";
+import { getImageHfKey, getImageLeonardoKey } from "../lib/image-gen.js";
 import { generateTextWithLLM } from "../lib/ai.js";
 
 const nextAllowedAtByKey = new Map<string, number>();
@@ -112,7 +112,7 @@ export async function registerAIRoutes(app: FastifyInstance) {
                     apiKey = googleSetting?.value || "";
                 }
             } else if (provider === "Leonardo") {
-                apiKey = process.env.LEONARDO_API_KEY || "";
+                apiKey = process.env.LEONARDO_API_KEY || getImageLeonardoKey();
                 if (!apiKey && getMongoStatus() === "connected") {
                     const leonardoSetting = await Settings.findOne({ key: "LEONARDO_API_KEY" });
                     apiKey = leonardoSetting?.value || "";
@@ -1542,6 +1542,32 @@ Return ONLY a JSON object:
             return reply.send(parsed);
         } catch (e: any) {
             return reply.status(500).send({ error: e?.message ?? "AI error" });
+        }
+    });
+
+    // GET /ai/leonardo-balance — fetch token balance from Leonardo API
+    app.get("/ai/leonardo-balance", async (_req, reply) => {
+        try {
+            const apiKey = (process.env.LEONARDO_API_KEY || "").trim()
+                || ((await Settings.findOne({ key: "LEONARDO_API_KEY" }).lean()) as any)?.value?.trim()
+                || "";
+            if (!apiKey) return reply.status(400).send({ error: "LEONARDO_API_KEY no configurada" });
+
+            const res = await fetch("https://cloud.leonardo.ai/api/rest/v1/me", {
+                headers: { accept: "application/json", authorization: `Bearer ${apiKey}` },
+                signal: AbortSignal.timeout(15_000),
+            });
+            if (!res.ok) return reply.status(res.status).send({ error: `Leonardo API error ${res.status}` });
+
+            const data = await res.json() as any;
+            const detail = data?.user_details?.[0] ?? {};
+            const tokens = (detail.subscriptionTokens ?? 0) + (detail.apiSubscriptionTokens ?? 0) + (detail.paidTokens ?? 0);
+            const renewal = detail.tokenRenewalDate
+                ? new Date(detail.tokenRenewalDate).toLocaleDateString("es-ES", { day: "numeric", month: "short" })
+                : "";
+            return reply.send({ tokens, renewal, raw: detail });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e?.message ?? "Error" });
         }
     });
 }
