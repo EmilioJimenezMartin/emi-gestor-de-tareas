@@ -1,7 +1,7 @@
 import type { Agenda, Job } from "agenda";
 import { RadarJob } from "../models/radar-job.js";
 import { EtsyNicheResultSchema, NicheInsightSchema, ETSY_SYSTEM_PROMPT, AMAZON_SYSTEM_PROMPT, TRENDS_SYSTEM_PROMPT, OPPORTUNITY_SYSTEM_PROMPT, MOVERS_SYSTEM_PROMPT, REDDIT_SYSTEM_PROMPT, CROSS_NICHE_SYSTEM_PROMPT, GAP_FINDER_SYSTEM_PROMPT, GUMROAD_SYSTEM_PROMPT } from "../routes/radar.js";
-import { analyzePageForRadar } from "../lib/ai.js";
+import { analyzePageForRadar, generateTextWithLLM } from "../lib/ai.js";
 import { AUTOPILOT_JOB_NAME } from "./autopilot.js";
 import { TelegramAction } from "../models/telegram-action.js";
 
@@ -508,18 +508,46 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 return;
             }
 
-            // ── Gumroad: Jina AI reader → Bing → DDG (todos bypass Cloudflare) ────
+            // ── Gumroad: AI-suggested niches → Jina per query → Bing/DDG fallback ───
             if (mode === "gumroad-niches") {
-                pushLog(jobDoc, io, "info", `[FETCH] Gumroad — intentando bypass Cloudflare...`);
+                pushLog(jobDoc, io, "info", `[FETCH] Gumroad — extrayendo categoría y consultando IA para nichos...`);
                 await jobDoc.save();
 
-                // Extract query term from any gumroad URL
-                let searchQuery = "digital products printables coloring books";
+                // Extract base URL and category from path
+                let baseGumroadUrl = url;
+                let categoryName = "coloring books printables";
+                let explicitQuery = "";
                 try {
                     const parsedUrl = new URL(url);
-                    const q = parsedUrl.searchParams.get("query") ?? parsedUrl.searchParams.get("q") ?? parsedUrl.searchParams.get("search") ?? "";
-                    if (q.trim()) searchQuery = q.trim();
-                } catch { /* keep default */ }
+                    const pathCategory = parsedUrl.pathname.replace(/^\//, "").trim();
+                    if (pathCategory) categoryName = pathCategory.replace(/-/g, " ");
+                    const q = parsedUrl.searchParams.get("query") ?? parsedUrl.searchParams.get("q") ?? "";
+                    if (q.trim()) explicitQuery = q.trim();
+                    // Preserve rating param but strip query so we add our own
+                    const rating = parsedUrl.searchParams.get("rating") ?? "4";
+                    baseGumroadUrl = `${parsedUrl.origin}${parsedUrl.pathname}?rating=${rating}`;
+                } catch { /* keep defaults */ }
+
+                // Step 1: Ask AI for niche terms to search
+                let nicheTerms: string[] = explicitQuery ? [explicitQuery] : [];
+                if (!explicitQuery) {
+                    try {
+                        pushLog(jobDoc, io, "info", `[AI] Generando términos de nicho para "${categoryName}"...`);
+                        await jobDoc.save();
+                        const raw = await generateTextWithLLM(
+                            `Eres un experto en productos digitales de Gumroad. Sugiere términos de búsqueda específicos para encontrar micro-nichos de coloring books, printables e ilustraciones en la categoría "${categoryName}". Responde SOLO con un array JSON de 7 strings, sin markdown. Ejemplo: ["anime","mandala","botanical","kawaii","geometric","celestial","retro"]`,
+                            `Categoría Gumroad: "${categoryName}". Dame 7 términos de nicho específicos.`
+                        );
+                        const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            nicheTerms = parsed.map((t: any) => String(t).trim()).filter(Boolean).slice(0, 8);
+                            pushLog(jobDoc, io, "success", `[AI] Nichos sugeridos: ${nicheTerms.join(", ")}`);
+                        }
+                    } catch (e: any) {
+                        pushLog(jobDoc, io, "warning", `[AI] Error generando nichos — usando términos por defecto`);
+                        nicheTerms = ["anime", "mandala", "botanical", "kawaii", "geometric", "celestial", "retro"];
+                    }
+                }
 
                 function stripToText(html: string): string {
                     return html
@@ -531,64 +559,68 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                         .trim();
                 }
 
-                let gumroadText = "";
+                // Step 2: Fetch content for each niche term
+                const allChunks: string[] = [];
                 let fetchSource = "";
 
-                // Strategy 1: Jina AI reader (renders Cloudflare-protected pages via headless)
-                try {
-                    const jinaUrl = `https://r.jina.ai/${url}`;
-                    pushLog(jobDoc, io, "info", `[FETCH] Estrategia 1: Jina AI reader...`);
-                    await jobDoc.save();
-                    const res = await fetch(jinaUrl, {
-                        headers: {
-                            "Accept": "text/plain,text/markdown,*/*",
-                            "User-Agent": "Mozilla/5.0 (compatible; RadarBot/1.0)",
-                        },
-                        signal: AbortSignal.timeout(30_000),
-                    });
-                    if (res.ok) {
-                        const text = await res.text();
-                        if (text.length > 300) {
-                            gumroadText = `Gumroad — productos (vía Jina reader):\n\n${text}`.slice(0, 80_000);
-                            fetchSource = "Jina AI";
-                        }
-                    }
-                } catch { /* try next */ }
+                for (const niche of nicheTerms) {
+                    const nicheUrl = `${baseGumroadUrl}&query=${encodeURIComponent(niche)}`;
+                    let nicheText = "";
 
-                // Strategy 2: Bing site:gumroad.com search
-                if (!gumroadText) {
+                    // Try Jina AI reader first (bypasses Cloudflare)
                     try {
-                        const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(`site:gumroad.com ${searchQuery}`)}&count=20&setlang=en`;
-                        pushLog(jobDoc, io, "info", `[FETCH] Estrategia 2: Bing site:gumroad.com...`);
-                        await jobDoc.save();
-                        const res = await fetch(bingUrl, {
-                            headers: {
-                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                                "Accept-Language": "en-US,en;q=0.9",
-                            },
-                            signal: AbortSignal.timeout(20_000),
+                        const jinaUrl = `https://r.jina.ai/${nicheUrl}`;
+                        pushLog(jobDoc, io, "info", `[FETCH] Jina → "${niche}"...`);
+                        const res = await fetch(jinaUrl, {
+                            headers: { "Accept": "text/plain,text/markdown,*/*", "User-Agent": "Mozilla/5.0 (compatible; RadarBot/1.0)" },
+                            signal: AbortSignal.timeout(25_000),
                         });
                         if (res.ok) {
-                            const text = stripToText(await res.text());
-                            if (text.length > 300) {
-                                gumroadText = `Resultados Bing para Gumroad "${searchQuery}":\n\n${text}`.slice(0, 80_000);
-                                fetchSource = "Bing";
+                            const text = await res.text();
+                            if (text.length > 300 && !text.includes("Just a moment") && !text.includes("Checking your browser")) {
+                                nicheText = `\n\n=== Gumroad "${niche}" ===\n${text}`;
+                                if (!fetchSource) fetchSource = "Jina AI";
                             }
                         }
-                    } catch { /* try next */ }
+                    } catch { /* try search fallback */ }
+
+                    // Fallback: Bing site:gumroad.com
+                    if (!nicheText) {
+                        try {
+                            const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(`site:gumroad.com ${categoryName} ${niche}`)}&count=10&setlang=en`;
+                            const res = await fetch(bingUrl, {
+                                headers: {
+                                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                                    "Accept": "text/html,*/*",
+                                    "Accept-Language": "en-US,en;q=0.9",
+                                },
+                                signal: AbortSignal.timeout(15_000),
+                            });
+                            if (res.ok) {
+                                const text = stripToText(await res.text());
+                                if (text.length > 200) {
+                                    nicheText = `\n\n=== Bing: gumroad "${niche}" ===\n${text.slice(0, 8000)}`;
+                                    if (!fetchSource) fetchSource = "Bing";
+                                }
+                            }
+                        } catch { /* skip */ }
+                    }
+
+                    if (nicheText) allChunks.push(nicheText);
+                    await new Promise(r => setTimeout(r, 800)); // polite delay between queries
                 }
 
-                // Strategy 3: DuckDuckGo HTML
+                // Step 3: DDG fallback for the whole category if per-niche fetches all failed
+                let gumroadText = allChunks.join("").slice(0, 80_000);
                 if (!gumroadText) {
                     try {
-                        pushLog(jobDoc, io, "info", `[FETCH] Estrategia 3: DuckDuckGo site:gumroad.com...`);
+                        pushLog(jobDoc, io, "info", `[FETCH] Fallback: DuckDuckGo site:gumroad.com ${categoryName}...`);
                         await jobDoc.save();
-                        const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(`site:gumroad.com ${searchQuery}`)}&kl=us-en`;
+                        const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(`site:gumroad.com ${categoryName} coloring printable`)}&kl=us-en`;
                         const res = await fetch(ddgUrl, {
                             headers: {
-                                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                                "Accept": "text/html,*/*",
                                 "Accept-Language": "en-US,en;q=0.9",
                             },
                             signal: AbortSignal.timeout(20_000),
@@ -596,51 +628,18 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                         if (res.ok) {
                             const text = stripToText(await res.text());
                             if (text.length >= 200) {
-                                gumroadText = `Resultados DuckDuckGo para Gumroad "${searchQuery}":\n\n${text}`.slice(0, 80_000);
+                                gumroadText = `Resultados DuckDuckGo para Gumroad "${categoryName}":\n\n${text}`.slice(0, 80_000);
                                 fetchSource = "DuckDuckGo";
                             }
-                        } else {
-                            pushLog(jobDoc, io, "warning", `[FETCH] DuckDuckGo devolvió ${res.status} — probando Google Autocomplete...`);
                         }
-                    } catch { /* try next */ }
-                }
-
-                // Strategy 4: Google Autocomplete (never rate-limits, no key needed)
-                if (!gumroadText) {
-                    try {
-                        pushLog(jobDoc, io, "info", `[FETCH] Estrategia 4: Google Autocomplete (gumroad)...`);
-                        await jobDoc.save();
-                        const queries = [
-                            `gumroad ${searchQuery}`,
-                            `gumroad coloring book pdf`,
-                            `gumroad printable digital download`,
-                            `gumroad kdp template`,
-                        ];
-                        const parts: string[] = [];
-                        for (const q of queries) {
-                            try {
-                                const acRes = await fetch(
-                                    `https://suggestqueries.google.com/complete/search?q=${encodeURIComponent(q)}&client=firefox&hl=en&gl=US`,
-                                    { headers: { "Accept": "application/json" }, signal: AbortSignal.timeout(10_000) }
-                                );
-                                if (!acRes.ok) continue;
-                                const acData: any = await acRes.json();
-                                const suggestions: string[] = Array.isArray(acData?.[1]) ? acData[1].slice(0, 10) : [];
-                                if (suggestions.length > 0) parts.push(`Gumroad searches for "${q}": ${suggestions.join(", ")}`);
-                            } catch { /* skip */ }
-                        }
-                        if (parts.length > 0) {
-                            gumroadText = `Gumroad — Google Autocomplete suggestions (query: "${searchQuery}"):\n\n${parts.join("\n")}`;
-                            fetchSource = "Google Autocomplete";
-                        }
-                    } catch { /* skip */ }
+                    } catch { /* give up */ }
                 }
 
                 if (!gumroadText) {
-                    throw new Error("Todas las estrategias de acceso a Gumroad fallaron (Jina, Bing, DuckDuckGo, Google Autocomplete). Inténtalo de nuevo en unos minutos.");
+                    throw new Error("No se pudo obtener contenido de Gumroad. Inténtalo de nuevo en unos minutos.");
                 }
 
-                pushLog(jobDoc, io, "info", `[FETCH] ✓ ${gumroadText.length.toLocaleString()} chars extraídos vía ${fetchSource} (query: "${searchQuery}")`);
+                pushLog(jobDoc, io, "info", `[FETCH] ✓ ${gumroadText.length.toLocaleString()} chars extraídos vía ${fetchSource || "múltiples fuentes"}`);
                 await jobDoc.save();
 
                 pushLog(jobDoc, io, "info", `[AI] Analizando resultados Gumroad con IA...`);

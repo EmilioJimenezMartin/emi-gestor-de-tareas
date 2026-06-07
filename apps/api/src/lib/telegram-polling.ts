@@ -460,8 +460,13 @@ async function processUpdate(update: any): Promise<void> {
                 );
                 const port = process.env.PORT || 3001;
                 setImmediate(async () => {
-                    try { await fetch(`http://localhost:${port}/autopilot/discover/${niche._id}`, { method: "POST" }); }
-                    catch { /* non-critical */ }
+                    try {
+                        await fetch(`http://localhost:${port}/autopilot/discover/${niche._id}`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ force: true }),
+                        });
+                    } catch { /* non-critical */ }
                 });
             } catch (e: any) {
                 await sendTelegram(`❌ Error creando nicho: ${e.message}`);
@@ -705,11 +710,15 @@ async function processUpdate(update: any): Promise<void> {
                 await sendTelegram(
                     `✅ <b>Nicho creado</b>\n${typeTag} · <b>${nicheName}</b>\n\n⏳ Iniciando discovery — recibirás la imagen de muestra en breve…`
                 );
-                // Trigger single-niche discovery
+                // Trigger single-niche discovery — force=true so always sends to Telegram regardless of toggles
                 const port = process.env.PORT || 3001;
                 setImmediate(async () => {
                     try {
-                        await fetch(`http://localhost:${port}/autopilot/discover/${niche._id}`, { method: "POST" });
+                        await fetch(`http://localhost:${port}/autopilot/discover/${niche._id}`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ force: true }),
+                        });
                     } catch { /* non-critical */ }
                 });
             } catch (e: any) {

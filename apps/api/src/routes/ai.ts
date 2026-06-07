@@ -1152,36 +1152,52 @@ Description: "${niche}"${extras ? `\nAdditional context: ${extras}` : ""}
 
 Generate the 4 optimized prompt fields for creating coloring book pages for this product.`,
 
-            "printable-particulars": `You are an expert at writing richly detailed image generation prompts for printable wall art and digital art prints.
+            "printable-particulars": `You are a world-class art director specializing in digital wall art and printable design prompts. Your job is to write the most visually precise and evocative concept possible for a premium printable.
+
 Niche: "${niche}"${extras ? `\nVisual style: ${extras}` : ""}
 
-Write ONLY the "particulars" — 40-70 words describing ONE stunning print concept for this niche and style.
-Cover ALL of: main subject, composition/layout, color palette, lighting/mood, distinctive details, and emotional atmosphere.
-The result is fed directly to an image generator, so be specific and evocative — not generic.
-Examples:
-- Botanical: "lush monstera leaves and trailing pothos cascading over a weathered terracotta pot, dappled morning light, muted sage and terracotta palette, delicate watercolor washes with ink outlines, tranquil and airy atmosphere"
-- Celestial: "crescent moon cradling a sleeping fox amid swirling constellation maps, deep indigo to dusty rose gradient sky, scattered gold foil stars, fine line art style, dreamy and mystical mood"
-- Geometric: "precise Penrose tessellation of triangles and rhombuses, deep navy to warm gold gradient, sharp vector edges, mathematically perfect symmetry, modernist aesthetic with luxurious metallic accent points"
-- Retro: "1950s American diner at sunset, chrome counter stools, jukebox glowing in corner, neon signs casting warm pink and turquoise light, stylized illustration with bold outlines, nostalgic and vibrant"
-- Affirmation: "ornate oval frame of intertwined roses, eucalyptus, and pampas grass, soft blush and ivory palette, hand-lettering style botanical illustration, elegant and timeless with a feminine editorial feel"
+Write ONLY the "particulars" — 55-80 words describing ONE highly specific printable concept.
 
-Return ONLY a JSON object: {"particulars": "...40-70 words of vivid visual specifics..."}`,
+MANDATORY requirements:
+1. MAIN SUBJECT: describe it with precision — not "flowers" but "trailing wisteria branches heavy with violet blooms, each cluster rendered in gradient ink wash"
+2. COMPOSITION/LAYOUT: specify exactly (centered portrait, asymmetric editorial, triptych grid, borderless bleed, framed with negative space, etc.)
+3. COLOR PALETTE: name 3-4 specific colors or describe the palette character (dusty sage and terracotta, midnight navy with gold leaf accents, monochrome indigo wash, etc.)
+4. MOOD/ATMOSPHERE: one precise emotional quality — not "beautiful" but "melancholic and elegant", "bold and graphic", "serene and minimal"
+5. STYLE DETAILS: any specific artistic technique, texture, or finish that defines the piece
 
-            "niche-particulars": `You are an expert at writing richly detailed image generation prompts for KDP coloring books.
-Niche: "${niche}"${extras ? `\nStyle context: ${extras}` : ""}
+Do NOT use vague adjectives: beautiful, stunning, gorgeous, amazing.
+Every word must add visual information the image generator can use.
 
-Write ONLY the "particulars" — 40-70 words describing ONE visually compelling coloring page scene from this niche.
-Cover ALL of: main subject(s), scene composition, key decorative elements, background details, and mood/atmosphere.
-The niche may be about characters, animals, places, objects, or abstract themes — adapt creatively and specifically.
-Do NOT mention line style, coloring instructions, or output format. Do NOT invent elements unrelated to the niche.
-Make it feel like a real, imaginable scene — rich in detail, interesting to color.
-Examples:
-- Characters/animals: "fierce samurai fox mid-leap between rooftops, sakura petals swirling in the wind, traditional wooden torii gate and lanterns in background, dynamic diagonal composition, epic and dramatic energy"
-- Interior/place: "grand Victorian parlor with an ornate carved fireplace, tall arched windows draped in velvet, intricate chandelier overhead, shelves of antique books and curiosities, cozy and atmospheric"
-- Object/theme: "oversized vintage teapot overflowing with climbing roses and ivy, surrounded by mismatched teacups, open books, and tiny snails, whimsical and densely detailed, fairy-tale cottage atmosphere"
-- Nature/fantasy: "dense enchanted forest floor with giant twisted oak roots, hidden fairy doors carved into trunks, glowing mushrooms, dewdrop-covered spiderwebs, and a tiny lantern-lit path winding into the distance"
+Examples of the expected quality level:
+- "single oversized peony bloom filling the frame edge-to-edge, petals layered in blush to deep rose gradient, fine ink crosshatch shading on outer petals, centered on warm cream background — close-up portrait, intimate and luxurious, dusty rose and antique ivory palette"
+- "geometric grid of 9 botanical specimens — pressed flower silhouettes in muted sage, terracotta, and slate — each in a thin black frame with handwritten Latin labels beneath, editorial flat lay, scholarly and refined"
+- "lone wolf howling at a full moon over a ridge of conifers, reflected in a still mountain lake, dramatic negative space sky, monochrome prussian blue wash with silver highlights, majestic and solitary"
 
-Return ONLY a JSON object: {"particulars": "...40-70 words of vivid visual specifics..."}`,
+Return ONLY a JSON object: {"particulars": "...55-80 words of vivid hyper-specific visual description..."}`,
+
+            "niche-particulars": `You are a world-class art director specializing in KDP coloring book illustration prompts. Your job is to write the most visually compelling, specific, and imaginative scene description possible for a coloring page.
+
+Niche: "${niche}"${extras ? `\nStyle: ${extras}` : ""}
+
+Write ONLY the "particulars" — 55-80 words describing ONE highly specific, richly detailed coloring page scene.
+
+MANDATORY requirements:
+1. MAIN SUBJECT: name it concretely with a defining action, pose, or state (not just "a fox" — "a red fox mid-leap, one paw outstretched, ears pinned back")
+2. SECONDARY ELEMENTS: 3-5 specific supporting objects, characters, or environmental details that reinforce the niche theme
+3. COMPOSITION: specify the layout (close-up portrait / wide establishing shot / overhead flat lay / dynamic diagonal / symmetrical mandala / etc.)
+4. DECORATIVE DENSITY: describe fill patterns, ornamental details, background textures that will make the page satisfying to color
+5. MOOD/ATMOSPHERE: one specific emotional quality (not "beautiful" or "stunning" — use: "eerie and still", "joyful and chaotic", "reverent and ceremonial", etc.)
+
+Do NOT mention line style, black outlines, or coloring instructions.
+Do NOT use vague adjectives: beautiful, amazing, gorgeous, stunning, lovely.
+Be SPECIFIC and VISUAL — every word must help the image generator paint the scene.
+
+Examples of the expected quality level:
+- "a massive koi fish curled in a full-body spiral, scales detailed with overlapping crescent patterns, surrounded by lotus blossoms in various bloom stages, lily pads with water droplets, and swirling current lines — overhead view, dense and meditative, ceremonial and tranquil"
+- "a Victorian apothecary cat in a waistcoat, adjusting monocle over a bubbling potion cauldron, shelves packed with labeled bottles, dried herbs hanging from ceiling beams, open grimoire on the counter — three-quarter view interior, cluttered and atmospheric, whimsical and mysterious"
+- "twin wolf pups wrestling in a snowdrift at the base of a pine forest, pine cones and fir branches scattered around, parent wolf watching from behind a tree trunk, snowflakes mid-fall — low angle wide shot, dynamic and playful, tender yet wild"
+
+Return ONLY a JSON object: {"particulars": "...55-80 words of vivid hyper-specific visual description..."}`,
 
             titles: `${langInstruction} Generate 8 compelling titles for a "${productType}" KDP/Etsy product about "${niche}". ${extras ? `Additional context: ${extras}` : ""}
 Return ONLY a JSON array of strings: ["Title 1", "Title 2", ...]`,
@@ -1262,8 +1278,8 @@ Return ONLY a JSON object:
                     : (type === "niche-particulars" || type === "printable-particulars") ? nicheParticularsSchema
                     : undefined;
 
-                const response = await ai.models.generateContent({
-                    model: textModel,
+                const geminiCall = async (model: string) => ai.models.generateContent({
+                    model,
                     contents: prompt,
                     config: {
                         ...(systemInstruction ? { systemInstruction } : {}),
@@ -1271,6 +1287,20 @@ Return ONLY a JSON object:
                         ...(useSchema ? { responseSchema: useSchema } : {}),
                     },
                 });
+
+                let response;
+                try {
+                    response = await geminiCall(textModel);
+                } catch (e: any) {
+                    // Model not found — fall back to stable default
+                    const is404 = e?.status === 404 || String(e?.message ?? "").includes("404") || String(e?.message ?? "").includes("Not Found");
+                    if (is404 && textModel !== "gemini-2.5-flash") {
+                        app.log.warn(`[ai] Model "${textModel}" returned 404, retrying with gemini-2.5-flash`);
+                        response = await geminiCall("gemini-2.5-flash");
+                    } else {
+                        throw e;
+                    }
+                }
 
                 const raw = (response.text ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
                 try {

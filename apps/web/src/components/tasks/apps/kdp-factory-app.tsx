@@ -1601,7 +1601,11 @@ export function KdpFactoryApp() {
     };
 
     const triggerNicheDiscovery = async (nicheId: string): Promise<void> => {
-        const res = await fetch(`${API_BASE_URL}/autopilot/discover/${nicheId}`, { method: "POST" });
+        const res = await fetch(`${API_BASE_URL}/autopilot/discover/${nicheId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ force: true }),
+        });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Error lanzando discovery");
         toast.success("📩 Imagen generada y enviada a Telegram — espera el mensaje");

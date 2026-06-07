@@ -4,11 +4,20 @@ import { Settings } from "../models/settings.js";
 import { TelegramAction } from "../models/telegram-action.js";
 import { AutopilotRun } from "../models/autopilot-run.js";
 import { getMongoStatus } from "../lib/mongo.js";
-import { sendTelegram, sendTelegramPhotoDiscovery, sendTelegramImageWithButtons, sendTelegramApproval } from "../lib/telegram.js";
+import { sendTelegram, sendTelegramPhotoDiscovery, sendTelegramImageWithButtons, sendTelegramApproval, sendTelegramButtons, shouldNotify } from "../lib/telegram.js";
 import { generateImage, getAutopilotImageModel } from "../lib/image-gen.js";
-import { shouldNotify } from "../lib/telegram.js";
 import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
+import { generateTextWithLLM } from "../lib/ai.js";
 import { withLlmSlot } from "../lib/ai-semaphore.js";
+
+// ── Proven coloring-book prompt formula ─────────────────────────────────────
+// specs + details are FIXED — only the particulars (scene description) varies.
+const CB_SPECS   = "Funny Iconic coloring page, bg white, ultra thick clean black outlines, white background, high contrast, zero shading, zero stippling, zero gradients, zero background";
+const CB_DETAILS = "No shadow, no grey, no details behind the person and dont add the scene";
+
+export function buildColoringBookPrompt(particulars: string): string {
+    return `${particulars}, ${CB_SPECS}, ${CB_DETAILS}`;
+}
 
 function ensureMongo(reply: any): boolean {
     if (getMongoStatus() !== "connected") {
@@ -217,10 +226,13 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
     });
 
     // ── Trigger discovery for a specific niche ───────────────────────────────
+    // force=true: skips shouldNotify gate (used by manual trigger from UI)
     app.post("/autopilot/discover/:nicheId", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
             const { nicheId } = request.params as { nicheId: string };
+            // force=true bypasses shouldNotify — used when triggered manually from UI
+            const force = (request.body as any)?.force === true;
             const niche = await Niche.findById(nicheId).lean();
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
 
@@ -236,22 +248,22 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             const catalogsPerNiche = parseInt((cfgMap.get("AUTOPILOT_CATALOGS_PER_NICHE") as string) ?? "8") || 8;
             const imagesPerCatalog = parseInt((cfgMap.get("AUTOPILOT_IMAGES_PER_CATALOG") as string) ?? "5") || 5;
 
-            // Generate prompt if needed (fire-and-forget for speed, use existing if present)
-            let prompt = (niche as any).generatedPrompt as string | undefined;
             const productType = (niche as any).productType ?? "coloring-book";
             const style = (niche as any).styleCategory ?? "generic";
             const sourceTitulo = ((niche as any).sourceTitulo as string | undefined)?.trim() || "";
+            const nicheName = (niche as any).name as string;
 
-            if (!prompt) {
-                const port = process.env.PORT || 3001;
-                const base = `http://localhost:${port}`;
+            // Step 1: get visual particulars from configured LLM (theme/scene description)
+            let particulars = (niche as any).generatedPrompt as string | undefined;
+            if (!particulars) {
+                const port2 = process.env.PORT || 3001;
+                const base2 = `http://localhost:${port2}`;
                 const aiType = productType === "printable-poster" ? "printable-particulars" : "niche-particulars";
-                // Pass both sub-niche name AND the original product title as extra context for the AI
-                const nicheForAI = sourceTitulo && sourceTitulo !== (niche as any).name
-                    ? `${(niche as any).name} (referencia: "${sourceTitulo}")`
-                    : (niche as any).name;
+                const nicheForAI = sourceTitulo && sourceTitulo !== nicheName
+                    ? `${nicheName} (market reference: "${sourceTitulo}")`
+                    : nicheName;
                 try {
-                    const aiRes = await fetch(`${base}/ai/generate-text`, {
+                    const aiRes = await fetch(`${base2}/ai/generate-text`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ type: aiType, niche: nicheForAI, productType, extras: style }),
@@ -259,50 +271,24 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                     });
                     if (aiRes.ok) {
                         const aiData = await aiRes.json() as any;
-                        prompt = [aiData.result?.theme, aiData.result?.specs, aiData.result?.details, aiData.result?.particulars].filter(Boolean).join("\n\n");
-                        if (prompt) await Niche.findByIdAndUpdate(nicheId, { $set: { generatedPrompt: prompt } });
+                        particulars = aiData.result?.particulars as string | undefined;
+                        if (particulars) await Niche.findByIdAndUpdate(nicheId, { $set: { generatedPrompt: particulars } });
                     }
-                } catch { /* non-critical, continue with rule-based fallback */ }
+                } catch { /* fallback below */ }
             }
 
-            // Rule-based fallback prompt when AI is unavailable
-            if (!prompt) {
-                const base = sourceTitulo || (niche as any).name;
-                if (productType === "printable-poster") {
-                    prompt = `${base}, elegant wall art composition, vibrant harmonious colors, premium print quality, balanced centered layout`;
-                } else if (style === "anime") {
-                    prompt = `${base}, anime-style illustration, dynamic action composition, detailed manga backgrounds, expressive characters`;
-                } else if (style === "children") {
-                    prompt = `${base}, cute friendly characters, simple rounded shapes, playful cheerful scene, nursery-style illustration`;
-                } else if (style === "botanical") {
-                    prompt = `${base}, intricate botanical illustration, detailed flora and fauna, lush layered foliage, nature scene with fine line details`;
-                } else if (style === "geometric") {
-                    prompt = `${base}, intricate geometric mandala pattern, perfect symmetry, fine interlocking shapes, mesmerizing radial composition`;
-                } else if (style === "celestial") {
-                    prompt = `${base}, mystical celestial scene, moon and stars motifs, swirling cosmic elements, ethereal night sky atmosphere`;
-                } else {
-                    prompt = `${base}, detailed richly decorated scene, intricate fine line patterns, balanced composition, professional illustration quality`;
-                }
-            }
-
-            // Build Pollinations sample image URL
-            // Use the first line of the AI-generated (or rule-based) prompt as scene description
-            const sceneDesc = (prompt.split("\n")[0]?.trim()) || (niche as any).name;
+            // Step 2: wrap particulars in proven formula (fixed specs + fixed details)
+            // NEVER use sourceTitulo as image prompt — it's a raw product title, not a scene description
+            const sceneDesc = particulars || nicheName;
             let samplePrompt: string;
-            let sampleModel = "flux";
             if (productType === "printable-poster") {
-                samplePrompt = `${sceneDesc}, professional printable wall art poster, vibrant cohesive color palette, premium illustration quality, balanced centered composition, suitable for A4 print, no text no watermarks`;
-                sampleModel = "flux-realism";
-            } else if (style === "anime") {
-                samplePrompt = `${sceneDesc}, anime coloring page illustration, ultra thick crisp black outlines 4px weight, pure white background, zero shading zero grey tones, black and white line art only, high contrast, intricate detailed scene, professional adult coloring book quality`;
-                sampleModel = "flux-anime";
-            } else if (style === "children") {
-                samplePrompt = `${sceneDesc}, children's coloring page, thick clean black outlines, pure white background, simple friendly rounded shapes, cute kawaii style, zero shading zero grey tones, professional coloring book illustration`;
+                samplePrompt = `${sceneDesc}, professional printable wall art poster, vibrant cohesive color palette, premium illustration quality, balanced centered composition, no text no watermarks`;
             } else {
-                samplePrompt = `${sceneDesc}, professional adult coloring page illustration, ultra thick crisp black outlines 3-4px weight, pure white background, zero grey tones zero shading, black and white line art only, high contrast, intricate detailed scene, masterful illustration quality`;
+                // All coloring book styles — proven formula, only particulars change
+                samplePrompt = buildColoringBookPrompt(sceneDesc);
             }
-            // Discovery: model-only URL — seed/width/height trigger Pollinations paid queue (max 1 concurrent free)
-            const sampleUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(samplePrompt)}?model=${sampleModel}`;
+
+            const sampleUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(samplePrompt)}?model=flux`;
             await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: sampleUrl, discoveryImagePrompt: samplePrompt } });
             deps.io?.emit("niches:updated");
 
@@ -353,18 +339,44 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                 console.warn(`[discover] AI proxy error: ${e?.message}`);
             }
 
-            // Fallback cascade (Pollinations → Segmind → HuggingFace)
+            // Fallback 1: Pollinations → Segmind → HuggingFace
             if (!imageBytes) {
                 imageBytes = await generateImage(samplePrompt);
             }
 
-            // Upload to Cloudinary for a stable persistent URL (best-effort)
-            if (imageBytes) {
+            // Fallback 2: Google Gemini image generation
+            if (!imageBytes) {
                 try {
-                    const cldRes = await fetch(`${base}/cloudinary/upload-url`, {
+                    const gemImgRes = await fetch(`${base}/ai/generate-image`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ url: sampleUrl, nicheId }),
+                        body: JSON.stringify({
+                            prompt: samplePrompt,
+                            provider: "Google",
+                            modelId: "gemini-2.0-flash-preview-image-generation",
+                            width: 1024, height: 1024,
+                        }),
+                        signal: AbortSignal.timeout(60_000),
+                    });
+                    const gemCt = gemImgRes.headers.get("content-type") ?? "";
+                    if (gemImgRes.ok && gemCt.startsWith("image/")) {
+                        imageBytes = Buffer.from(await gemImgRes.arrayBuffer());
+                        deps.io?.emit("autopilot:log", { message: "🎨 Imagen generada con Google Gemini (fallback)" });
+                    } else {
+                        console.warn(`[discover] Google image fallback ${gemImgRes.status}`);
+                    }
+                } catch (e: any) {
+                    console.warn(`[discover] Google image fallback error: ${e?.message}`);
+                }
+            }
+
+            // Upload to Cloudinary via bytes (avoids fetching blocked Pollinations URL)
+            if (imageBytes) {
+                try {
+                    const cldRes = await fetch(`${base}/cloudinary/upload-image`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ imageBase64: imageBytes.toString("base64"), nicheId }),
                         signal: AbortSignal.timeout(30_000),
                     });
                     if (cldRes.ok) {
@@ -414,12 +426,21 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             ]];
 
             let msgId: number | null = null;
-            if (await shouldNotify("autopilot.discovery")) {
+            // force=true (manual trigger) always sends; otherwise respect shouldNotify toggle
+            if (force || await shouldNotify("autopilot.discovery")) {
                 if (imageBytes) {
                     msgId = await sendTelegramImageWithButtons(imageBytes, caption, buttons);
                 }
-                if (!msgId) {
+                // If image bytes failed, try URL-based photo send
+                if (!msgId && telegramImageUrl && !telegramImageUrl.includes("pollinations.ai")) {
                     msgId = await sendTelegramPhotoDiscovery({ imageUrl: telegramImageUrl, caption, actionId: String(action._id) });
+                }
+                // Last resort: text-only with buttons so user can still act
+                if (!msgId) {
+                    msgId = await sendTelegramButtons(
+                        caption + "\n\n⚠️ <i>Sin imagen de muestra (configura un proveedor de imagen en Ajustes)</i>",
+                        buttons
+                    );
                 }
             }
 

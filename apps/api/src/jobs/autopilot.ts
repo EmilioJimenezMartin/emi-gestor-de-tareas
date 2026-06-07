@@ -9,6 +9,7 @@ import { buildCollage, buildHalfColored, pickCatalogImages, type CollageLayout }
 import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
 import { pollinationsFetch } from "../lib/pollinations-circuit.js";
 import { generateImage, getAutopilotImageModel } from "../lib/image-gen.js";
+import { buildColoringBookPrompt } from "../routes/autopilot.js";
 import { getAmazonKeywords } from "../lib/amazon-autocomplete.js";
 import { createGumroadProduct } from "../lib/gumroad.js";
 
@@ -82,22 +83,10 @@ function buildSampleUrl(nicheName: string, style: string, productType: string, e
         prompt = `${core} seamless tileable repeat surface pattern, flat design, symmetrical layout, clean edges, no background noise, vector-like, POD ready`;
         model = "flux-realism";
     } else {
-        // coloring book
-        switch (style) {
-            case "anime":
-                prompt = `Anime coloring page ${core}, ultra thick clean black outlines, white background, zero shading, no grey`;
-                model = "flux-anime";
-                break;
-            case "children":
-                prompt = `Cute children coloring page ${core}, thick clean black outlines, white background, simple shapes, no shading`;
-                break;
-            case "realistic":
-                prompt = `Realistic coloring page ${core}, detailed thick black outlines, white background, zero shading`;
-                model = "flux-realism";
-                break;
-            default:
-                prompt = `Coloring page ${core}, ultra thick clean black outlines, white background, high contrast, zero shading, zero gradients`;
-        }
+        // coloring book — proven formula for all styles, model varies
+        prompt = buildColoringBookPrompt(core);
+        if (style === "anime") model = "flux-anime";
+        else if (style === "realistic") model = "flux-realism";
     }
 
     // No seed/width/height — those trigger Pollinations paid queue (max 1 concurrent free)

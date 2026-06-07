@@ -205,6 +205,35 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
         }
     });
 
+    // POST /cloudinary/upload-image — upload raw bytes (base64) — avoids fetching blocked URLs
+    app.post("/cloudinary/upload-image", async (request: any, reply) => {
+        try {
+            const config = await getCloudinaryConfig();
+            if (!config) return reply.status(503).send({ error: "Cloudinary no configurado." });
+            const { imageBase64, nicheId } = request.body || {};
+            if (!imageBase64 || typeof imageBase64 !== "string") return reply.status(400).send({ error: "imageBase64 es requerido" });
+            const cld = await initCloudinary(config);
+            const buffer = Buffer.from(imageBase64, "base64");
+            const result = await new Promise<any>((resolve, reject) => {
+                const stream = cld.uploader.upload_stream(
+                    {
+                        folder: FOLDER,
+                        resource_type: "image",
+                        ...(nicheId ? { context: `nicheId=${nicheId}`, tags: [`nicho:${nicheId}`, "sample"] } : { tags: ["sample"] }),
+                    },
+                    (error: any, res: any) => { if (error) reject(error); else resolve(res); }
+                );
+                stream.end(buffer);
+            });
+            return reply.status(201).send({
+                image: { publicId: result.public_id, url: result.secure_url, width: result.width, height: result.height, nicheId: nicheId ?? null },
+            });
+        } catch (error: any) {
+            app.log.error(error);
+            return reply.status(500).send({ error: "Error subiendo imagen", message: error.message });
+        }
+    });
+
     // PATCH /cloudinary/niche — link or unlink a nicheId on an existing image via context
     app.patch("/cloudinary/niche", async (request: any, reply) => {
         try {

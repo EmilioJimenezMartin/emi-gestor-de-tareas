@@ -365,7 +365,11 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
 
             let finalNegativePrompt = "";
             if (productType === "coloring-book") {
-                finalPrompt += ". Style: clean black and white line art, coloring book page, thick clean black outlines only, pure white background #FFFFFF, no shading, no gray, no grey, no color fills, no gradients, no textures, high contrast black on white";
+                // Proven formula — only append if not already present (avoid duplication when prompt was built by buildColoringBookPrompt)
+                const alreadyHasFormula = finalPrompt.includes("ultra thick clean black outlines") || finalPrompt.includes("zero stippling");
+                if (!alreadyHasFormula) {
+                    finalPrompt += ", Funny Iconic coloring page, bg white, ultra thick clean black outlines, white background, high contrast, zero shading, zero stippling, zero gradients, zero background, No shadow, no grey, no details behind the person and dont add the scene";
+                }
                 const coloringNegative = "gray, grey, gray background, grey background, gray fill, grey fill, gray tones, grey tones, off-white, cream, beige, shading, shadows, gradients, color, colors, sepia, tones, textures, crosshatching, stippling, watercolor, painterly, blur, glow, soft edges, background pattern, noise, grain, vignette, watermark, signature, logo, frame, border decoration";
                 finalNegativePrompt = userNegative ? `${coloringNegative}, ${userNegative}` : coloringNegative;
             } else if (productType === "printable-poster") {
