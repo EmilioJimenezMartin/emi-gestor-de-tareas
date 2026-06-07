@@ -1903,7 +1903,7 @@ async function processUpdate(update: any): Promise<void> {
 
         const transcript = await transcribeAudio(audioBuffer, "audio/ogg");
         if (!transcript) {
-            await sendTelegram("❌ No pude transcribir el audio. Comprueba que tienes HUGGINGFACE_API_KEY configurado.");
+            await sendTelegram("❌ No pude transcribir el audio.\n\nNecesitas al menos una de estas claves en Ajustes:\n• <code>HUGGINGFACE_API_KEY</code> (Whisper)\n• <code>GOOGLE_API_KEY</code> (Gemini)");
             return;
         }
 
