@@ -39,7 +39,7 @@ import { Settings } from "./models/settings.js";
 import { initLogStreamer, getLogBuffer } from "./lib/log-streamer.js";
 import { getPollinationsStatus, setPollinationsToken, resetPollinationsBlock } from "./lib/pollinations-circuit.js";
 import { getCfUsage } from "./routes/ai.js";
-import { setImageHfKey, setImageGoogleKey, setImageFalKey } from "./lib/image-gen.js";
+import { setImageHfKey, setImageGoogleKey, setImageFalKey, setImageSegmindKey, setImageLeonardoKey, setSiliconflowKey, setTensorartApiKey, setTensorartAppId, setTensorartPrivateKey } from "./lib/image-gen.js";
 
 const env = loadEnv(process.env);
 
@@ -64,6 +64,21 @@ app.post("/system/reset-pollinations", async () => {
     return { success: true, pollinations: getPollinationsStatus() };
 });
 app.get("/system/cf-usage", async () => getCfUsage());
+app.get("/system/keys-status", async () => {
+    if (getMongoStatus() !== "connected") return { error: "MongoDB not connected" };
+    const keys = [
+        "GOOGLE_API_KEY", "HUGGINGFACE_API_KEY", "SILICONFLOW_API_KEY", "FALAI_API_KEY",
+        "SEGMIND_API_KEY", "LEONARDO_API_KEY", "TENSORART_API_KEY", "TENSORART_APP_ID",
+        "TENSORART_PRIVATE_KEY", "POLLINATIONS_TOKEN", "CLOUDINARY_CLOUD_NAME",
+        "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET", "GELATO_API_KEY", "GELATO_STORE_ID",
+        "ETSY_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GROQ_API_KEY",
+        "OPENROUTER_API_KEY", "TOGETHER_API_KEY", "STABLE_HORDE_API_KEY",
+        "GUMROAD_ACCESS_TOKEN", "CF_ACCOUNT_ID", "CF_API_TOKEN",
+    ];
+    const rows = await Settings.find({ key: { $in: keys } }).lean();
+    const map = new Map((rows as any[]).map(r => [r.key, String(r.value ?? "")]));
+    return Object.fromEntries(keys.map(k => [k, map.has(k) ? (map.get(k)! !== "" ? "✓ guardada" : "✗ VACÍA") : "✗ no existe"]));
+});
 
 const deps: { io: typeof io; agenda?: Agenda } = { io };
 
@@ -287,6 +302,11 @@ const seedSettings = async () => {
       { upsert: true, returnDocument: 'after' }
     );
     await Settings.findOneAndUpdate(
+      { key: "SILICONFLOW_API_KEY" },
+      { $setOnInsert: { key: "SILICONFLOW_API_KEY", value: process.env.SILICONFLOW_API_KEY || "", is_secret: true } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    await Settings.findOneAndUpdate(
       { key: "POLLINATIONS_TOKEN" },
       { $setOnInsert: { key: "POLLINATIONS_TOKEN", value: process.env.POLLINATIONS_TOKEN || "", is_secret: true } },
       { upsert: true, returnDocument: 'after' }
@@ -362,16 +382,24 @@ const onMongoConnected = async () => {
   }
   // Pre-warm image generation keys from DB so Agenda jobs don't need live MongoDB
   try {
-    const [tokenSetting, hfKeySetting, googleKeySetting, falKeySetting] = await Promise.all([
-      Settings.findOne({ key: "POLLINATIONS_TOKEN" }),
-      Settings.findOne({ key: "HUGGINGFACE_API_KEY" }),
-      Settings.findOne({ key: "GOOGLE_API_KEY" }),
-      Settings.findOne({ key: "FALAI_API_KEY" }),
-    ]);
-    if (tokenSetting?.value) setPollinationsToken(String(tokenSetting.value));
-    if (hfKeySetting?.value) setImageHfKey(String(hfKeySetting.value));
-    if (googleKeySetting?.value) setImageGoogleKey(String(googleKeySetting.value));
-    if (falKeySetting?.value) setImageFalKey(String(falKeySetting.value));
+    const imageKeyNames = [
+      "POLLINATIONS_TOKEN", "HUGGINGFACE_API_KEY", "GOOGLE_API_KEY", "FALAI_API_KEY",
+      "SILICONFLOW_API_KEY", "SEGMIND_API_KEY", "LEONARDO_API_KEY",
+      "TENSORART_API_KEY", "TENSORART_APP_ID", "TENSORART_PRIVATE_KEY",
+    ];
+    const keyRows = await Settings.find({ key: { $in: imageKeyNames } }).lean();
+    const keyMap = new Map(keyRows.map((r: any) => [r.key, String(r.value ?? "")]));
+    const get = (k: string) => keyMap.get(k) || "";
+    if (get("POLLINATIONS_TOKEN")) setPollinationsToken(get("POLLINATIONS_TOKEN"));
+    if (get("HUGGINGFACE_API_KEY")) setImageHfKey(get("HUGGINGFACE_API_KEY"));
+    if (get("GOOGLE_API_KEY")) setImageGoogleKey(get("GOOGLE_API_KEY"));
+    if (get("FALAI_API_KEY")) setImageFalKey(get("FALAI_API_KEY"));
+    if (get("SILICONFLOW_API_KEY")) setSiliconflowKey(get("SILICONFLOW_API_KEY"));
+    if (get("SEGMIND_API_KEY")) setImageSegmindKey(get("SEGMIND_API_KEY"));
+    if (get("LEONARDO_API_KEY")) setImageLeonardoKey(get("LEONARDO_API_KEY"));
+    if (get("TENSORART_API_KEY")) setTensorartApiKey(get("TENSORART_API_KEY"));
+    if (get("TENSORART_APP_ID")) setTensorartAppId(get("TENSORART_APP_ID"));
+    if (get("TENSORART_PRIVATE_KEY")) setTensorartPrivateKey(get("TENSORART_PRIVATE_KEY"));
   } catch { /* ignore if DB not ready yet */ }
   await startAgendaOnce();
   // Always call so agenda is injected even on reconnects / late agenda start

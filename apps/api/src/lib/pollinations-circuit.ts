@@ -5,7 +5,7 @@
  * Auto-resets after the TTL so we try again periodically.
  */
 
-const BLOCK_TTL_MS = 60 * 60 * 1000; // 1 hour
+const BLOCK_TTL_MS = 15 * 60 * 1000; // 15 min
 
 let blockedUntil = 0;
 

@@ -1091,7 +1091,29 @@ export async function registerAIRoutes(app: FastifyInstance) {
                 }
             }
 
-            console.warn(`[ai/generate-image] ${provider} FALLÓ — devolviendo 503`);
+            // ── EMERGENCY FALLBACK: Pollinations (free, no key needed) ────────────
+            const hasPollinationsTokenFallback = !!pollinationsAuthHeaders().Authorization;
+            if (hasPollinationsTokenFallback || !isPollinationsBlocked()) {
+                try {
+                    const fallbackModel = "flux";
+                    const fw = typeof width === "number" && width > 0 ? width : 1024;
+                    const fh = typeof height === "number" && height > 0 ? height : 1024;
+                    const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${fw}&height=${fh}&seed=${Math.floor(Math.random() * 999999)}&model=${fallbackModel}&enhance=false`;
+                    console.log(`[ai/generate-image] Pollinations fallback...`);
+                    const pollFallbackRes = await pollinationsFetch(fallbackUrl, { signal: AbortSignal.timeout(60_000) });
+                    const pct = pollFallbackRes.headers.get("content-type") ?? "";
+                    if (pollFallbackRes.ok && pct.startsWith("image/")) {
+                        console.log(`[ai/generate-image] Pollinations fallback OK`);
+                        return reply.header("X-AI-Fallback", "pollinations").type(pct).send(Buffer.from(await pollFallbackRes.arrayBuffer()));
+                    }
+                    await pollFallbackRes.body?.cancel();
+                    console.warn(`[ai/generate-image] Pollinations fallback FALLÓ — status=${pollFallbackRes.status}`);
+                } catch (pollFallbackErr: any) {
+                    console.warn(`[ai/generate-image] Pollinations fallback ERROR — ${pollFallbackErr?.message}`);
+                }
+            }
+
+            console.warn(`[ai/generate-image] Todos los fallbacks fallaron — devolviendo 503`);
             return reply.status(503).send({ error: "Servicio de generación de imágenes no disponible", details: "All providers failed" });
 
         } catch (error: any) {

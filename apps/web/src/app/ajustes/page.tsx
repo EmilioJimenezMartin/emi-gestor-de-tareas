@@ -305,10 +305,13 @@ export default function AjustesPage() {
                 { key: "TOGETHER_API_KEY", value: togetherApiKey },
                 { key: "STABLE_HORDE_API_KEY", value: stableHordeApiKey },
             ];
+            // Never send empty-string values — protects API keys from being wiped
+            // when the page loaded while the API was temporarily down
+            const nonEmptyUpdates = updates.filter(u => u.value !== "");
             const res = await fetch(`${apiUrl}/settings`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(updates)
+                body: JSON.stringify(nonEmptyUpdates)
             });
             if (res.ok) {
                 toast.success("Configuración guardada en MongoDB");
