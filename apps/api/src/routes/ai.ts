@@ -165,6 +165,13 @@ export async function registerAIRoutes(app: FastifyInstance) {
                     const s = await Settings.findOne({ key: "SILICONFLOW_API_KEY" });
                     apiKey = String(s?.value ?? "");
                 }
+            } else if (provider === "Dezgo") {
+                // optional key — free without it
+                apiKey = process.env.DEZGO_API_KEY || "";
+                if (!apiKey && getMongoStatus() === "connected") {
+                    const s = await Settings.findOne({ key: "DEZGO_API_KEY" });
+                    apiKey = String(s?.value ?? "");
+                }
             } else if (provider === "Stable Horde") {
                 apiKey = process.env.STABLE_HORDE_API_KEY || "0000000000"; // anonymous
             } else if (provider === "Tensor.art") {
@@ -544,6 +551,48 @@ export async function registerAIRoutes(app: FastifyInstance) {
                     const sfStatus = sfErr?.response?.status;
                     const sfBody = sfErr?.response?.data ? JSON.stringify(sfErr.response.data).slice(0, 300) : sfErr?.message;
                     app.log.warn({ status: sfStatus, body: sfBody }, "AI image: SiliconFlow failed");
+                }
+            }
+
+            // --- DEZGO ---
+            if (provider === "Dezgo") {
+                try {
+                    const dezgoModel = typeof modelId === "string" && modelId.trim() ? modelId.trim() : "sdxl";
+                    const snapTo8 = (n: number) => Math.max(512, Math.min(1024, Math.round(n / 8) * 8));
+                    const dw = snapTo8(width || 1024);
+                    const dh = snapTo8(height || 1024);
+
+                    const dezgoBody: any = {
+                        prompt,
+                        model: dezgoModel,
+                        width: dw,
+                        height: dh,
+                        steps: 25,
+                        guidance: 7.5,
+                        sampler: "dpm++_2m_karras",
+                        seed: typeof fixedSeed === "number" ? fixedSeed : Math.floor(Math.random() * 99999999),
+                    };
+                    if (negativePrompt) dezgoBody.negative_prompt = negativePrompt;
+
+                    const dezgoHeaders: Record<string, string> = { "Content-Type": "application/json" };
+                    if (apiKey) dezgoHeaders["X-Dezgo-Key"] = apiKey.trim();
+
+                    app.log.info({ dezgoModel, dw, dh }, "Dezgo: submitting");
+                    const dezgoResp = await axios({
+                        url: "https://api.dezgo.com/text2image",
+                        method: "POST",
+                        headers: dezgoHeaders,
+                        data: dezgoBody,
+                        responseType: "arraybuffer",
+                        timeout: 90000,
+                    });
+
+                    const dct = String(dezgoResp.headers?.["content-type"] || "image/jpeg");
+                    return reply.type(dct.includes("png") ? "image/png" : "image/jpeg").send(Buffer.from(dezgoResp.data));
+                } catch (dezgoErr: any) {
+                    const dStatus = dezgoErr?.response?.status;
+                    const dBody = dezgoErr?.response?.data ? Buffer.from(dezgoErr.response.data).toString().slice(0, 200) : dezgoErr?.message;
+                    app.log.warn({ status: dStatus, body: dBody }, "AI image: Dezgo failed");
                 }
             }
 

@@ -19,7 +19,7 @@ export interface INiche extends Document {
     name: string;
     description: string;
     tags: string[];
-    status: "found" | "active" | "research" | "archived";
+    status: "found" | "active" | "research" | "archived" | "discarded";
     competition: "unknown" | "low" | "medium" | "high";
     demand: "unknown" | "low" | "medium" | "high";
     productType: "coloring-book" | "printable-poster" | "seamless-pattern" | "other";
@@ -66,7 +66,7 @@ const NicheSchema = new Schema<INiche>(
         name: { type: String, required: true },
         description: { type: String, default: "" },
         tags: [{ type: String }],
-        status: { type: String, enum: ["found", "active", "research", "archived"], default: "found" },
+        status: { type: String, enum: ["found", "active", "research", "archived", "discarded"], default: "found" },
         competition: { type: String, enum: ["unknown", "low", "medium", "high"], default: "unknown" },
         demand: { type: String, enum: ["unknown", "low", "medium", "high"], default: "unknown" },
         productType: { type: String, enum: ["coloring-book", "printable-poster", "seamless-pattern", "other"], default: "coloring-book" },

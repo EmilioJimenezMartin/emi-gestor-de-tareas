@@ -266,8 +266,8 @@ async function handleNicheDiscovery(
             }
         }
 
-        // Delete niche entirely
-        await Niche.findByIdAndDelete(tAction.nicheId);
+        // Soft-delete so radar can't re-discover the same niche
+        await Niche.findByIdAndUpdate(tAction.nicheId, { $set: { status: "discarded" } });
         _io?.emit("niches:updated");
         _io?.emit("telegram:notification", { message: `🗑️ Nicho eliminado desde Telegram · ${tAction.nicheName}`, type: "info" });
         await sendTelegram(`🗑️ <b>Nicho eliminado</b>\n<b>${tAction.nicheName}</b> — borrado definitivamente`);

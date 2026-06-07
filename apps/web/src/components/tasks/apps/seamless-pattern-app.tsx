@@ -889,16 +889,20 @@ export function SeamlessPatternApp() {
                             {Object.entries(modelsByProvider).map(([provider, models]) => (
                                 <div key={provider}>
                                     <p className="px-4 py-1.5 text-[8px] font-black uppercase tracking-widest text-neutral-700 bg-white/[0.02] sticky top-0">{provider}</p>
-                                    {models.map(m => (
-                                        <button key={m.id} onClick={() => { setSelectedModelId(m.id); setShowModelPicker(false); }}
-                                            className={`w-full flex items-center justify-between px-4 py-2.5 text-left transition-all border-b border-white/[0.03] last:border-0 ${selectedModelId === m.id ? "bg-sky-500/10 text-sky-300" : "hover:bg-white/[0.04] text-neutral-400"}`}>
-                                            <div>
-                                                <p className="text-[10px] font-black">{m.name}</p>
-                                                <p className="text-[8px] text-neutral-600">{m.type}</p>
-                                            </div>
-                                            {selectedModelId === m.id && <Check size={10} className="text-sky-400 shrink-0" />}
-                                        </button>
-                                    ))}
+                                    {models.map(m => {
+                                            const sDotCls = ({ ok: "bg-emerald-400", limited: "bg-amber-400", paid: "bg-orange-400", blocked: "bg-red-500" } as Record<string,string>)[m.status] ?? "bg-neutral-500";
+                                            return (
+                                            <button key={m.id} onClick={() => { setSelectedModelId(m.id); setShowModelPicker(false); }}
+                                                className={`w-full flex items-center gap-2 px-4 py-2.5 text-left transition-all border-b border-white/[0.03] last:border-0 ${selectedModelId === m.id ? "bg-sky-500/10 text-sky-300" : "hover:bg-white/[0.04] text-neutral-400"}`}>
+                                                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${sDotCls}`} />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-[10px] font-black">{m.name}</p>
+                                                    <p className="text-[8px] text-neutral-600">{m.type}</p>
+                                                </div>
+                                                {selectedModelId === m.id && <Check size={10} className="text-sky-400 shrink-0" />}
+                                            </button>
+                                            );
+                                        })}
                                 </div>
                             ))}
                         </div>

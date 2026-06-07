@@ -2,8 +2,15 @@ import { FastifyInstance } from "fastify";
 import { Niche } from "../models/niche.js";
 import { Catalog } from "../models/catalog.js";
 import { BookDraft } from "../models/book-draft.js";
+import { Settings } from "../models/settings.js";
 import { getMongoStatus } from "../lib/mongo.js";
 import { getAgenda } from "../lib/agenda.js";
+
+const RADAR_KEYS = [
+    "RADAR_ETSY_RESULT", "RADAR_AMAZON_RESULT", "RADAR_REDDIT_RESULT",
+    "RADAR_TRENDS_RESULT", "RADAR_GENERAL_RESULT", "RADAR_OPPORTUNITY_RESULT",
+    "RADAR_MOVERS_RESULT", "RADAR_CROSS_RESULT", "RADAR_GAP_RESULT",
+];
 
 function ensureMongo(reply: any): boolean {
     if (getMongoStatus() !== "connected") {
@@ -17,7 +24,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
     app.get("/niches", async (_req, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const niches = await Niche.find().sort({ createdAt: -1 }).lean();
+            const niches = await Niche.find({ status: { $ne: "discarded" } }).sort({ createdAt: -1 }).lean();
             return reply.send({ niches });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
@@ -187,7 +194,30 @@ export async function registerNicheRoutes(app: FastifyInstance) {
         if (!ensureMongo(reply)) return;
         try {
             const { id } = request.params as { id: string };
-            await Niche.findByIdAndDelete(id);
+            const niche = await Niche.findById(id).lean() as any;
+
+            // Soft-delete so radar can't re-discover the same niche
+            await Niche.findByIdAndUpdate(id, { $set: { status: "discarded" } });
+
+            // Clean radar result arrays so the entry doesn't reappear in the radar table
+            if (niche?.sourceTitulo) {
+                for (const key of RADAR_KEYS) {
+                    try {
+                        const row = await Settings.findOne({ key }).lean() as any;
+                        if (!row?.value) continue;
+                        const saved = JSON.parse(row.value as string);
+                        if (!Array.isArray(saved?.nichos_detectados)) continue;
+                        const before = saved.nichos_detectados.length;
+                        saved.nichos_detectados = saved.nichos_detectados.filter(
+                            (r: any) => r.titulo_producto !== niche.sourceTitulo
+                        );
+                        if (saved.nichos_detectados.length !== before) {
+                            await Settings.findOneAndUpdate({ key }, { $set: { value: JSON.stringify(saved) } });
+                        }
+                    } catch { /* non-critical */ }
+                }
+            }
+
             return reply.send({ ok: true });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
