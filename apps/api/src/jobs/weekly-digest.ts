@@ -1,7 +1,7 @@
 import type { Agenda, Job } from "agenda";
 import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
-import { sendTelegram } from "../lib/telegram.js";
+import { sendTelegram, shouldNotify } from "../lib/telegram.js";
 import { Catalog } from "../models/catalog.js";
 
 export const WEEKLY_DIGEST_JOB_NAME = "telegram-weekly-digest";
@@ -96,7 +96,9 @@ export function defineWeeklyDigestJob(agenda: Agenda, _io: any) {
             `📈 Total publicados: <b>${totalPublished}</b>`,
         ].filter(line => line !== null).join("\n");
 
-        await sendTelegram(lines as string);
+        if (await shouldNotify("weekly.digest")) {
+            await sendTelegram(lines as string);
+        }
         console.log(`[weekly-digest] Digest sent — ${niches.length} niches, ${catalogs.length} catalogs this week`);
     });
 }

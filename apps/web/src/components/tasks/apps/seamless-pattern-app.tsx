@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AI_MODELS, groupModelsByProvider, type AIModel } from "./shared/ai-constants";
+import { useAppSelector, useAppDispatch } from "@/store/hooks";
+import { setSelectedModelId as setReduxModelId } from "@/store/image-model-slice";
 import { createApiSocket } from "@/lib/socket";
 import { AppTabNav, type AppTab } from "./shared/app-tab-nav";
 import { EarningsStats, type EarningsProduct } from "./shared/earnings-stats";
@@ -199,7 +201,9 @@ export function SeamlessPatternApp() {
     const [selectedPalette, setSelectedPalette] = useState(COLOR_PALETTES[0]);
     const [customPrompt, setCustomPrompt] = useState("");
     const [customNeg, setCustomNeg] = useState("");
-    const [selectedModelId, setSelectedModelId] = useState("cf-flux-schnell");
+    const selectedModelId = useAppSelector(s => s.imageModel.selectedModelId);
+    const _dispatch = useAppDispatch();
+    const setSelectedModelId = (id: string) => _dispatch(setReduxModelId(id));
     const [showModelPicker, setShowModelPicker] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -208,7 +212,6 @@ export function SeamlessPatternApp() {
     const [generationLogs, setGenerationLogs] = useState<Array<{ level: string; message: string; timestamp: string }>>([]);
     const patternSocketRef = useRef<ReturnType<typeof createApiSocket> | null>(null);
     const logsEndRef = useRef<HTMLDivElement>(null);
-    const settingsLoadedRef = useRef(false);
     const [tileMode, setTileMode] = useState<TileMode>("2x2");
     const [showTiled, setShowTiled] = useState(false);
     const [seed, setSeed] = useState(() => Math.floor(Math.random() * 999999));
@@ -515,7 +518,6 @@ export function SeamlessPatternApp() {
                         if (saved?.id && AI_MODELS.some(m => m.id === saved.id)) setSelectedModelId(saved.id);
                     } catch { /* ignore */ }
                 }
-                settingsLoadedRef.current = true;
                 const row = (settings as any[]).find((s: any) => s.key === "SEAMLESS_PATTERN_DRAFT");
                 if (row?.value && row.value !== "null") {
                     const d = JSON.parse(row.value);
@@ -541,9 +543,8 @@ export function SeamlessPatternApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Auto-save selected image model to MongoDB whenever user changes it
+    // Sync selected image model to MongoDB on change (Redux persist handles localStorage)
     useEffect(() => {
-        if (!settingsLoadedRef.current) return;
         const model = AI_MODELS.find(m => m.id === selectedModelId);
         if (!model) return;
         fetch(`${API_BASE_URL}/settings`, {

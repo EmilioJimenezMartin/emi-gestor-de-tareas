@@ -1,5 +1,20 @@
 import { pollinationsFetch, pollinationsAuthHeaders } from "./pollinations-circuit.js";
 import { getApiKey } from "./keys.js";
+import { Settings } from "../models/settings.js";
+
+export interface AutopilotImageModel { id: string; name: string; provider: string; modelId: string; }
+
+/** Lee el modelo de imagen configurado en Settings; si no existe usa SiliconFlow como default. */
+export async function getAutopilotImageModel(): Promise<AutopilotImageModel> {
+    try {
+        const row = await Settings.findOne({ key: "AUTOPILOT_IMAGE_MODEL" }).lean();
+        if ((row as any)?.value) {
+            const parsed = JSON.parse((row as any).value as string);
+            if (parsed?.provider && parsed?.modelId !== undefined) return parsed as AutopilotImageModel;
+        }
+    } catch { /* fallback */ }
+    return { id: "sf-flux-schnell", name: "FLUX.1-schnell (SiliconFlow)", provider: "SiliconFlow", modelId: "black-forest-labs/FLUX.1-schnell" };
+}
 
 let _cachedHfKey = process.env.HUGGINGFACE_API_KEY ?? "";
 let _cachedGoogleKey = process.env.GOOGLE_API_KEY ?? "";

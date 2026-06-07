@@ -1,7 +1,7 @@
 import type { Agenda, Job } from "agenda";
 import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
-import { sendTelegram } from "../lib/telegram.js";
+import { sendTelegram, shouldNotify } from "../lib/telegram.js";
 
 export const SEASONAL_CHECK_JOB_NAME = "seasonal-niche-check";
 
@@ -195,7 +195,9 @@ export function defineSeasonalCheckJob(agenda: Agenda, _io: any) {
             if (soon.length) parts.push(`⚠️ <b>PRÓXIMAMENTE</b> — 4 a 8 semanas`, ...soon.map(l => `\n${l}`), ``);
             if (onRadar.length) parts.push(`📡 <b>EN RADAR</b> — hasta ${weeksAhead} semanas`, ...onRadar.map(l => `\n${l}`));
 
-            await sendTelegram(parts.join("\n")).catch(() => {});
+            if (await shouldNotify("seasonal.check")) {
+                await sendTelegram(parts.join("\n")).catch(() => {});
+            }
             console.log(`[seasonal] Digest: ${urgent.length} urgentes · ${soon.length} próximos · ${onRadar.length} radar`);
         } catch (e: any) {
             console.error("[seasonal] Error:", e?.message);

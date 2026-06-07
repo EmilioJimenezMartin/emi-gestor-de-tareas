@@ -8,7 +8,7 @@ import { withImageSlot, withLlmSlot } from "../lib/ai-semaphore.js";
 import { buildCollage, buildHalfColored, pickCatalogImages, type CollageLayout } from "../lib/cover-collage.js";
 import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
 import { pollinationsFetch } from "../lib/pollinations-circuit.js";
-import { generateImage } from "../lib/image-gen.js";
+import { generateImage, getAutopilotImageModel } from "../lib/image-gen.js";
 import { getAmazonKeywords } from "../lib/amazon-autocomplete.js";
 import { createGumroadProduct } from "../lib/gumroad.js";
 
@@ -21,18 +21,6 @@ function emitStage(io: any, stage: string, nicheId: string, nicheName: string) {
 export const AUTOPILOT_JOB_NAME = "autopilot-run";
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-
-/** Lee el modelo de imagen configurado en Settings; si no existe usa Pollinations. */
-async function getAutopilotImageModel() {
-    try {
-        const row = await Settings.findOne({ key: "AUTOPILOT_IMAGE_MODEL" }).lean();
-        if ((row as any)?.value) {
-            const parsed = JSON.parse((row as any).value as string);
-            if (parsed?.provider && parsed?.modelId !== undefined) return parsed as { id: string; name: string; provider: string; modelId: string };
-        }
-    } catch { /* fallback */ }
-    return { id: "pollinations-flux", name: "FLUX (Pollinations)", provider: "Pollinations", modelId: "flux" };
-}
 
 type AutoPilotConfig = {
     catalogsPerNiche: number;
@@ -295,39 +283,50 @@ async function runDiscovery(
             sampleUrl = buildSampleUrl(niche.name, niche.styleCategory ?? "generic", niche.productType ?? "coloring-book");
         }
         await Niche.findByIdAndUpdate(niche._id, { $set: { sampleImageUrl: sampleUrl } });
-        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⏳ Descargando imagen de muestra para "${niche.name}"…` });
 
-        // Fetch image bytes — primary URL first, then ultra-simple fallback
-        const simpleFallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(niche.name + " coloring page black white line art")}?model=flux`;
+        // Generate sample image using the user-selected model
+        const discoveryAiModel = await getAutopilotImageModel();
+        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🎨 Generando imagen con ${discoveryAiModel.name}…` });
+
+        const pt = niche.productType ?? "coloring-book";
+        const imageGenPrompt = pt === "printable-poster"
+            ? `${niche.name}, professional printable wall art poster, vibrant colors, premium illustration`
+            : `${niche.name}, coloring page illustration, thick black outlines, white background, line art`;
+
         let imageBytes: Buffer | null = null;
         let finalImageUrl = sampleUrl;
-        let pollinationsBlocked = false;
-        for (const [label, urlToFetch] of [["primary", sampleUrl], ["fallback", simpleFallbackUrl]] as const) {
-            if (imageBytes || pollinationsBlocked) break;
-            try {
-                const imgRes = await pollinationsFetch(urlToFetch, { signal: AbortSignal.timeout(40_000) });
-                const ct = imgRes.headers.get("content-type") ?? "";
-                if (imgRes.ok && ct.startsWith("image/")) {
-                    imageBytes = Buffer.from(await imgRes.arrayBuffer());
-                    finalImageUrl = urlToFetch;
-                } else {
-                    console.error(`[discovery] Pollinations ${label} non-image: status=${imgRes.status} ct=${ct}`);
-                    if (imgRes.status === 402) { pollinationsBlocked = true; break; }
+
+        try {
+            const aiRes = await fetch(`${base}/ai/generate-image`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    prompt: imageGenPrompt,
+                    modelId: discoveryAiModel.modelId,
+                    provider: discoveryAiModel.provider,
+                    width: 1024,
+                    height: 1024,
+                }),
+                signal: AbortSignal.timeout(90_000),
+            });
+            if (aiRes.ok) {
+                const ct = aiRes.headers.get("content-type") ?? "";
+                if (ct.startsWith("image/")) {
+                    imageBytes = Buffer.from(await aiRes.arrayBuffer());
+                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ Imagen generada con ${discoveryAiModel.name}` });
                 }
-            } catch (e: any) {
-                console.error(`[discovery] Pollinations ${label} error: ${e?.message}`);
+            } else {
+                console.warn(`[discovery] AI proxy ${aiRes.status} para ${discoveryAiModel.provider}`);
             }
-            if (!imageBytes && !pollinationsBlocked && label === "primary") await delay(2_000);
+        } catch (aiErr: any) {
+            console.warn(`[discovery] AI proxy error: ${aiErr?.message}`);
         }
 
-        // Fallback: si Pollinations falló, usar generateImage (Pollinations → HF cascade)
+        // Fallback: generateImage cascade (Segmind → HuggingFace)
         if (!imageBytes) {
+            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ ${discoveryAiModel.name} falló — usando fallback…` });
             try {
-                const pt = niche.productType ?? "coloring-book";
-                const fbPrompt = pt === "printable-poster"
-                    ? `${niche.name}, professional printable wall art poster, vibrant colors, premium illustration`
-                    : `${niche.name}, coloring page illustration, thick black outlines, white background, line art`;
-                imageBytes = await generateImage(fbPrompt);
+                imageBytes = await generateImage(imageGenPrompt);
             } catch (fbErr: any) {
                 console.warn(`[discovery] generateImage fallback error: ${fbErr?.message}`);
             }

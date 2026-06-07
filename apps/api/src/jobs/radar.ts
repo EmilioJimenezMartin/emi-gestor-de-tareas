@@ -3,6 +3,16 @@ import { RadarJob } from "../models/radar-job.js";
 import { EtsyNicheResultSchema, NicheInsightSchema, ETSY_SYSTEM_PROMPT, AMAZON_SYSTEM_PROMPT, TRENDS_SYSTEM_PROMPT, OPPORTUNITY_SYSTEM_PROMPT, MOVERS_SYSTEM_PROMPT, REDDIT_SYSTEM_PROMPT, CROSS_NICHE_SYSTEM_PROMPT, GAP_FINDER_SYSTEM_PROMPT, GUMROAD_SYSTEM_PROMPT } from "../routes/radar.js";
 import { analyzePageForRadar } from "../lib/ai.js";
 import { AUTOPILOT_JOB_NAME } from "./autopilot.js";
+import { TelegramAction } from "../models/telegram-action.js";
+
+const MAX_PENDING_TELEGRAM = 8;
+
+async function canTriggerDiscover(): Promise<boolean> {
+    try {
+        const count = await TelegramAction.countDocuments({ type: "niche-discovery", status: "pending" });
+        return count < MAX_PENDING_TELEGRAM;
+    } catch { return true; }
+}
 
 export const RADAR_JOB_NAME = "run-radar-analysis";
 
@@ -793,7 +803,11 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                                     });
                                     io?.emit("niches:updated");
                                     createdCount++;
-                                    await fetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
+                                    if (await canTriggerDiscover()) {
+                                        await fetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
+                                    } else {
+                                        console.log(`[reddit-queue] Telegram cap reached (${MAX_PENDING_TELEGRAM}), nicho guardado sin enviar`);
+                                    }
                                 } catch (e: any) {
                                     console.error("[reddit-queue] Error creating niche:", e.message);
                                 }
@@ -1046,7 +1060,11 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                                     });
                                     io?.emit("niches:updated");
                                     createdCount++;
-                                    await fetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
+                                    if (await canTriggerDiscover()) {
+                                        await fetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
+                                    } else {
+                                        console.log(`[pinterest-queue] Telegram cap reached (${MAX_PENDING_TELEGRAM}), nicho guardado sin enviar`);
+                                    }
                                 } catch (e: any) {
                                     console.error("[pinterest-queue] Error creating niche:", e.message);
                                 }
@@ -1367,8 +1385,12 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                                 io?.emit("niches:updated");
                                 createdCount++;
 
-                                // Trigger discover: generates prompt + sends Telegram photo with buttons
-                                await fetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
+                                // Trigger discover only if below pending cap
+                                if (await canTriggerDiscover()) {
+                                    await fetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
+                                } else {
+                                    console.log(`[radar-queue] Telegram cap reached (${MAX_PENDING_TELEGRAM}), nicho guardado sin enviar`);
+                                }
 
                             } catch (e: any) {
                                 console.error("[radar-queue] Error creating niche:", e.message);

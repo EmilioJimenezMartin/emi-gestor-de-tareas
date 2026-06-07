@@ -5,8 +5,8 @@ import { TelegramAction } from "../models/telegram-action.js";
 import { AutopilotRun } from "../models/autopilot-run.js";
 import { getMongoStatus } from "../lib/mongo.js";
 import { sendTelegram, sendTelegramPhotoDiscovery, sendTelegramImageWithButtons, sendTelegramApproval } from "../lib/telegram.js";
-import { pollinationsFetch } from "../lib/pollinations-circuit.js";
-import { generateImage } from "../lib/image-gen.js";
+import { generateImage, getAutopilotImageModel } from "../lib/image-gen.js";
+import { shouldNotify } from "../lib/telegram.js";
 import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
 import { withLlmSlot } from "../lib/ai-semaphore.js";
 
@@ -328,30 +328,32 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             let imageBytes: Buffer | null = null;
             let telegramImageUrl = sampleUrl;
 
-            const fallbackSampleUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent((niche as any).name + " coloring page black white line art")}?model=flux`;
-            let pollinationsBlocked = false;
-            for (const urlToTry of [sampleUrl, fallbackSampleUrl]) {
-                if (imageBytes || pollinationsBlocked) break;
-                for (let attempt = 1; attempt <= 2 && !imageBytes; attempt++) {
-                    try {
-                        const imgRes = await pollinationsFetch(urlToTry, { signal: AbortSignal.timeout(45_000) });
-                        const ct = imgRes.headers.get("content-type") ?? "";
-                        if (imgRes.ok && ct.startsWith("image/")) {
-                            imageBytes = Buffer.from(await imgRes.arrayBuffer());
-                            telegramImageUrl = urlToTry;
-                        } else {
-                            console.warn(`[discover] Pollinations attempt ${attempt}: status=${imgRes.status} ct=${ct}`);
-                            if (imgRes.status === 402) { pollinationsBlocked = true; break; }
-                            if (attempt < 2) await new Promise(r => setTimeout(r, 4_000));
-                        }
-                    } catch (e: any) {
-                        console.warn(`[discover] Pollinations error: ${e?.message}`);
-                        if (attempt < 2) await new Promise(r => setTimeout(r, 4_000));
-                    }
+            // Use selected model via AI proxy
+            const discoveryModel = await getAutopilotImageModel();
+            deps.io?.emit("autopilot:log", { message: `🎨 Generando imagen con ${discoveryModel.name}…` });
+            try {
+                const aiRes = await fetch(`${base}/ai/generate-image`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        prompt: samplePrompt,
+                        modelId: discoveryModel.modelId,
+                        provider: discoveryModel.provider,
+                        width: 1024, height: 1024,
+                    }),
+                    signal: AbortSignal.timeout(90_000),
+                });
+                const ct = aiRes.headers.get("content-type") ?? "";
+                if (aiRes.ok && ct.startsWith("image/")) {
+                    imageBytes = Buffer.from(await aiRes.arrayBuffer());
+                } else {
+                    console.warn(`[discover] AI proxy ${aiRes.status}`);
                 }
+            } catch (e: any) {
+                console.warn(`[discover] AI proxy error: ${e?.message}`);
             }
 
-            // Fallback: si Pollinations falló, usar generateImage (Pollinations → HF cascade)
+            // Fallback cascade (Pollinations → Segmind → HuggingFace)
             if (!imageBytes) {
                 imageBytes = await generateImage(samplePrompt);
             }
@@ -412,13 +414,13 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             ]];
 
             let msgId: number | null = null;
-            if (imageBytes) {
-                // Preferred: send image as binary upload (no URL-download dependency)
-                msgId = await sendTelegramImageWithButtons(imageBytes, caption, buttons);
-            }
-            if (!msgId) {
-                // Fallback: URL-based send (or text if photo fails)
-                msgId = await sendTelegramPhotoDiscovery({ imageUrl: telegramImageUrl, caption, actionId: String(action._id) });
+            if (await shouldNotify("autopilot.discovery")) {
+                if (imageBytes) {
+                    msgId = await sendTelegramImageWithButtons(imageBytes, caption, buttons);
+                }
+                if (!msgId) {
+                    msgId = await sendTelegramPhotoDiscovery({ imageUrl: telegramImageUrl, caption, actionId: String(action._id) });
+                }
             }
 
             if (msgId) { action.messageId = msgId; await action.save(); }

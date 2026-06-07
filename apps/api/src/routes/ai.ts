@@ -903,7 +903,7 @@ export async function registerAIRoutes(app: FastifyInstance) {
                         .replace(/\bcolorear\b|\bpara\s+colorear\b/gi, "with outlines")
                         // Envolver términos estilísticos que disparan el filtro
                         .replace(/\b(graffiti|grafiti|hypebeast|KAWS|gore|horror|demon|devil|beast|cannabis|weed)\b/gi,
-                            (m) => `"${m}"`)
+                            (m: string) => `"${m}"`)
                         .replace(/\s{2,}/g, " ")
                         .trim();
                     console.log(`[ai/generate-image] Cloudflare cfPrompt="${cfPrompt.slice(0, 200)}"`);

@@ -106,6 +106,8 @@ import { SearchQueryBuilder, type SearchConfig, type SearchPlatform } from "@/co
 import { useSpeech } from "@/hooks/useSpeech";
 import { VoiceButton } from "@/components/ui/VoiceButton";
 import { VoiceRecorderModal } from "@/components/ui/VoiceRecorderModal";
+import { useAppSelector, useAppDispatch } from "@/store/hooks";
+import { setSelectedModelId } from "@/store/image-model-slice";
 
 interface ProductPlatform {
     name: string;
@@ -1100,7 +1102,9 @@ export function KdpFactoryApp() {
         if (promptParticulars.trim()) p += `, y las siguientes particularidades: ${promptParticulars.trim()}`;
         return p;
     })();
-    const [selectedModel, setSelectedModel] = useState(AI_MODELS[0].id);
+    const selectedModel = useAppSelector(s => s.imageModel.selectedModelId);
+    const dispatch = useAppDispatch();
+    const setSelectedModel = (id: string) => dispatch(setSelectedModelId(id));
     const [showModelPicker, setShowModelPicker] = useState(false);
     const [showDimPicker, setShowDimPicker] = useState(false);
     const [selectedDim, setSelectedDim] = useState("sq");
@@ -1108,7 +1112,6 @@ export function KdpFactoryApp() {
     const dimPickerBtnRef = useRef<HTMLButtonElement>(null);
     const modelPickerRectRef = useRef<DOMRect | null>(null);
     const dimPickerRectRef = useRef<DOMRect | null>(null);
-    const settingsLoadedRef = useRef(false);
     const [cloudinaryImages, setCloudinaryImages] = useState<CloudinaryImage[]>([]);
     const [linkingNicheForCloud, setLinkingNicheForCloud] = useState<string | null>(null); // publicId being linked
     const [isLoadingCloudinary, setIsLoadingCloudinary] = useState(false);
@@ -1383,19 +1386,27 @@ export function KdpFactoryApp() {
 
     // --- Notification rules ("Eventos del sistema") ---
     const NOTIFICATION_EVENTS: { id: string; label: string; desc: string; group: string }[] = [
-        { id: "autopilot.run",         label: "Ciclo Auto-Pilot",             desc: "Inicio y resumen al completar cada ciclo",                          group: "Auto-Pilot" },
-        { id: "autopilot.discovery",   label: "Nicho descubierto",            desc: "Foto con botones de aprobación/descarte",                           group: "Auto-Pilot" },
-        { id: "autopilot.autoapprove", label: "Nicho auto-aprobado",          desc: "Cuando el score supera el umbral configurado",                      group: "Auto-Pilot" },
-        { id: "pipeline.complete",     label: "Avance de pipeline",           desc: "Catálogos iniciados y libro PDF generado",                          group: "Auto-Pilot" },
-        { id: "listing.generated",     label: "Listing SEO generado",         desc: "Título, keywords y descripción listos",                             group: "Auto-Pilot" },
-        { id: "cover.generated",       label: "Portada generada",             desc: "Foto de la portada final con variantes",                            group: "Auto-Pilot" },
-        { id: "catalog.ready",         label: "Catálogo completado",          desc: "Cuando un catálogo de imágenes termina de generarse",               group: "Catálogos" },
-        { id: "watchdog.restart",      label: "Catálogo reiniciado",          desc: "El watchdog relanzó un catálogo atascado",                          group: "Catálogos" },
-        { id: "kdp.progress",          label: "KDP: progreso",                desc: "Login, subida de PDF e interior mientras se publica",              group: "KDP" },
-        { id: "kdp.done",              label: "KDP: borrador guardado",       desc: "Confirmación cuando el borrador queda en Amazon KDP",              group: "KDP" },
-        { id: "kdp.error",             label: "KDP: error o datos faltantes", desc: "Error al publicar o cuando falta PDF/listing/credenciales",        group: "KDP" },
-        { id: "radar.found",           label: "Radar: nichos encontrados",    desc: "Resumen al completar una pasada de scraping",                      group: "Radar" },
-        { id: "api.error.quota",       label: "Error de cuota API",           desc: "Auto-Pilot detenido por límite de peticiones",                     group: "Sistema" },
+        // ── Auto-Pilot ────────────────────────────────────────────────────────
+        { id: "autopilot.run",         label: "Ciclo Auto-Pilot",             desc: "Inicio y resumen al completar cada ciclo",                                    group: "Auto-Pilot" },
+        { id: "autopilot.discovery",   label: "Nicho descubierto",            desc: "Foto con botones de aprobación/descarte enviada a Telegram",                  group: "Auto-Pilot" },
+        { id: "autopilot.autoapprove", label: "Nicho auto-aprobado",          desc: "Cuando el score supera el umbral y se aprueba sin intervención",              group: "Auto-Pilot" },
+        { id: "pipeline.complete",     label: "Avance de pipeline",           desc: "Catálogos iniciados, libro PDF generado y fases del nicho",                   group: "Auto-Pilot" },
+        { id: "listing.generated",     label: "Listing SEO generado",         desc: "Título, keywords y descripción listos para Amazon KDP",                       group: "Auto-Pilot" },
+        { id: "cover.generated",       label: "Portada generada",             desc: "Foto de la portada final con variantes",                                      group: "Auto-Pilot" },
+        // ── Catálogos ─────────────────────────────────────────────────────────
+        { id: "catalog.ready",         label: "Catálogo completado",          desc: "Cuando un catálogo de imágenes termina de generarse",                         group: "Catálogos" },
+        { id: "watchdog.restart",      label: "Catálogo reiniciado",          desc: "El watchdog relanzó un catálogo atascado",                                    group: "Catálogos" },
+        { id: "catalog.vault_rejected",label: "Imagen al vault (rechazada)",  desc: "Imagen que no pasó el filtro de calidad — se envía con botones para revisar", group: "Catálogos" },
+        // ── KDP ───────────────────────────────────────────────────────────────
+        { id: "kdp.progress",          label: "KDP: progreso",                desc: "Login, subida de PDF e interior mientras se publica",                         group: "KDP" },
+        { id: "kdp.done",              label: "KDP: borrador guardado",       desc: "Confirmación cuando el borrador queda en Amazon KDP",                         group: "KDP" },
+        { id: "kdp.error",             label: "KDP: error o datos faltantes", desc: "Error al publicar o cuando falta PDF/listing/credenciales",                   group: "KDP" },
+        // ── Radar ─────────────────────────────────────────────────────────────
+        { id: "radar.found",           label: "Radar: resumen de scraping",   desc: "Mensaje de resumen al completar una pasada del Radar",                        group: "Radar" },
+        // ── Sistema / Digests ─────────────────────────────────────────────────
+        { id: "seasonal.check",        label: "Check estacional",             desc: "Alerta de nichos con fechas estacionales próximas (semanal)",                 group: "Sistema" },
+        { id: "weekly.digest",         label: "Digest semanal",               desc: "Resumen de nichos y catálogos generados la semana anterior (lunes 9h)",       group: "Sistema" },
+        { id: "api.error.quota",       label: "Error de cuota API",           desc: "Auto-Pilot detenido por límite de peticiones",                                group: "Sistema" },
         { id: "alert.stuck_pipeline",  label: "Alerta: nicho atascado",       desc: "Nicho con Auto-Pilot sin avanzar de fase (umbral configurable, máx. 1×/día)", group: "Sistema" },
         { id: "alert.stuck_catalog",   label: "Alerta: catálogo sin actividad",desc: "Catálogo en 'running' sin generar imágenes (umbral configurable, máx. 1×/día)", group: "Sistema" },
     ];
@@ -3623,7 +3634,6 @@ export function KdpFactoryApp() {
                         if (saved?.id && AI_MODELS.some(m => m.id === saved.id)) setSelectedModel(saved.id);
                     } catch { /* ignore */ }
                 }
-                settingsLoadedRef.current = true;
                 if (settingsMap.has("QUALITY_CHECK_ENABLED")) setQualityCheckEnabled(settingsMap.get("QUALITY_CHECK_ENABLED") !== "0" && settingsMap.get("QUALITY_CHECK_ENABLED") !== "false");
                 if (settingsMap.has("QUALITY_VAULT_TELEGRAM_NOTIFY")) setQualityVaultTelegramEnabled(settingsMap.get("QUALITY_VAULT_TELEGRAM_NOTIFY") === "1" || settingsMap.get("QUALITY_VAULT_TELEGRAM_NOTIFY") === "true");
                 if (settingsMap.has("TELEGRAM_WEEKLY_DIGEST")) setWeeklyDigestEnabled(settingsMap.get("TELEGRAM_WEEKLY_DIGEST") !== "false");
@@ -3729,9 +3739,8 @@ export function KdpFactoryApp() {
         };
     }, []);
 
-    // Auto-save selected image model to MongoDB whenever user changes it
+    // Sync selected image model to MongoDB on change (Redux persist handles localStorage)
     useEffect(() => {
-        if (!settingsLoadedRef.current) return;
         const model = AI_MODELS.find(m => m.id === selectedModel);
         if (!model) return;
         fetch(`${API_BASE_URL}/settings`, {

@@ -9,12 +9,6 @@ import { sendTelegram, shouldNotify, sendTelegramImageWithButtons } from "../lib
 import { withImageSlot } from "../lib/ai-semaphore.js";
 import sharp from "sharp";
 
-async function isQualityVaultTelegramEnabled(): Promise<boolean> {
-    try {
-        const row = await Settings.findOne({ key: "QUALITY_VAULT_TELEGRAM_NOTIFY" }).lean();
-        return (row as any)?.value === "1" || (row as any)?.value === "true";
-    } catch { return false; }
-}
 
 async function saveRejectedImageToVault(opts: {
     imageBuffer: Buffer;
@@ -64,8 +58,7 @@ async function saveRejectedImageToVault(opts: {
             score,
         });
 
-        const telegramEnabled = await isQualityVaultTelegramEnabled();
-        if (telegramEnabled) {
+        if (await shouldNotify("catalog.vault_rejected")) {
             const caption = `🚫 <b>Imagen rechazada</b>\n📁 Catálogo: <b>${catalog.name}</b>\n❌ ${reason} (score ${score})\n<i>Revisa el vault para incluirla o eliminarla</i>`;
             const msgId = await sendTelegramImageWithButtons(
                 imageBuffer,

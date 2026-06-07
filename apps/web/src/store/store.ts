@@ -12,6 +12,7 @@ import {
 import createWebStorage from "redux-persist/lib/storage/createWebStorage";
 import { itemsReducer } from "./items-slice";
 import { financeReducer } from "./finance-slice";
+import { imageModelReducer } from "./image-model-slice";
 
 const storage =
   typeof window !== "undefined"
@@ -33,6 +34,10 @@ const rootReducer = combineReducers({
     itemsReducer
   ),
   finance: financeReducer,
+  imageModel: persistReducer(
+    { key: "imageModel", version: 1, storage },
+    imageModelReducer
+  ),
 });
 
 export const store = configureStore({
