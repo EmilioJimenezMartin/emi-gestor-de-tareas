@@ -83,8 +83,8 @@ function buildSampleUrl(nicheName: string, style: string, productType: string, e
         prompt = `${core} seamless tileable repeat surface pattern, flat design, symmetrical layout, clean edges, no background noise, vector-like, POD ready`;
         model = "flux-realism";
     } else {
-        // coloring book — proven formula for all styles, model varies
-        prompt = buildColoringBookPrompt(core);
+        // Style-aware coloring book formula
+        prompt = buildColoringBookPrompt(core, style);
         if (style === "anime") model = "flux-anime";
         else if (style === "realistic") model = "flux-realism";
     }

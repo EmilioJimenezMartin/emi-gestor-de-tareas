@@ -7,6 +7,7 @@ import { getCloudinaryConfig, initCloudinary } from "../routes/cloudinary.js";
 import { activateNextQueued } from "../lib/catalog-queue.js";
 import { sendTelegram, shouldNotify, sendTelegramImageWithButtons } from "../lib/telegram.js";
 import { withImageSlot } from "../lib/ai-semaphore.js";
+import { buildColoringBookPrompt } from "../routes/autopilot.js";
 import sharp from "sharp";
 
 
@@ -361,16 +362,17 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
 
             // Apply product-type modifiers and build negative prompt
             const productType = catalog.productType ?? "coloring-book";
+            const catalogStyle = ((catalog as any).styleCategory ?? (catalog as any).styleCategories?.[0] ?? "generic") as string;
             const userNegative = catalog.negativePrompt?.trim() ?? "";
 
             let finalNegativePrompt = "";
             if (productType === "coloring-book") {
-                // Proven formula — only append if not already present (avoid duplication when prompt was built by buildColoringBookPrompt)
-                const alreadyHasFormula = finalPrompt.includes("ultra thick clean black outlines") || finalPrompt.includes("zero stippling");
+                // Style-aware formula — only append if technical suffix not already present
+                const alreadyHasFormula = finalPrompt.includes("coloring book page") || finalPrompt.includes("black line art on white");
                 if (!alreadyHasFormula) {
-                    finalPrompt += ", Funny Iconic coloring page, bg white, ultra thick clean black outlines, white background, high contrast, zero shading, zero stippling, zero gradients, zero background, No shadow, no grey, no details behind the person and dont add the scene";
+                    finalPrompt = buildColoringBookPrompt(finalPrompt, catalogStyle);
                 }
-                const coloringNegative = "gray, grey, gray background, grey background, gray fill, grey fill, gray tones, grey tones, off-white, cream, beige, shading, shadows, gradients, color, colors, sepia, tones, textures, crosshatching, stippling, watercolor, painterly, blur, glow, soft edges, background pattern, noise, grain, vignette, watermark, signature, logo, frame, border decoration";
+                const coloringNegative = "gray, grey, gray background, grey background, gray fill, grey fill, gray tones, off-white, cream, beige, shading, shadows, gradients, color, colors, sepia, tones, textures, crosshatching, stippling, watercolor, painterly, blur, glow, soft edges, background pattern, noise, grain, vignette, watermark, signature, logo, frame, border decoration";
                 finalNegativePrompt = userNegative ? `${coloringNegative}, ${userNegative}` : coloringNegative;
             } else if (productType === "printable-poster") {
                 finalPrompt += ". Style: high quality, high resolution, vibrant colors, print-ready, professional poster design, sharp fine details, suitable for large format printing";

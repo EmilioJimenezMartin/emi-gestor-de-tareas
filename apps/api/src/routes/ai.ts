@@ -6,6 +6,7 @@ import { getMongoStatus } from "../lib/mongo.js";
 import { isPollinationsBlocked, pollinationsFetch, pollinationsAuthHeaders } from "../lib/pollinations-circuit.js";
 import { getApiKey } from "../lib/keys.js";
 import { getImageHfKey, getImageLeonardoKey, getSiliconflowKey, getTensorartApiKey, getTensorartAppId, getTensorartPrivateKey } from "../lib/image-gen.js";
+import { buildColoringBookPrompt } from "./autopilot.js";
 
 /** Generates TAMS-SHA256-RSA Authorization header for Tensor.art API */
 function tamsSign(method: string, urlPath: string, appId: string, privateKeyPem: string, bodyStr: string): string {
@@ -83,14 +84,25 @@ function ratioFromDims(width?: number, height?: number) {
 
 export async function registerAIRoutes(app: FastifyInstance) {
     app.post("/ai/generate-image", async (request: any, reply) => {
-        const { prompt, modelId, provider, width, height, initImage, advancedParams } = request.body;
+        const { prompt: rawPrompt, modelId, provider, width, height, initImage, advancedParams, productType, style } = request.body;
         const negativePrompt: string = advancedParams?.negativePrompt?.trim() || "";
         const steps: number | undefined = typeof advancedParams?.steps === "number" ? advancedParams.steps : undefined;
         const guidanceScale: number | undefined = typeof advancedParams?.guidanceScale === "number" ? advancedParams.guidanceScale : undefined;
         const fixedSeed: number | undefined = typeof advancedParams?.seed === "number" ? advancedParams.seed : undefined;
         const ideogramStyle: string = advancedParams?.style || "AUTO";
+
+        // Auto-apply coloring book formula if productType says so and prompt is raw
+        let prompt: string = String(rawPrompt ?? "");
+        if (productType === "coloring-book") {
+            const hasFormula = prompt.includes("coloring book page") || prompt.includes("black line art on white");
+            if (!hasFormula) {
+                prompt = buildColoringBookPrompt(prompt, style ?? "generic");
+                console.log(`[ai/generate-image] Auto-applied CB formula (style=${style ?? "generic"})`);
+            }
+        }
+
         console.log('------------------------------------');
-        console.log(`[ai/generate-image] START provider=${provider} model=${modelId} prompt="${String(prompt).slice(0, 50)}"`);
+        console.log(`[ai/generate-image] START provider=${provider} model=${modelId} prompt="${prompt.slice(0, 60)}"`);
 
         try {
             const cooldownKey = getCooldownKey(provider, modelId);
@@ -1193,29 +1205,46 @@ Examples of the expected quality level:
 
 Return ONLY a JSON object: {"particulars": "...55-80 words of vivid hyper-specific visual description..."}`,
 
-            "niche-particulars": `You are a world-class art director specializing in KDP coloring book illustration prompts. Your job is to write the most visually compelling, specific, and imaginative scene description possible for a coloring page.
+            "niche-particulars": (() => {
+                // Parse style from extras (format: "styleCategory; composition variation: ...; visual reference: ...")
+                const styleMatch = extras?.split(";")[0]?.trim() ?? "generic";
+                const styleGuide: Record<string, string> = {
+                    anime:        "Describe a manga-style scene. Focus on character expression, dynamic pose, and a single clear action. Include 1-2 supporting characters or objects. Avoid busy backgrounds — use simple environmental cues. Composition: close-up or 3/4 character shot preferred.",
+                    botanical:    "Describe a single botanical specimen or arrangement. Be scientifically precise: name the plant species (real or invented), describe leaf shape, stem structure, root detail, seed pods, bark texture. Composition: pressed-plate flat lay or close-up specimen study. Dense but organized.",
+                    celestial:    "Describe a mandala or sacred geometry composition. Must be SYMMETRICAL. Specify the central motif, radiating elements, and border ring. Include celestial symbols: moons, stars, suns, planets, constellations. Composition: perfect circular symmetry, overhead view.",
+                    geometric:    "Describe a geometric tiling or mandala pattern. Be precise: specify the core shape (hexagon, octagon, star polygon), how it repeats, and the ornamental fill of each cell. No figures, no characters — pure pattern. Composition: full-page symmetrical tessellation.",
+                    children:     "Describe ONE cute simple scene with 1-2 characters maximum. Shapes must be LARGE and ROUND — no intricate details. Characters should have big heads, round eyes, friendly expressions. Background is minimal (2-3 simple elements max). Joyful, approachable mood.",
+                    "wall-art":   "Describe an elegant decorative composition. Focus on Art Nouveau or ornamental style: flowing organic lines, decorative borders, symmetrical arrangement. May include a central figure surrounded by botanical or geometric ornament. Sophisticated and balanced mood.",
+                    retro:        "Describe a vintage illustration scene. Reference a specific era (1950s diner, 1960s space age, 1970s folk). Bold graphic shapes, limited but distinct subject matter, strong silhouette. Nostalgic and confident mood.",
+                };
+                const styleInstruction = styleGuide[styleMatch] ?? "Describe a balanced coloring page scene with a clear focal subject and supporting decorative elements. Medium complexity — satisfying to color for all ages.";
 
-Niche: "${niche}"${extras ? `\nStyle: ${extras}` : ""}
+                const variationHint = extras?.split("composition variation:")?.[1]?.split(";")?.[0]?.trim() ?? "";
+                const visualRef = extras?.split("visual reference:")?.[1]?.trim() ?? "";
 
-Write ONLY the "particulars" — 55-80 words describing ONE highly specific, richly detailed coloring page scene.
+                return `You are a world-class art director specializing in KDP coloring book illustration prompts. Write ONE highly specific scene description that an AI image generator will use to create a coloring page.
 
-MANDATORY requirements:
-1. MAIN SUBJECT: name it concretely with a defining action, pose, or state (not just "a fox" — "a red fox mid-leap, one paw outstretched, ears pinned back")
-2. SECONDARY ELEMENTS: 3-5 specific supporting objects, characters, or environmental details that reinforce the niche theme
-3. COMPOSITION: specify the layout (close-up portrait / wide establishing shot / overhead flat lay / dynamic diagonal / symmetrical mandala / etc.)
-4. DECORATIVE DENSITY: describe fill patterns, ornamental details, background textures that will make the page satisfying to color
-5. MOOD/ATMOSPHERE: one specific emotional quality (not "beautiful" or "stunning" — use: "eerie and still", "joyful and chaotic", "reverent and ceremonial", etc.)
+Niche: "${niche}"
+Style: ${styleMatch}
+${variationHint ? `Composition focus: ${variationHint}` : ""}
+${visualRef ? `Visual reference (adapt, don't copy): ${visualRef}` : ""}
 
-Do NOT mention line style, black outlines, or coloring instructions.
-Do NOT use vague adjectives: beautiful, amazing, gorgeous, stunning, lovely.
-Be SPECIFIC and VISUAL — every word must help the image generator paint the scene.
+STYLE GUIDANCE: ${styleInstruction}
 
-Examples of the expected quality level:
-- "a massive koi fish curled in a full-body spiral, scales detailed with overlapping crescent patterns, surrounded by lotus blossoms in various bloom stages, lily pads with water droplets, and swirling current lines — overhead view, dense and meditative, ceremonial and tranquil"
-- "a Victorian apothecary cat in a waistcoat, adjusting monocle over a bubbling potion cauldron, shelves packed with labeled bottles, dried herbs hanging from ceiling beams, open grimoire on the counter — three-quarter view interior, cluttered and atmospheric, whimsical and mysterious"
-- "twin wolf pups wrestling in a snowdrift at the base of a pine forest, pine cones and fir branches scattered around, parent wolf watching from behind a tree trunk, snowflakes mid-fall — low angle wide shot, dynamic and playful, tender yet wild"
+Write ONLY the "particulars" — 55-80 words of precise visual description for this single coloring page.
 
-Return ONLY a JSON object: {"particulars": "...55-80 words of vivid hyper-specific visual description..."}`,
+RULES:
+1. SUBJECT: Name it concretely with a specific action or state. Not "a fox" — "a red fox mid-leap, one forepaw raised"
+2. SECONDARY: 2-4 supporting elements that reinforce the niche. Specific, not generic.
+3. COMPOSITION: State it explicitly — close-up portrait / overhead flat lay / symmetrical mandala / dynamic diagonal / etc.
+4. DENSITY: Describe what fills the page — ornamental patterns, repeating motifs, background texture, decorative borders
+5. MOOD: One precise emotional quality — "reverent and ceremonial", "joyful and chaotic", "eerie and still"
+
+NEVER mention: line style, outlines, coloring, black and white, or page format.
+NEVER use: beautiful, stunning, gorgeous, amazing, lovely, wonderful.
+
+Return ONLY: {"particulars": "...55-80 words..."}`;
+            })(),
 
             titles: `${langInstruction} Generate 8 compelling titles for a "${productType}" KDP/Etsy product about "${niche}". ${extras ? `Additional context: ${extras}` : ""}
 Return ONLY a JSON array of strings: ["Title 1", "Title 2", ...]`,

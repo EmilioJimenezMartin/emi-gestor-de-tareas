@@ -1,3 +1,73 @@
+// Style-specific variation hints — each set generates semantically distinct pages
+// for that art style rather than cycling through generic complexity levels.
+const STYLE_VARIATION_HINTS: Record<string, string[]> = {
+    anime: [
+        "chibi character close-up portrait, expressive large eyes, kawaii pose",
+        "dynamic action pose, diagonal energy, speed motion lines",
+        "magical girl or hero transformation, sparkles and ribbons, dramatic spread",
+        "cozy slice-of-life scene, multiple characters, indoor setting",
+        "fantasy landscape with character silhouette, epic wide shot",
+        "group scene, characters interacting, cheerful energy",
+    ],
+    botanical: [
+        "close-up single specimen filling the page, high botanical detail",
+        "garden arrangement with 3-5 different plants, overhead flat lay",
+        "wild meadow scene, scattered organic composition, insects included",
+        "potted plant collection on a windowsill, domestic cozy setting",
+        "pressed botanical plate style, scientific specimen layout with labels",
+        "seasonal harvest — fruits, flowers and foliage, abundant composition",
+    ],
+    celestial: [
+        "central sun mandala with symmetrical radiating rays and geometric border",
+        "full moon with constellation ring, sacred geometry overlay",
+        "zodiac wheel — 12 symbols arranged in intricate circular pattern",
+        "crystal cluster and gem arrangement, sacred geometry lines",
+        "celestial eye mandala, third-eye symmetrical composition",
+        "phases of the moon sequence, horizontal banner with star fill",
+    ],
+    geometric: [
+        "central mandala with 8-fold symmetry, intricate petal layers",
+        "tessellated hexagonal pattern filling the full page",
+        "concentric circles with interlocking ornamental details",
+        "kaleidoscope star pattern, 6-fold radial symmetry",
+        "Islamic geometric lattice, star polygon interlace",
+        "fractal-inspired spiral, Fibonacci growth pattern",
+    ],
+    children: [
+        "single cute character, large simple shapes, centered, easy to color",
+        "two animal friends in a fun outdoor scene, simple backgrounds",
+        "animal close-up portrait, big expressive face, bold outlines",
+        "magical vehicle or object, simple shape, playful details",
+        "repeating pattern of simple cute icons, grid layout",
+        "cozy scene — child's bedroom or garden — simple furniture, happy mood",
+    ],
+    "wall-art": [
+        "centered portrait composition, Art Nouveau ornamental border",
+        "botanical wreath with decorative lettering space in center",
+        "abstract floral explosion, filling the frame edge to edge",
+        "architectural archway with nature framing, elegant symmetry",
+        "goddess or nature figure, flowing robes, organic motifs surrounding",
+        "geometric triptych pattern, three vertical panels with connecting motifs",
+    ],
+    retro: [
+        "vintage travel poster composition, bold horizon, simple scenery",
+        "mid-century modern abstract, geometric shapes, 50s palette reference",
+        "retro diner or soda shop scene, cheerful Americana",
+        "vintage botanical label illustration, bordered, decorative typography space",
+        "pin-up style character silhouette, clean graphic composition",
+        "retro space race illustration, rocket and stars, bold geometry",
+    ],
+};
+
+const DEFAULT_VARIATION_HINTS = [
+    "detailed center composition, rich ornamental fill, symmetrical balance",
+    "wide establishing scene, layered foreground and midground elements",
+    "close-up portrait or focal object filling the frame",
+    "dynamic action moment, diagonal energy, motion implied",
+    "intimate small scene, cozy setting, intricate background details",
+    "decorative pattern spread, repeating motif with central focal point",
+];
+
 // Generates a unique image-generation prompt for a single catalog slot.
 // discoveryPrompt: the AI-enhanced core saved during discovery (optional, improves coherence).
 // slotIndex: 0-based index for this slot (drives variation instructions).
@@ -11,18 +81,15 @@ export async function generateCatalogPrompt(
 ): Promise<string | null> {
     const aiType = productType === "printable-poster" ? "printable-particulars" : "niche-particulars";
 
-    // Variation seeds so each slot within a catalog gets meaningfully different content
-    const variationHints = [
-        "simple, large shapes, suitable for young children, minimal detail",
-        "medium complexity, decorative borders, flowing organic shapes",
-        "intricate detailed patterns, fine linework, for adults or older children",
-        "geometric repetition, symmetrical design, mandala-inspired",
-        "nature-inspired elements, botanical motifs, organic composition",
-        "bold playful shapes, cartoon-like, rounded outlines",
-    ];
-    const hint = variationHints[slotIndex % variationHints.length];
+    // Pick style-specific variation hint so each slot is semantically different
+    const hints = STYLE_VARIATION_HINTS[style] ?? DEFAULT_VARIATION_HINTS;
+    const hint = hints[slotIndex % hints.length];
 
-    const extras = [style, hint, discoveryPrompt ? `inspired by: ${discoveryPrompt}` : ""].filter(Boolean).join("; ");
+    const extras = [
+        style,
+        `composition variation: ${hint}`,
+        discoveryPrompt ? `visual reference: ${discoveryPrompt.slice(0, 120)}` : "",
+    ].filter(Boolean).join("; ");
 
     try {
         const res = await fetch(`${base}/ai/generate-text`, {

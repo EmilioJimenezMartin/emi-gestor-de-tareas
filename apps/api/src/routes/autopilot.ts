@@ -10,13 +10,36 @@ import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
 import { generateTextWithLLM } from "../lib/ai.js";
 import { withLlmSlot } from "../lib/ai-semaphore.js";
 
-// ── Proven coloring-book prompt formula ─────────────────────────────────────
-// specs + details are FIXED — only the particulars (scene description) varies.
-const CB_SPECS   = "Funny Iconic coloring page, bg white, ultra thick clean black outlines, white background, high contrast, zero shading, zero stippling, zero gradients, zero background";
-const CB_DETAILS = "No shadow, no grey, no details behind the person and dont add the scene";
+// ── Style-aware coloring-book prompt formula ─────────────────────────────────
+// Token order matters in FLUX: early tokens get highest attention weight.
+// Structure: [MODE OPENER] → [STYLE MODIFIER] → [SUBJECT/PARTICULARS] → [EXCLUSIONS]
 
-export function buildColoringBookPrompt(particulars: string): string {
-    return `${particulars}, ${CB_SPECS}, ${CB_DETAILS}`;
+// Short opener — immediately tells FLUX the output format (highest weight tokens)
+const CB_OPENER = "coloring book page, black line art on white";
+
+// Style modifiers — what KIND of coloring page (medium weight)
+const CB_STYLE_MODIFIERS: Record<string, string> = {
+    anime:        "manga-style linework, chibi proportions, expressive character design",
+    botanical:    "botanical etching style, fine precise linework, intricate natural detail",
+    celestial:    "mandala-style composition, symmetrical sacred geometry, radial pattern",
+    geometric:    "precise geometric tessellation, perfect symmetrical pattern, Islamic lattice style",
+    children:     "large simple bold shapes, thick friendly cartoon outlines, easy-to-color for kids",
+    watercolor:   "flowing organic botanical, delicate graceful shapes, natural subject",
+    "wall-art":   "art nouveau decorative style, elegant ornamental linework, flowing composition",
+    retro:        "vintage mid-century illustration, bold graphic design, classic advertising style",
+    abstract:     "flowing abstract organic forms, balanced negative space, fluid curvilinear shapes",
+    illustration: "detailed character illustration, expressive confident linework",
+    realistic:    "detailed naturalistic line art, precise rendering, intricate realistic detail",
+};
+
+// Exclusions — reinforce what NOT to render (lowest weight, still effective)
+const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gradients, no stippling, no background texture, no watermark, pure white background, ultra thick clean outlines, high contrast";
+
+export function buildColoringBookPrompt(particulars: string, style = "generic"): string {
+    const modifier = CB_STYLE_MODIFIERS[style];
+    return modifier
+        ? `${CB_OPENER}, ${modifier}, ${particulars}, ${CB_EXCLUSIONS}`
+        : `${CB_OPENER}, ${particulars}, ${CB_EXCLUSIONS}`;
 }
 
 function ensureMongo(reply: any): boolean {
@@ -284,8 +307,8 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             if (productType === "printable-poster") {
                 samplePrompt = `${sceneDesc}, professional printable wall art poster, vibrant cohesive color palette, premium illustration quality, balanced centered composition, no text no watermarks`;
             } else {
-                // All coloring book styles — proven formula, only particulars change
-                samplePrompt = buildColoringBookPrompt(sceneDesc);
+                // Style-aware formula — modifier adapts to niche styleCategory
+                samplePrompt = buildColoringBookPrompt(sceneDesc, style);
             }
 
             const sampleUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(samplePrompt)}?model=flux`;
