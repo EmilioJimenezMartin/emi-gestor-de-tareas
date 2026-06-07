@@ -101,7 +101,6 @@ import { RadarResultsTable } from "@/components/extractor/RadarResultsTable";
 import { RadarInsightsPanel } from "@/components/extractor/RadarInsightsPanel";
 import { AppTabNav, type AppTab } from "@/components/tasks/apps/shared/app-tab-nav";
 import { NicheFilterBar, type NicheFilterStatus } from "@/components/tasks/apps/shared/niche-filter-bar";
-import { StatusGroupFilter, type StatusGroupOption } from "@/components/tasks/apps/shared/status-group-filter";
 import { SearchQueryBuilder, type SearchConfig, type SearchPlatform } from "@/components/search/SearchQueryBuilder";
 import { useSpeech } from "@/hooks/useSpeech";
 import { VoiceButton } from "@/components/ui/VoiceButton";
@@ -572,17 +571,13 @@ function NicheSelect({
     const display = selected ? (selected.nickname?.trim() || selected.name) : null;
 
     const filtered = niches.filter(n => {
-        if (n.status === "archived") return false;
         if (!query.trim()) return true;
         const q = query.toLowerCase();
         return (n.nickname?.toLowerCase().includes(q) || n.name.toLowerCase().includes(q));
     });
 
     const nicheColor = (n: NicheFE) =>
-        n.status === "archived" ? "text-neutral-700"
-        : n.phase === "published" ? "text-emerald-400"
-        : n.status === "active" ? "text-amber-400"
-        : "text-neutral-300";
+        n.phase === "published" ? "text-emerald-400" : "text-neutral-300";
 
     return (
         <div ref={ref} className={`relative ${className}`}>
@@ -1189,7 +1184,6 @@ export function KdpFactoryApp() {
     const [nicheFormPrompt, setNicheFormPrompt] = useState("");
     const [isSavingNiche, setIsSavingNiche] = useState(false);
     const [nicheDeleteId, setNicheDeleteId] = useState<string | null>(null);
-    const [nicheStatusFilter, setNicheStatusFilter] = useState<"all" | NicheStatus>("all");
     const [nichePage, setNichePage] = useState(0);
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban">("list");
     const [kanbanProductFilter, setKanbanProductFilter] = useState<"all" | "coloring-book" | "printable-poster" | "seamless-pattern">("all");
@@ -1249,7 +1243,7 @@ export function KdpFactoryApp() {
     const [customCatalogName, setCustomCatalogName] = useState("");
     const [isCreatingCustomCatalog, setIsCreatingCustomCatalog] = useState(false);
     // Feature: niche sort + filter + AI score
-    const [nicheSortBy, setNicheSortBy] = useState<"score" | "date" | "name" | "images">("score");
+    const [nicheSortBy, setNicheSortBy] = useState<"score" | "date" | "name" | "images" | "catalogs">("score");
     const [nicheSearch, setNicheSearch] = useState("");
     const [scoringNicheId, setScoringNicheId] = useState<string | null>(null);
     // Auto-Pilot config
@@ -4727,12 +4721,6 @@ export function KdpFactoryApp() {
         low: { label: "Baja", color: "text-rose-400 bg-rose-500/10 border-rose-500/20" },
         medium: { label: "Media", color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
         high: { label: "Alta", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
-    };
-    const STATUS_LABELS: Record<NicheStatus, { label: string; color: string }> = {
-        found: { label: "Encontrado", color: "text-sky-400 bg-sky-500/10 border-sky-500/20" },
-        research: { label: "Investigando", color: "text-blue-400 bg-blue-500/10 border-blue-500/20" },
-        active: { label: "Activo", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
-        archived: { label: "Archivado", color: "text-neutral-500 bg-neutral-500/10 border-neutral-500/20" },
     };
 
     // ── Pipeline helpers ──────────────────────────────────────────────────────
@@ -9269,9 +9257,6 @@ export function KdpFactoryApp() {
                             let base = iaCatalogs;
                             if (catalogNicheStatusFilter === "none") {
                                 base = base.filter(c => (c.nicheIds ?? []).length === 0);
-                            } else if (catalogNicheStatusFilter !== "all") {
-                                const matchIds = new Set(niches.filter(n => n.status === catalogNicheStatusFilter).map(n => n._id));
-                                base = base.filter(c => (c.nicheIds ?? []).some(nid => matchIds.has(nid)));
                             }
                             if (catalogNicheFilter) {
                                 base = base.filter(c => (c.nicheIds ?? []).includes(catalogNicheFilter));
@@ -10752,28 +10737,22 @@ export function KdpFactoryApp() {
                                 </button>
                             ))}
                         </div>
-                        <button
-                            onClick={() => setNicheSortBy(p => p === "score" ? "date" : p === "date" ? "name" : p === "name" ? "images" : "score")}
-                            title={`Ordenar por: ${nicheSortBy === "score" ? "Puntuación" : nicheSortBy === "date" ? "Fecha" : nicheSortBy === "name" ? "Nombre" : "Imágenes"}`}
-                            className="h-9 px-3 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs font-black uppercase tracking-widest text-neutral-400 hover:text-white hover:border-white/20 transition-all shrink-0 flex items-center gap-1.5 whitespace-nowrap">
-                            <span>{nicheSortBy === "score" ? "★ Score" : nicheSortBy === "date" ? "↓ Fecha" : nicheSortBy === "name" ? "A→Z" : "🖼 Imgs"}</span>
-                        </button>
                     </div>
 
-                    {/* ── Estado segmented filter ── */}
+                    {/* ── Ordenar por ── */}
                     <div className="flex p-1 bg-white/[0.03] border border-white/8 rounded-2xl gap-0.5 overflow-x-auto no-scrollbar">
-                        {(["all", "found", "research", "active", "archived"] as const).map(s => {
-                            const cnt = s === "all"
-                                ? niches.filter(n => (kanbanProductFilter === "all" || (n.productType ?? "coloring-book") === kanbanProductFilter) && (!nicheSearch.trim() || n.name.toLowerCase().includes(nicheSearch.toLowerCase()))).length
-                                : niches.filter(n => n.status === s && (kanbanProductFilter === "all" || (n.productType ?? "coloring-book") === kanbanProductFilter) && (!nicheSearch.trim() || n.name.toLowerCase().includes(nicheSearch.toLowerCase()))).length;
-                            const isAct = nicheStatusFilter === s;
-                            const dot: Record<string, string> = { found: "bg-sky-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
+                        {([
+                            { id: "score" as const, label: "★ Score" },
+                            { id: "date" as const, label: "↓ Reciente" },
+                            { id: "catalogs" as const, label: "📚 Catálogos" },
+                            { id: "images" as const, label: "🖼 Imágenes" },
+                            { id: "name" as const, label: "A→Z" },
+                        ]).map(opt => {
+                            const isAct = nicheSortBy === opt.id;
                             return (
-                                <button key={s} onClick={() => setNicheStatusFilter(s)}
+                                <button key={opt.id} onClick={() => setNicheSortBy(opt.id)}
                                     className={`flex-1 min-w-fit h-8 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1 px-2 ${isAct ? "bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                    {s !== "all" && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot[s]}`} />}
-                                    <span className="truncate">{s === "all" ? "Todos" : STATUS_LABELS[s].label}</span>
-                                    {cnt > 0 && <span className={`tabular-nums ${isAct ? "text-white/50" : "text-neutral-700"}`}>{cnt}</span>}
+                                    {opt.label}
                                 </button>
                             );
                         })}
@@ -10992,7 +10971,7 @@ export function KdpFactoryApp() {
                     })()}
 
                     {/* ── Empty state (list mode only) ── */}
-                    {!isLoadingNiches && nicheViewMode === "list" && niches.filter(n => (nicheStatusFilter === "all" || n.status === nicheStatusFilter) && (kanbanProductFilter === "all" || (n.productType ?? "coloring-book") === kanbanProductFilter) && (!nicheSearch.trim() || n.name.toLowerCase().includes(nicheSearch.toLowerCase()))).length === 0 && (
+                    {!isLoadingNiches && nicheViewMode === "list" && niches.filter(n => (kanbanProductFilter === "all" || (n.productType ?? "coloring-book") === kanbanProductFilter) && (!nicheSearch.trim() || n.name.toLowerCase().includes(nicheSearch.toLowerCase()))).length === 0 && (
                         <div className="flex flex-col items-center gap-4 py-16 opacity-40">
                             <div className="w-16 h-16 rounded-3xl bg-white/5 border border-white/8 flex items-center justify-center">
                                 <Target size={28} strokeWidth={1.2} className="text-neutral-600" />
@@ -11006,7 +10985,6 @@ export function KdpFactoryApp() {
                     {/* ── Niche cards grid (list mode) ── */}
                     {!isLoadingNiches && nicheViewMode === "list" && (() => {
                         const listNiches = niches
-                            .filter(n => nicheStatusFilter === "all" || n.status === nicheStatusFilter)
                             .filter(n => kanbanProductFilter === "all" || (n.productType ?? "coloring-book") === kanbanProductFilter)
                             .filter(n => !nicheSearch.trim() || n.name.toLowerCase().includes(nicheSearch.toLowerCase()))
                             .slice()
@@ -11014,6 +10992,11 @@ export function KdpFactoryApp() {
                                 if (nicheSortBy === "score") return nicheScore(b) - nicheScore(a);
                                 if (nicheSortBy === "date") return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
                                 if (nicheSortBy === "name") return a.name.localeCompare(b.name, "es");
+                                if (nicheSortBy === "catalogs") {
+                                    const ac = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).length;
+                                    const bc = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).length;
+                                    return bc - ac;
+                                }
                                 if (nicheSortBy === "images") {
                                     const ai = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).reduce((s, c) => s + c.images.length, 0);
                                     const bi = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).reduce((s, c) => s + c.images.length, 0);
@@ -11031,15 +11014,15 @@ export function KdpFactoryApp() {
                             {pagedNiches.map(niche => {
                                     const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
                                     const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
-                                    const statusDotMap: Record<NicheStatus, string> = { found: "bg-sky-400", research: "bg-blue-400", active: "bg-emerald-400", archived: "bg-neutral-600" };
-                                    const statusGradient: Record<NicheStatus, string> = { found: "from-sky-500 via-sky-400 to-cyan-400", research: "from-blue-500 via-blue-400 to-sky-400", active: "from-emerald-500 via-emerald-400 to-cyan-400", archived: "from-neutral-600 via-neutral-500 to-neutral-700" };
-                                    const statusHoverBorder: Record<NicheStatus, string> = { found: "hover:border-sky-500/25", research: "hover:border-blue-500/25", active: "hover:border-emerald-500/25", archived: "hover:border-neutral-500/20" };
-                                    const statusHoverShadow: Record<NicheStatus, string> = { found: "hover:shadow-[0_0_30px_rgba(14,165,233,0.08)]", research: "hover:shadow-[0_0_30px_rgba(59,130,246,0.08)]", active: "hover:shadow-[0_0_30px_rgba(16,185,129,0.08)]", archived: "" };
-                                    const statusBlob: Record<NicheStatus, string> = { found: "bg-sky-500/8", research: "bg-blue-500/8", active: "bg-emerald-500/8", archived: "bg-neutral-500/5" };
+                                    const cardPhase = (niche.phase === "pdf" ? "seo" : niche.phase) ?? "niche";
+                                    const phaseGradient: Record<string, string> = { niche: "from-sky-500 via-sky-400 to-cyan-400", catalog: "from-blue-500 via-blue-400 to-sky-400", libro: "from-indigo-500 via-indigo-400 to-blue-400", seo: "from-violet-500 via-violet-400 to-indigo-400", cover: "from-fuchsia-500 via-fuchsia-400 to-violet-400", published: "from-emerald-500 via-emerald-400 to-cyan-400" };
+                                    const phaseHoverBorder: Record<string, string> = { niche: "hover:border-sky-500/25", catalog: "hover:border-blue-500/25", libro: "hover:border-indigo-500/25", seo: "hover:border-violet-500/25", cover: "hover:border-fuchsia-500/25", published: "hover:border-emerald-500/25" };
+                                    const phaseHoverShadow: Record<string, string> = { niche: "hover:shadow-[0_0_30px_rgba(14,165,233,0.08)]", catalog: "hover:shadow-[0_0_30px_rgba(59,130,246,0.08)]", libro: "hover:shadow-[0_0_30px_rgba(99,102,241,0.08)]", seo: "hover:shadow-[0_0_30px_rgba(139,92,246,0.08)]", cover: "hover:shadow-[0_0_30px_rgba(217,70,239,0.08)]", published: "hover:shadow-[0_0_30px_rgba(16,185,129,0.08)]" };
+                                    const phaseBlob: Record<string, string> = { niche: "bg-sky-500/8", catalog: "bg-blue-500/8", libro: "bg-indigo-500/8", seo: "bg-violet-500/8", cover: "bg-fuchsia-500/8", published: "bg-emerald-500/8" };
                                     return (
-                                        <div key={niche._id} className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] ${statusHoverBorder[niche.status]} ${statusHoverShadow[niche.status]} hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden`}>
-                                            <div className={`absolute -right-4 -top-4 w-16 h-16 ${statusBlob[niche.status]} blur-2xl rounded-full transition-all duration-500 group-hover:scale-[2] group-hover:opacity-100 opacity-60`} />
-                                            <div className={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${statusGradient[niche.status]} opacity-40 group-hover:opacity-100 transition-all duration-300`} />
+                                        <div key={niche._id} className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] ${phaseHoverBorder[cardPhase] ?? "hover:border-sky-500/25"} ${phaseHoverShadow[cardPhase] ?? ""} hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden`}>
+                                            <div className={`absolute -right-4 -top-4 w-16 h-16 ${phaseBlob[cardPhase] ?? "bg-sky-500/8"} blur-2xl rounded-full transition-all duration-500 group-hover:scale-[2] group-hover:opacity-100 opacity-60`} />
+                                            <div className={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${phaseGradient[cardPhase] ?? phaseGradient["niche"]} opacity-40 group-hover:opacity-100 transition-all duration-300`} />
                                             <div className="p-4 pl-5 sm:p-5 sm:pl-6 space-y-4 relative">
 
                                                 {/* ─ Card header ─ */}
@@ -11146,29 +11129,6 @@ export function KdpFactoryApp() {
                                                         )}
                                                     </div>
                                                 )}
-
-                                                {/* ─ Status chips ─ */}
-                                                <div className="flex gap-1.5 flex-wrap">
-                                                    {(["found", "research", "active", "archived"] as NicheStatus[]).map(s => {
-                                                        const isActive = niche.status === s;
-                                                        return (
-                                                            <button key={s}
-                                                                onClick={() => {
-                                                                    if (isActive) return;
-                                                                    fetch(`${API_BASE_URL}/niches/${niche._id}`, {
-                                                                        method: "PATCH",
-                                                                        headers: { "Content-Type": "application/json" },
-                                                                        body: JSON.stringify({ status: s }),
-                                                                    }).catch(() => { });
-                                                                    setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, status: s } : n));
-                                                                }}
-                                                                className={`flex items-center gap-1 px-2.5 h-6 rounded-lg border text-xs font-black uppercase tracking-widest transition-all ${isActive ? STATUS_LABELS[s].color : "border-white/8 bg-transparent text-neutral-700 hover:text-neutral-400 hover:border-white/20"}`}>
-                                                                {isActive && <span className={`w-1.5 h-1.5 rounded-full ${statusDotMap[s]}`} />}
-                                                                {STATUS_LABELS[s].label}
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
 
                                                 {/* ─ Phase pipeline ─ */}
                                                 {(() => {
@@ -13911,18 +13871,6 @@ export function KdpFactoryApp() {
                                 <textarea value={nicheFormDesc} onChange={e => setNicheFormDesc(e.target.value)} rows={2} placeholder="Describe brevemente el nicho…"
                                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all resize-none" />
                             </div>
-                            {/* Status */}
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Estado</label>
-                                <div className="flex gap-2 flex-wrap">
-                                    {(["found", "research", "active", "archived"] as const).map(s => (
-                                        <button key={s} onClick={() => setNicheFormStatus(s)}
-                                            className={`flex-1 h-7 rounded-lg border text-[10px] font-black uppercase tracking-wide transition-all ${nicheFormStatus === s ? `${STATUS_LABELS[s].color} ring-1 ring-current/20` : "border-white/10 bg-white/5 text-neutral-600 hover:text-white"}`}>
-                                            {STATUS_LABELS[s].label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
                             {/* Product Type */}
                             <div className="space-y-1.5">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Tipo de producto</label>
@@ -14018,8 +13966,8 @@ export function KdpFactoryApp() {
                                     className="w-full h-10 bg-white/5 border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all" />
                                 {nicheFormTags.trim() && (
                                     <div className="flex flex-wrap gap-1 pt-1">
-                                        {nicheFormTags.split(",").map(t => t.trim()).filter(Boolean).map(tag => (
-                                            <span key={tag} className="px-2 py-0.5 rounded-md bg-white/5 border border-white/8 text-sm text-neutral-400">{tag}</span>
+                                        {nicheFormTags.split(",").map(t => t.trim()).filter(Boolean).map((tag, i) => (
+                                            <span key={`${tag}-${i}`} className="px-2 py-0.5 rounded-md bg-white/5 border border-white/8 text-sm text-neutral-400">{tag}</span>
                                         ))}
                                     </div>
                                 )}
@@ -15397,15 +15345,7 @@ export function KdpFactoryApp() {
                                                     className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50 resize-none" />
                                                 <input value={nicheFormTags} onChange={e => setNicheFormTags(e.target.value)} placeholder="Tags separados por comas"
                                                     className="w-full h-9 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
-                                                <div className="flex gap-1.5 flex-wrap">
-                                                    {(["found", "research", "active", "archived"] as NicheStatus[]).map(s => (
-                                                        <button key={s} onClick={() => setNicheFormStatus(s)}
-                                                            className={`h-7 px-3 rounded-lg border text-sm font-black uppercase tracking-widest transition-all ${nicheFormStatus === s ? STATUS_LABELS[s].color : "border-white/10 bg-white/[0.02] text-neutral-600 hover:text-neutral-400"}`}>
-                                                            {STATUS_LABELS[s].label}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                                <textarea value={nicheFormNotes} onChange={e => setNicheFormNotes(e.target.value)} rows={2} placeholder="Notas internas…"
+                                                                <textarea value={nicheFormNotes} onChange={e => setNicheFormNotes(e.target.value)} rows={2} placeholder="Notas internas…"
                                                     className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50 resize-none" />
                                                 <button onClick={() => void saveNiche()} disabled={isSavingNiche || !nicheFormName.trim()}
                                                     className="h-9 px-5 rounded-xl bg-violet-500/20 border border-violet-500/30 text-sm font-black text-violet-300 hover:bg-violet-500/30 transition-all flex items-center gap-2 disabled:opacity-40">

@@ -372,7 +372,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 if (!alreadyHasFormula) {
                     finalPrompt = buildColoringBookPrompt(finalPrompt, catalogStyle);
                 }
-                const coloringNegative = "gray, grey, gray background, grey background, gray fill, grey fill, gray tones, off-white, cream, beige, shading, shadows, gradients, color, colors, sepia, tones, textures, crosshatching, stippling, watercolor, painterly, blur, glow, soft edges, background pattern, noise, grain, vignette, watermark, signature, logo, frame, border decoration";
+                const coloringNegative = "gray, grey, gray background, grey background, gray fill, grey fill, gray tones, off-white, cream, beige, shading, shadow, shadows, soft shadow, drop shadow, inner shadow, cast shadow, gradient, gradients, color, colors, sepia, tones, halftone, texture, textures, rough texture, paper texture, canvas texture, crosshatching, stippling, hatching, watercolor, painterly, painting, illustrated, blur, blurry, soft focus, glow, bloom, soft edges, feathered edges, background pattern, noise, film grain, grain, vignette, fog, mist, ambient occlusion, depth of field, bokeh, watermark, signature, logo, frame, border decoration, 3d render, 3d, realistic, photo, photograph";
                 finalNegativePrompt = userNegative ? `${coloringNegative}, ${userNegative}` : coloringNegative;
             } else if (productType === "printable-poster") {
                 finalPrompt += ". Style: high quality, high resolution, vibrant colors, print-ready, professional poster design, sharp fine details, suitable for large format printing";
@@ -459,24 +459,19 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 throw new Error(`Calidad insuficiente (score ${quality.score}): ${quality.reason}`);
             }
 
-            // Force pure white background for coloring books (grey → #FFFFFF)
+            // Binarize coloring books — eliminate all grey tones, shadows, textures
+            // threshold(128): pixels ≥ 128 → pure white (background, grays, soft shadows)
+            //                 pixels  < 128 → pure black (outlines and their halos)
             if ((catalog.productType ?? "coloring-book") === "coloring-book") {
                 try {
-                    // Convert to greyscale (strips all colour) then push near-white to pure white
-                    const { data: px, info: pxi } = await sharp(imageBuffer)
+                    imageBuffer = await sharp(imageBuffer)
                         .flatten({ background: { r: 255, g: 255, b: 255 } })
-                        .removeAlpha()
                         .greyscale()
-                        .raw()
-                        .toBuffer({ resolveWithObject: true });
-                    for (let p = 0; p < px.length; p++) {
-                        if (px[p] > 215) px[p] = 255;   // near-white → pure white
-                    }
-                    imageBuffer = await sharp(px, {
-                        raw: { width: pxi.width, height: pxi.height, channels: 1 },
-                    }).png().toBuffer();
+                        .threshold(128)
+                        .png()
+                        .toBuffer();
                 } catch (e: any) {
-                    console.warn(`${tag} Coloring book conversion failed (using original): ${e.message}`);
+                    console.warn(`${tag} Coloring book binarization failed (using original): ${e.message}`);
                 }
             }
 

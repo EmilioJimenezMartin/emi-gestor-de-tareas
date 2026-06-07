@@ -40,6 +40,7 @@ import { Badge } from "@/components/ui/badge";
 import { createApiSocket } from "@/lib/socket";
 import { toast } from "sonner";
 import { KdpTabBar } from "@/components/ui/kdp-tab-bar";
+import { speakBrowser } from "@/hooks/useSpeech";
 
 interface LogEntry { t: number; level: "info" | "warn" | "error"; msg: string; }
 
@@ -358,20 +359,34 @@ export default function AjustesPage() {
 
     const testVoice = async () => {
         setVoiceTesting(true);
+        const testText = "Hola, la voz está funcionando correctamente.";
         try {
-            const res = await fetch(`${apiUrl}/voice/tts`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: "Hola, la voz está funcionando correctamente." }),
-            });
-            if (!res.ok) { toast.error("TTS no disponible"); return; }
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const audio = new Audio(url);
-            audio.onended = () => URL.revokeObjectURL(url);
-            await audio.play();
-        } catch {
-            toast.error("Error probando la voz");
+            // Try server TTS first
+            let serverOk = false;
+            try {
+                const res = await fetch(`${apiUrl}/voice/tts`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text: testText }),
+                    signal: AbortSignal.timeout(5000),
+                });
+                if (res.ok) {
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const audio = new Audio(url);
+                    audio.onended = () => URL.revokeObjectURL(url);
+                    await audio.play();
+                    serverOk = true;
+                }
+            } catch { /* fall through */ }
+            // Fallback: browser's Web Speech API (works offline, no API needed)
+            if (!serverOk) {
+                if (typeof window !== "undefined" && window.speechSynthesis) {
+                    speakBrowser(testText);
+                } else {
+                    toast.error("TTS no disponible en este navegador");
+                }
+            }
         } finally {
             setVoiceTesting(false);
         }
