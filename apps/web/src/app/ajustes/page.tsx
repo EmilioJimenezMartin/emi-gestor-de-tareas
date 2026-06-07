@@ -110,6 +110,9 @@ export default function AjustesPage() {
     const [qualityFilterEnabled, setQualityFilterEnabled] = useState(false);
     const [qualityMinWhite, setQualityMinWhite] = useState("45");
 
+    // Radar dedup threshold
+    const [dedupThreshold, setDedupThreshold] = useState("60");
+
     // Voice TTS
     const [voiceEnabled, setVoiceEnabled] = useState(() => {
         if (typeof window === "undefined") return true;
@@ -192,6 +195,7 @@ export default function AjustesPage() {
                 if (map.has("TELEGRAM_CHAT_ID")) setTelegramChatId(map.get("TELEGRAM_CHAT_ID"));
                 if (map.has("IMAGE_QUALITY_FILTER_ENABLED")) setQualityFilterEnabled(map.get("IMAGE_QUALITY_FILTER_ENABLED") === "1");
                 if (map.has("IMAGE_QUALITY_MIN_WHITE_RATIO")) setQualityMinWhite(String(Math.round(parseFloat(map.get("IMAGE_QUALITY_MIN_WHITE_RATIO")) * 100)));
+                if (map.has("RADAR_DEDUP_THRESHOLD")) setDedupThreshold(String(Math.round(parseFloat(map.get("RADAR_DEDUP_THRESHOLD")) * 100)));
                 if (map.has("GUMROAD_ENABLED")) setGumroadEnabled(map.get("GUMROAD_ENABLED") === "1");
                 if (map.has("GUMROAD_ACCESS_TOKEN")) setGumroadToken(map.get("GUMROAD_ACCESS_TOKEN"));
                 if (map.has("GUMROAD_DEFAULT_PRICE")) setGumroadPrice(map.get("GUMROAD_DEFAULT_PRICE"));
@@ -286,6 +290,7 @@ export default function AjustesPage() {
                 { key: "TELEGRAM_CHAT_ID", value: telegramChatId },
                 { key: "IMAGE_QUALITY_FILTER_ENABLED", value: qualityFilterEnabled ? "1" : "0" },
                 { key: "IMAGE_QUALITY_MIN_WHITE_RATIO", value: String(parseFloat(qualityMinWhite) / 100 || 0.45) },
+                { key: "RADAR_DEDUP_THRESHOLD", value: String(parseFloat(dedupThreshold) / 100 || 0.6) },
                 { key: "GUMROAD_ENABLED", value: gumroadEnabled ? "1" : "0" },
                 { key: "GUMROAD_ACCESS_TOKEN", value: gumroadToken },
                 { key: "GUMROAD_DEFAULT_PRICE", value: gumroadPrice },
@@ -2137,6 +2142,36 @@ export default function AjustesPage() {
                                 <span className="text-lg font-black text-white w-12 text-right">{qualityMinWhite}%</span>
                             </div>
                             <p className="text-[10px] text-neutral-600">Valor recomendado: 45%. Una página de colorear bien generada tiene 60–80% de blanco. Por debajo de 45% la imagen suele estar quemada o mal generada.</p>
+                        </div>
+                    </div>
+                </section>
+
+                {/* ── Radar — umbral de deduplicación ──────────────────────── */}
+                <section className="space-y-6">
+                    <div className="flex flex-col gap-1">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Radar de Nichos</h2>
+                        <p className="text-sm text-neutral-500">Ajusta la sensibilidad del filtro que evita nichos duplicados en cada escaneo.</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-6 space-y-4">
+                        <div>
+                            <p className="text-sm font-bold text-white">Umbral de similitud</p>
+                            <p className="text-xs text-neutral-500 mt-0.5">Si dos nichos comparten más de este % de palabras clave, se considera duplicado y se filtra.</p>
+                        </div>
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-4">
+                                <input
+                                    type="range" min="40" max="90" step="5"
+                                    value={dedupThreshold}
+                                    onChange={e => setDedupThreshold(e.target.value)}
+                                    className="flex-1 accent-violet-500"
+                                />
+                                <span className="text-lg font-black text-white w-12 text-right">{dedupThreshold}%</span>
+                            </div>
+                            <div className="flex justify-between text-[10px] text-neutral-600">
+                                <span>40% — Filtra más (más estricto)</span>
+                                <span className="text-violet-400 font-black">60% recomendado</span>
+                                <span>90% — Filtra menos (más permisivo)</span>
+                            </div>
                         </div>
                     </div>
                 </section>

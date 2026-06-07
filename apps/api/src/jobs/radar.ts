@@ -114,24 +114,29 @@ async function runWithRetry<T>(fn: () => Promise<T>, onWait: (secs: number, atte
 
 const LISTING_MODES = new Set(["etsy-niches", "amazon-niches", "trends-niches", "opportunity", "amazon-movers", "reddit-niches", "cross-niche", "gap-finder", "pinterest-niches", "gumroad-niches"]);
 
-function buildRadarSystemPrompt(mode: string, nicheName?: string, context?: string): string {
+function buildRadarSystemPrompt(mode: string, nicheName?: string, context?: string, existingNiches: string[] = []): string {
+    const avoidBlock = existingNiches.length > 0
+        ? `\n\nNICHOS YA EN EL SISTEMA — NO sugerir estos ni sub-variaciones muy similares:\n${existingNiches.slice(0, 40).map(n => `• ${n}`).join("\n")}`
+        : "";
+
     const isListingMode = LISTING_MODES.has(mode);
     const schemaHint = isListingMode
         ? `{"nichos_detectados":[{"titulo_producto":"string","precio":"string","bestseller":true/false,"personas_carrito":number,"total_reseñas":number,"sub_nicho_estimado":"string","url_producto":"string|undefined"}]}`
         : `{"niche":"string","competition":"low|medium|high","demand":"low|medium|high","trend":"rising|stable|declining","topKeywords":["string"],"priceRange":"string","topCompetitors":["string"],"entryOpportunity":"string","buyerProfile":"string","summary":"string"}`;
 
-    if (mode === "amazon-niches" || mode === "amazon-movers") return `${mode === "amazon-movers" ? MOVERS_SYSTEM_PROMPT : AMAZON_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
-    if (mode === "etsy-niches") return `${ETSY_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
-    if (mode === "pinterest-niches") return `${ETSY_SYSTEM_PROMPT}\n\nEstás analizando Pinterest Ideas. Extrae productos visuales, tendencias de diseño y estilos populares que sean aptos para KDP (libros para colorear, printables, wall art). Responde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
-    if (mode === "gumroad-niches") return `${GUMROAD_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
-    if (mode === "opportunity") return `${OPPORTUNITY_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
-    if (mode === "trends-niches") return `${TRENDS_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
-    if (mode === "reddit-niches") return `${REDDIT_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
-    if (mode === "cross-niche") return `${CROSS_NICHE_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "amazon-niches" || mode === "amazon-movers") return `${mode === "amazon-movers" ? MOVERS_SYSTEM_PROMPT : AMAZON_SYSTEM_PROMPT}${avoidBlock}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "etsy-niches") return `${ETSY_SYSTEM_PROMPT}${avoidBlock}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "pinterest-niches") return `${ETSY_SYSTEM_PROMPT}${avoidBlock}\n\nEstás analizando Pinterest Ideas. Extrae productos visuales, tendencias de diseño y estilos populares que sean aptos para KDP (libros para colorear, printables, wall art). Responde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "gumroad-niches") return `${GUMROAD_SYSTEM_PROMPT}${avoidBlock}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "opportunity") return `${OPPORTUNITY_SYSTEM_PROMPT}${avoidBlock}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "trends-niches") return `${TRENDS_SYSTEM_PROMPT}${avoidBlock}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "reddit-niches") return `${REDDIT_SYSTEM_PROMPT}${avoidBlock}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
+    if (mode === "cross-niche") return `${CROSS_NICHE_SYSTEM_PROMPT}${avoidBlock}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     if (mode === "gap-finder") return `${GAP_FINDER_SYSTEM_PROMPT}\n\nResponde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`;
     return [
         nicheName ? `Niche objetivo: "${nicheName}".` : "",
         context ? `Contexto adicional: ${context}.` : "",
+        avoidBlock,
         `Analiza la página de marketplace. Responde ÚNICAMENTE con JSON válido sin markdown:\n${schemaHint}`,
     ].filter(Boolean).join(" ");
 }
@@ -381,6 +386,45 @@ async function readNichesForGapFinder(): Promise<string> {
     return `Catálogo actual (${niches.length} nichos):\n\n` + lines.join("\n");
 }
 
+async function getExistingNicheNames(): Promise<string[]> {
+    try {
+        const { Niche } = await import("../models/niche.js");
+        const niches = await Niche.find({ status: { $nin: ["discarded", "archived"] } })
+            .select("name")
+            .sort({ score: -1, createdAt: -1 })
+            .limit(60)
+            .lean();
+        return (niches as any[]).map((n: any) => String(n.name)).filter(Boolean);
+    } catch { return []; }
+}
+
+async function getDedupThreshold(): Promise<number> {
+    try {
+        const { Settings } = await import("../models/settings.js");
+        const row = await Settings.findOne({ key: "RADAR_DEDUP_THRESHOLD" }).lean() as any;
+        const val = parseFloat(row?.value ?? "");
+        return isNaN(val) || val < 0 || val > 1 ? 0.6 : val;
+    } catch { return 0.6; }
+}
+
+function isTooSimilar(a: string, b: string, threshold = 0.6): boolean {
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").trim();
+    const wordsA = norm(a).split(/\s+/).filter(w => w.length > 3);
+    const wordsB = new Set(norm(b).split(/\s+/).filter(w => w.length > 3));
+    if (!wordsA.length || !wordsB.size) return false;
+    const overlap = wordsA.filter(w => wordsB.has(w)).length;
+    return overlap / Math.min(wordsA.length, wordsB.size) >= threshold;
+}
+
+function dedupeAgainstExisting(detected: any[], existingNames: string[], threshold = 0.6): { kept: any[]; filtered: number } {
+    if (!existingNames.length) return { kept: detected, filtered: 0 };
+    const kept = detected.filter(n => {
+        const title = String(n.titulo_producto ?? n.sub_nicho_estimado ?? "").trim();
+        return !existingNames.some(ex => isTooSimilar(title, ex, threshold));
+    });
+    return { kept, filtered: detected.length - kept.length };
+}
+
 export function defineRadarJob(agenda: Agenda, io: any) {
     agenda.define(RADAR_JOB_NAME, async (job: Job) => {
         const { jobId } = (job.attrs.data ?? {}) as { jobId: string };
@@ -390,6 +434,12 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
         const { url, mode, nicheName, context, geminiModel = "gemini-2.0-flash", storageKey = "RADAR_ETSY_RESULT" } = jobDoc as any;
         let browser: any = null;
+
+        // Pre-load existing niche names + dedup threshold for novelty filtering
+        const [existingNicheNames, dedupThreshold] = await Promise.all([
+            getExistingNicheNames(),
+            getDedupThreshold(),
+        ]);
 
         try {
             // ── Google Trends: skip Playwright entirely — direct HTTP avoids 429 ───
@@ -406,10 +456,16 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 pushLog(jobDoc, io, "info", `[AI] Analizando tendencias con ${activeProvider}...`);
                 await jobDoc.save();
 
-                const systemPrompt = buildRadarSystemPrompt(mode, nicheName, context);
+                const systemPrompt = buildRadarSystemPrompt(mode, nicheName, context, existingNicheNames);
                 const data = await analyzePageForRadar(trendsText, systemPrompt, {
                     onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
                 });
+
+                if (data?.nichos_detectados?.length) {
+                    const { kept, filtered } = dedupeAgainstExisting(data.nichos_detectados, existingNicheNames, dedupThreshold);
+                    if (filtered > 0) pushLog(jobDoc, io, "info", `[FILTER] ${filtered} filtrado${filtered !== 1 ? "s" : ""} (ya existen en el sistema)`);
+                    data.nichos_detectados = kept;
+                }
 
                 const count = (data?.nichos_detectados ?? []).length;
                 pushLog(jobDoc, io, "success", `[AI] ✓ ${count} tendencias detectadas`);
@@ -530,22 +586,28 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
                 // Step 1: Ask AI for niche terms to search
                 let nicheTerms: string[] = explicitQuery ? [explicitQuery] : [];
+                let termsAreAiGenerated = false;
                 if (!explicitQuery) {
                     try {
                         pushLog(jobDoc, io, "info", `[AI] Generando términos de nicho para "${categoryName}"...`);
                         await jobDoc.save();
+                        const existingList = existingNicheNames.length > 0
+                            ? ` Ya tenemos en el sistema: ${existingNicheNames.slice(0, 25).map(n => `"${n}"`).join(", ")}. Sugiere términos que lleven a micro-nichos DISTINTOS y sin explorar, no variaciones de los anteriores.`
+                            : "";
                         const raw = await generateTextWithLLM(
-                            `Eres un experto en productos digitales de Gumroad orientados a KDP y Etsy. Sugiere 7 términos de búsqueda para encontrar micro-nichos de coloring books, printables, ilustraciones, patrones seamless o wall art DENTRO de la categoría "${categoryName}". Los términos deben ser sub-temas visuales específicos de esa categoría (estilos, temáticas, audiencias). NUNCA sugieras términos de otras categorías (programación, negocios, tecnología, etc.). Responde SOLO con un array JSON de 7 strings, sin markdown. Ejemplo para "drawing-and-painting": ["anime","mandala","botanical","kawaii","geometric","celestial","retro"]`,
-                            `Categoría Gumroad: "${categoryName}". Dame 7 sub-nichos creativos DENTRO de esa categoría, aptos para libros de colorear o printables.`
+                            `Eres un experto en productos digitales de Gumroad orientados a KDP y Etsy. Sugiere 7 términos de búsqueda para encontrar micro-nichos de coloring books, printables, ilustraciones, patrones seamless o wall art DENTRO de la categoría "${categoryName}". Los términos deben ser sub-temas visuales específicos de esa categoría (estilos, temáticas, audiencias). NUNCA sugieras términos de otras categorías (programación, negocios, tecnología, etc.).${existingList} Responde SOLO con un array JSON de 7 strings, sin markdown. Ejemplo para "drawing-and-painting": ["anime","mandala","botanical","kawaii","geometric","celestial","retro"]`,
+                            `Categoría Gumroad: "${categoryName}". Dame 7 sub-nichos creativos DENTRO de esa categoría, aptos para libros de colorear o printables. Busca ángulos frescos y sin explorar.`
                         );
                         const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
                         if (Array.isArray(parsed) && parsed.length > 0) {
                             nicheTerms = parsed.map((t: any) => String(t).trim()).filter(Boolean).slice(0, 8);
+                            termsAreAiGenerated = true;
                             pushLog(jobDoc, io, "success", `[AI] Nichos sugeridos: ${nicheTerms.join(", ")}`);
                         }
                     } catch (e: any) {
                         pushLog(jobDoc, io, "warning", `[AI] Error generando nichos — usando términos por defecto`);
                         nicheTerms = ["anime", "mandala", "botanical", "kawaii", "geometric", "celestial", "retro"];
+                        termsAreAiGenerated = true;
                     }
                 }
 
@@ -564,13 +626,15 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 let fetchSource = "";
 
                 for (const niche of nicheTerms) {
-                    const nicheUrl = `${baseGumroadUrl}&query=${encodeURIComponent(niche)}`;
+                    // When terms are AI-generated, append "coloring book" so Gumroad returns coloring books specifically
+                    const searchQuery = termsAreAiGenerated ? `${niche} coloring book` : niche;
+                    const nicheUrl = `${baseGumroadUrl}&query=${encodeURIComponent(searchQuery)}`;
                     let nicheText = "";
 
                     // Try Jina AI reader first (bypasses Cloudflare)
                     try {
                         const jinaUrl = `https://r.jina.ai/${nicheUrl}`;
-                        pushLog(jobDoc, io, "info", `[FETCH] Jina → "${niche}"...`);
+                        pushLog(jobDoc, io, "info", `[FETCH] Jina → "${searchQuery}"...`);
                         const res = await fetch(jinaUrl, {
                             headers: { "Accept": "text/plain,text/markdown,*/*", "User-Agent": "Mozilla/5.0 (compatible; RadarBot/1.0)" },
                             signal: AbortSignal.timeout(25_000),
@@ -587,7 +651,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                     // Fallback: Bing site:gumroad.com
                     if (!nicheText) {
                         try {
-                            const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(`site:gumroad.com ${categoryName} ${niche}`)}&count=10&setlang=en`;
+                            const bingUrl = `https://www.bing.com/search?q=${encodeURIComponent(`site:gumroad.com ${categoryName} ${searchQuery}`)}&count=10&setlang=en`;
                             const res = await fetch(bingUrl, {
                                 headers: {
                                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -645,10 +709,16 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 pushLog(jobDoc, io, "info", `[AI] Analizando resultados Gumroad con IA...`);
                 await jobDoc.save();
 
-                const systemPrompt = buildRadarSystemPrompt(mode);
+                const systemPrompt = buildRadarSystemPrompt(mode, undefined, undefined, existingNicheNames);
                 const data = await analyzePageForRadar(gumroadText, systemPrompt, {
                     onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
                 });
+
+                if (data?.nichos_detectados?.length) {
+                    const { kept, filtered } = dedupeAgainstExisting(data.nichos_detectados, existingNicheNames, dedupThreshold);
+                    if (filtered > 0) pushLog(jobDoc, io, "info", `[FILTER] ${filtered} filtrado${filtered !== 1 ? "s" : ""} (ya existen en el sistema)`);
+                    data.nichos_detectados = kept;
+                }
 
                 const count = (data?.nichos_detectados ?? []).length;
                 pushLog(jobDoc, io, "success", `[AI] ✓ ${count} productos detectados en Gumroad`);
@@ -703,10 +773,16 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 pushLog(jobDoc, io, "info", `[AI] Analizando tendencias de Reddit con IA...`);
                 await jobDoc.save();
 
-                const systemPrompt = buildRadarSystemPrompt(mode);
+                const systemPrompt = buildRadarSystemPrompt(mode, undefined, undefined, existingNicheNames);
                 const data = await analyzePageForRadar(redditText, systemPrompt, {
                     onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
                 });
+
+                if (data?.nichos_detectados?.length) {
+                    const { kept, filtered } = dedupeAgainstExisting(data.nichos_detectados, existingNicheNames, dedupThreshold);
+                    if (filtered > 0) pushLog(jobDoc, io, "info", `[FILTER] ${filtered} filtrado${filtered !== 1 ? "s" : ""} (ya existen en el sistema)`);
+                    data.nichos_detectados = kept;
+                }
 
                 const count = (data?.nichos_detectados ?? []).length;
                 pushLog(jobDoc, io, "success", `[AI] ✓ ${count} nichos detectados en Reddit`);
@@ -838,10 +914,16 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 pushLog(jobDoc, io, "info", `[AI] Detectando cross-nichos KDP...`);
                 await jobDoc.save();
 
-                const systemPrompt = buildRadarSystemPrompt(mode);
+                const systemPrompt = buildRadarSystemPrompt(mode, undefined, undefined, existingNicheNames);
                 const data = await analyzePageForRadar(trendsText, systemPrompt, {
                     onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
                 });
+
+                if (data?.nichos_detectados?.length) {
+                    const { kept, filtered } = dedupeAgainstExisting(data.nichos_detectados, existingNicheNames, dedupThreshold);
+                    if (filtered > 0) pushLog(jobDoc, io, "info", `[FILTER] ${filtered} filtrado${filtered !== 1 ? "s" : ""} (ya existen en el sistema)`);
+                    data.nichos_detectados = kept;
+                }
 
                 const count = (data?.nichos_detectados ?? []).length;
                 pushLog(jobDoc, io, "success", `[AI] ✓ ${count} cross-nichos detectados`);
@@ -967,13 +1049,19 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 await browser.close();
                 browser = null;
 
-                const pSystemPrompt = buildRadarSystemPrompt(mode, nicheName, context);
+                const pSystemPrompt = buildRadarSystemPrompt(mode, nicheName, context, existingNicheNames);
                 pushLog(jobDoc, io, "info", `[AI] Analizando Pinterest con IA...`);
                 await jobDoc.save();
 
                 const pData = await analyzePageForRadar(pPageText, pSystemPrompt, {
                     onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
                 });
+
+                if (pData?.nichos_detectados?.length) {
+                    const { kept, filtered } = dedupeAgainstExisting(pData.nichos_detectados, existingNicheNames, dedupThreshold);
+                    if (filtered > 0) pushLog(jobDoc, io, "info", `[FILTER] ${filtered} filtrado${filtered !== 1 ? "s" : ""} (ya existen en el sistema)`);
+                    pData.nichos_detectados = kept;
+                }
 
                 const pCount = (pData?.nichos_detectados ?? []).length;
                 pushLog(jobDoc, io, "success", `[AI] ✓ ${pCount} nichos detectados en Pinterest`);
@@ -1199,7 +1287,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
                 try {
                     if (LISTING_MODES.has(mode)) {
-                        const systemPrompt = buildRadarSystemPrompt(mode);
+                        const systemPrompt = buildRadarSystemPrompt(mode, undefined, undefined, existingNicheNames);
                         const output = Output.object(EtsyNicheResultSchema as any);
                         const result = await runWithRetry(
                             () => scraper.run(page, output, { format: "markdown", system: systemPrompt }),
@@ -1211,7 +1299,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                         data = result.data;
                     } else {
                         const output = Output.object(NicheInsightSchema as any);
-                        const systemPrompt = buildRadarSystemPrompt(mode, nicheName, context);
+                        const systemPrompt = buildRadarSystemPrompt(mode, nicheName, context, existingNicheNames);
                         const result = await runWithRetry(
                             () => scraper.run(page, output, { format: "markdown", system: systemPrompt }),
                             (secs, attempt) => {
@@ -1232,7 +1320,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                     pushLog(jobDoc, io, "warning", `[QUOTA] Cuota diaria de Gemini agotada → buscando siguiente provider...`);
                     await jobDoc.save();
                     // Fall through to text-based chain, skip google since it's exhausted
-                    const systemPrompt = buildRadarSystemPrompt(mode, nicheName, context);
+                    const systemPrompt = buildRadarSystemPrompt(mode, nicheName, context, existingNicheNames);
                     data = await analyzePageForRadar(pageText, systemPrompt, {
                         skipProviders: ["google"],
                         onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
@@ -1244,11 +1332,17 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                     pushLog(jobDoc, io, "warning", `[INFO] HuggingFace puede tardar entre 30-90s. Por favor, espera...`);
                 }
                 await jobDoc.save();
-                const systemPrompt = buildRadarSystemPrompt(mode, nicheName, context);
+                const systemPrompt = buildRadarSystemPrompt(mode, nicheName, context, existingNicheNames);
                 pushLog(jobDoc, io, "info", `[AI] Analizando con ${activeProvider} · modo: ${mode}...`);
                 data = await analyzePageForRadar(pageText, systemPrompt, {
                     onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
                 });
+            }
+
+            if (data?.nichos_detectados?.length && mode !== "gap-finder") {
+                const { kept, filtered } = dedupeAgainstExisting(data.nichos_detectados, existingNicheNames, dedupThreshold);
+                if (filtered > 0) pushLog(jobDoc, io, "info", `[FILTER] ${filtered} filtrado${filtered !== 1 ? "s" : ""} (ya existen en el sistema)`);
+                data.nichos_detectados = kept;
             }
 
             if (data) {

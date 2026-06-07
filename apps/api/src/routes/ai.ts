@@ -1092,6 +1092,20 @@ export async function registerAIRoutes(app: FastifyInstance) {
         }
     });
 
+    // ── KDP KEYWORD SANITIZER ─────────────────────────────────────────────────
+    // Amazon KDP limits each keyword phrase to 49 chars; silently rejects anything longer.
+    function sanitizeKdpKeywords(keywords: string[]): string[] {
+        const seen = new Set<string>();
+        const result: string[] = [];
+        for (const kw of keywords) {
+            const trimmed = kw.trim().slice(0, 49);
+            const key = trimmed.toLowerCase();
+            if (trimmed && !seen.has(key)) { seen.add(key); result.push(trimmed); }
+            if (result.length === 7) break;
+        }
+        return result;
+    }
+
     // ── TEXT GENERATION ──────────────────────────────────────────────────────
     app.post("/ai/generate-text", async (request: any, reply) => {
         const { type, niche, productType, extras, language = "es", model: modelOverride } = request.body as {
@@ -1127,11 +1141,15 @@ export async function registerAIRoutes(app: FastifyInstance) {
         const KDP_SYSTEM_INSTRUCTION = `[ROL]
 Eres un especialista en SEO para Amazon KDP. Generas metadatos de alta conversión para libros de colorear, journals y libros de actividades. Respuesta limpia, sin introducciones ni saludos.
 
-[REGLAS]
-1. TITULO: 50-80 chars. Empieza por la keyword de mayor volumen. Debe ser atractivo, evocador y orientado a la conversión — NO una lista de keywords. Formato recomendado: "[Keyword Principal]: [Beneficio Emocional o Ángulo Único] for [Audiencia]". Ejemplo: "Mystical Forest Coloring Book: 50 Enchanting Scenes for Adults Who Love Nature & Mindfulness".
-2. SUBTITULO: 60-90 chars. Keywords secundarias no repetidas del título. Menciona cantidad (páginas/diseños) y audiencia objetivo.
-3. DESCRIPTION: HTML optimizado para Amazon KDP. Estructura obligatoria: (1) <p> con hook emocional que conecte con el comprador (qué problema resuelve / qué experiencia ofrece), (2) <ul> con 4-5 <li> de beneficios concretos del libro, (3) <p> con llamada a la acción + para quién es ideal (regalo, uso personal, etc). Total 450-650 chars de texto visible. Usa <strong> en 2-3 keywords clave.
-4. KEYWORDS: Exactamente 7 frases de cola larga, 2-5 palabras c/u. Sin repetir palabras del título. Mezcla: temática específica + audiencia + ocasión de regalo + formato/uso.
+[REGLAS ABSOLUTAS — NUNCA VIOLAR]
+• PROHIBIDO mencionar número de páginas en ningún campo (ni en título, ni subtítulo, ni descripción).
+• El TITULO debe ser MÁS CORTO que el SUBTITULO en número de caracteres. Si el título tiene N chars, el subtítulo debe tener más de N chars.
+
+[REGLAS DE CONTENIDO]
+1. TITULO: 30-55 chars. OBLIGATORIO: empieza siempre por la keyword de mayor volumen de búsqueda. Debe ser conciso, evocador y directo al nicho — NO una lista de keywords. Formato: "[Keyword Principal] [Modificador o Audiencia]". Ejemplos correctos: "Mystical Forest Coloring Book for Adults" / "Kawaii Cat Coloring Book". El título NUNCA puede superar la longitud del subtítulo.
+2. SUBTITULO: 80-120 chars. SIEMPRE más largo que el título. Keywords secundarias de alto volumen no repetidas del título. Expande el nicho con ángulo emocional, audiencia y estilo. NO mencionar número de páginas ni diseños. Ejemplos: "Enchanting Nature Scenes for Stress Relief, Mindfulness & Creative Relaxation" / "Adorable Illustrations for Cat Lovers, Teens & Kawaii Art Fans".
+3. DESCRIPTION: HTML optimizado para Amazon KDP. Estructura: (1) <p> hook emocional (qué problema resuelve / qué experiencia ofrece), (2) <ul> 4-5 <li> de beneficios concretos, (3) <p> llamada a la acción + para quién es ideal (regalo, uso personal). Total 450-650 chars de texto visible. Usa <strong> en 2-3 keywords clave. Nunca mencionar páginas.
+4. KEYWORDS: Exactamente 7 frases de cola larga, 2-5 palabras c/u. **LÍMITE ESTRICTO: máximo 49 caracteres por frase** (Amazon KDP rechaza silenciosamente frases ≥50 chars). Sin repetir palabras del título. Mezcla: temática específica + audiencia + ocasión de regalo + formato/uso.
 
 [INPUT DEL USUARIO]
 Producto:`;
@@ -1249,10 +1267,10 @@ Return ONLY a JSON object:
                 const kdpSchema = {
                     type: Type.OBJECT,
                     properties: {
-                        title: { type: Type.STRING, description: "Título optimizado para KDP SEO, max 200 caracteres" },
-                        subtitle: { type: Type.STRING, description: "Subtítulo enfocado en beneficios y estilo, max 200 caracteres" },
-                        description: { type: Type.STRING, description: "Descripción completa en formato HTML para Amazon KDP" },
-                        keywords: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Exactamente 7 palabras clave de cola larga" },
+                        title: { type: Type.STRING, description: "Título SEO para KDP. 30-55 chars. Empieza por la keyword principal. SIEMPRE más corto que el subtítulo. Sin mencionar páginas." },
+                        subtitle: { type: Type.STRING, description: "Subtítulo SEO para KDP. 80-120 chars. SIEMPRE más largo que el título. Keywords secundarias + audiencia + beneficio. Sin mencionar páginas." },
+                        description: { type: Type.STRING, description: "Descripción HTML para Amazon KDP. Hook + bullets + CTA. 450-650 chars visibles. Sin mencionar número de páginas." },
+                        keywords: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Exactamente 7 frases de cola larga (2-5 palabras). LÍMITE: máximo 49 caracteres por frase" },
                     },
                     required: ["title", "subtitle", "description", "keywords"],
                 };
@@ -1304,7 +1322,11 @@ Return ONLY a JSON object:
 
                 const raw = (response.text ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
                 try {
-                    return reply.send({ result: JSON.parse(raw) });
+                    const parsed = JSON.parse(raw);
+                    if (type === "kdp-physical-book" && Array.isArray(parsed?.keywords)) {
+                        parsed.keywords = sanitizeKdpKeywords(parsed.keywords);
+                    }
+                    return reply.send({ result: parsed });
                 } catch {
                     return reply.send({ result: raw });
                 }
@@ -1337,7 +1359,13 @@ Return ONLY a JSON object:
                     : (arrStart !== -1 && arrEnd > arrStart) ? stripped.substring(arrStart, arrEnd + 1)
                     : null;
                 if (jsonStr) {
-                    try { return reply.send({ result: JSON.parse(jsonStr) }); } catch {}
+                    try {
+                        const parsed = JSON.parse(jsonStr);
+                        if (type === "kdp-physical-book" && Array.isArray(parsed?.keywords)) {
+                            parsed.keywords = sanitizeKdpKeywords(parsed.keywords);
+                        }
+                        return reply.send({ result: parsed });
+                    } catch {}
                 }
                 return reply.send({ result: stripped });
             }
