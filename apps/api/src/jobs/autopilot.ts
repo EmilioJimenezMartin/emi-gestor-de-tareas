@@ -1196,17 +1196,37 @@ async function runPipeline(
 
                 // ── Strategy 2: AI-generated variants ──────────────────────────────
                 const aiVariantsNeeded = isColoringBook ? 2 : 3;
-                io?.emit("autopilot:log", { nicheId: nicheIdStr, message: `🤖 Generando ${aiVariantsNeeded} variante${aiVariantsNeeded > 1 ? "s" : ""} IA…` });
+                const coverAiModel = await getAutopilotImageModel();
+                io?.emit("autopilot:log", { nicheId: nicheIdStr, message: `🤖 Generando ${aiVariantsNeeded} variante${aiVariantsNeeded > 1 ? "s" : ""} con ${coverAiModel.name}…` });
 
                 for (let variant = 0; variant < aiVariantsNeeded; variant++) {
                     let imgBuf: Buffer | null = null;
                     try {
-                        imgBuf = await withImageSlot(`cover-v${variant}:${nicheIdStr}`, () =>
-                            generateImage(coverPrompt, { width: 768, height: 1024, model }),
-                            nicheScore
-                        );
+                        // 1st: selected model via AI proxy
+                        const coverRes = await fetch(`${base}/ai/generate-image`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ prompt: coverPrompt, provider: coverAiModel.provider, modelId: coverAiModel.modelId, width: 768, height: 1024 }),
+                            signal: AbortSignal.timeout(90_000),
+                        });
+                        const coverCt = coverRes.headers.get("content-type") ?? "";
+                        if (coverRes.ok && coverCt.startsWith("image/")) {
+                            imgBuf = Buffer.from(await coverRes.arrayBuffer());
+                        }
                     } catch (coverErr: any) {
-                        console.warn(`[autopilot] cover variant ${variant + 1} failed: ${coverErr.message}`);
+                        console.warn(`[autopilot] cover variant ${variant + 1} AI proxy failed: ${coverErr.message}`);
+                    }
+
+                    // Fallback: Pollinations/Segmind/HF cascade
+                    if (!imgBuf) {
+                        try {
+                            imgBuf = await withImageSlot(`cover-v${variant}:${nicheIdStr}`, () =>
+                                generateImage(coverPrompt, { width: 768, height: 1024, model }),
+                                nicheScore
+                            );
+                        } catch (fbErr: any) {
+                            console.warn(`[autopilot] cover variant ${variant + 1} fallback failed: ${fbErr.message}`);
+                        }
                     }
 
                     if (imgBuf) {

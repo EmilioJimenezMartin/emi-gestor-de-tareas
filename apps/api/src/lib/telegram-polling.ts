@@ -6,7 +6,7 @@ import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
 import { activateNextQueued } from "./catalog-queue.js";
 import { withImageSlot } from "./ai-semaphore.js";
-import { generateImage } from "./image-gen.js";
+import { generateImage, getAutopilotImageModel } from "./image-gen.js";
 import { generateCatalogPrompt } from "./catalog-prompt.js";
 
 // ── Command registry — add entries here to auto-include them in /ayuda ────────
@@ -77,16 +77,6 @@ let pollTimer: NodeJS.Timeout | null = null;
 let _io: any = null;
 let _agenda: any = null;
 
-async function getAutopilotImageModel() {
-    try {
-        const row = await Settings.findOne({ key: "AUTOPILOT_IMAGE_MODEL" }).lean();
-        if ((row as any)?.value) {
-            const parsed = JSON.parse((row as any).value as string);
-            if (parsed?.provider && parsed?.modelId !== undefined) return parsed as { id: string; name: string; provider: string; modelId: string };
-        }
-    } catch { /* fallback */ }
-    return { id: "pollinations-flux", name: "FLUX (Pollinations)", provider: "Pollinations", modelId: "flux" };
-}
 
 async function getAutoPilotConfig() {
     try {
@@ -764,36 +754,80 @@ async function processUpdate(update: any): Promise<void> {
                 }
             }
 
-            const seed = Math.floor(Math.random() * 99999);
-            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${model}&width=1024&height=1024&seed=${seed}&enhance=true`;
+            const port0 = process.env.PORT || 3001;
+            const base0 = `http://localhost:${port0}`;
 
-            await sendTelegram(`🎨 <b>Generando imagen...</b>\n<code>${prompt.slice(0, 100)}${prompt.length > 100 ? "…" : ""}</code>\n<i>modelo: ${model}</i>`);
+            await sendTelegram(`🎨 <b>Generando imagen...</b>\n<code>${prompt.slice(0, 100)}${prompt.length > 100 ? "…" : ""}</code>`);
 
             setImmediate(async () => {
                 try {
-                    const imgBuffer = await withImageSlot(`/img:${Date.now()}`, () =>
-                        generateImage(prompt, { model, width: 1024, height: 1024, enhance: true })
-                    ).then(buf => {
-                        if (!buf) throw new Error("Todos los proveedores fallaron");
-                        return buf;
-                    });
+                    // Use selected image model (same as autopilot discover)
+                    const imgModel = await getAutopilotImageModel();
+                    let imgBuffer: Buffer | null = null;
+
+                    // 1st try: AI proxy with selected model
+                    try {
+                        const aiImgRes = await fetch(`${base0}/ai/generate-image`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                prompt,
+                                provider: imgModel.provider,
+                                modelId: imgModel.modelId,
+                                width: 1024, height: 1024,
+                            }),
+                            signal: AbortSignal.timeout(90_000),
+                        });
+                        const ct = aiImgRes.headers.get("content-type") ?? "";
+                        if (aiImgRes.ok && ct.startsWith("image/")) {
+                            imgBuffer = Buffer.from(await aiImgRes.arrayBuffer());
+                        }
+                    } catch { /* fall through */ }
+
+                    // 2nd try: Pollinations/Segmind/HF cascade
+                    if (!imgBuffer) {
+                        imgBuffer = await withImageSlot(`/img:${Date.now()}`, () =>
+                            generateImage(prompt, { model, width: 1024, height: 1024, enhance: true })
+                        );
+                    }
+
+                    // 3rd try: Google Gemini image
+                    if (!imgBuffer) {
+                        try {
+                            const gemRes = await fetch(`${base0}/ai/generate-image`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                    prompt,
+                                    provider: "Google",
+                                    modelId: "gemini-2.0-flash-preview-image-generation",
+                                    width: 1024, height: 1024,
+                                }),
+                                signal: AbortSignal.timeout(60_000),
+                            });
+                            const ct = gemRes.headers.get("content-type") ?? "";
+                            if (gemRes.ok && ct.startsWith("image/")) {
+                                imgBuffer = Buffer.from(await gemRes.arrayBuffer());
+                            }
+                        } catch { /* non-critical */ }
+                    }
+
+                    if (!imgBuffer) throw new Error("Todos los proveedores fallaron");
 
                     // Upload to Cloudinary so the URL is stable when the user accepts
-                    const port = process.env.PORT || 3001;
-                    const base = `http://localhost:${port}`;
-                    let stableUrl = imageUrl;
+                    let stableUrl = "";
                     try {
                         const dataUrl = `data:image/jpeg;base64,${imgBuffer.toString("base64")}`;
-                        const cldRes = await fetch(`${base}/cloudinary/upload`, {
+                        const cldRes = await fetch(`${base0}/cloudinary/upload`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ dataUrl }),
                         });
                         if (cldRes.ok) {
                             const cldData = await (cldRes as any).json();
-                            stableUrl = cldData.image?.url ?? imageUrl;
+                            stableUrl = cldData.image?.url ?? "";
                         }
-                    } catch { /* keep Pollinations URL */ }
+                    } catch { /* non-critical */ }
 
                     // Store action so the Accept callback can find the URL
                     const tAction = await TelegramAction.create({
@@ -805,17 +839,17 @@ async function processUpdate(update: any): Promise<void> {
                         autoApproveAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
                     });
 
-                    const caption = `🖼️ <b>${prompt.slice(0, 100)}${prompt.length > 100 ? "…" : ""}</b>\n<i>modelo: ${model}</i>`;
+                    const caption = `🖼️ <b>${prompt.slice(0, 100)}${prompt.length > 100 ? "…" : ""}</b>\n<i>${imgModel.name}</i>`;
                     const msgId = await sendTelegramImageWithButtons(imgBuffer, caption, [
                         [{ text: "➕ Añadir al primer nicho", callback_data: `img_add_niche:${tAction._id}` }],
                     ]);
 
-                    if (!msgId) {
+                    if (!msgId && stableUrl) {
                         await sendTelegram(`🖼️ <b>Imagen lista</b>\n<a href="${stableUrl}">Ver imagen →</a>`).catch(() => {});
                     }
                 } catch (e: any) {
                     console.error("[telegram-poll /img] Error:", e.message);
-                    await sendTelegram(`🖼️ <b>Imagen lista</b>\n<a href="${imageUrl}">Ver imagen →</a>\n<i>${prompt.slice(0, 80)}${prompt.length > 80 ? "…" : ""}</i>`).catch(() => {});
+                    await sendTelegram(`❌ No se pudo generar la imagen: ${e.message}`).catch(() => {});
                 }
             });
             return;
@@ -1904,41 +1938,76 @@ async function processUpdate(update: any): Promise<void> {
             if (!imagePrompt) imagePrompt = transcript.trim();
             imagePrompt = imagePrompt.charAt(0).toUpperCase() + imagePrompt.slice(1);
 
-            // Pick model: anime if mentioned, else flux-realism
-            const model = /\banime\b/i.test(imagePrompt) ? "flux-anime" : "flux-realism";
-            const seed = Math.floor(Math.random() * 99999);
-            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?model=${model}&width=1024&height=1024&seed=${seed}&enhance=true`;
+            const voicePort = process.env.PORT || 3001;
+            const voiceBase = `http://localhost:${voicePort}`;
 
             await sendTelegram(`🎤 Escuché: «<i>${transcript}</i>»\n\n🎨 Generando: <b>${imagePrompt.slice(0, 80)}${imagePrompt.length > 80 ? "…" : ""}</b>`);
 
             setImmediate(async () => {
                 try {
-                    const imgBuffer = await withImageSlot(`voice-img:${Date.now()}`, () =>
-                        generateImage(imagePrompt, { model, width: 1024, height: 1024, enhance: true })
-                    ).then(buf => {
-                        if (!buf) throw new Error("Todos los proveedores fallaron");
-                        return buf;
-                    });
+                    const voiceImgModel = await getAutopilotImageModel();
+                    let imgBuffer: Buffer | null = null;
+
+                    // 1st: selected model via AI proxy
+                    try {
+                        const aiRes = await fetch(`${voiceBase}/ai/generate-image`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ prompt: imagePrompt, provider: voiceImgModel.provider, modelId: voiceImgModel.modelId, width: 1024, height: 1024 }),
+                            signal: AbortSignal.timeout(90_000),
+                        });
+                        const ct = aiRes.headers.get("content-type") ?? "";
+                        if (aiRes.ok && ct.startsWith("image/")) imgBuffer = Buffer.from(await aiRes.arrayBuffer());
+                    } catch { /* fall through */ }
+
+                    // 2nd: Pollinations/Segmind/HF cascade
+                    if (!imgBuffer) {
+                        imgBuffer = await withImageSlot(`voice-img:${Date.now()}`, () =>
+                            generateImage(imagePrompt, { width: 1024, height: 1024 })
+                        );
+                    }
+
+                    // 3rd: Google Gemini
+                    if (!imgBuffer) {
+                        try {
+                            const gemRes = await fetch(`${voiceBase}/ai/generate-image`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ prompt: imagePrompt, provider: "Google", modelId: "gemini-2.0-flash-preview-image-generation", width: 1024, height: 1024 }),
+                                signal: AbortSignal.timeout(60_000),
+                            });
+                            const ct = gemRes.headers.get("content-type") ?? "";
+                            if (gemRes.ok && ct.startsWith("image/")) imgBuffer = Buffer.from(await gemRes.arrayBuffer());
+                        } catch { /* non-critical */ }
+                    }
+
+                    if (!imgBuffer) throw new Error("Todos los proveedores fallaron");
+
+                    let stableUrl = "";
+                    try {
+                        const cldRes = await fetch(`${voiceBase}/cloudinary/upload`, {
+                            method: "POST", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ dataUrl: `data:image/jpeg;base64,${imgBuffer.toString("base64")}` }),
+                        });
+                        if (cldRes.ok) stableUrl = ((await cldRes.json()) as any).image?.url ?? "";
+                    } catch { /* non-critical */ }
 
                     const tAction = await TelegramAction.create({
-                        type: "img-test",
-                        nicheId: "",
-                        nicheName: imagePrompt.slice(0, 120),
-                        imageUrl,
-                        status: "pending",
+                        type: "img-test", nicheId: "", nicheName: imagePrompt.slice(0, 120),
+                        imageUrl: stableUrl, status: "pending",
                         autoApproveAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
                     });
 
-                    const caption = `🖼️ <b>${imagePrompt.slice(0, 100)}${imagePrompt.length > 100 ? "…" : ""}</b>`;
+                    const caption = `🖼️ <b>${imagePrompt.slice(0, 100)}${imagePrompt.length > 100 ? "…" : ""}</b>\n<i>${voiceImgModel.name}</i>`;
                     const msgId = await sendTelegramImageWithButtons(imgBuffer, caption, [
                         [{ text: "➕ Añadir al primer nicho", callback_data: `img_add_niche:${tAction._id}` }],
                     ]);
-                    if (!msgId) {
-                        await sendTelegram(`🖼️ <b>Imagen lista</b>\n<a href="${imageUrl}">Ver imagen →</a>`).catch(() => {});
+                    if (!msgId && stableUrl) {
+                        await sendTelegram(`🖼️ <b>Imagen lista</b>\n<a href="${stableUrl}">Ver imagen →</a>`).catch(() => {});
                     }
                 } catch (e: any) {
                     console.error("[telegram-poll voice-img] Error:", e.message);
-                    await sendTelegram(`🖼️ <b>Imagen lista</b>\n<a href="${imageUrl}">Ver imagen →</a>`).catch(() => {});
+                    await sendTelegram(`❌ No se pudo generar la imagen: ${e.message}`).catch(() => {});
                 }
             });
             return;

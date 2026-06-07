@@ -15,7 +15,7 @@ export interface ITelegramAction {
 
 const schema = new Schema<ITelegramAction>({
     type: { type: String, required: true },
-    nicheId: { type: String, required: true },
+    nicheId: { type: String, default: "" },
     nicheName: { type: String, required: true },
     targetPhase: String,
     messageId: Number,

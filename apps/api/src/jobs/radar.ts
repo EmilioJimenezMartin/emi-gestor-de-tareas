@@ -535,8 +535,8 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                         pushLog(jobDoc, io, "info", `[AI] Generando términos de nicho para "${categoryName}"...`);
                         await jobDoc.save();
                         const raw = await generateTextWithLLM(
-                            `Eres un experto en productos digitales de Gumroad. Sugiere términos de búsqueda específicos para encontrar micro-nichos de coloring books, printables e ilustraciones en la categoría "${categoryName}". Responde SOLO con un array JSON de 7 strings, sin markdown. Ejemplo: ["anime","mandala","botanical","kawaii","geometric","celestial","retro"]`,
-                            `Categoría Gumroad: "${categoryName}". Dame 7 términos de nicho específicos.`
+                            `Eres un experto en productos digitales de Gumroad orientados a KDP y Etsy. Sugiere 7 términos de búsqueda para encontrar micro-nichos de coloring books, printables, ilustraciones, patrones seamless o wall art DENTRO de la categoría "${categoryName}". Los términos deben ser sub-temas visuales específicos de esa categoría (estilos, temáticas, audiencias). NUNCA sugieras términos de otras categorías (programación, negocios, tecnología, etc.). Responde SOLO con un array JSON de 7 strings, sin markdown. Ejemplo para "drawing-and-painting": ["anime","mandala","botanical","kawaii","geometric","celestial","retro"]`,
+                            `Categoría Gumroad: "${categoryName}". Dame 7 sub-nichos creativos DENTRO de esa categoría, aptos para libros de colorear o printables.`
                         );
                         const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
                         if (Array.isArray(parsed) && parsed.length > 0) {
