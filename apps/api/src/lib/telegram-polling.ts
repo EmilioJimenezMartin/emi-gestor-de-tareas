@@ -9,6 +9,17 @@ import { withImageSlot } from "./ai-semaphore.js";
 import { generateImage, getAutopilotImageModel } from "./image-gen.js";
 import { generateCatalogPrompt } from "./catalog-prompt.js";
 
+const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
+function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
+    return fetch(url, {
+        ...init,
+        headers: {
+            ...(_SERVER_API_KEY ? { Authorization: `Bearer ${_SERVER_API_KEY}` } : {}),
+            ...(init.headers as Record<string, string> ?? {}),
+        },
+    });
+}
+
 // ── Command registry — add entries here to auto-include them in /ayuda ────────
 // Use &lt; &gt; instead of < > to avoid Telegram HTML parse errors
 const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
@@ -156,7 +167,7 @@ async function handleNicheDiscovery(
                 let created = 0;
                 for (let i = 0; i < cfg.catalogsPerNiche; i++) {
                     try {
-                        const res = await fetch(`${base}/catalogs`, {
+                        const res = await internalFetch(`${base}/catalogs`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
@@ -178,18 +189,32 @@ async function handleNicheDiscovery(
                 _io?.emit("catalogs:updated");
                 console.log(`[telegram-poll] Created ${created}/${cfg.catalogsPerNiche} catalogs for niche ${tAction.nicheName}`);
 
-                if (created > 0) {
-                    await sendTelegram(`🏭 <b>${tAction.nicheName}</b>\n🖼️ ${created} catálogos en generación · ${created * cfg.imagesPerCatalog} imágenes totales`).catch(() => {});
+                if (created === 0) {
+                    // Reset so user can retry from Telegram
+                    await TelegramAction.findByIdAndUpdate(tAction._id, {
+                        $set: { status: "pending", resolvedAt: null },
+                    }).catch(() => {});
+                    const buttons = [[
+                        { text: "🚀 Continuar", callback_data: `continuar:${String(tAction._id)}` },
+                        { text: "⏭️ Omitir",    callback_data: `omitir:${String(tAction._id)}` },
+                    ]];
+                    await sendTelegramButtons(
+                        `⚠️ <b>Fallo al crear catálogos</b>\n📚 <b>${tAction.nicheName}</b>\n<i>Pulsa Continuar para reintentar</i>`,
+                        buttons
+                    ).catch(() => {});
+                    console.warn(`[telegram-poll] 0 catalogs created — action reset to pending for retry`);
+                    return;
                 }
+
+                await sendTelegram(`🏭 <b>${tAction.nicheName}</b>\n🖼️ ${created} catálogos en generación · ${created * cfg.imagesPerCatalog} imágenes totales`).catch(() => {});
+
                 // Always schedule autopilot monitoring — needed to advance catalog→libro→seo→cover.
-                // checkAutoPilotContinue() provides the fast path on catalog completion but can fail silently;
-                // this 3-minute polling loop is the safety net that keeps the pipeline moving regardless.
                 try {
                     if (_agenda) {
-                        await _agenda.now("autopilot-run", {});           // initial check
-                        await _agenda.schedule("in 3 minutes", "autopilot-run", {}); // first fallback poll
+                        await _agenda.now("autopilot-run", {});
+                        await _agenda.schedule("in 3 minutes", "autopilot-run", {});
                     } else {
-                        await fetch(`${base}/autopilot/run`, { method: "POST" });
+                        await internalFetch(`${base}/autopilot/run`, { method: "POST" });
                     }
                 } catch { /* non-critical */ }
             } catch (e) {
@@ -213,12 +238,12 @@ async function handleNicheDiscovery(
             try {
                 const port = process.env.PORT || 3001;
                 const base = `http://localhost:${port}`;
-                const imagesRes = await fetch(`${base}/cloudinary/images`);
+                const imagesRes = await internalFetch(`${base}/cloudinary/images`);
                 if (imagesRes.ok) {
                     const { images } = await imagesRes.json() as { images: any[] };
                     const linked = images.find(img => img.nicheId === String((niche as any)._id));
                     if (linked?.publicId) {
-                        await fetch(`${base}/cloudinary/delete`, {
+                        await internalFetch(`${base}/cloudinary/delete`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ publicId: linked.publicId }),
@@ -361,7 +386,7 @@ async function processUpdate(update: any): Promise<void> {
                     ?? (niche as any).generatedPrompt
                     ?? (niche as any).name;
 
-                const res = await fetch(`${base}/catalogs`, {
+                const res = await internalFetch(`${base}/catalogs`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -390,7 +415,7 @@ async function processUpdate(update: any): Promise<void> {
             // Re-run discover with the stored productType
             try {
                 const port = process.env.PORT || 3001;
-                const res = await fetch(`http://localhost:${port}/ai/discover-niche`, {
+                const res = await internalFetch(`http://localhost:${port}/ai/discover-niche`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ platform: "etsy", productType: actionId }),
@@ -463,7 +488,7 @@ async function processUpdate(update: any): Promise<void> {
                 const port = process.env.PORT || 3001;
                 setImmediate(async () => {
                     try {
-                        await fetch(`http://localhost:${port}/autopilot/discover/${niche._id}`, {
+                        await internalFetch(`http://localhost:${port}/autopilot/discover/${niche._id}`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ force: true }),
@@ -502,7 +527,7 @@ async function processUpdate(update: any): Promise<void> {
                 // Upload to Cloudinary tagged with this niche
                 let cloudUrl = imageUrl;
                 try {
-                    const cldRes = await fetch(`${base}/cloudinary/upload-url`, {
+                    const cldRes = await internalFetch(`${base}/cloudinary/upload-url`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ url: imageUrl, nicheId }),
@@ -514,7 +539,7 @@ async function processUpdate(update: any): Promise<void> {
                 } catch { /* keep original URL */ }
 
                 // Create a 1-image completed catalog for this niche
-                await fetch(`${base}/catalogs/from-cloudinary`, {
+                await internalFetch(`${base}/catalogs/from-cloudinary`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -554,7 +579,7 @@ async function processUpdate(update: any): Promise<void> {
                     return;
                 }
                 const port = process.env.PORT || 3001;
-                const res = await fetch(`http://localhost:${port}/rejected-images/${actionId}/approve`, {
+                const res = await internalFetch(`http://localhost:${port}/rejected-images/${actionId}/approve`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ catalogId: rejected.catalogId }),
@@ -584,7 +609,7 @@ async function processUpdate(update: any): Promise<void> {
                     return;
                 }
                 const port = process.env.PORT || 3001;
-                await fetch(`http://localhost:${port}/rejected-images/${actionId}`, { method: "DELETE" });
+                await internalFetch(`http://localhost:${port}/rejected-images/${actionId}`, { method: "DELETE" });
                 if (rejected.telegramMessageId) {
                     await editTelegramMessage(
                         rejected.telegramMessageId,
@@ -716,7 +741,7 @@ async function processUpdate(update: any): Promise<void> {
                 const port = process.env.PORT || 3001;
                 setImmediate(async () => {
                     try {
-                        await fetch(`http://localhost:${port}/autopilot/discover/${niche._id}`, {
+                        await internalFetch(`http://localhost:${port}/autopilot/discover/${niche._id}`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ force: true }),
@@ -779,7 +804,7 @@ async function processUpdate(update: any): Promise<void> {
 
                     // 1st try: AI proxy with selected model
                     try {
-                        const aiImgRes = await fetch(`${base0}/ai/generate-image`, {
+                        const aiImgRes = await internalFetch(`${base0}/ai/generate-image`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
@@ -806,7 +831,7 @@ async function processUpdate(update: any): Promise<void> {
                     // 3rd try: Google Gemini image
                     if (!imgBuffer) {
                         try {
-                            const gemRes = await fetch(`${base0}/ai/generate-image`, {
+                            const gemRes = await internalFetch(`${base0}/ai/generate-image`, {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({
@@ -830,7 +855,7 @@ async function processUpdate(update: any): Promise<void> {
                     let stableUrl = "";
                     try {
                         const dataUrl = `data:image/jpeg;base64,${imgBuffer.toString("base64")}`;
-                        const cldRes = await fetch(`${base0}/cloudinary/upload`, {
+                        const cldRes = await internalFetch(`${base0}/cloudinary/upload`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ dataUrl }),
@@ -920,7 +945,7 @@ async function processUpdate(update: any): Promise<void> {
                     await sendTelegram("🚀 <b>Auto-Pilot lanzado</b>\nRevisando nichos pendientes…");
                 } else {
                     const port = process.env.PORT || 3001;
-                    const res = await fetch(`http://localhost:${port}/autopilot/run`, { method: "POST" });
+                    const res = await internalFetch(`http://localhost:${port}/autopilot/run`, { method: "POST" });
                     if (res.ok) {
                         await sendTelegram("🚀 <b>Auto-Pilot lanzado</b>\nRevisando nichos pendientes…");
                     } else {
@@ -1102,7 +1127,7 @@ async function processUpdate(update: any): Promise<void> {
                         ?? (niche as any).name;
                 }
 
-                const res = await fetch(`${base}/catalogs`, {
+                const res = await internalFetch(`${base}/catalogs`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -1222,7 +1247,7 @@ async function processUpdate(update: any): Promise<void> {
                 }
 
                 const port = process.env.PORT || 3001;
-                const res = await fetch(`http://localhost:${port}/autopilot/niche/${String((niche as any)._id)}/advance`, {
+                const res = await internalFetch(`http://localhost:${port}/autopilot/niche/${String((niche as any)._id)}/advance`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(faseArg ? { phase: faseArg } : {}),
@@ -1826,7 +1851,7 @@ async function processUpdate(update: any): Promise<void> {
 
             try {
                 const port = process.env.PORT || 3001;
-                const res = await fetch(`http://localhost:${port}/ai/discover-niche`, {
+                const res = await internalFetch(`http://localhost:${port}/ai/discover-niche`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ platform: "etsy", productType }),
@@ -1962,7 +1987,7 @@ async function processUpdate(update: any): Promise<void> {
 
                     // 1st: selected model via AI proxy
                     try {
-                        const aiRes = await fetch(`${voiceBase}/ai/generate-image`, {
+                        const aiRes = await internalFetch(`${voiceBase}/ai/generate-image`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ prompt: imagePrompt, provider: voiceImgModel.provider, modelId: voiceImgModel.modelId, width: 1024, height: 1024 }),
@@ -1982,7 +2007,7 @@ async function processUpdate(update: any): Promise<void> {
                     // 3rd: Google Gemini
                     if (!imgBuffer) {
                         try {
-                            const gemRes = await fetch(`${voiceBase}/ai/generate-image`, {
+                            const gemRes = await internalFetch(`${voiceBase}/ai/generate-image`, {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ prompt: imagePrompt, provider: "Google", modelId: "gemini-2.0-flash-preview-image-generation", width: 1024, height: 1024 }),
@@ -1997,7 +2022,7 @@ async function processUpdate(update: any): Promise<void> {
 
                     let stableUrl = "";
                     try {
-                        const cldRes = await fetch(`${voiceBase}/cloudinary/upload`, {
+                        const cldRes = await internalFetch(`${voiceBase}/cloudinary/upload`, {
                             method: "POST", headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ dataUrl: `data:image/jpeg;base64,${imgBuffer.toString("base64")}` }),
                         });
@@ -2036,7 +2061,7 @@ async function processUpdate(update: any): Promise<void> {
 
         try {
             const port = process.env.PORT || 3001;
-            const res = await fetch(`http://localhost:${port}/niches`, {
+            const res = await internalFetch(`http://localhost:${port}/niches`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

@@ -486,6 +486,39 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
         }
     });
 
+    // ── Reset a stuck TelegramAction so user can retry from Telegram ──
+    app.post("/autopilot/niche/:nicheId/reset-action", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { nicheId } = request.params as { nicheId: string };
+            const action = await TelegramAction.findOneAndUpdate(
+                { nicheId, type: "niche-discovery" },
+                { $set: { status: "pending" }, $unset: { resolvedAt: "" } },
+                { sort: { createdAt: -1 }, new: true }
+            );
+            if (!action) return reply.status(404).send({ error: "No hay acción para este nicho" });
+            const buttons = [[
+                { text: "🚀 Continuar", callback_data: `continuar:${String(action._id)}` },
+                { text: "⏭️ Omitir",    callback_data: `omitir:${String(action._id)}` },
+                { text: "🗑️ Descartar", callback_data: `descartar:${String(action._id)}` },
+            ]];
+            if (action.imageUrl) {
+                const imgRes = await fetch(action.imageUrl).catch(() => null);
+                const buf = imgRes?.ok ? Buffer.from(await imgRes.arrayBuffer()) : null;
+                if (buf) {
+                    await sendTelegramImageWithButtons(buf, `🔄 <b>Reintentar: ${action.nicheName}</b>\n¿Qué hacemos?`, buttons);
+                } else {
+                    await sendTelegramButtons(`🔄 <b>Reintentar: ${action.nicheName}</b>\n¿Qué hacemos?`, buttons);
+                }
+            } else {
+                await sendTelegramButtons(`🔄 <b>Reintentar: ${action.nicheName}</b>\n¿Qué hacemos?`, buttons);
+            }
+            return reply.send({ ok: true });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // ── Is autopilot currently running? (used by frontend to sync halo on reconnect) ──
     app.get("/autopilot/status", async (_req, reply) => {
         if (!ensureMongo(reply)) return;

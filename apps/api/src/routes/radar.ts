@@ -6,6 +6,17 @@ import { RadarJob } from "../models/radar-job.js";
 import { RADAR_JOB_NAME } from "../jobs/radar.js";
 import { getMongoStatus } from "../lib/mongo.js";
 
+const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
+function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
+    return fetch(url, {
+        ...init,
+        headers: {
+            ...(_SERVER_API_KEY ? { Authorization: `Bearer ${_SERVER_API_KEY}` } : {}),
+            ...(init.headers as Record<string, string> ?? {}),
+        },
+    });
+}
+
 // ── Mode: General market analysis ────────────────────────────────────────────
 export const NicheInsightSchema = z.object({
     niche: z.string().describe("Niche or market segment name"),
@@ -711,5 +722,145 @@ ${productSummary}`;
         });
 
         return reply.send({ insight });
+    });
+
+    // ── POST /radar/insights/:id/generate-niche ──────────────────────────────
+    // LLM lee el análisis → devuelve título corto + descripción de escena
+    // → crea Niche → trigger discover (imagen + Telegram)
+    app.post("/radar/insights/:id/generate-niche", async (request: any, reply) => {
+        try {
+            const { RadarInsight } = await import("../models/radar-insight.js");
+            const insight = await RadarInsight.findById(request.params.id).lean() as any;
+            if (!insight) return reply.status(404).send({ error: "Análisis no encontrado" });
+
+            const { analysis } = insight;
+            const top5     = (analysis.topNiches ?? []).slice(0, 5).map((n: any) => n.name).join(", ");
+            const emerging = (analysis.emergingNiches ?? []).slice(0, 3).map((n: any) => n.name).join(", ");
+            const themes   = (analysis.repeatedThemes ?? []).slice(0, 6).map((t: any) => t.theme).join(", ");
+
+            const SYSTEM = `You are a KDP market expert. Respond ONLY with valid JSON, no markdown.`;
+            const USER = `Market data:
+- Top niches: ${top5}
+- Emerging: ${emerging}
+- Repeated themes: ${themes}
+- Summary: ${(analysis.summary ?? "").slice(0, 400)}
+
+Pick the single best coloring book niche from this data. Return this exact JSON:
+{
+  "title": "short niche name in English (3-5 words max, Amazon KDP ready)",
+  "styleCategory": "generic|anime|illustration|children|realistic|watercolor|abstract|wall-art|botanical|geometric|celestial|retro",
+  "sceneDescription": "visual scene description in English (15-25 words, vivid details, subject + setting + mood, NO style instructions)",
+  "reason": "one sentence why this niche has potential now"
+}`;
+
+            const { Settings } = await import("../models/settings.js");
+            const rows = await Settings.find({
+                key: { $in: ["GOOGLE_API_KEY", "HUGGINGFACE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "DEFAULT_LLM_PROVIDER", "DEFAULT_LLM_MODEL"] },
+            }).lean();
+            const sm         = new Map((rows as any[]).map(r => [r.key, r.value as string]));
+            const aiProvider = sm.get("DEFAULT_LLM_PROVIDER") || "google";
+            const aiModel    = sm.get("DEFAULT_LLM_MODEL")    || "gemini-2.5-flash";
+            const googleKey  = sm.get("GOOGLE_API_KEY")  || process.env.GOOGLE_API_KEY  || "";
+            const groqKey    = sm.get("GROQ_API_KEY")    || process.env.GROQ_API_KEY    || "";
+            const orKey      = sm.get("OPENROUTER_API_KEY") || process.env.OPENROUTER_API_KEY || "";
+            const hfKey      = sm.get("HUGGINGFACE_API_KEY") || process.env.HUGGINGFACE_API_KEY || "";
+
+            let raw = "";
+            if (aiProvider === "google" && googleKey) {
+                const { GoogleGenAI } = await import("@google/genai");
+                const g = new GoogleGenAI({ apiKey: googleKey });
+                const r = await g.models.generateContent({
+                    model: aiModel || "gemini-2.5-flash",
+                    contents: USER,
+                    config: { systemInstruction: SYSTEM, thinkingConfig: { thinkingBudget: 0 }, maxOutputTokens: 400, temperature: 0.4 } as any,
+                });
+                raw = (r.text ?? "").trim();
+            } else if (aiProvider === "groq" && groqKey) {
+                const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
+                    body: JSON.stringify({ model: aiModel || "llama-3.3-70b-versatile", messages: [{ role: "system", content: SYSTEM }, { role: "user", content: USER }], max_tokens: 400, temperature: 0.4 }),
+                });
+                raw = ((await r.json()) as any).choices?.[0]?.message?.content ?? "";
+            } else if (aiProvider === "openrouter" && orKey) {
+                const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${orKey}`, "HTTP-Referer": "https://emi-gestor.local", "X-Title": "Emi Gestor" },
+                    body: JSON.stringify({ model: aiModel, messages: [{ role: "system", content: SYSTEM }, { role: "user", content: USER }], max_tokens: 400, temperature: 0.4 }),
+                });
+                raw = ((await r.json()) as any).choices?.[0]?.message?.content ?? "";
+            } else if (hfKey) {
+                const { HfInference } = await import("@huggingface/inference");
+                const hf = new HfInference(hfKey);
+                const r  = await hf.chatCompletion({ model: aiModel || "meta-llama/Llama-3.3-70B-Instruct", messages: [{ role: "system", content: SYSTEM }, { role: "user", content: USER }], max_tokens: 400, temperature: 0.4 });
+                raw = (r.choices?.[0]?.message?.content ?? "").trim();
+            } else {
+                return reply.status(400).send({ error: "No hay proveedor de IA configurado. Ve a Ajustes → Núcleo de Inteligencia." });
+            }
+
+            // Parse JSON from LLM response
+            const clean = raw.replace(/^```(?:json)?\s*/im, "").replace(/```\s*$/im, "").trim();
+            const s = clean.indexOf("{"), e = clean.lastIndexOf("}");
+            if (s === -1 || e === -1) return reply.status(500).send({ error: `IA no devolvió JSON: ${raw.slice(0, 200)}` });
+            const picked: { title: string; styleCategory: string; sceneDescription: string; reason: string } = JSON.parse(clean.slice(s, e + 1));
+            if (!picked?.title || !picked?.sceneDescription) return reply.status(500).send({ error: `JSON incompleto: ${clean.slice(0, 200)}` });
+
+            // Coloring book formula applied to the scene description
+            const CB_OPENER = "coloring book page, black line art on white";
+            const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gradients, no stippling, no background texture, no watermark, pure white background, ultra thick clean outlines, high contrast";
+            const CB_STYLE_MODIFIERS: Record<string, string> = {
+                anime: "manga-style linework, chibi proportions", botanical: "botanical etching style, fine precise linework",
+                celestial: "mandala-style composition, symmetrical sacred geometry", geometric: "precise geometric tessellation, perfect symmetrical pattern",
+                children: "large simple bold shapes, thick friendly cartoon outlines, easy-to-color for kids",
+                watercolor: "flowing organic botanical, delicate graceful shapes", "wall-art": "art nouveau decorative style, elegant ornamental linework",
+                retro: "vintage mid-century illustration, bold graphic design", abstract: "flowing abstract organic forms, balanced negative space",
+                illustration: "detailed character illustration, expressive confident linework", realistic: "detailed naturalistic line art, precise rendering",
+            };
+            const mod = CB_STYLE_MODIFIERS[picked.styleCategory];
+            const imagePrompt = mod
+                ? `${CB_OPENER}, ${mod}, ${picked.sceneDescription}, ${CB_EXCLUSIONS}`
+                : `${CB_OPENER}, ${picked.sceneDescription}, ${CB_EXCLUSIONS}`;
+
+            // Upsert atómico — evita duplicados si el botón se pulsa dos veces
+            const { Niche } = await import("../models/niche.js");
+            const niche: any = await Niche.findOneAndUpdate(
+                { name: picked.title },
+                {
+                    $setOnInsert: {
+                        name: picked.title,
+                        status: "found",
+                        productType: "coloring-book",
+                        styleCategory: picked.styleCategory ?? "generic",
+                    },
+                    $set: {
+                        description: picked.reason ?? "",
+                        generatedPrompt: picked.sceneDescription,
+                        discoveryImagePrompt: imagePrompt,
+                    },
+                },
+                { upsert: true, new: true }
+            );
+            const isNew = !niche.createdAt || (Date.now() - new Date(niche.createdAt).getTime() < 5000);
+
+            console.log(`[radar→niche] "${picked.title}" | style=${picked.styleCategory} | prompt="${picked.sceneDescription.slice(0, 60)}…"`);
+
+            // Fire discover async (doesn't block response — sends image to Telegram)
+            const port = process.env.PORT || 3001;
+            void internalFetch(`http://localhost:${port}/autopilot/discover/${String(niche._id)}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ force: true }),
+            });
+
+            return reply.send({
+                niche: { _id: String(niche._id), name: picked.title, styleCategory: picked.styleCategory },
+                reason: picked.reason ?? "",
+                prompt: imagePrompt,
+                isNew,
+            });
+        } catch (e: any) {
+            console.error("[radar/generate-niche]", e);
+            return reply.status(500).send({ error: e.message ?? "Error generando nicho" });
+        }
     });
 }

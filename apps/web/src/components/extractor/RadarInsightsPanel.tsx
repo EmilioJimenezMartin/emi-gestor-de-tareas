@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Sparkles, Loader2, BarChart2, TrendingUp, Target, Zap, ChevronDown, ChevronUp, Clock } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Sparkles, Loader2, BarChart2, TrendingUp, Target, Zap, ChevronDown, ChevronUp, Clock, Rocket, CheckCircle } from "lucide-react";
 import { KdpVerticalBarChart } from "@/components/ui/kdp-vertical-bar-chart";
 import { toast } from "sonner";
 
@@ -68,6 +68,9 @@ export function RadarInsightsPanel({ apiUrl }: Props) {
     const [history, setHistory] = useState<RadarInsight[]>([]);
     const [showHistory, setShowHistory] = useState(false);
     const [historyLoaded, setHistoryLoaded] = useState(false);
+    const [generating, setGenerating] = useState(false);
+    const generatingRef = useRef(false);
+    const [generatedNiche, setGeneratedNiche] = useState<{ name: string; reason: string } | null>(null);
 
     const loadHistory = useCallback(async () => {
         try {
@@ -91,6 +94,7 @@ export function RadarInsightsPanel({ apiUrl }: Props) {
 
     const analyze = async () => {
         setAnalyzing(true);
+        setGeneratedNiche(null);
         try {
             const res = await fetch(`${apiUrl}/radar/insights/analyze`, {
                 method: "POST",
@@ -106,6 +110,30 @@ export function RadarInsightsPanel({ apiUrl }: Props) {
             toast.error(e.message ?? "Error al analizar");
         } finally {
             setAnalyzing(false);
+        }
+    };
+
+    const generateNicheFromInsight = async () => {
+        if (!current || generatingRef.current) return;
+        generatingRef.current = true;
+        setGenerating(true);
+        setGeneratedNiche(null);
+        const toastId = toast.loading("🧠 IA eligiendo el mejor nicho y generando imagen…");
+        try {
+            const res = await fetch(`${apiUrl}/radar/insights/${current._id}/generate-niche`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({}),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
+            setGeneratedNiche({ name: data.niche.name, reason: data.reason });
+            toast.success(`📩 Nicho "${data.niche.name}" enviado a Telegram — espera la imagen`, { id: toastId, duration: 6000 });
+        } catch (e: any) {
+            toast.error(e.message ?? "Error generando nicho", { id: toastId });
+        } finally {
+            generatingRef.current = false;
+            setGenerating(false);
         }
     };
 
@@ -307,6 +335,57 @@ export function RadarInsightsPanel({ apiUrl }: Props) {
                                 </ol>
                             )}
                         </div>
+                    </div>
+
+                    {/* CTA — Generar nicho clave desde el análisis */}
+                    <div className={`relative rounded-2xl border p-5 space-y-4 overflow-hidden transition-all ${
+                        generatedNiche
+                            ? "border-emerald-500/30 bg-emerald-500/[0.05]"
+                            : "border-amber-500/20 bg-amber-500/[0.04] hover:border-amber-500/35"
+                    }`}>
+                        <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full blur-2xl bg-amber-500/10 pointer-events-none" />
+                        <div className="flex items-start gap-3 relative">
+                            <div className={`mt-0.5 w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${generatedNiche ? "bg-emerald-500/15 border border-emerald-500/25" : "bg-amber-500/15 border border-amber-500/25"}`}>
+                                {generatedNiche ? <CheckCircle size={14} className="text-emerald-400" /> : <Rocket size={14} className="text-amber-400" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs font-black text-white">
+                                    {generatedNiche ? "Nicho generado y enviado" : "Generar nicho clave"}
+                                </p>
+                                <p className="text-[11px] text-neutral-400 mt-0.5 leading-relaxed">
+                                    {generatedNiche
+                                        ? `La IA eligió "${generatedNiche.name}" — imagen enviada a Telegram para aprobación`
+                                        : "La IA analiza estos datos, elige el nicho con más potencial, genera una imagen y la envía a Telegram"
+                                    }
+                                </p>
+                                {generatedNiche?.reason && (
+                                    <p className="text-[10px] text-amber-400/70 mt-1.5 italic border-l-2 border-amber-500/30 pl-2">
+                                        {generatedNiche.reason}
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                        {!generatedNiche && (
+                            <button
+                                onClick={() => void generateNicheFromInsight()}
+                                disabled={generating}
+                                className="relative w-full flex items-center justify-center gap-2 h-10 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 text-[10px] font-black uppercase tracking-widest text-amber-300 hover:from-amber-500/35 hover:to-orange-500/35 hover:border-amber-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            >
+                                {generating
+                                    ? <><Loader2 size={11} className="animate-spin" /> Eligiendo nicho y generando imagen…</>
+                                    : <><Rocket size={11} /> Elegir nicho y enviar a Telegram</>
+                                }
+                            </button>
+                        )}
+                        {generatedNiche && (
+                            <button
+                                onClick={() => { setGeneratedNiche(null); void generateNicheFromInsight(); }}
+                                disabled={generating}
+                                className="w-full flex items-center justify-center gap-2 h-8 rounded-xl border border-white/10 text-[9px] font-black uppercase tracking-widest text-neutral-500 hover:text-neutral-300 hover:border-white/20 disabled:opacity-40 transition-all"
+                            >
+                                <Rocket size={9} /> Generar otro nicho
+                            </button>
+                        )}
                     </div>
                 </div>
             )}

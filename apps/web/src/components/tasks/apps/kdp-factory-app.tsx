@@ -1600,8 +1600,16 @@ export function KdpFactoryApp() {
     const triggerNicheDiscovery = async (nicheId: string): Promise<void> => {
         if (discoveryLoadingId) return;
         setDiscoveryLoadingId(nicheId);
-        const toastId = toast.loading("🎨 Generando imagen y enviando a Telegram…");
+        const toastId = toast.loading("📩 Enviando a Telegram…");
         try {
+            // Try to reset an existing stuck action first (much faster than re-generating image)
+            const resetRes = await fetch(`${API_BASE_URL}/autopilot/niche/${nicheId}/reset-action`, { method: "POST" });
+            if (resetRes.ok) {
+                toast.success("📩 Acción reseteada — revisa Telegram para los botones", { id: toastId });
+                return;
+            }
+            // No existing action → generate new image and send to Telegram
+            toast.loading("🎨 Generando imagen y enviando a Telegram…", { id: toastId });
             const res = await fetch(`${API_BASE_URL}/autopilot/discover/${nicheId}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
