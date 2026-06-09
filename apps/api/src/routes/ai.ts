@@ -3,7 +3,7 @@ import axios from "axios";
 import { createHash, createSign } from "crypto";
 import { Settings } from "../models/settings.js";
 import { getMongoStatus } from "../lib/mongo.js";
-import { isPollinationsBlocked, pollinationsFetch, pollinationsAuthHeaders } from "../lib/pollinations-circuit.js";
+import { isPollinationsBlocked, pollinationsFetch, getPollinationsToken } from "../lib/pollinations-circuit.js";
 import { getApiKey } from "../lib/keys.js";
 import { getImageHfKey, getImageLeonardoKey, getSiliconflowKey, getTensorartApiKey, getTensorartAppId, getTensorartPrivateKey } from "../lib/image-gen.js";
 import { buildColoringBookPrompt } from "./autopilot.js";
@@ -715,7 +715,7 @@ export async function registerAIRoutes(app: FastifyInstance) {
 
             // --- POLLINATIONS (explicit, passes model param) ---
             // Bypass circuit breaker when a token is configured — token removes IP-block restriction
-            const hasPollinationsToken = !!pollinationsAuthHeaders().Authorization;
+            const hasPollinationsToken = !!getPollinationsToken();
             if (provider === "Pollinations" && (hasPollinationsToken || !isPollinationsBlocked())) {
                 console.log(`[ai/generate-image] Intentando Pollinations (token=${hasPollinationsToken ? "SÍ" : "NO"})...`);
                 try {
@@ -1092,7 +1092,7 @@ export async function registerAIRoutes(app: FastifyInstance) {
             }
 
             // ── EMERGENCY FALLBACK: Pollinations (free, no key needed) ────────────
-            const hasPollinationsTokenFallback = !!pollinationsAuthHeaders().Authorization;
+            const hasPollinationsTokenFallback = !!getPollinationsToken();
             if (hasPollinationsTokenFallback || !isPollinationsBlocked()) {
                 try {
                     const fallbackModel = "flux";

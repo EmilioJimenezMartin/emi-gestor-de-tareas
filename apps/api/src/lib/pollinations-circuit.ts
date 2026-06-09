@@ -46,25 +46,69 @@ export function setPollinationsToken(token: string) {
     }
 }
 
-/** Headers de autenticación para Pollinations. Con sk_ token → sin x402, sin rate limit. */
+/** Devuelve el token de Pollinations si está configurado. */
+export function getPollinationsToken(): string {
+    return _cachedToken || process.env.POLLINATIONS_TOKEN || "";
+}
+
+/** @deprecated — Pollinations usa token en URL, no headers. Usar pollinationsFetch directamente. */
 export function pollinationsAuthHeaders(): Record<string, string> {
-    const token = _cachedToken || process.env.POLLINATIONS_TOKEN || "";
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    return {};
+}
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+// Semáforo — máximo 1 request a Pollinations en vuelo al mismo tiempo.
+// Sin esto, peticiones paralelas del autopilot llenan la cola (max 1 concurrent por IP).
+let _inFlight = false;
+const _waitQueue: Array<() => void> = [];
+
+async function acquireSemaphore(): Promise<void> {
+    if (!_inFlight) { _inFlight = true; return; }
+    return new Promise(resolve => _waitQueue.push(resolve));
+}
+
+function releaseSemaphore(): void {
+    const next = _waitQueue.shift();
+    if (next) { next(); } else { _inFlight = false; }
 }
 
 /**
- * Fetch a Pollinations URL con auth si está configurada.
- * Si devuelve 402 y NO hay token → marca el circuit breaker.
- * Con token la 402 no debería ocurrir.
+ * Fetch a Pollinations URL con token como query param (?token=sk_xxx).
+ * Serializa todas las peticiones (semáforo) para no llenar la cola del servidor.
+ * - Sin token + 402 → marca circuit breaker (IP bloqueada).
+ * - 402 "Queue full" → reintenta hasta 3 veces con backoff (8s, 15s, 25s).
  */
 export async function pollinationsFetch(url: string, opts: RequestInit = {}): Promise<Response> {
-    const authHeaders = pollinationsAuthHeaders();
-    const sentToken = !!authHeaders.Authorization;
-    const headers = { ...authHeaders, ...(opts.headers as Record<string, string> ?? {}) };
-    const res = await fetch(url, { ...opts, headers });
-    // Only mark IP-blocked when no token was sent — with a token, 402 means something else (invalid token, etc.)
-    if (res.status === 402 && !sentToken) {
-        markPollinationsBlocked();
+    const token = getPollinationsToken();
+    const finalUrl = token
+        ? (url.includes("?") ? `${url}&token=${token}` : `${url}?token=${token}`)
+        : url;
+
+    await acquireSemaphore();
+    const delays = [8000, 15000, 25000];
+    let lastRes: Response | null = null;
+
+    try {
+        for (let attempt = 0; attempt <= delays.length; attempt++) {
+            if (attempt > 0) {
+                console.warn(`[pollinations-circuit] Cola llena — reintento ${attempt}/${delays.length} en ${delays[attempt - 1] / 1000}s...`);
+                await sleep(delays[attempt - 1]);
+            }
+            const res = await fetch(finalUrl, opts);
+            if (res.status !== 402) return res;
+
+            lastRes = res;
+            if (!token) {
+                markPollinationsBlocked();
+                return res;
+            }
+            const body = await res.clone().text().catch(() => "");
+            if (!body.includes("Queue full") || attempt === delays.length) return res;
+        }
+    } finally {
+        releaseSemaphore();
     }
-    return res;
+
+    return lastRes!;
 }

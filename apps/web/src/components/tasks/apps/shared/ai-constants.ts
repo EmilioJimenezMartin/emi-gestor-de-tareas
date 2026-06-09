@@ -74,7 +74,7 @@ export const AI_MODELS: AIModel[] = [
     { id: "ta-autismmix-light",   name: "AutismMix SDXL Lightning (Tensor.art)", provider: "Tensor.art", type: "100 créd/día · Anime · Ultra rápido (4 steps)",  modelId: "705519017965662383", status: "limited" },
     { id: "ta-sdxl-flash",        name: "SDXL Flash Mini (Tensor.art)",        provider: "Tensor.art", type: "100 créd/día · Ultrarrápido · Ligero",              modelId: "738164703605494864", status: "limited" },
     // SiliconFlow — FLUX.1-schnell gratis y confirmado ✅
-    { id: "sf-flux-schnell",  name: "FLUX.1-schnell ✦ (SiliconFlow)", provider: "SiliconFlow", type: "Gratis · Sin límite diario · FLUX · Rápido",     modelId: "black-forest-labs/FLUX.1-schnell", status: "ok" },
+    { id: "sf-flux-schnell",  name: "⭐ FLUX.1-schnell (SiliconFlow)", provider: "SiliconFlow", type: "Gratis · Sin límite diario · FLUX · Rápido",     modelId: "black-forest-labs/FLUX.1-schnell", status: "ok" },
     { id: "sf-flux-dev",      name: "FLUX.1-dev (SiliconFlow)",        provider: "SiliconFlow", type: "Pago · Alta calidad · FLUX · ~$0.014/img",      modelId: "black-forest-labs/FLUX.1-dev", status: "paid" },
     { id: "sf-sdxl",          name: "SDXL Base 1.0 (SiliconFlow)",     provider: "SiliconFlow", type: "Pago · Versátil · $0.002/img",                  modelId: "stabilityai/stable-diffusion-xl-base-1.0", status: "paid" },
     // Dezgo — gratis sin API key, SD/SDXL
