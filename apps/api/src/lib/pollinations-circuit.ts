@@ -73,17 +73,42 @@ function releaseSemaphore(): void {
     if (next) { next(); } else { _inFlight = false; }
 }
 
+let _relayUrl = "";
+
+/** Configura la URL del Worker relay (CF). Si está seteada, todas las peticiones van por ahí. */
+export function setPollinationsRelayUrl(url: string) {
+    _relayUrl = url.replace(/\/$/, "");
+    if (url) {
+        blockedUntil = 0;
+        console.log(`[pollinations-circuit] Relay Worker configurado: ${url}`);
+    }
+}
+
+export function getPollinationsRelayUrl(): string {
+    return _relayUrl || process.env.POLLINATIONS_RELAY_URL || "";
+}
+
 /**
  * Fetch a Pollinations URL con token como query param (?token=sk_xxx).
+ * Si hay un relay Worker configurado, las peticiones van por ahí (IP diferente).
  * Serializa todas las peticiones (semáforo) para no llenar la cola del servidor.
  * - Sin token + 402 → marca circuit breaker (IP bloqueada).
  * - 402 "Queue full" → reintenta hasta 3 veces con backoff (8s, 15s, 25s).
  */
 export async function pollinationsFetch(url: string, opts: RequestInit = {}): Promise<Response> {
+    const relay = getPollinationsRelayUrl();
     const token = getPollinationsToken();
-    const finalUrl = token
-        ? (url.includes("?") ? `${url}&token=${token}` : `${url}?token=${token}`)
-        : url;
+
+    let finalUrl: string;
+    if (relay) {
+        // Sustituye el host por el relay Worker — el Worker añade el token internamente
+        const parsed = new URL(url);
+        finalUrl = relay + parsed.pathname + parsed.search;
+    } else {
+        finalUrl = token
+            ? (url.includes("?") ? `${url}&token=${token}` : `${url}?token=${token}`)
+            : url;
+    }
 
     await acquireSemaphore();
     const delays = [8000, 15000, 25000];

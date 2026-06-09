@@ -10,6 +10,17 @@ import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
 import { generateTextWithLLM } from "../lib/ai.js";
 import { withLlmSlot } from "../lib/ai-semaphore.js";
 
+const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
+function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
+    return fetch(url, {
+        ...init,
+        headers: {
+            ...(_SERVER_API_KEY ? { Authorization: `Bearer ${_SERVER_API_KEY}` } : {}),
+            ...(init.headers as Record<string, string> ?? {}),
+        },
+    });
+}
+
 // ── Style-aware coloring-book prompt formula ─────────────────────────────────
 // Token order matters in FLUX: early tokens get highest attention weight.
 // Structure: [MODE OPENER] → [STYLE MODIFIER] → [SUBJECT/PARTICULARS] → [EXCLUSIONS]
@@ -286,7 +297,7 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                     ? `${nicheName} (market reference: "${sourceTitulo}")`
                     : nicheName;
                 try {
-                    const aiRes = await fetch(`${base2}/ai/generate-text`, {
+                    const aiRes = await internalFetch(`${base2}/ai/generate-text`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ type: aiType, niche: nicheForAI, productType, extras: style }),
@@ -341,7 +352,7 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             const discoveryModel = await getAutopilotImageModel();
             deps.io?.emit("autopilot:log", { message: `🎨 Generando imagen con ${discoveryModel.name}…` });
             try {
-                const aiRes = await fetch(`${base}/ai/generate-image`, {
+                const aiRes = await internalFetch(`${base}/ai/generate-image`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -370,7 +381,7 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             // Fallback 2: Google Gemini image generation
             if (!imageBytes) {
                 try {
-                    const gemImgRes = await fetch(`${base}/ai/generate-image`, {
+                    const gemImgRes = await internalFetch(`${base}/ai/generate-image`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
@@ -396,7 +407,7 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             // Upload to Cloudinary via bytes (avoids fetching blocked Pollinations URL)
             if (imageBytes) {
                 try {
-                    const cldRes = await fetch(`${base}/cloudinary/upload-image`, {
+                    const cldRes = await internalFetch(`${base}/cloudinary/upload-image`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ imageBase64: imageBytes.toString("base64"), nicheId }),

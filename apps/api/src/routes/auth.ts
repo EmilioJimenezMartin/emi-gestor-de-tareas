@@ -9,6 +9,32 @@ import {
     verifyTotp,
 } from "../lib/auth.js";
 import { getMongoStatus } from "../lib/mongo.js";
+import { AuthLog } from "../models/auth-log.js";
+import { sendTelegram } from "../lib/telegram.js";
+
+async function logEvent(event: string, ip: string, ua: string, email?: string) {
+    try {
+        if (getMongoStatus() === "connected") {
+            await AuthLog.create({ event, email, ip, ua: ua?.slice(0, 200) });
+        }
+    } catch { /* no bloquear el flujo */ }
+}
+
+async function alertTelegram(event: string, ip: string) {
+    try {
+        const emoji = event === "login_ok" ? "✅" : event.endsWith("_fail") ? "⚠️" : "🔐";
+        const label: Record<string, string> = {
+            login_ok:   "Login correcto",
+            login_fail: "Intento de login fallido",
+            "2fa_ok":   "2FA verificado — sesión iniciada",
+            "2fa_fail": "Código 2FA incorrecto",
+            logout:     "Sesión cerrada",
+        };
+        const now = new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" });
+        await sendTelegram(`${emoji} <b>${label[event] ?? event}</b>\nIP: <code>${ip}</code>\n<i>${now}</i>`);
+    } catch { /* si Telegram falla, no bloquear */ }
+}
+
 
 // In-memory rate limiter for login (no deps needed)
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -44,11 +70,13 @@ export async function registerAuthRoutes(app: FastifyInstance) {
             return reply.code(400).send({ error: "Email y contraseña requeridos" });
         }
         if (email.toLowerCase().trim() !== AUTHORIZED_EMAIL) {
+            void logEvent("login_fail", ip, req.headers["user-agent"] || "", email);
             return reply.code(401).send({ error: "Credenciales incorrectas" });
         }
 
         const valid = await verifyPassword(password);
         if (!valid) {
+            void logEvent("login_fail", ip, req.headers["user-agent"] || "", email);
             return reply.code(401).send({ error: "Credenciales incorrectas" });
         }
 
@@ -56,12 +84,12 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         const totpEnabled = getMongoStatus() === "connected" ? await isTotpEnabled() : false;
 
         if (!totpEnabled) {
-            // No 2FA configured — issue full JWT immediately
             const token = generateJWT(email);
+            void logEvent("login_ok", ip, req.headers["user-agent"] || "", email);
+            void alertTelegram("login_ok", ip);
             return reply.send({ token, twoFactorRequired: false });
         }
 
-        // Issue a short-lived "pending 2FA" token
         const pendingToken = generateJWT(email + ":pending2fa");
         return reply.send({ pendingToken, twoFactorRequired: true });
     });
@@ -79,12 +107,17 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         }
 
         const valid = await verifyTotp(code.replace(/\s/g, ""));
+        const ip = req.ip || "unknown";
         if (!valid) {
+            void logEvent("2fa_fail", ip, req.headers["user-agent"] || "");
+            void alertTelegram("2fa_fail", ip);
             return reply.code(401).send({ error: "Código 2FA incorrecto" });
         }
 
         const email = payload.sub.replace(":pending2fa", "");
         const token = generateJWT(email);
+        void logEvent("2fa_ok", ip, req.headers["user-agent"] || "", email);
+        void alertTelegram("2fa_ok", ip);
         return reply.send({ token });
     });
 
@@ -145,8 +178,9 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         return reply.send({ ok: true });
     });
 
-    // POST /auth/logout — client-side only (just returns 200; tokens are stateless)
-    app.post("/auth/logout", async (_req, reply) => {
+    // POST /auth/logout
+    app.post("/auth/logout", async (req, reply) => {
+        void logEvent("logout", req.ip || "unknown", req.headers["user-agent"] || "");
         return reply.send({ ok: true });
     });
 

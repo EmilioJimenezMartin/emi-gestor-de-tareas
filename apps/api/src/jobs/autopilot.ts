@@ -13,6 +13,17 @@ import { buildColoringBookPrompt } from "../routes/autopilot.js";
 import { getAmazonKeywords } from "../lib/amazon-autocomplete.js";
 import { createGumroadProduct } from "../lib/gumroad.js";
 
+const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
+function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
+    return fetch(url, {
+        ...init,
+        headers: {
+            ...(_SERVER_API_KEY ? { Authorization: `Bearer ${_SERVER_API_KEY}` } : {}),
+            ...(init.headers as Record<string, string> ?? {}),
+        },
+    });
+}
+
 type RunStats = { discovered: number; pipelineProcessed: number; catalogsCreated: number };
 
 function emitStage(io: any, stage: string, nicheId: string, nicheName: string) {
@@ -101,7 +112,7 @@ async function buildAiEnhancedSampleCore(
 ): Promise<string | null> {
     try {
         const aiType = productType === "printable-poster" ? "printable-particulars" : "niche-particulars";
-        const res = await fetch(`${base}/ai/generate-text`, {
+        const res = await internalFetch(`${base}/ai/generate-text`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ type: aiType, niche: nicheName, productType, extras: style }),
@@ -286,7 +297,7 @@ async function runDiscovery(
         let finalImageUrl = sampleUrl;
 
         try {
-            const aiRes = await fetch(`${base}/ai/generate-image`, {
+            const aiRes = await internalFetch(`${base}/ai/generate-image`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -378,7 +389,7 @@ async function runDiscovery(
         const nicheId = String(niche._id);
         setTimeout(async () => {
             try {
-                const cldRes = await fetch(`${base}/cloudinary/upload-url`, {
+                const cldRes = await internalFetch(`${base}/cloudinary/upload-url`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ url: sampleUrl, nicheId }),
@@ -548,7 +559,7 @@ async function runPipeline(
 
                 for (let i = 0; i < cfg.catalogsPerNiche; i++) {
                     const prompt = catalogPrompts[i];
-                    const res = await fetch(`${base}/catalogs`, {
+                    const res = await internalFetch(`${base}/catalogs`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
@@ -696,7 +707,7 @@ async function runPipeline(
             // Standalone cloudinary images: tagged to this niche but not part of any catalog
             let standaloneUrls: string[] = [];
             try {
-                const cldRes = await fetch(`${base}/cloudinary/images?nicheId=${String(niche._id)}`);
+                const cldRes = await internalFetch(`${base}/cloudinary/images?nicheId=${String(niche._id)}`);
                 if (cldRes.ok) {
                     const cldData = await cldRes.json() as any;
                     const catalogSet = new Set(catalogUrls);
@@ -882,7 +893,7 @@ async function runPipeline(
 
                     io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📤 Subiendo libro a Cloudinary (${pagesAdded} imgs, ${totalPdfPages} páginas totales, ${Math.round(pdfBytes.byteLength / 1024)}KB)…` });
 
-                    const uploadRes = await fetch(`${base}/cloudinary/upload-pdf`, {
+                    const uploadRes = await internalFetch(`${base}/cloudinary/upload-pdf`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ base64, fileName }),
@@ -1138,7 +1149,7 @@ async function runPipeline(
                             console.warn(`[autopilot] cover text overlay failed for ${label}: ${textErr.message}`);
                         }
                         const dataUrl = `data:image/jpeg;base64,${buf.toString("base64")}`;
-                        const r = await fetch(`${base}/cloudinary/upload`, {
+                        const r = await internalFetch(`${base}/cloudinary/upload`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ dataUrl }),
@@ -1203,7 +1214,7 @@ async function runPipeline(
                     let imgBuf: Buffer | null = null;
                     try {
                         // 1st: selected model via AI proxy
-                        const coverRes = await fetch(`${base}/ai/generate-image`, {
+                        const coverRes = await internalFetch(`${base}/ai/generate-image`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ prompt: coverPrompt, provider: coverAiModel.provider, modelId: coverAiModel.modelId, width: 768, height: 1024 }),

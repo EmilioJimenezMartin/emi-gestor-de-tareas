@@ -15,6 +15,7 @@
   "dependencies": {
     "@agendajs/mongo-backend": "^1.0.0",
     "@ai-sdk/google": "^3.0.75",
+    "@esbuild/darwin-arm64": "^0.18.20",
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.2.0",
     "@fastify/rate-limit": "^11.0.0",
@@ -28,6 +29,7 @@
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.10.0",
     "dotenv": "^17.4.2",
+    "esbuild": "^0.18.20",
     "fastify": "^5.8.5",
     "jsonwebtoken": "^9.0.3",
     "llm-scraper": "^2.0.0",

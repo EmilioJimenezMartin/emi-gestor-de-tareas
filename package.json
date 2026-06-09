@@ -21,7 +21,9 @@
     "concurrently": "^6.5.1"
   },
   "dependencies": {
+    "@fastify/helmet": "^13.0.2",
     "@pdf-lib/fontkit": "^1.1.1",
+    "api": "file:apps/api",
     "pdf-lib": "^1.17.1"
   }
 }

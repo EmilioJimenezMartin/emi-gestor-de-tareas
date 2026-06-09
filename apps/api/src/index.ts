@@ -1,5 +1,7 @@
 import "dotenv/config";
 import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
+import rateLimit from "@fastify/rate-limit";
 import Fastify from "fastify";
 import mongoose from "mongoose";
 import { ZodError } from "zod";
@@ -39,7 +41,8 @@ import { registerAuthRoutes } from "./routes/auth.js";
 import { registerJwtMiddleware } from "./lib/jwt-middleware.js";
 import { Settings } from "./models/settings.js";
 import { initLogStreamer, getLogBuffer } from "./lib/log-streamer.js";
-import { getPollinationsStatus, setPollinationsToken, resetPollinationsBlock } from "./lib/pollinations-circuit.js";
+import { getPollinationsStatus, setPollinationsToken, resetPollinationsBlock, setPollinationsRelayUrl, getPollinationsRelayUrl } from "./lib/pollinations-circuit.js";
+import { deployPollinationsRelay } from "./lib/cf-worker-deploy.js";
 import { getCfUsage } from "./routes/ai.js";
 import { setImageHfKey, setImageGoogleKey, setImageFalKey, setImageSegmindKey, setImageLeonardoKey, setSiliconflowKey, setTensorartApiKey, setTensorartAppId, setTensorartPrivateKey } from "./lib/image-gen.js";
 
@@ -50,6 +53,19 @@ const app = Fastify({ logger: true, bodyLimit: 52_428_800 }); // 50 MB para PDFs
 await app.register(cors, {
   origin: env.CORS_ORIGIN,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+});
+
+// Security headers — desactiva contentSecurityPolicy para no romper SSE/socket.io
+await app.register(helmet, { contentSecurityPolicy: false });
+
+// Rate limiting global: 300 req/min por IP (protege contra scripts y scanners)
+// Los endpoints de auth tienen su propio rate limit más estricto (5 intentos/15min)
+await app.register(rateLimit, {
+    max: 300,
+    timeWindow: "1 minute",
+    skipOnError: true,
+    keyGenerator: (req) => req.ip,
+    errorResponseBuilder: () => ({ error: "Demasiadas peticiones. Espera un momento." }),
 });
 
 const io = registerSocket(app, env);
@@ -70,6 +86,27 @@ app.get("/system/status", async () => ({
 app.post("/system/reset-pollinations", async () => {
     resetPollinationsBlock();
     return { success: true, pollinations: getPollinationsStatus() };
+});
+app.get("/system/pollinations-relay", async () => ({
+    relayUrl: getPollinationsRelayUrl() || null,
+    active: !!getPollinationsRelayUrl(),
+}));
+app.post("/system/deploy-pollinations-relay", async (_req, reply) => {
+    try {
+        const result = await deployPollinationsRelay();
+        setPollinationsRelayUrl(result.workerUrl);
+        // Persistir en MongoDB
+        if (getMongoStatus() === "connected") {
+            await Settings.findOneAndUpdate(
+                { key: "POLLINATIONS_RELAY_URL" },
+                { key: "POLLINATIONS_RELAY_URL", value: result.workerUrl, is_secret: false },
+                { upsert: true }
+            );
+        }
+        return reply.send({ success: true, workerUrl: result.workerUrl });
+    } catch (err: any) {
+        return reply.code(500).send({ success: false, error: err.message });
+    }
 });
 app.get("/system/cf-usage", async () => getCfUsage());
 app.get("/system/keys-status", async () => {
@@ -391,7 +428,7 @@ const onMongoConnected = async () => {
   // Pre-warm image generation keys from DB so Agenda jobs don't need live MongoDB
   try {
     const imageKeyNames = [
-      "POLLINATIONS_TOKEN", "HUGGINGFACE_API_KEY", "GOOGLE_API_KEY", "FALAI_API_KEY",
+      "POLLINATIONS_TOKEN", "POLLINATIONS_RELAY_URL", "HUGGINGFACE_API_KEY", "GOOGLE_API_KEY", "FALAI_API_KEY",
       "SILICONFLOW_API_KEY", "SEGMIND_API_KEY", "LEONARDO_API_KEY",
       "TENSORART_API_KEY", "TENSORART_APP_ID", "TENSORART_PRIVATE_KEY",
     ];
@@ -399,6 +436,7 @@ const onMongoConnected = async () => {
     const keyMap = new Map(keyRows.map((r: any) => [r.key, String(r.value ?? "")]));
     const get = (k: string) => keyMap.get(k) || "";
     if (get("POLLINATIONS_TOKEN")) setPollinationsToken(get("POLLINATIONS_TOKEN"));
+    if (get("POLLINATIONS_RELAY_URL")) setPollinationsRelayUrl(get("POLLINATIONS_RELAY_URL"));
     if (get("HUGGINGFACE_API_KEY")) setImageHfKey(get("HUGGINGFACE_API_KEY"));
     if (get("GOOGLE_API_KEY")) setImageGoogleKey(get("GOOGLE_API_KEY"));
     if (get("FALAI_API_KEY")) setImageFalKey(get("FALAI_API_KEY"));

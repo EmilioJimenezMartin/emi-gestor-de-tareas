@@ -1197,6 +1197,7 @@ export function KdpFactoryApp() {
     const [uploadNicheId, setUploadNicheId] = useState("");
     const [isCreatingManualCatalog, setIsCreatingManualCatalog] = useState(false);
     const [nicheGeneratingId, setNicheGeneratingId] = useState<string | null>(null);
+    const [discoveryLoadingId, setDiscoveryLoadingId] = useState<string | null>(null);
     const [pipelineRunningId, setPipelineRunningId] = useState<string | null>(null);
     const [pipelineQueueIds, setPipelineQueueIds] = useState<string[]>([]);
     const pipelineRunningRef = useRef<string | null>(null);
@@ -1267,6 +1268,8 @@ export function KdpFactoryApp() {
     const [apMaxActiveCatalogs, setApMaxActiveCatalogs] = useState("3");
     const [apScheduled, setApScheduled] = useState(false);
     const [apRunning, setApRunning] = useState(false);
+    const [apMasterEnabled, setApMasterEnabled] = useState(true);
+    const [apMasterToggling, setApMasterToggling] = useState(false);
     const [apCurrentNicheName, setApCurrentNicheName] = useState<string | null>(null);
     const [apCurrentNicheId, setApCurrentNicheId] = useState<string | null>(null);
     // elapsed time ticker for image generation timing (ticks every second while catalogs are running)
@@ -1595,15 +1598,24 @@ export function KdpFactoryApp() {
     };
 
     const triggerNicheDiscovery = async (nicheId: string): Promise<void> => {
-        const res = await fetch(`${API_BASE_URL}/autopilot/discover/${nicheId}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ force: true }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Error lanzando discovery");
-        toast.success("📩 Imagen generada y enviada a Telegram — espera el mensaje");
-        void fetchNiches();
+        if (discoveryLoadingId) return;
+        setDiscoveryLoadingId(nicheId);
+        const toastId = toast.loading("🎨 Generando imagen y enviando a Telegram…");
+        try {
+            const res = await fetch(`${API_BASE_URL}/autopilot/discover/${nicheId}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ force: true }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error lanzando discovery");
+            toast.success("📩 Enviado a Telegram — espera el mensaje con la imagen", { id: toastId });
+            void fetchNiches();
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al lanzar el discovery", { id: toastId });
+        } finally {
+            setDiscoveryLoadingId(null);
+        }
     };
 
     const detectProductType = (titulo: string, subNicho = ""): "coloring-book" | "printable-poster" => {
@@ -2030,6 +2042,25 @@ export function KdpFactoryApp() {
             toast.success("⛔ Señal de parada enviada al pipeline");
         } catch (e: any) {
             toast.error(e.message ?? "Error deteniendo pipeline");
+        }
+    };
+
+    const toggleAutopilotMaster = async (enable: boolean) => {
+        setApMasterToggling(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/settings`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify([{ key: "AUTOPILOT_ABORT", value: enable ? "0" : "1" }]),
+            });
+            if (!res.ok) throw new Error("Error");
+            setApMasterEnabled(enable);
+            if (enable) toast.success("✅ Auto-Pilot activado");
+            else toast.success("🔴 Auto-Pilot desactivado — ningún run futuro se ejecutará");
+        } catch {
+            toast.error("Error al cambiar estado del Auto-Pilot");
+        } finally {
+            setApMasterToggling(false);
         }
     };
 
@@ -3632,6 +3663,7 @@ export function KdpFactoryApp() {
                         if (saved?.id && AI_MODELS.some(m => m.id === saved.id)) setSelectedModel(saved.id);
                     } catch { /* ignore */ }
                 }
+                setApMasterEnabled(settingsMap.get("AUTOPILOT_ABORT") !== "1");
                 if (settingsMap.has("QUALITY_CHECK_ENABLED")) setQualityCheckEnabled(settingsMap.get("QUALITY_CHECK_ENABLED") !== "0" && settingsMap.get("QUALITY_CHECK_ENABLED") !== "false");
                 if (settingsMap.has("QUALITY_VAULT_TELEGRAM_NOTIFY")) setQualityVaultTelegramEnabled(settingsMap.get("QUALITY_VAULT_TELEGRAM_NOTIFY") === "1" || settingsMap.get("QUALITY_VAULT_TELEGRAM_NOTIFY") === "true");
                 if (settingsMap.has("TELEGRAM_WEEKLY_DIGEST")) setWeeklyDigestEnabled(settingsMap.get("TELEGRAM_WEEKLY_DIGEST") !== "false");
@@ -7073,6 +7105,36 @@ export function KdpFactoryApp() {
             {/* ── AUTO-PILOT ──────────────────────────────────────────────── */}
             {configSection === "autopilot" && <section className="space-y-5">
                 <SectionHeader icon={<Zap size={15} />} title="Auto-Pilot" subtitle="Automatiza el pipeline completo de producción" color="amber" size="sm" />
+
+                {/* ─ Master Switch ─ */}
+                <div className={`relative flex items-center justify-between p-4 rounded-xl border transition-all ${
+                    apMasterEnabled
+                        ? "bg-emerald-500/[0.06] border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.1)]"
+                        : "bg-red-500/[0.08] border-red-500/40 shadow-[0_0_20px_rgba(239,68,68,0.15)]"
+                }`}>
+                    <div className="flex items-center gap-3">
+                        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${apMasterEnabled ? "bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]" : "bg-red-400 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"}`} />
+                        <div>
+                            <p className={`text-sm font-black ${apMasterEnabled ? "text-white" : "text-red-300"}`}>
+                                {apMasterEnabled ? "Auto-Pilot ACTIVO" : "Auto-Pilot DESACTIVADO"}
+                            </p>
+                            <p className={`text-[11px] ${apMasterEnabled ? "text-emerald-400/70" : "text-red-400/70"}`}>
+                                {apMasterEnabled ? "Los runs programados se ejecutarán normalmente" : "Todos los runs futuros se abortarán inmediatamente"}
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => void toggleAutopilotMaster(!apMasterEnabled)}
+                        disabled={apMasterToggling}
+                        className={`relative w-12 h-6 rounded-full transition-all duration-300 flex-shrink-0 disabled:opacity-50 ${
+                            apMasterEnabled ? "bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.4)]" : "bg-white/10 border border-red-500/40"
+                        }`}
+                    >
+                        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-all duration-300 ${
+                            apMasterEnabled ? "left-[calc(100%-1.375rem)]" : "left-0.5"
+                        }`} />
+                    </button>
+                </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
@@ -11196,9 +11258,12 @@ export function KdpFactoryApp() {
                                                             {/* Telegram discovery button */}
                                                             <button
                                                                 onClick={() => void triggerNicheDiscovery(niche._id)}
+                                                                disabled={discoveryLoadingId === niche._id}
                                                                 title="Generar imagen de muestra y enviar a Telegram para aprobación"
-                                                                className="w-10 h-10 flex items-center justify-center rounded-xl border border-sky-500/20 bg-sky-500/8 text-sky-400 hover:bg-sky-500/20 hover:border-sky-500/40 transition-all">
-                                                                <Send size={13} />
+                                                                className="w-10 h-10 flex items-center justify-center rounded-xl border border-sky-500/20 bg-sky-500/8 text-sky-400 hover:bg-sky-500/20 hover:border-sky-500/40 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
+                                                                {discoveryLoadingId === niche._id
+                                                                    ? <span className="w-3 h-3 rounded-full border border-sky-400 border-t-transparent animate-spin" />
+                                                                    : <Send size={13} />}
                                                             </button>
                                                             <button
                                                                 onClick={() => setShowPipelineConfigId(showPipelineConfigId === niche._id ? null : niche._id)}

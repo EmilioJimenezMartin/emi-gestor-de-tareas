@@ -7,6 +7,17 @@ import { TelegramAction } from "../models/telegram-action.js";
 
 const MAX_PENDING_TELEGRAM = 8;
 
+const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
+function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
+    return fetch(url, {
+        ...init,
+        headers: {
+            ...(_SERVER_API_KEY ? { Authorization: `Bearer ${_SERVER_API_KEY}` } : {}),
+            ...(init.headers as Record<string, string> ?? {}),
+        },
+    });
+}
+
 async function canTriggerDiscover(): Promise<boolean> {
     try {
         const count = await TelegramAction.countDocuments({ type: "niche-discovery", status: "pending" });
@@ -879,7 +890,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                                     io?.emit("niches:updated");
                                     createdCount++;
                                     if (await canTriggerDiscover()) {
-                                        await fetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
+                                        await internalFetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
                                     } else {
                                         console.log(`[reddit-queue] Telegram cap reached (${MAX_PENDING_TELEGRAM}), nicho guardado sin enviar`);
                                     }
@@ -1148,7 +1159,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                                     io?.emit("niches:updated");
                                     createdCount++;
                                     if (await canTriggerDiscover()) {
-                                        await fetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
+                                        await internalFetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
                                     } else {
                                         console.log(`[pinterest-queue] Telegram cap reached (${MAX_PENDING_TELEGRAM}), nicho guardado sin enviar`);
                                     }
@@ -1480,7 +1491,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
                                 // Trigger discover only if below pending cap
                                 if (await canTriggerDiscover()) {
-                                    await fetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
+                                    await internalFetch(`${base}/autopilot/discover/${niche._id}`, { method: "POST" });
                                 } else {
                                     console.log(`[radar-queue] Telegram cap reached (${MAX_PENDING_TELEGRAM}), nicho guardado sin enviar`);
                                 }
