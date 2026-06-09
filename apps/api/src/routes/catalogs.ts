@@ -331,6 +331,45 @@ export async function registerCatalogRoutes(app: FastifyInstance, { io }: { io: 
         }
     });
 
+    // POST /catalogs/:id/relaunch — resume a failed/cancelled catalog, keeping existing images
+    app.post("/catalogs/:id/relaunch", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const catalog = await Catalog.findById(request.params.id);
+            if (!catalog) return reply.status(404).send({ error: "Catálogo no encontrado" });
+            const relaunchable = ["failed", "cancelled"].includes(catalog.status) ||
+                (!["queued","pending","running"].includes(catalog.status) && catalog.images.length < catalog.totalImages);
+            if (!relaunchable) return reply.status(400).send({ error: "El catálogo no está en estado relanzable" });
+
+            // Keep existing images — just reset counters and re-queue
+            const remaining = catalog.totalImages - catalog.images.length;
+            if (remaining <= 0) {
+                // All images already generated — just mark completed
+                catalog.status = "completed";
+                await catalog.save();
+                return reply.send({ catalog });
+            }
+
+            catalog.skippedImages = 0;
+            catalog.lastError = "";
+            const hasActive = await Catalog.exists({ _id: { $ne: catalog._id }, status: { $in: ["queued", "pending", "running"] } });
+            catalog.status = hasActive ? "queued" : "pending";
+            catalog.queueOrder = Date.now();
+            await catalog.save();
+
+            if (catalog.status === "pending") {
+                try {
+                    const agenda = getAgenda();
+                    await agenda.now("generate-catalog-image", { catalogId: String(catalog._id) });
+                } catch { /* agenda may not be ready */ }
+            }
+
+            return reply.send({ catalog, remaining });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // POST /catalogs/:id/retry-failed — reset skipped slots and reschedule
     app.post("/catalogs/:id/retry-failed", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;

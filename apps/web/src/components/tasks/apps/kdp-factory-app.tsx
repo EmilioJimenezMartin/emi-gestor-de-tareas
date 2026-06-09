@@ -1228,6 +1228,7 @@ export function KdpFactoryApp() {
     const [kdpTemplateRandom, setKdpTemplateRandom] = useState(true);
     // Feature: retry failed slots
     const [retryingCatalogId, setRetryingCatalogId] = useState<string | null>(null);
+    const [relaunchingCatalogId, setRelaunchingCatalogId] = useState<string | null>(null);
     // Feature: compare catalogs
     // Feature: Zip Factory
     const [zipFactoryOpen, setZipFactoryOpen] = useState(false);
@@ -2230,6 +2231,25 @@ export function KdpFactoryApp() {
             toast.error(e.message ?? "Error al reintentar");
         } finally {
             setRetryingCatalogId(null);
+        }
+    };
+
+    const relaunchCatalog = async (catalogId: string) => {
+        setRelaunchingCatalogId(catalogId);
+        const toastId = toast.loading("Relanzando catálogo…");
+        try {
+            const res = await fetch(`${API_BASE_URL}/catalogs/${catalogId}/relaunch`, { method: "POST" });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            setIaCatalogs(prev => prev.map(c => c._id === catalogId ? { ...data.catalog } : c));
+            const msg = data.catalog.status === "queued"
+                ? `📋 En cola — faltan ${data.remaining} imágenes`
+                : `🚀 Relanzado — generando ${data.remaining} imágenes restantes`;
+            toast.success(msg, { id: toastId });
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al relanzar", { id: toastId });
+        } finally {
+            setRelaunchingCatalogId(null);
         }
     };
 
@@ -7984,6 +8004,7 @@ export function KdpFactoryApp() {
         onDownloadPdf: (catalog) => void downloadCatalogPdfDirect(catalog),
         onExportDataset: (catalog) => exportCatalogDataset(catalog),
         retryFailedSlots,
+        relaunchCatalog,
         skipCatalogImage,
         forceCompleteCatalog,
         setConfirmStopCatalogId,
@@ -8010,7 +8031,7 @@ export function KdpFactoryApp() {
             return <Badge variant="neutral" className={`text-sm font-black uppercase ${cls}`}>{label}</Badge>;
         },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }), [onReuseConfig, onOpenEditor, onToggleNiche, handleQueueReorder, retryFailedSlots, skipCatalogImage, forceCompleteCatalog, downloadCatalogPdfDirect, exportCatalogDataset, bulkDeleteSelectedImages, toggleImageSelect, openCatalogImagePreview, toggleFavorite, upscaleImage]);
+    }), [onReuseConfig, onOpenEditor, onToggleNiche, handleQueueReorder, retryFailedSlots, relaunchCatalog, skipCatalogImage, forceCompleteCatalog, downloadCatalogPdfDirect, exportCatalogDataset, bulkDeleteSelectedImages, toggleImageSelect, openCatalogImagePreview, toggleFavorite, upscaleImage]);
 
     const renderAIStudio = () => {
         const currentModel = AI_MODELS.find(m => m.id === selectedModel);
@@ -9530,6 +9551,7 @@ export function KdpFactoryApp() {
                                                 favorites={favorites}
                                                 upscalingId={upscalingPublicId}
                                                 isRetrying={retryingCatalogId === c._id}
+                                                isRelaunching={relaunchingCatalogId === c._id}
                                                 isDeleting={deletingCatalogId === c._id}
                                                 isForceCompleting={forceCompletingCatalogId === c._id}
                                                 isSkippingImage={skippingImageCatalogId === c._id}
@@ -9573,6 +9595,7 @@ export function KdpFactoryApp() {
                                                         favorites={favorites}
                                                         upscalingId={upscalingPublicId}
                                                         isRetrying={retryingCatalogId === c._id}
+                                                        isRelaunching={relaunchingCatalogId === c._id}
                                                         isDeleting={deletingCatalogId === c._id}
                                                         isForceCompleting={forceCompletingCatalogId === c._id}
                                                         isSkippingImage={skippingImageCatalogId === c._id}

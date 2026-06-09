@@ -2,7 +2,7 @@
 import React from "react";
 import {
     Loader2, GripVertical, Copy, FileText, Download, RefreshCw, Target, StopCircle,
-    Trash2, SkipForward, CheckCheck, X, Check, Heart, ArrowUpRight,
+    Trash2, SkipForward, CheckCheck, X, Check, Heart, ArrowUpRight, RotateCcw,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +40,7 @@ export interface KdpCardActions {
     onDownloadPdf: (catalog: IACatalogFE) => void;
     onExportDataset: (catalog: IACatalogFE) => void;
     retryFailedSlots: (catalogId: string) => Promise<void>;
+    relaunchCatalog: (catalogId: string) => Promise<void>;
     skipCatalogImage: (catalogId: string) => void;
     forceCompleteCatalog: (catalogId: string) => void;
     setConfirmStopCatalogId: (id: string | null) => void;
@@ -75,6 +76,7 @@ export interface CatalogCardProps {
     favorites: { has: (url: string) => boolean };
     upscalingId: string | null;
     isRetrying: boolean;
+    isRelaunching: boolean;
     isDeleting: boolean;
     isForceCompleting: boolean;
     isSkippingImage: boolean;
@@ -89,7 +91,7 @@ export const CatalogCard = React.memo(function CatalogCard({
     catalog, tick, niches, allCatalogs,
     isDragOver, isDragging, draggingId, isNichePickerOpen,
     isBulkMode, bulkSelection, isVaultSelectMode, selectedUrls,
-    favorites, upscalingId, isRetrying, isDeleting, isForceCompleting, isSkippingImage, isDirectPdf, isBulkDeleting,
+    favorites, upscalingId, isRetrying, isRelaunching, isDeleting, isForceCompleting, isSkippingImage, isDirectPdf, isBulkDeleting,
 }: CatalogCardProps) {
     const actions = React.useContext(KdpCardCtx)!;
 
@@ -262,6 +264,17 @@ export const CatalogCard = React.memo(function CatalogCard({
                             >
                                 {isRetrying ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
                                 {catalog.skippedImages} fallidos
+                            </button>
+                        )}
+                        {(catalog.status === "failed" || catalog.status === "cancelled" || (!isActive && catalog.images.length === 0)) && (
+                            <button
+                                onClick={() => void actions.relaunchCatalog(catalog._id)}
+                                disabled={isRelaunching}
+                                title="Relanzar catálogo desde cero — borra imágenes actuales y vuelve a la cola"
+                                className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all border border-amber-500/20 text-sm font-black uppercase tracking-widest disabled:opacity-50"
+                            >
+                                {isRelaunching ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
+                                Relanzar
                             </button>
                         )}
                         {/* Niche picker toggle */}

@@ -623,9 +623,15 @@ async function processUpdate(update: any): Promise<void> {
         }
 
         const tAction = await TelegramAction.findById(actionId);
-        if (!tAction || tAction.status !== "pending") {
+        if (!tAction || !["pending", "continuar"].includes(tAction.status)) {
             await answerCallbackQuery(cq.id, "Esta acción ya fue procesada");
             return;
+        }
+        // Allow retry: reset to pending if it was stuck as "continuar" (catalog creation may have failed)
+        if (tAction.status === "continuar") {
+            await TelegramAction.findByIdAndUpdate(tAction._id, { $set: { status: "pending" }, $unset: { resolvedAt: "" } });
+            tAction.status = "pending";
+            tAction.resolvedAt = undefined as any;
         }
 
         let resultText = "";

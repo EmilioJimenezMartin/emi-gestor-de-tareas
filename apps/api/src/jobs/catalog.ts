@@ -1,6 +1,11 @@
 import type { Agenda, Job } from "agenda";
 import axios from "axios";
 import { Catalog } from "../models/catalog.js";
+
+const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
+function authHeaders() {
+    return _SERVER_API_KEY ? { Authorization: `Bearer ${_SERVER_API_KEY}` } : {};
+}
 import { PromptMetric } from "../models/prompt-metric.js";
 import { Settings } from "../models/settings.js";
 import { getCloudinaryConfig, initCloudinary } from "../routes/cloudinary.js";
@@ -418,7 +423,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                                 ...(activeModel.provider === "Ideogram" ? { style: "ILLUSTRATION" } : {}),
                             },
                         },
-                        { responseType: "arraybuffer", timeout: axiosTimeoutMs, signal: abortCtrl.signal }
+                        { responseType: "arraybuffer", timeout: axiosTimeoutMs, signal: abortCtrl.signal, headers: authHeaders() }
                     );
                     clearTimeout(hardTimeout);
                     if (response.status !== 200) throw new Error(`Proxy HTTP ${response.status}`);
