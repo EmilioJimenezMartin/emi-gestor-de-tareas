@@ -1,5 +1,10 @@
 import type { Agenda, Job } from "agenda";
 import { Catalog } from "../models/catalog.js";
+
+const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
+function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
+    return fetch(url, { ...init, headers: { ...(_SERVER_API_KEY ? { Authorization: `Bearer ${_SERVER_API_KEY}` } : {}), ...(init.headers as Record<string, string> ?? {}) } });
+}
 import { activateNextQueued } from "../lib/catalog-queue.js";
 import { sendTelegram, shouldNotify } from "../lib/telegram.js";
 
@@ -36,7 +41,7 @@ async function triggerAutoPilotContinue(agenda: Agenda, catalogId: string, niche
             try { await agenda.schedule("in 5 seconds", "autopilot-run", {}); scheduled = true; } catch { /* fallback below */ }
             if (!scheduled) {
                 const port = process.env.PORT || 3001;
-                void fetch(`http://localhost:${port}/autopilot/run`, { method: "POST" }).catch(() => {});
+                void internalFetch(`http://localhost:${port}/autopilot/run`, { method: "POST" }).catch(() => {});
             }
             break;
         }

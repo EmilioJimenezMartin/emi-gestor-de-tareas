@@ -1,5 +1,10 @@
 import { FastifyInstance } from "fastify";
 import { Niche } from "../models/niche.js";
+
+const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
+function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
+    return fetch(url, { ...init, headers: { ...(_SERVER_API_KEY ? { Authorization: `Bearer ${_SERVER_API_KEY}` } : {}), ...(init.headers as Record<string, string> ?? {}) } });
+}
 import { Catalog } from "../models/catalog.js";
 import { BookDraft } from "../models/book-draft.js";
 import { Settings } from "../models/settings.js";
@@ -84,7 +89,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 setImmediate(async () => {
                     try {
                         const port = process.env.PORT || 3001;
-                        await fetch(`http://localhost:${port}/autopilot/discover/${nicheId}`, { method: "POST" });
+                        await internalFetch(`http://localhost:${port}/autopilot/discover/${nicheId}`, { method: "POST" });
                     } catch { /* non-critical — discovery is best-effort */ }
                 });
             }

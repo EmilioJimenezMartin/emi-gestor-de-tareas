@@ -323,7 +323,7 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             }
 
             const sampleUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(samplePrompt)}?model=flux`;
-            await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: sampleUrl, discoveryImagePrompt: samplePrompt } });
+            await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: sampleUrl, discoveryImagePrompt: samplePrompt, discoveryAiModel: discoveryModel } });
             deps.io?.emit("niches:updated");
 
             const port = process.env.PORT || 3001;
@@ -439,6 +439,8 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                 nicheId,
                 nicheName: (niche as any).name,
                 imageUrl: telegramImageUrl,
+                imagePrompt: samplePrompt,
+                aiModel: discoveryModel,
                 autoApproveAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
             });
 

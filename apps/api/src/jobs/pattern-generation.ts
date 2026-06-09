@@ -1,5 +1,10 @@
 import type { Agenda, Job } from "agenda";
 import axios from "axios";
+
+const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
+function authHeaders() {
+    return _SERVER_API_KEY ? { Authorization: `Bearer ${_SERVER_API_KEY}` } : {};
+}
 import { PatternGenJob } from "../models/pattern-gen-job.js";
 import { Settings } from "../models/settings.js";
 
@@ -53,7 +58,7 @@ export function definePatternGenJob(agenda: Agenda, io: any) {
                             seed,
                         },
                     },
-                    { responseType: "arraybuffer", timeout: 120000 }
+                    { responseType: "arraybuffer", timeout: 120000, headers: authHeaders() }
                 );
                 if (response.status !== 200) throw new Error(`Proxy HTTP ${response.status}`);
                 const ct = (response.headers["content-type"] ?? "") as string;

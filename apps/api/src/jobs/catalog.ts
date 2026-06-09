@@ -272,7 +272,7 @@ async function checkAutoPilotContinue(tag: string, catalogId: string, nicheIds: 
             }
             if (!scheduled) {
                 const port = process.env.PORT || 3001;
-                void fetch(`http://localhost:${port}/autopilot/run`, { method: "POST" }).catch(
+                void internalFetch(`http://localhost:${port}/autopilot/run`, { method: "POST" }).catch(
                     (e: any) => console.error(`${tag} HTTP fallback trigger failed:`, e)
                 );
             }

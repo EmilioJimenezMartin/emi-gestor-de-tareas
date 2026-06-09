@@ -8,6 +8,8 @@ export interface ITelegramAction {
     messageId?: number;
     status: "pending" | "continuar" | "omitir" | "descartar" | "approved" | "rejected";
     imageUrl?: string;
+    imagePrompt?: string;
+    aiModel?: { id: string; name: string; provider: string; modelId: string };
     autoApproveAt: Date;
     createdAt: Date;
     resolvedAt?: Date;
@@ -21,6 +23,8 @@ const schema = new Schema<ITelegramAction>({
     messageId: Number,
     status: { type: String, default: "pending" },
     imageUrl: String,
+    imagePrompt: String,
+    aiModel: { type: Schema.Types.Mixed },
     autoApproveAt: { type: Date, required: true },
     createdAt: { type: Date, default: Date.now },
     resolvedAt: Date,

@@ -162,7 +162,9 @@ async function handleNicheDiscovery(
                 const base = `http://localhost:${port}`;
                 const n = niche as any;
 
-                const aiModel = await getAutopilotImageModel();
+                // Use exact model and prompt from the Telegram image — never fall back to current settings
+                const aiModel = (tAction as any).aiModel ?? await getAutopilotImageModel();
+                const catalogPrompt = (tAction as any).imagePrompt || n?.discoveryImagePrompt || n?.generatedPrompt || tAction.nicheName;
 
                 let created = 0;
                 for (let i = 0; i < cfg.catalogsPerNiche; i++) {
@@ -172,7 +174,7 @@ async function handleNicheDiscovery(
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
                                 name: `${tAction.nicheName} — v${i + 1}`,
-                                prompt: n?.discoveryImagePrompt || n?.generatedPrompt || tAction.nicheName,
+                                prompt: catalogPrompt,
                                 totalImages: cfg.imagesPerCatalog,
                                 aiModel,
                                 nicheIds: [String(tAction.nicheId)],
