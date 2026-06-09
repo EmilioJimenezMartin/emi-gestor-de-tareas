@@ -1,16 +1,11 @@
 import data from "@/data/tasks.json";
+import { apiFetch } from "@/lib/api-fetch";
 
 export type Task = (typeof data)["tasks"][number];
 
-const getApiUrl = () => {
-  return (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
-};
-
 export async function getTasks(): Promise<Task[]> {
   try {
-    const res = await fetch(`${getApiUrl()}/tasks`, {
-      next: { revalidate: 0 } // Always fetch fresh to mirror socket status or disable caching to represent DB correctly
-    });
+    const res = await apiFetch("/tasks", { next: { revalidate: 0 } } as any);
     if (!res.ok) throw new Error("API not ok");
     const json = await res.json();
     return json.tasks as Task[];

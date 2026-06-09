@@ -114,6 +114,13 @@ export default function AjustesPage() {
     // Radar dedup threshold
     const [dedupThreshold, setDedupThreshold] = useState("60");
 
+    // 2FA
+    const [totpEnabled, setTotpEnabled] = useState<boolean | null>(null);
+    const [totpSetupData, setTotpSetupData] = useState<{ secret: string; qrCodeUrl: string } | null>(null);
+    const [totpCode, setTotpCode] = useState("");
+    const [totpLoading, setTotpLoading] = useState(false);
+    const [totpStep, setTotpStep] = useState<"idle" | "setup" | "disable">("idle");
+
     // Voice TTS
     const [voiceEnabled, setVoiceEnabled] = useState(() => {
         if (typeof window === "undefined") return true;
@@ -245,9 +252,10 @@ export default function AjustesPage() {
     useEffect(() => {
         const load = async () => {
             try {
-                const [logsRes, statusRes] = await Promise.all([
+                const [logsRes, statusRes, meRes] = await Promise.all([
                     fetch(`${apiUrl}/system/logs`),
                     fetch(`${apiUrl}/system/status`),
+                    fetch(`${apiUrl}/auth/me`),
                 ]);
                 if (logsRes.ok) {
                     const data = await logsRes.json() as { logs: LogEntry[] };
@@ -257,10 +265,80 @@ export default function AjustesPage() {
                     const data = await statusRes.json() as { pollinations: { blocked: boolean } };
                     setPollinationsBlocked(data.pollinations?.blocked ?? false);
                 }
+                if (meRes.ok) {
+                    const data = await meRes.json() as { twoFactorEnabled: boolean };
+                    setTotpEnabled(data.twoFactorEnabled ?? false);
+                }
             } catch { /* silencioso */ }
         };
         load();
     }, [apiUrl]);
+
+    const handleSetup2FA = async () => {
+        setTotpLoading(true);
+        try {
+            const res = await fetch(`${apiUrl}/auth/setup-2fa`, { method: "POST" });
+            if (!res.ok) throw new Error((await res.json()).error || "Error");
+            const data = await res.json();
+            setTotpSetupData({ secret: data.secret, qrCodeUrl: data.qrCodeUrl });
+            setTotpStep("setup");
+            setTotpCode("");
+        } catch (e: any) {
+            toast.error(e.message || "Error al iniciar configuración 2FA");
+        } finally {
+            setTotpLoading(false);
+        }
+    };
+
+    const handleVerifySetup2FA = async () => {
+        if (totpCode.replace(/\s/g, "").length < 6) return;
+        setTotpLoading(true);
+        try {
+            const res = await fetch(`${apiUrl}/auth/confirm-2fa`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code: totpCode }),
+            });
+            if (!res.ok) {
+                toast.error("Código incorrecto. Inténtalo de nuevo.");
+            } else {
+                setTotpEnabled(true);
+                setTotpStep("idle");
+                setTotpSetupData(null);
+                setTotpCode("");
+                toast.success("2FA activado correctamente");
+            }
+        } catch {
+            toast.error("Error al verificar código");
+        } finally {
+            setTotpLoading(false);
+        }
+    };
+
+    const handleDisable2FA = async () => {
+        if (totpCode.replace(/\s/g, "").length < 6) return;
+        setTotpLoading(true);
+        try {
+            const res = await fetch(`${apiUrl}/auth/disable-2fa`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code: totpCode }),
+            });
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                toast.error(body.error || "Código incorrecto");
+            } else {
+                setTotpEnabled(false);
+                setTotpStep("idle");
+                setTotpCode("");
+                toast.success("2FA desactivado");
+            }
+        } catch {
+            toast.error("Error al desactivar 2FA");
+        } finally {
+            setTotpLoading(false);
+        }
+    };
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -2191,6 +2269,138 @@ export default function AjustesPage() {
                                 <span>90% — Filtra menos (más permisivo)</span>
                             </div>
                         </div>
+                    </div>
+                </section>
+
+                {/* ── 2FA ──────────────────────────────────────────────────── */}
+                <section className="space-y-6 pt-6 border-t border-white/5">
+                    <div className="flex flex-col gap-1">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Autenticación en Dos Pasos</h2>
+                        <p className="text-sm text-neutral-500">Protege el acceso con un código TOTP (Google Authenticator, Authy…).</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-6 space-y-5">
+
+                        {/* Estado */}
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className={`p-2 rounded-xl border ${totpEnabled ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-white/5 border-white/10 text-neutral-500"}`}>
+                                    <Shield size={18} />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-bold text-white">2FA por TOTP</p>
+                                    <p className="text-xs text-neutral-500 mt-0.5">
+                                        {totpEnabled === null ? "Comprobando…" : totpEnabled ? "Activo — el login pide código del autenticador" : "Inactivo — el login solo pide contraseña"}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest ${
+                                totpEnabled === null ? "bg-white/5 border-white/10 text-neutral-500" :
+                                totpEnabled ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" :
+                                "bg-neutral-500/10 border-neutral-500/20 text-neutral-500"
+                            }`}>
+                                <div className={`w-1.5 h-1.5 rounded-full ${totpEnabled ? "bg-emerald-400 animate-pulse" : "bg-neutral-600"}`} />
+                                {totpEnabled === null ? "…" : totpEnabled ? "Activo" : "Inactivo"}
+                            </div>
+                        </div>
+
+                        {/* Paso: configurar nuevo 2FA */}
+                        {totpStep === "setup" && totpSetupData && (
+                            <div className="rounded-2xl border border-violet-500/20 bg-violet-500/[0.04] p-5 space-y-4">
+                                <p className="text-xs font-black text-violet-400 uppercase tracking-widest">Escanea el QR con tu autenticador</p>
+                                <div className="flex flex-col sm:flex-row gap-5 items-start">
+                                    <img src={totpSetupData.qrCodeUrl} alt="QR 2FA" className="w-36 h-36 rounded-xl border border-white/10 bg-white p-1 shrink-0" />
+                                    <div className="space-y-2 flex-1">
+                                        <p className="text-xs text-neutral-400">Si no puedes escanear, introduce el secreto manualmente:</p>
+                                        <code className="block bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-violet-300 break-all select-all">{totpSetupData.secret}</code>
+                                        <p className="text-[10px] text-neutral-600">Guarda este secreto en un lugar seguro como backup.</p>
+                                    </div>
+                                </div>
+                                <div className="space-y-3">
+                                    <p className="text-xs text-neutral-400">Introduce el código que aparece en tu app para confirmar:</p>
+                                    <div className="flex gap-3">
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            maxLength={7}
+                                            value={totpCode}
+                                            onChange={e => setTotpCode(e.target.value)}
+                                            placeholder="000 000"
+                                            className="w-32 bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm font-mono text-white text-center tracking-widest placeholder:text-neutral-700 outline-none focus:border-violet-500/40 transition-all"
+                                        />
+                                        <button
+                                            onClick={handleVerifySetup2FA}
+                                            disabled={totpLoading || totpCode.replace(/\s/g, "").length < 6}
+                                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-xs font-black hover:bg-violet-500/20 transition-all disabled:opacity-40"
+                                        >
+                                            {totpLoading ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                                            Confirmar
+                                        </button>
+                                        <button
+                                            onClick={() => { setTotpStep("idle"); setTotpSetupData(null); setTotpCode(""); }}
+                                            className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-neutral-500 text-xs font-black hover:text-white transition-all"
+                                        >
+                                            Cancelar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Paso: desactivar 2FA */}
+                        {totpStep === "disable" && (
+                            <div className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.04] p-5 space-y-4">
+                                <p className="text-xs font-black text-rose-400 uppercase tracking-widest">Confirma con tu código actual para desactivar</p>
+                                <div className="flex gap-3">
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        maxLength={7}
+                                        value={totpCode}
+                                        onChange={e => setTotpCode(e.target.value)}
+                                        placeholder="000 000"
+                                        className="w-32 bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-sm font-mono text-white text-center tracking-widest placeholder:text-neutral-700 outline-none focus:border-rose-500/40 transition-all"
+                                    />
+                                    <button
+                                        onClick={handleDisable2FA}
+                                        disabled={totpLoading || totpCode.replace(/\s/g, "").length < 6}
+                                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-black hover:bg-rose-500/20 transition-all disabled:opacity-40"
+                                    >
+                                        {totpLoading ? <Loader2 size={12} className="animate-spin" /> : <XCircle size={12} />}
+                                        Desactivar 2FA
+                                    </button>
+                                    <button
+                                        onClick={() => { setTotpStep("idle"); setTotpCode(""); }}
+                                        className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-neutral-500 text-xs font-black hover:text-white transition-all"
+                                    >
+                                        Cancelar
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Botones de acción */}
+                        {totpStep === "idle" && (
+                            <div className="flex gap-3 pt-1">
+                                {!totpEnabled ? (
+                                    <button
+                                        onClick={handleSetup2FA}
+                                        disabled={totpLoading || totpEnabled === null}
+                                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-black hover:bg-emerald-500/20 transition-all disabled:opacity-40"
+                                    >
+                                        {totpLoading ? <Loader2 size={12} className="animate-spin" /> : <Shield size={12} />}
+                                        Activar 2FA
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => { setTotpStep("disable"); setTotpCode(""); }}
+                                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-black hover:bg-rose-500/20 transition-all"
+                                    >
+                                        <XCircle size={12} />
+                                        Desactivar 2FA
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </section>
 

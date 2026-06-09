@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import {
     LayoutGrid,
     Home as HomeIcon,
@@ -8,16 +9,22 @@ import {
     Settings,
     Plus,
     Bell,
-    TrendingUp
+    TrendingUp,
+    LogOut,
 } from "lucide-react";
 import { NavItem, MobileNavItem } from "@/components/layout/nav-items";
 import { AddTaskModal } from "@/components/tasks/add-task-modal";
 import { Button } from "@/components/ui/button";
 import { createApiSocket } from "@/lib/socket";
+import { isAuthenticated, clearToken } from "@/lib/auth-client";
+import { AuthFetchPatcher } from "@/components/layout/auth-fetch-patcher";
 
 export function NavigationWrapper({ children }: { children: React.ReactNode }) {
+    const router = useRouter();
+    const pathname = usePathname();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [dbStatus, setDbStatus] = useState<"unknown" | "connected" | "disconnected" | "connecting" | "disconnecting">("connecting");
+    const [authChecked, setAuthChecked] = useState(false);
     const apiUrl = useMemo(
         () =>
             (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(
@@ -27,7 +34,20 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
         []
     );
 
+    const isLoginPage = pathname === "/login";
+
+    // Auth guard — redirect to /login if not authenticated (skip for login page itself)
     useEffect(() => {
+        if (isLoginPage) { setAuthChecked(true); return; }
+        if (!isAuthenticated()) {
+            router.replace("/login");
+        } else {
+            setAuthChecked(true);
+        }
+    }, [pathname, isLoginPage, router]);
+
+    useEffect(() => {
+        if (isLoginPage) return;
         const socket = createApiSocket(apiUrl);
         socket.on("db:status", (data: { status: string }) => {
             const status = data.status;
@@ -53,9 +73,22 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
         return () => {
             socket.disconnect();
         };
-    }, [apiUrl]);
+    }, [apiUrl, isLoginPage]);
+
+    function handleLogout() {
+        clearToken();
+        router.replace("/login");
+    }
+
+    // Login page: no shell, no auth guard — render directly
+    if (isLoginPage) return <>{children}</>;
+
+    // Waiting for auth check — render nothing to avoid flash
+    if (!authChecked) return null;
 
     return (
+        <>
+        <AuthFetchPatcher />
         <div className="flex min-h-screen bg-black text-foreground overflow-hidden">
             {/* Sidebar - Desktop */}
             <aside className="hidden md:flex flex-col w-56 glass border-r-0 z-40 relative">
@@ -125,6 +158,13 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
                                 <Bell size={20} className="text-neutral-400" />
                                 <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-primary rounded-full border-2 border-background"></span>
                             </button>
+                            <button
+                                onClick={handleLogout}
+                                title="Cerrar sesión"
+                                className="p-2.5 rounded-full hover:bg-white/5 transition-colors text-neutral-500 hover:text-neutral-300"
+                            >
+                                <LogOut size={18} />
+                            </button>
                         </div>
                     </div>
                 </header>
@@ -153,5 +193,6 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
             {/* Modal */}
             <AddTaskModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
         </div>
+        </>
     );
 }

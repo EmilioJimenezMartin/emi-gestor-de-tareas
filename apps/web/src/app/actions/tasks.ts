@@ -3,14 +3,14 @@
 import fs from "fs";
 import path from "path";
 import { revalidatePath } from "next/cache";
+import { apiFetch } from "@/lib/api-fetch";
 
 const DATA_PATH = path.join(process.cwd().includes("apps/web") ? process.cwd() : path.join(process.cwd(), "apps/web"), "src/data/tasks.json");
 
 export async function updateTaskProperty(taskId: string, updates: Record<string, any>) {
     try {
-        const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
         try {
-            const response = await fetch(`${apiUrl}/tasks/${taskId}`, {
+            const response = await apiFetch(`/tasks/${taskId}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(updates),
@@ -25,7 +25,6 @@ export async function updateTaskProperty(taskId: string, updates: Record<string,
             }
         } catch (apiError: any) {
             console.error(`[updateTaskProperty] Persistence failed for ${taskId}:`, apiError.message);
-            // We write to JSON as a LAST RESORT, but we notify the error
             throw apiError;
         }
 
@@ -43,9 +42,8 @@ export async function updateTaskProperty(taskId: string, updates: Record<string,
 
 export async function createTask(taskData: Record<string, any>) {
     try {
-        const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
         try {
-            const response = await fetch(`${apiUrl}/tasks`, {
+            const response = await apiFetch("/tasks", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(taskData),
@@ -75,11 +73,11 @@ export async function createTask(taskData: Record<string, any>) {
         return { success: false, error: "Failed to create task" };
     }
 }
+
 export async function deleteTask(taskId: string) {
     try {
-        const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
         try {
-            const response = await fetch(`${apiUrl}/tasks/${taskId}`, {
+            const response = await apiFetch(`/tasks/${taskId}`, {
                 method: "DELETE",
             });
             if (!response.ok) {
@@ -111,8 +109,7 @@ export async function updateTask(taskId: string, taskData: Record<string, any>) 
 
 export async function addTaskComment(taskId: string, text: string) {
     try {
-        const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
-        const response = await fetch(`${apiUrl}/tasks/${taskId}/comments`, {
+        const response = await apiFetch(`/tasks/${taskId}/comments`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text }),
@@ -138,8 +135,7 @@ export async function addTaskComment(taskId: string, text: string) {
 
 export async function updateTaskComment(taskId: string, commentId: string, text: string) {
     try {
-        const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
-        const response = await fetch(`${apiUrl}/tasks/${taskId}/comments/${commentId}`, {
+        const response = await apiFetch(`/tasks/${taskId}/comments/${commentId}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text }),
@@ -165,8 +161,7 @@ export async function updateTaskComment(taskId: string, commentId: string, text:
 
 export async function deleteTaskComment(taskId: string, commentId: string) {
     try {
-        const apiUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
-        const response = await fetch(`${apiUrl}/tasks/${taskId}/comments/${commentId}`, {
+        const response = await apiFetch(`/tasks/${taskId}/comments/${commentId}`, {
             method: "DELETE",
             cache: "no-store",
         });

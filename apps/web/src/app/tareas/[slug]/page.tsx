@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTaskBySlug, getTasks } from "@/lib/tasks";
+import { apiFetch } from "@/lib/api-fetch";
 import {
   Rocket,
   TrendingUp,
@@ -64,10 +65,9 @@ export default async function TareaDetallePage({
   const task = await getTaskBySlug((await params).slug);
   if (!task) notFound();
 
-  const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001").replace(/\/$/, "");
   let movements: any[] = [];
   try {
-    const res = await fetch(`${apiUrl}/finance/movements?taskId=${task.id}`, { cache: 'no-store' });
+    const res = await apiFetch(`/finance/movements?taskId=${task.id}`, { cache: 'no-store' });
     if (res.ok) {
       const data = await res.json();
       movements = data.movements || [];

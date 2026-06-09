@@ -35,6 +35,8 @@ import { registerBookDraftRoutes } from "./routes/book-drafts.js";
 import { registerRejectedImageRoutes } from "./routes/rejected-images.js";
 import { registerVoiceRoutes } from "./routes/voice.js";
 import { startTelegramPolling } from "./lib/telegram-polling.js";
+import { registerAuthRoutes } from "./routes/auth.js";
+import { registerJwtMiddleware } from "./lib/jwt-middleware.js";
 import { Settings } from "./models/settings.js";
 import { initLogStreamer, getLogBuffer } from "./lib/log-streamer.js";
 import { getPollinationsStatus, setPollinationsToken, resetPollinationsBlock } from "./lib/pollinations-circuit.js";
@@ -52,6 +54,12 @@ await app.register(cors, {
 
 const io = registerSocket(app, env);
 initLogStreamer(io);
+
+// Auth routes first (public — no JWT required)
+await registerAuthRoutes(app);
+
+// JWT middleware — protects all routes registered after this point
+registerJwtMiddleware(app);
 
 app.get("/health", async () => ({ ok: true, mongo: getMongoStatus() }));
 app.get("/system/logs", async () => ({ logs: getLogBuffer() }));

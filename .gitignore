@@ -9,6 +9,9 @@ out
 .turbo
 .DS_Store
 
+# Backups — datos reales, nunca a git
+mongo-backup/
+
 # Image server (Python)
 apps/image-server/.venv/
 apps/image-server/__pycache__/

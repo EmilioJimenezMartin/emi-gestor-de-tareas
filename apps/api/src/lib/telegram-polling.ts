@@ -299,18 +299,30 @@ async function handlePhaseApproval(
 }
 
 // Returns true if the sender is whitelisted (or no whitelist is configured)
+// Authorized Telegram user — fail closed (deny if unknown)
+const AUTHORIZED_TELEGRAM_ID = process.env.TELEGRAM_CHAT_ID || "1419478113";
+
 async function isAllowedUser(update: any): Promise<boolean> {
     try {
+        const userId = String(
+            update.message?.from?.id ??
+            update.callback_query?.from?.id ??
+            update.edited_message?.from?.id ??
+            ""
+        );
+        if (!userId) return false;
+
+        // Always enforce the env/hardcoded authorized ID
+        if (userId === AUTHORIZED_TELEGRAM_ID) return true;
+
+        // Also check optional extra IDs stored in Settings
         const row = await Settings.findOne({ key: "ALLOWED_TELEGRAM_USER_IDS" }).lean();
         const raw = (row as any)?.value as string | undefined;
-        if (!raw?.trim()) return true; // no whitelist — allow all
-        const allowed = raw.split(",").map(s => s.trim()).filter(Boolean);
-        const userId = String(
-            update.message?.from?.id ?? update.callback_query?.from?.id ?? ""
-        );
+        if (!raw?.trim()) return false; // fail closed — no extra IDs configured
+        const allowed = raw.split(",").map((s: string) => s.trim()).filter(Boolean);
         return allowed.includes(userId);
     } catch {
-        return true; // fail open
+        return false; // fail closed on error
     }
 }
 
