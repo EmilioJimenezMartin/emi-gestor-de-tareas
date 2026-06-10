@@ -9,7 +9,7 @@ import type { Agenda } from "agenda";
 import { loadEnv } from "./lib/env.js";
 import { getMongoStatus, startMongo } from "./lib/mongo.js";
 import { initAgenda, startAgenda } from "./lib/agenda.js";
-import { scheduleWatchdog, scheduleRadarRules, scheduleAlerts, scheduleWeeklyDigest, scheduleSeasonalCheck } from "./jobs/index.js";
+import { scheduleWatchdog, scheduleRadarRules, scheduleAlerts, scheduleWeeklyDigest, scheduleSeasonalCheck, scheduleSeoTracker } from "./jobs/index.js";
 import { registerSocket } from "./lib/socket.js";
 import { registerItemRoutes } from "./routes/items.js";
 import { registerTaskRoutes } from "./routes/tasks.js";
@@ -413,6 +413,7 @@ const startAgendaOnce = async () => {
     scheduleAlerts(agenda).catch(e => app.log.error(e, "Failed to schedule pipeline alerts"));
     scheduleWeeklyDigest(agenda).catch(e => app.log.error(e, "Failed to schedule weekly digest"));
     scheduleSeasonalCheck(agenda).catch(e => app.log.error(e, "Failed to schedule seasonal check"));
+    scheduleSeoTracker(agenda).catch(e => app.log.error(e, "Failed to schedule SEO tracker"));
   } catch (e) {
     app.log.error(e, "Agenda failed to start");
   }

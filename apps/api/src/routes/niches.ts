@@ -240,7 +240,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 generate?: boolean;
             };
 
-            let listingData: { title: string; subtitle: string; description: string; keywords: string[] };
+            let listingData: { title: string; subtitle: string; description: string; keywords: string[]; etsyTags?: string[]; categories?: string[]; seoNotes?: string };
 
             if (body.generate || (!body.title && !body.description)) {
                 // Auto-generate using AI from niche context
@@ -248,8 +248,18 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
 
                 const { generateTextWithLLM } = await import("../lib/ai.js");
+                const { gatherKeywordIntel, validateKdpKeywords, validateEtsyTags } = await import("../lib/seo-engine.js");
 
                 const pt = (niche as any).productType ?? "coloring-book";
+
+                // ── Intel real: lo que la gente teclea en Amazon/Google AHORA ──
+                const intel = await gatherKeywordIntel((niche as any).name, pt);
+                const marketScan = (niche as any).marketScan as any;
+                const scanSuggestions: string[] = [
+                    ...(marketScan?.demand?.usSuggestions ?? []),
+                    ...(marketScan?.demand?.esSuggestions ?? []),
+                ];
+                const realTerms = [...new Set([...intel.terms, ...scanSuggestions.map(s => s.toLowerCase())])].slice(0, 25);
                 const KDP_SYSTEM = pt === "coloring-book"
                     ? `Eres un especialista en SEO y copywriting para Amazon KDP. Genera metadatos de alta conversión para un LIBRO DE COLOREAR (coloring book).
 Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": string, "description": string, "keywords": string[] }
@@ -278,6 +288,18 @@ Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": st
 - description: HTML. Estructura: (1) <p> hook emocional con <strong> en 2-3 keywords, (2) <ul><li> 4-5 beneficios concretos, (3) <p> llamada a la acción. 450-650 chars visibles.
 - keywords: exactamente 7 frases de cola larga (2-5 palabras c/u), sin repetir palabras del título.`;
 
+                // Reglas duras comunes (algoritmo A9/A10) — se añaden a cualquier prompt de producto
+                const SEO_RULES = `
+
+REGLAS DURAS ADICIONALES (obligatorias):
+- IDIOMA: TODO el output (title, subtitle, description, keywords, etsyTags, categories) en INGLÉS — el mercado objetivo es amazon.com/etsy.com (US). Solo usa otro idioma si el contexto lo pide explícitamente.
+- "title": la keyword de mayor volumen REAL va al principio, pero debe leerse natural para un humano (Amazon penaliza keyword stuffing en título vía conversión).
+- "keywords": exactamente 7 frases long-tail, cada una de MÁXIMO 50 caracteres. PROHIBIDO: best, new, free, top, premium, book, amazon, kindle, y cualquier palabra que ya aparezca en title o subtitle (Amazon ya indexa título/subtítulo — repetir desperdicia el slot).
+- Construye las keywords COMBINANDO los TÉRMINOS REALES DE BÚSQUEDA del contexto (es lo que la gente teclea de verdad en Amazon). No inventes términos si hay reales disponibles.
+- "etsyTags": exactamente 13 tags de máximo 20 caracteres cada uno, frases de 2-3 palabras (el matching de Etsy es por frase, no por palabra suelta). Cubre: temática, estilo, audiencia, ocasión de regalo, uso.
+- "categories": 3 categorías lo más ESPECÍFICAS posible con su ruta completa (ej. "Crafts, Hobbies & Home > Crafts & Hobbies > Coloring Books for Adults"). Mejor top de categoría nicho que página 50 de una general.
+Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": string, "description": string, "keywords": string[], "etsyTags": string[], "categories": string[] }`;
+
                 // Fetch latest radar insight summary for market context
                 let radarMarketContext = "";
                 try {
@@ -294,18 +316,35 @@ Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": st
                     ((niche as any).tags as string[]).length > 0 ? `Tags: ${((niche as any).tags as string[]).join(", ")}` : "",
                     (niche as any).styleCategory && (niche as any).styleCategory !== "generic" ? `Estilo visual: ${(niche as any).styleCategory}` : "",
                     (niche as any).description ? `Descripción del nicho: ${(niche as any).description}` : "",
+                    realTerms.length > 0 ? `TÉRMINOS REALES DE BÚSQUEDA (autocomplete de Amazon/Google hoy — úsalos como base):\n${realTerms.map(t => `- ${t}`).join("\n")}` : "",
+                    marketScan?.us?.resultCount ? `Mercado US: ${marketScan.us.resultCount} resultados, mediana ${marketScan.us.medianReviews ?? "?"} reviews → ${marketScan.verdict}` : "",
                     radarMarketContext,
                 ].filter(Boolean).join("\n");
 
-                const text = await generateTextWithLLM(KDP_SYSTEM, context);
+                const text = await generateTextWithLLM(KDP_SYSTEM + SEO_RULES, context);
                 const match = text.match(/\{[\s\S]*\}/);
                 if (!match) throw new Error("La IA no devolvió JSON válido");
                 const parsed = JSON.parse(match[0]);
+
+                // Validación dura por código — el LLM propone, las reglas disponen
+                const title = parsed.title ?? niche.name;
+                const subtitle = parsed.subtitle ?? "";
+                const kwResult = validateKdpKeywords(
+                    Array.isArray(parsed.keywords) ? parsed.keywords : [], title, subtitle, intel
+                );
+                const etsyTags = validateEtsyTags(Array.isArray(parsed.etsyTags) ? parsed.etsyTags : [], intel);
+
                 listingData = {
-                    title: parsed.title ?? niche.name,
-                    subtitle: parsed.subtitle ?? "",
+                    title,
+                    subtitle,
                     description: parsed.description ?? "",
-                    keywords: Array.isArray(parsed.keywords) ? parsed.keywords.map((k: string) => k.trim()).filter(Boolean) : [],
+                    keywords: kwResult.keywords,
+                    etsyTags,
+                    categories: Array.isArray(parsed.categories) ? parsed.categories.map((c: string) => c.trim()).filter(Boolean).slice(0, 3) : [],
+                    seoNotes: [
+                        realTerms.length > 0 ? `Basado en ${realTerms.length} términos reales de autocomplete.` : "",
+                        kwResult.fixed.length > 0 ? `Validador: ${kwResult.fixed.join(" · ")}` : "",
+                    ].filter(Boolean).join(" "),
                 };
             } else {
                 listingData = {
@@ -374,6 +413,48 @@ Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": st
     });
 
     // POST /niches/suggest-description — AI-suggested description, tags and notes
+    // POST /niches/:id/seo-track — trackea AHORA las posiciones en Amazon de este nicho (necesita ASIN)
+    app.post("/niches/:id/seo-track", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { trackNicheSeo } = await import("../lib/seo-tracker.js");
+            const result = await trackNicheSeo(request.params.id);
+            if (!result) return reply.status(400).send({ error: "El nicho no tiene ASIN — añádelo para trackear posiciones" });
+            return reply.send(result);
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message ?? "Error trackeando SEO" });
+        }
+    });
+
+    // GET /niches/:id/seo-history — histórico de snapshots de posiciones
+    app.get("/niches/:id/seo-history", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { SeoSnapshot } = await import("../models/seo-snapshot.js");
+            const snapshots = await SeoSnapshot.find({ nicheId: request.params.id })
+                .sort({ createdAt: -1 }).limit(26).lean();
+            return reply.send({ snapshots });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // PATCH /niches/:id/listings/:listingId/apply — marca una versión como aplicada en KDP (día 0 del playbook)
+    app.patch("/niches/:id/listings/:listingId/apply", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const niche = await Niche.findOneAndUpdate(
+                { _id: request.params.id, "listings._id": request.params.listingId },
+                { $set: { "listings.$.appliedAt": new Date() } },
+                { returnDocument: "after" }
+            ).lean();
+            if (!niche) return reply.status(404).send({ error: "Listing no encontrado" });
+            return reply.send({ niche });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // POST /niches/market-scan — balanza demanda/oferta/competencia en Amazon .com + .es
     // Un keyword por llamada (~15-25s): la UI itera la lista que quiera escanear.
     app.post("/niches/market-scan", async (request: any, reply) => {

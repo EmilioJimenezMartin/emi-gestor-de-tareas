@@ -11,6 +11,10 @@ export interface IKDPListing {
     subtitle: string;
     description: string;
     keywords: string[];
+    etsyTags?: string[];      // 13 tags ≤20 chars para Etsy
+    categories?: string[];    // categorías KDP/Etsy sugeridas (específicas, no generales)
+    seoNotes?: string;        // qué corrigió el validador / términos reales usados
+    appliedAt?: Date;         // cuándo se aplicó esta versión en KDP (rotador de metadatos)
     generatedAt: Date;
     language?: string;
 }
@@ -97,6 +101,10 @@ const NicheSchema = new Schema<INiche>(
             subtitle: { type: String, default: "" },
             description: { type: String, default: "" },
             keywords: [{ type: String }],
+            etsyTags: [{ type: String }],
+            categories: [{ type: String }],
+            seoNotes: { type: String },
+            appliedAt: { type: Date },
             generatedAt: { type: Date, default: Date.now },
             language: { type: String, default: "en" },
         }],

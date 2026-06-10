@@ -7,6 +7,7 @@ import {
     Sparkles,
     Wand2,
     Zap,
+    Rocket,
     TrendingUp,
     Layers,
     Search,
@@ -236,6 +237,10 @@ interface NicheKDPListing {
     subtitle: string;
     description: string;
     keywords: string[];
+    etsyTags?: string[];
+    categories?: string[];
+    seoNotes?: string;
+    appliedAt?: string;
     generatedAt: string;
     language?: string;
 }
@@ -656,7 +661,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 function ListingCardFields({
     listing, onCopy, onExpand, expandedId,
 }: {
-    listing: { _id: string; title: string; subtitle: string; description: string; keywords: string[] };
+    listing: { _id: string; title: string; subtitle: string; description: string; keywords: string[]; etsyTags?: string[]; categories?: string[]; seoNotes?: string };
     onCopy: (text: string) => void;
     onExpand: (id: string | null) => void;
     expandedId: string | null;
@@ -679,18 +684,50 @@ function ListingCardFields({
             {listing.keywords.length > 0 && (
                 <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                        <span className="text-sm font-black uppercase tracking-widest text-neutral-600">Keywords ({listing.keywords.length})</span>
+                        <span className="text-sm font-black uppercase tracking-widest text-neutral-600">Keywords KDP ({listing.keywords.length}/7)</span>
                         <button onClick={() => onCopy(listing.keywords.join(", "))} className="text-sm text-neutral-700 hover:text-indigo-400 flex items-center gap-0.5 transition-colors"><Copy size={7} /> Todas</button>
                     </div>
                     <div className="flex flex-wrap gap-1">
                         {listing.keywords.map((kw, i) => (
-                            <button key={i} onClick={() => onCopy(kw)}
+                            <button key={i} onClick={() => onCopy(kw)} title={`${kw.length}/50 chars — click para copiar`}
                                 className="px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/20 rounded-md text-sm text-indigo-300 hover:bg-indigo-500/20 transition-all font-mono">
                                 {kw}
                             </button>
                         ))}
                     </div>
                 </div>
+            )}
+            {(listing.etsyTags?.length ?? 0) > 0 && (
+                <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                        <span className="text-sm font-black uppercase tracking-widest text-neutral-600">Etsy Tags ({listing.etsyTags!.length}/13)</span>
+                        <button onClick={() => onCopy(listing.etsyTags!.join(", "))} className="text-sm text-neutral-700 hover:text-orange-400 flex items-center gap-0.5 transition-colors"><Copy size={7} /> Todas</button>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                        {listing.etsyTags!.map((tag, i) => (
+                            <button key={i} onClick={() => onCopy(tag)} title={`${tag.length}/20 chars — click para copiar`}
+                                className="px-2 py-0.5 bg-orange-500/10 border border-orange-500/20 rounded-md text-sm text-orange-300 hover:bg-orange-500/20 transition-all font-mono">
+                                {tag}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+            {(listing.categories?.length ?? 0) > 0 && (
+                <div className="space-y-1">
+                    <span className="text-sm font-black uppercase tracking-widest text-neutral-600">Categorías sugeridas</span>
+                    <div className="space-y-1">
+                        {listing.categories!.map((cat, i) => (
+                            <button key={i} onClick={() => onCopy(cat)}
+                                className="w-full text-left px-2.5 py-1.5 bg-emerald-500/[0.06] border border-emerald-500/15 rounded-lg text-sm text-emerald-300/90 hover:bg-emerald-500/15 transition-all">
+                                {cat}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+            {listing.seoNotes && (
+                <p className="text-[10px] text-neutral-600 italic leading-relaxed border-l-2 border-white/10 pl-2">{listing.seoNotes}</p>
             )}
             {listing.description && (
                 <div className="space-y-1">
@@ -1039,6 +1076,63 @@ function MarketScanMarketRow({ flag, data }: {
                     )}
                 </div>
             )}
+        </div>
+    );
+}
+
+// ── Launch Playbook ───────────────────────────────────────────────────────────
+// Los primeros 30 días deciden el posicionamiento: Amazon da una "luna de miel"
+// de visibilidad a los lanzamientos. Día 0 = cuando se aplicó el listing en KDP.
+const LAUNCH_PLAYBOOK: Array<{ fromDay: number; toDay: number | null; title: string; action: string; why: string }> = [
+    { fromDay: 0, toDay: 0, title: "Día 0 — Precio de lanzamiento", action: "Publica a precio bajo ($6.99)", why: "Velocidad de ventas inicial = el algoritmo te da \"luna de miel\" de ~30 días" },
+    { fromDay: 0, toDay: 7, title: "Día 0-7 — Primeras reviews", action: "Pide reviews a conocidos QUE COMPREN (no regalado)", why: "Verified Purchase pesa mucho más para el algoritmo" },
+    { fromDay: 14, toDay: 14, title: "Día 14 — Re-validar mercado", action: "Lanza otro Market Scan del nicho", why: "¿Entró competencia? ¿Tu libro aparece ya en autocomplete?" },
+    { fromDay: 30, toDay: 30, title: "Día 30 — Rotar metadatos si no vende", action: "Cambia la keyword principal del título por la 2ª del intel (KDP permite editar sin perder histórico)", why: "A/B testing gratis" },
+    { fromDay: 30, toDay: null, title: "Día 30+ — Subir precio", action: "Sube gradualmente ($8.99 → $10.99) si hay tracción", why: "Maximiza royalty una vez posicionado" },
+];
+
+function LaunchPlaybookPanel({ appliedAt }: { appliedAt?: string }) {
+    const day = appliedAt ? Math.floor((Date.now() - new Date(appliedAt).getTime()) / 86_400_000) : null;
+    const stepState = (s: typeof LAUNCH_PLAYBOOK[number]): "done" | "current" | "upcoming" => {
+        if (day === null) return "upcoming";
+        const end = s.toDay ?? Infinity;
+        if (day > end) return "done";
+        if (day >= s.fromDay) return "current";
+        return "upcoming";
+    };
+    return (
+        <div className="rounded-xl bg-white/[0.02] border border-white/[0.07] p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                    <Rocket size={11} className="text-sky-400/80 shrink-0" />
+                    <span className="text-[9px] uppercase tracking-wider text-neutral-600 font-black">Launch Playbook · primeros 30 días</span>
+                </div>
+                {day !== null ? (
+                    <span className="text-[10px] font-black text-sky-400 tabular-nums">Día {day}</span>
+                ) : (
+                    <span className="text-[9px] text-neutral-600 italic">marca un listing como aplicado para activar el reloj</span>
+                )}
+            </div>
+            <div className="space-y-1">
+                {LAUNCH_PLAYBOOK.map((s, i) => {
+                    const st = stepState(s);
+                    return (
+                        <div key={i} title={s.why}
+                            className={`flex items-start gap-2 rounded-lg px-2 py-1.5 border transition-all ${
+                                st === "current" ? "bg-sky-500/[0.08] border-sky-500/25" :
+                                st === "done" ? "bg-white/[0.015] border-white/[0.04] opacity-50" :
+                                "bg-white/[0.015] border-white/[0.04]"
+                            }`}>
+                            <span className="text-[10px] mt-px shrink-0">{st === "done" ? "✅" : st === "current" ? "🔵" : "⚪"}</span>
+                            <div className="min-w-0">
+                                <p className={`text-[10px] font-black leading-tight ${st === "current" ? "text-sky-300" : "text-neutral-400"}`}>{s.title}</p>
+                                <p className="text-[10px] text-neutral-500 leading-snug">{s.action}</p>
+                                {st === "current" && <p className="text-[9px] text-neutral-600 italic mt-0.5">{s.why}</p>}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 }
@@ -4686,6 +4780,19 @@ export function KdpFactoryApp() {
             toast.error(e.message ?? "Error guardando listing");
         } finally {
             setSavingListingNicheId(null);
+        }
+    };
+
+    // Marca una versión del listing como aplicada en KDP — arranca el reloj del Launch Playbook
+    const applyListingToKdp = async (nicheId: string, listingId: string) => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches/${nicheId}/listings/${listingId}/apply`, { method: "PATCH" });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            setNiches(prev => prev.map(n => n._id === nicheId ? { ...n, listings: data.niche.listings } : n));
+            toast.success("Listing marcado como aplicado en KDP — Launch Playbook activado 🚀");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error marcando listing");
         }
     };
 
@@ -11323,6 +11430,11 @@ export function KdpFactoryApp() {
                                                 {/* ─ Market scan (datos reales Amazon) ─ */}
                                                 {niche.marketScan && <MarketScanPanel scan={niche.marketScan} />}
 
+                                                {/* ─ Launch Playbook (nichos publicados o con listing aplicado) ─ */}
+                                                {(niche.phase === "published" || !!niche.asin?.trim() || niche.listings?.some(l => l.appliedAt)) && (
+                                                    <LaunchPlaybookPanel appliedAt={[...(niche.listings ?? [])].reverse().find(l => l.appliedAt)?.appliedAt} />
+                                                )}
+
                                                 {/* ─ Competition & demand bars ─ */}
                                                 {(niche.competition !== "unknown" || niche.demand !== "unknown") && (
                                                     <div className="space-y-2">
@@ -11598,6 +11710,13 @@ export function KdpFactoryApp() {
                                                                                         className="w-5 h-5 rounded-md bg-white/5 border border-white/10 text-neutral-500 hover:text-white flex items-center justify-center transition-all"
                                                                                     >
                                                                                         <ChevronDown size={8} className={`transition-transform ${expandedListingId === lst._id ? "rotate-180" : ""}`} />
+                                                                                    </button>
+                                                                                    <button
+                                                                                        onClick={() => void applyListingToKdp(niche._id, lst._id)}
+                                                                                        title={lst.appliedAt ? `Aplicado en KDP el ${new Date(lst.appliedAt).toLocaleDateString("es-ES")} — click para re-marcar (reinicia el playbook)` : "Marcar como aplicado en KDP — activa el Launch Playbook (día 0)"}
+                                                                                        className={`h-5 px-1.5 rounded-md border flex items-center gap-1 text-[8px] font-black transition-all ${lst.appliedAt ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400" : "bg-sky-500/10 border-sky-500/20 text-sky-400 hover:bg-sky-500/20"}`}
+                                                                                    >
+                                                                                        <Rocket size={7} /> {lst.appliedAt ? "EN KDP" : "Aplicar"}
                                                                                     </button>
                                                                                     <button
                                                                                         onClick={() => void deleteNicheListing(niche._id, lst._id)}
