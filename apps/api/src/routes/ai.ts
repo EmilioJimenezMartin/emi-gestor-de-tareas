@@ -1163,6 +1163,40 @@ export async function registerAIRoutes(app: FastifyInstance) {
     }
 
     // ── TEXT GENERATION ──────────────────────────────────────────────────────
+    // POST /ai/score-covers — evalúa candidatas de portada COMO MINIATURA (el 90% del
+    // tráfico ve tu libro a ~100px en móvil). El LLM-visión puntúa CTR potencial.
+    app.post("/ai/score-covers", async (request: any, reply) => {
+        const { urls, nicheName, productType } = request.body ?? {};
+        if (!Array.isArray(urls) || urls.length < 2) {
+            return reply.status(400).send({ error: "Se necesitan al menos 2 URLs de portadas para comparar" });
+        }
+        const candidates = urls.slice(0, 6);
+        try {
+            const { generateVisionWithLLM } = await import("../lib/ai.js");
+            const system = `Eres un experto en CTR de portadas en Amazon KDP. Las imágenes que recibes son CANDIDATAS DE PORTADA para el mismo libro. Evalúalas como si fueran MINIATURAS de ~100px en la página de resultados de Amazon en un móvil.
+Criterios (en orden de peso): 1) destaca en miniatura (contraste, silueta clara, un solo punto focal), 2) el género/tema se reconoce en 1 segundo, 3) espacio limpio donde el título sería legible, 4) calidad profesional (sin artefactos IA, anatomía correcta), 5) coherencia con lo que espera el comprador del nicho.
+Responde SOLO con JSON válido (sin markdown): { "scores": [ { "index": number, "score": number, "thumbnailStrength": string, "weakness": string } ], "winnerIndex": number, "reasoning": string }
+- "index": posición de la imagen (0-based, en el orden recibido). "score": 0-100. "thumbnailStrength"/"weakness": 1 frase cada una. "reasoning": por qué gana la ganadora, 2 frases.`;
+            const context = [
+                nicheName ? `Nicho/libro: ${nicheName}` : "",
+                productType ? `Tipo: ${productType}` : "",
+                `Candidatas: ${candidates.length} imágenes en orden.`,
+            ].filter(Boolean).join("\n");
+            const text = await generateVisionWithLLM(system, context, candidates);
+            const match = text.match(/\{[\s\S]*\}/);
+            if (!match) throw new Error("La IA no devolvió JSON válido");
+            const parsed = JSON.parse(match[0]);
+            return reply.send({
+                scores: Array.isArray(parsed.scores) ? parsed.scores : [],
+                winnerIndex: typeof parsed.winnerIndex === "number" ? parsed.winnerIndex : 0,
+                winnerUrl: candidates[parsed.winnerIndex] ?? candidates[0],
+                reasoning: parsed.reasoning ?? "",
+            });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message ?? "Error puntuando portadas" });
+        }
+    });
+
     app.post("/ai/generate-text", async (request: any, reply) => {
         const { type, niche, productType, extras, language = "es", model: modelOverride } = request.body as {
             type: "titles" | "description" | "keywords" | "full-listing" | "back-cover" | "series" | "kdp-physical-book" | "image-prompt" | "niche-particulars" | "printable-particulars";

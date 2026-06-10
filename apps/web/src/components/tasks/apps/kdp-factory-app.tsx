@@ -3278,6 +3278,38 @@ export function KdpFactoryApp() {
     const [coverImgDims, setCoverImgDims] = useState("1024x1024");
     const [isBuildingCover, setIsBuildingCover] = useState(false);
     const [generatedCoverUrl, setGeneratedCoverUrl] = useState<string | null>(null);
+    // Cover A/B: puntuación de candidatas como miniatura (LLM-visión)
+    const [coverScores, setCoverScores] = useState<Record<string, { score: number; thumbnailStrength: string; weakness: string }>>({});
+    const [coverScoreReasoning, setCoverScoreReasoning] = useState("");
+    const [scoringCovers, setScoringCovers] = useState(false);
+
+    const scoreCoverCandidates = async (niche: NicheFE) => {
+        const candidates = niche.coverCandidates ?? [];
+        if (candidates.length < 2) { toast.error("Necesitas al menos 2 candidatas para comparar"); return; }
+        setScoringCovers(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/ai/score-covers`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ urls: candidates, nicheName: niche.name, productType: niche.productType }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            const map: Record<string, { score: number; thumbnailStrength: string; weakness: string }> = {};
+            for (const s of data.scores ?? []) {
+                const url = candidates[s.index];
+                if (url) map[url] = { score: s.score, thumbnailStrength: s.thumbnailStrength, weakness: s.weakness };
+            }
+            setCoverScores(map);
+            setCoverScoreReasoning(data.reasoning ?? "");
+            if (data.winnerUrl) setGeneratedCoverUrl(data.winnerUrl);
+            toast.success(`🏆 Ganadora elegida (${map[data.winnerUrl]?.score ?? "?"}/100 como miniatura)`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error puntuando portadas");
+        } finally {
+            setScoringCovers(false);
+        }
+    };
     const [showCoverModal, setShowCoverModal] = useState(false);
     const [coverModalTab, setCoverModalTab] = useState<"front" | "back">("front");
     const [coverMode, setCoverMode] = useState<"ai" | "collage">("ai");
@@ -12990,10 +13022,23 @@ export function KdpFactoryApp() {
                                     const mainUrl = coverModalTab === "front" ? niche?.coverUrl : niche?.backCoverUrl;
                                     return (
                                         <div className="w-full space-y-1.5 border-t border-white/6 pt-3">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">{candidates.length} guardada{candidates.length !== 1 ? "s" : ""}</p>
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">{candidates.length} guardada{candidates.length !== 1 ? "s" : ""}</p>
+                                                {coverModalTab === "front" && candidates.length > 1 && niche && (
+                                                    <button onClick={() => void scoreCoverCandidates(niche)} disabled={scoringCovers}
+                                                        title="El LLM-visión evalúa las candidatas como miniatura de 100px (lo que ve el 90% de compradores) y elige la de mayor CTR potencial"
+                                                        className="flex items-center gap-1 h-6 px-2 rounded-lg bg-gradient-to-r from-fuchsia-500/20 to-purple-500/10 border border-fuchsia-500/30 text-[9px] font-black text-fuchsia-300 hover:from-fuchsia-500/30 transition-all disabled:opacity-50">
+                                                        {scoringCovers ? <Loader2 size={9} className="animate-spin" /> : <Sparkles size={9} />} Elegir mejor (IA)
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {coverScoreReasoning && coverModalTab === "front" && (
+                                                <p className="text-[9px] text-fuchsia-300/70 italic leading-snug border-l-2 border-fuchsia-500/30 pl-2">{coverScoreReasoning}</p>
+                                            )}
                                             <div className="grid grid-cols-3 gap-1.5">
                                                 {candidates.map((candUrl, idx) => {
                                                     const isMain = candUrl === mainUrl;
+                                                    const sc = coverScores[candUrl];
                                                     return (
                                                         <div key={idx} className="relative group">
                                                             <button
@@ -13003,10 +13048,15 @@ export function KdpFactoryApp() {
                                                                 }}
                                                                 className={`w-full rounded-lg overflow-hidden border-2 transition-all ${isMain ? "border-fuchsia-500/60" : "border-white/10 hover:border-fuchsia-500/30"}`}
                                                                 style={{ aspectRatio: "1600/2560" }}
-                                                                title="Usar como portada principal"
+                                                                title={sc ? `${sc.score}/100 · ✓ ${sc.thumbnailStrength} · ✕ ${sc.weakness}` : "Usar como portada principal"}
                                                             >
                                                                 <img src={candUrl} alt="" className="w-full h-full object-cover" />
                                                                 {isMain && <div className="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-fuchsia-500 flex items-center justify-center"><Check size={6} className="text-white" /></div>}
+                                                                {sc && (
+                                                                    <div className={`absolute bottom-0.5 left-0.5 h-4 px-1 rounded text-[8px] font-black flex items-center ${sc.score >= 75 ? "bg-emerald-500/80 text-white" : sc.score >= 50 ? "bg-amber-500/80 text-black" : "bg-rose-500/80 text-white"}`}>
+                                                                        {sc.score}
+                                                                    </div>
+                                                                )}
                                                             </button>
                                                             {/* Set as main */}
                                                             {!isMain && (

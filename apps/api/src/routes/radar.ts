@@ -528,6 +528,38 @@ ${listSummary}`;
         }
     });
 
+    // ── POST /radar/similar — expande un insight en nichos adyacentes ─────────
+    // Dado un nicho analizado, el LLM propone variantes/subnichos cercanos que
+    // explotan la misma demanda con menos competencia. Salida lista para escanear.
+    app.post("/radar/similar", async (request: any, reply) => {
+        const { insight } = request.body ?? {};
+        if (!insight?.niche) return reply.status(400).send({ error: "insight.niche requerido" });
+        try {
+            const { generateTextWithLLM } = await import("../lib/ai.js");
+            const system = `Eres un experto en nichos de Amazon KDP y productos digitales. Dado un nicho validado, propones nichos ADYACENTES que capturan demanda similar con ángulos distintos.
+Responde SOLO con JSON válido (sin markdown): { "similar": [ { "niche": string, "angle": string, "audience": string, "whyLessCompetition": string, "keywordEn": string } ] }
+- "similar": exactamente 6 nichos. Cada uno debe ser un giro REAL del original: cambia audiencia (niños/adultos/seniors), formato (mandala/escena/patrón), tema cruzado (mismo estilo + otro tema en tendencia), u ocasión (regalo, festividad).
+- "niche": nombre corto y vendible en español. "keywordEn": la búsqueda en inglés que haría un comprador en amazon.com (para escanearlo después).
+- "whyLessCompetition": 1 frase concreta de por qué tendría menos competencia que el original.
+- NO propongas el nicho original ni variaciones triviales (cambiar una palabra).`;
+            const context = [
+                `Nicho original: ${insight.niche}`,
+                insight.summary ? `Resumen: ${insight.summary}` : "",
+                insight.topKeywords?.length ? `Keywords: ${insight.topKeywords.join(", ")}` : "",
+                insight.buyerProfile ? `Comprador: ${insight.buyerProfile}` : "",
+                insight.entryOpportunity ? `Oportunidad: ${insight.entryOpportunity}` : "",
+            ].filter(Boolean).join("\n");
+            const text = await generateTextWithLLM(system, context);
+            const match = text.match(/\{[\s\S]*\}/);
+            if (!match) throw new Error("La IA no devolvió JSON válido");
+            const parsed = JSON.parse(match[0]);
+            const similar = Array.isArray(parsed.similar) ? parsed.similar.slice(0, 6) : [];
+            return reply.send({ similar });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message ?? "Error buscando nichos similares" });
+        }
+    });
+
     // ── GET /radar/insights — lista los últimos análisis guardados ────────────
     app.get("/radar/insights", async (_request, reply) => {
         try {

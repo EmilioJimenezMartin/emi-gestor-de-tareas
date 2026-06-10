@@ -279,6 +279,65 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
     throw new Error("No hay proveedor de IA configurado. Configura Google, Groq, OpenRouter o HuggingFace en Ajustes → Núcleo de Inteligencia.");
 }
 
+/**
+ * Generación con VISIÓN: el LLM recibe imágenes (URLs) además del prompt.
+ * Soporta OpenRouter (image_url) y Google Gemini (inlineData base64).
+ */
+export async function generateVisionWithLLM(systemPrompt: string, userPrompt: string, imageUrls: string[]): Promise<string> {
+    const config = await getConfig();
+
+    if (config.provider === "openrouter" && config.openrouterKey) {
+        const content = [
+            { type: "text", text: userPrompt },
+            ...imageUrls.map(url => ({ type: "image_url", image_url: { url } })),
+        ];
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${config.openrouterKey}`,
+                "HTTP-Referer": "https://emi-gestor-de-tareas.local",
+                "X-Title": "Emi Gestor de Tareas",
+            },
+            body: JSON.stringify({
+                model: config.model || "google/gemini-2.5-flash",
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content },
+                ],
+                max_tokens: 1500,
+                temperature: 0.3,
+            }),
+        });
+        if (!res.ok) throw new Error(`OpenRouter vision error ${res.status}: ${await res.text()}`);
+        const data = await res.json() as { choices: Array<{ message: { content: string } }> };
+        return (data.choices[0]?.message?.content ?? "").trim()
+            .replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+    }
+
+    if (config.provider === "google" && config.googleKey) {
+        const { GoogleGenAI } = await import("@google/genai");
+        const ai = new GoogleGenAI({ apiKey: config.googleKey });
+        // Gemini necesita los bytes — descargar cada imagen
+        const parts: any[] = [{ text: userPrompt }];
+        for (const url of imageUrls) {
+            const imgRes = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+            if (!imgRes.ok) continue;
+            const mime = imgRes.headers.get("content-type") ?? "image/jpeg";
+            const b64 = Buffer.from(await imgRes.arrayBuffer()).toString("base64");
+            parts.push({ inlineData: { mimeType: mime, data: b64 } });
+        }
+        const response = await ai.models.generateContent({
+            model: config.model || "gemini-2.5-flash",
+            contents: [{ role: "user", parts }],
+            config: { systemInstruction: systemPrompt, thinkingConfig: { thinkingBudget: 0 }, maxOutputTokens: 1500, temperature: 0.3 } as any,
+        });
+        return (response.text ?? "").trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+    }
+
+    throw new Error("Visión no soportada con el proveedor LLM configurado (usa OpenRouter o Google).");
+}
+
 function isQuotaError(err: any): boolean {
     const msg: string = (err?.message ?? err?.toString() ?? "").toLowerCase();
     return /quota|rate.?limit|429|too many requests|limit:\s*0|daily limit|exhausted|capacity|overloaded/i.test(msg);

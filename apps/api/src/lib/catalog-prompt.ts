@@ -59,7 +59,7 @@ const STYLE_VARIATION_HINTS: Record<string, string[]> = {
     ],
 };
 
-const DEFAULT_VARIATION_HINTS = [
+export const DEFAULT_VARIATION_HINTS = [
     "detailed center composition, rich ornamental fill, symmetrical balance",
     "wide establishing scene, layered foreground and midground elements",
     "close-up portrait or focal object filling the frame",
@@ -67,6 +67,26 @@ const DEFAULT_VARIATION_HINTS = [
     "intimate small scene, cozy setting, intricate background details",
     "decorative pattern spread, repeating motif with central focal point",
 ];
+
+/** Hint de variación composicional para un slot dado — cada imagen del catálogo sale distinta. */
+export function getVariationHint(style: string, slotIndex: number): string {
+    const hints = STYLE_VARIATION_HINTS[style] ?? DEFAULT_VARIATION_HINTS;
+    return hints[slotIndex % hints.length];
+}
+
+/**
+ * Inyecta el hint de variación en un prompt ya formado.
+ * Si el prompt lleva la fórmula de coloring (con exclusiones al final), lo inserta ANTES
+ * de las exclusiones para que FLUX le dé peso; si no, lo añade al final.
+ */
+export function injectVariationHint(prompt: string, style: string, slotIndex: number): string {
+    const hint = getVariationHint(style, slotIndex);
+    if (prompt.toLowerCase().includes(hint.slice(0, 30).toLowerCase())) return prompt; // ya inyectado
+    const anchor = ", no color, no shading";
+    const idx = prompt.indexOf(anchor);
+    if (idx >= 0) return `${prompt.slice(0, idx)}, ${hint}${prompt.slice(idx)}`;
+    return `${prompt}, ${hint}`;
+}
 
 // Generates a unique image-generation prompt for a single catalog slot.
 // discoveryPrompt: the AI-enhanced core saved during discovery (optional, improves coherence).

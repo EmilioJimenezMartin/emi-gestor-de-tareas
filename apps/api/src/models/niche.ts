@@ -50,6 +50,7 @@ export interface INiche extends Document {
     scoreReason?: string;
     scoredAt?: Date;
     marketScan?: Record<string, unknown>;
+    radarInsight?: Record<string, unknown>;
     pendingCatalogPrompts?: string[];
     autoPilotEnabled?: boolean;
     sampleImageUrl?: string;
@@ -119,6 +120,8 @@ const NicheSchema = new Schema<INiche>(
         scoredAt: { type: Date },
         // Resultado del market-scan real (demanda/oferta/competencia en Amazon .com/.es)
         marketScan: { type: Object },
+        // Insight completo del Radar (precio típico, perfil comprador, competidores, oportunidad)
+        radarInsight: { type: Object },
         pendingCatalogPrompts: [{ type: String }],
         autoPilotEnabled: { type: Boolean, default: false },
         sampleImageUrl: { type: String },

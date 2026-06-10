@@ -389,6 +389,16 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 finalNegativePrompt = userNegative;
             }
 
+            // Variación automática por slot: sin promptParts, todos los slots compartían el
+            // mismo prompt → imágenes casi idénticas. Cada slot recibe un hint composicional
+            // distinto (rotando por estilo) + seed aleatoria explícita.
+            if (!catalog.promptParts?.theme && !overridePrompt) {
+                const { injectVariationHint } = await import("../lib/catalog-prompt.js");
+                finalPrompt = injectVariationHint(finalPrompt, catalogStyle, imageSlot - 1);
+                console.log(`${tag} Variación slot ${imageSlot}: hint inyectado`);
+            }
+            const slotSeed = Math.floor(Math.random() * 999_999);
+
             console.log(`${tag} Prompt (${finalPrompt.length} chars): ${finalPrompt.slice(0, 100)}...`);
             if (finalNegativePrompt) console.log(`${tag} Negative prompt: ${finalNegativePrompt.slice(0, 80)}...`);
 
@@ -422,6 +432,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                             width: catalog.width,
                             height: catalog.height,
                             advancedParams: {
+                                seed: slotSeed,
                                 ...(finalNegativePrompt ? { negativePrompt: finalNegativePrompt } : {}),
                                 ...(activeModel.provider === "Ideogram" ? { style: "ILLUSTRATION" } : {}),
                             },

@@ -152,12 +152,76 @@ export function NicheRadar({
     const [showLogs, setShowLogs] = useState(true);
     const [history, setHistory] = useState<{ url: string; insight: NicheInsight; ts: number }[]>([]);
     const [showHelp, setShowHelp] = useState(false);
-    const [launchingAction, setLaunchingAction] = useState<"telegram" | "catalog" | null>(null);
+    const [launchingAction, setLaunchingAction] = useState<"telegram" | "catalog" | "save" | null>(null);
+    const [similarNiches, setSimilarNiches] = useState<Array<{ niche: string; angle: string; audience: string; whyLessCompetition: string; keywordEn: string; _scan?: { score: number; verdict: string } | null; _scanning?: boolean; _saved?: boolean }>>([]);
+    const [findingSimilar, setFindingSimilar] = useState(false);
+
+    // Busca nichos adyacentes al analizado (mismo público, menos competencia)
+    const findSimilar = async (insight: NicheInsight) => {
+        setFindingSimilar(true);
+        setSimilarNiches([]);
+        try {
+            const res = await fetch(`${apiUrl}/radar/similar`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ insight }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            setSimilarNiches(data.similar ?? []);
+            toast.success(`${(data.similar ?? []).length} nichos adyacentes encontrados`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error buscando similares");
+        } finally {
+            setFindingSimilar(false);
+        }
+    };
+
+    // Market-scan inline de un nicho similar (datos reales antes de guardarlo)
+    const scanSimilar = async (idx: number) => {
+        const item = similarNiches[idx];
+        setSimilarNiches(prev => prev.map((s, i) => i === idx ? { ...s, _scanning: true } : s));
+        try {
+            const res = await fetch(`${apiUrl}/niches/market-scan`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ keyword: item.keywordEn }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            setSimilarNiches(prev => prev.map((s, i) => i === idx ? { ...s, _scanning: false, _scan: { score: data.score, verdict: data.verdict } } : s));
+        } catch (e: any) {
+            setSimilarNiches(prev => prev.map((s, i) => i === idx ? { ...s, _scanning: false, _scan: null } : s));
+            toast.error(e.message ?? "Error en scan");
+        }
+    };
+
+    const saveSimilar = async (idx: number) => {
+        const item = similarNiches[idx];
+        try {
+            const res = await fetch(`${apiUrl}/niches`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: item.niche,
+                    description: `${item.angle} · Audiencia: ${item.audience}`,
+                    notes: `Similar a "${generalResult?.niche}". ${item.whyLessCompetition}`,
+                    tags: [item.keywordEn],
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            setSimilarNiches(prev => prev.map((s, i) => i === idx ? { ...s, _saved: true } : s));
+            toast.success(data.duplicate ? "Ya existía — reutilizado" : `Nicho "${item.niche}" guardado`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error guardando");
+        }
+    };
 
     // Crea (o reutiliza) el nicho desde el insight y lanza el pipeline elegido:
     // - telegram: prompt perfecto → imagen → aprobación en Telegram (flujo discover del autopilot)
     // - catalog:  prompt perfecto → catálogo en cola directamente, sin Telegram
-    const launchFromInsight = async (insight: NicheInsight, action: "telegram" | "catalog") => {
+    const launchFromInsight = async (insight: NicheInsight, action: "telegram" | "catalog" | "save") => {
         setLaunchingAction(action);
         try {
             const nicheRes = await fetch(`${apiUrl}/niches`, {
@@ -170,6 +234,7 @@ export function NicheRadar({
                     competition: insight.competition,
                     demand: insight.demand,
                     notes: `Radar: ${insight.entryOpportunity}`,
+                    radarInsight: insight, // insight completo: precio, comprador, competidores, tendencia
                 }),
             });
             const nicheData = await nicheRes.json();
@@ -177,7 +242,9 @@ export function NicheRadar({
             const nicheId = nicheData.niche._id;
             if (nicheData.duplicate) toast.info("El nicho ya existía — reutilizando");
 
-            if (action === "telegram") {
+            if (action === "save") {
+                toast.success(`💾 Nicho "${insight.niche}" guardado con todo su análisis`);
+            } else if (action === "telegram") {
                 const res = await fetch(`${apiUrl}/autopilot/discover/${nicheId}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -890,6 +957,18 @@ export function NicheRadar({
                                 </div>
                                 {/* ─ CTAs: lanzar el nicho analizado al pipeline ─ */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <button onClick={() => void launchFromInsight(generalResult, "save")} disabled={launchingAction !== null}
+                                        title="Guarda el nicho con TODO el análisis (precio, comprador, competidores, keywords) sin lanzar nada"
+                                        className="flex items-center justify-center gap-2 h-10 rounded-xl bg-white/[0.04] border border-white/10 text-[9px] font-black uppercase text-neutral-300 hover:border-white/25 hover:text-white transition-all disabled:opacity-50">
+                                        {launchingAction === "save" ? <Loader2 size={11} className="animate-spin" /> : <BookOpen size={11} />}
+                                        Guardar nicho completo
+                                    </button>
+                                    <button onClick={() => void findSimilar(generalResult)} disabled={findingSimilar}
+                                        title="El LLM propone 6 nichos adyacentes (misma demanda, otro ángulo) listos para validar con Market Scan"
+                                        className="flex items-center justify-center gap-2 h-10 rounded-xl bg-gradient-to-r from-violet-500/20 to-purple-500/10 border border-violet-500/30 text-[9px] font-black uppercase text-violet-300 hover:from-violet-500/30 hover:to-purple-500/20 transition-all disabled:opacity-50">
+                                        {findingSimilar ? <Loader2 size={11} className="animate-spin" /> : <Shuffle size={11} />}
+                                        Encontrar similares
+                                    </button>
                                     <button onClick={() => void launchFromInsight(generalResult, "telegram")} disabled={launchingAction !== null}
                                         title="Crea el nicho, genera el prompt perfecto + imagen de muestra y te la envía a Telegram para aceptar o descartar"
                                         className="flex items-center justify-center gap-2 h-10 rounded-xl bg-gradient-to-r from-sky-500/20 to-blue-500/10 border border-sky-500/30 text-[9px] font-black uppercase text-sky-300 hover:from-sky-500/30 hover:to-blue-500/20 transition-all disabled:opacity-50">
@@ -903,10 +982,45 @@ export function NicheRadar({
                                         Crear catálogo directo
                                     </button>
                                 </div>
-                                <button onClick={() => { setGeneralResult(null); void analyze(); }}
+                                <button onClick={() => { setGeneralResult(null); setSimilarNiches([]); void analyze(); }}
                                     className="w-full flex items-center justify-center gap-2 h-9 rounded-xl bg-white/5 border border-white/8 text-[9px] font-black uppercase text-neutral-400 hover:text-white hover:border-white/15 transition-all">
                                     <RefreshCw size={11} /> Analizar de nuevo
                                 </button>
+
+                                {/* ─ Nichos adyacentes propuestos ─ */}
+                                {similarNiches.length > 0 && (
+                                    <div className="space-y-2 pt-1">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-violet-400/80 flex items-center gap-1.5"><Shuffle size={10} /> Nichos adyacentes — valida con datos antes de guardar</p>
+                                        {similarNiches.map((s, i) => (
+                                            <div key={i} className="rounded-xl bg-white/[0.03] border border-white/8 p-3 space-y-1.5">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                        <p className="text-[11px] font-black text-white leading-tight">{s.niche}</p>
+                                                        <p className="text-[9px] text-neutral-500 mt-0.5">{s.angle} · <span className="text-neutral-400">{s.audience}</span></p>
+                                                        <p className="text-[9px] text-emerald-400/70 italic mt-0.5">{s.whyLessCompetition}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                        {s._scan && (
+                                                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${s._scan.verdict === "gold" ? "bg-yellow-500/15 border-yellow-500/30 text-yellow-400" : s._scan.verdict === "good" ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400" : s._scan.verdict === "saturated" ? "bg-amber-500/15 border-amber-500/30 text-amber-400" : "bg-rose-500/15 border-rose-500/30 text-rose-400"}`}>
+                                                                {s._scan.verdict === "gold" ? "🥇 " : ""}{s._scan.score}/100
+                                                            </span>
+                                                        )}
+                                                        <button onClick={() => void scanSimilar(i)} disabled={s._scanning}
+                                                            title={`Market Scan real de "${s.keywordEn}" (~25s)`}
+                                                            className="h-6 px-2 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[8px] font-black hover:bg-sky-500/20 transition-all disabled:opacity-50 flex items-center gap-1">
+                                                            {s._scanning ? <Loader2 size={8} className="animate-spin" /> : <TrendingUp size={8} />} Scan
+                                                        </button>
+                                                        <button onClick={() => void saveSimilar(i)} disabled={s._saved}
+                                                            className={`h-6 px-2 rounded-lg border text-[8px] font-black transition-all flex items-center gap-1 ${s._saved ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400" : "bg-white/[0.04] border-white/10 text-neutral-300 hover:border-white/25"}`}>
+                                                            {s._saved ? "✓ Guardado" : "Guardar"}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <p className="text-[8px] font-mono text-neutral-700">→ {s.keywordEn}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

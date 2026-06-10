@@ -40,7 +40,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
     app.post("/niches", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
-            const { name, description, tags, status, competition, demand, productType, styleCategory, styleCategories, notes, etsyUrl, _sourceTitulo } = request.body as any;
+            const { name, description, tags, status, competition, demand, productType, styleCategory, styleCategories, notes, etsyUrl, _sourceTitulo, radarInsight } = request.body as any;
             if (!name?.trim()) return reply.status(400).send({ error: "name required" });
 
             // Deduplication — return existing niche instead of creating a duplicate
@@ -63,6 +63,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 notes: notes?.trim() ?? "",
                 etsyUrl: etsyUrl?.trim() ?? "",
                 sourceTitulo: _sourceTitulo?.trim() ?? "",
+                ...(radarInsight && typeof radarInsight === "object" ? { radarInsight } : {}),
             });
             // If created from radar table, stamp _nichoCreado on the saved etsy result
             if (_sourceTitulo) {
@@ -413,6 +414,18 @@ Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": st
     });
 
     // POST /niches/suggest-description — AI-suggested description, tags and notes
+    // POST /niches/double-down — detecta nichos GANADORES (ventas reales) y propone spin-offs
+    app.post("/niches/double-down", async (_request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { runDoubleDown } = await import("../lib/double-down.js");
+            const winners = await runDoubleDown();
+            return reply.send({ winners });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message ?? "Error en double-down" });
+        }
+    });
+
     // POST /niches/:id/seo-track — trackea AHORA las posiciones en Amazon de este nicho (necesita ASIN)
     app.post("/niches/:id/seo-track", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;

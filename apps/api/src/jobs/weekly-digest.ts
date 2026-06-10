@@ -100,6 +100,22 @@ export function defineWeeklyDigestJob(agenda: Agenda, _io: any) {
             await sendTelegram(lines as string);
         }
         console.log(`[weekly-digest] Digest sent — ${niches.length} niches, ${catalogs.length} catalogs this week`);
+
+        // ── Double-down: si hay nichos GANADORES (ventas reales), proponer spin-offs ──
+        try {
+            const { runDoubleDown } = await import("../lib/double-down.js");
+            const winners = await runDoubleDown();
+            if (winners.length > 0 && await shouldNotify("winners.double-down")) {
+                const blocks = winners.map(w => {
+                    const props = w.proposals.map(p => `   · <i>${p.name}</i> — ${p.rationale}`).join("\n");
+                    return `🏆 <b>${w.nicheName}</b> — $${w.royaltiesUsd.toFixed(2)} (${w.unitsSold}u) últimos 2 meses\n${props}`;
+                });
+                await sendTelegram(`💎 <b>Nichos ganadores — hora de doblar la apuesta</b>\n\n${blocks.join("\n\n")}\n\nCrea los spin-offs desde KDP Factory → botón "Double-down".`);
+                console.log(`[weekly-digest] Double-down: ${winners.length} ganadores propuestos`);
+            }
+        } catch (e: any) {
+            console.warn(`[weekly-digest] double-down failed: ${e?.message}`);
+        }
     });
 }
 
