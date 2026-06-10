@@ -5,6 +5,14 @@ import { Settings } from "../models/settings.js";
 import { imageSemaphore, llmSemaphore } from "../lib/ai-semaphore.js";
 import { PromptMetric } from "../models/prompt-metric.js";
 import { getMongoStatus } from "../lib/mongo.js";
+import { getAutopilotImageModel } from "../lib/image-gen.js";
+import { getAgenda } from "../lib/agenda.js";
+import { TelegramAction } from "../models/telegram-action.js";
+
+const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
+function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
+    return fetch(url, { ...init, headers: { ...(_SERVER_API_KEY ? { Authorization: `Bearer ${_SERVER_API_KEY}` } : {}), ...(init.headers as Record<string, string> ?? {}) } });
+}
 
 function ensureMongo(reply: any): boolean {
     if (getMongoStatus() !== "connected") {
@@ -135,39 +143,57 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps?: { agen
             const niche = await Niche.findById(id);
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
 
-            // Persist run config to Settings so the autopilot job picks them up
-            if (body.catalogsPerNiche) {
-                await Settings.findOneAndUpdate(
-                    { key: "AUTOPILOT_CATALOGS_PER_NICHE" },
-                    { $set: { key: "AUTOPILOT_CATALOGS_PER_NICHE", value: String(body.catalogsPerNiche) } },
-                    { upsert: true }
-                );
+            const catalogsPerNiche = body.catalogsPerNiche ?? 3;
+            const imagesPerCatalog = body.imagesPerCatalog ?? 5;
+            const port = process.env.PORT || 3001;
+            const base = `http://localhost:${port}`;
+
+            // Use exact prompt and model from the discovery image (same as Telegram)
+            const discoveryPrompt = (niche as any).discoveryImagePrompt as string | undefined;
+            const catalogPrompt = discoveryPrompt || (niche as any).generatedPrompt || niche.name;
+
+            // Model priority: niche.discoveryAiModel → latest TelegramAction.aiModel → Settings
+            let discoveryAiModel = (niche as any).discoveryAiModel as { id: string; name: string; provider: string; modelId: string } | undefined;
+            if (!discoveryAiModel) {
+                const lastAction = await TelegramAction.findOne({ nicheId: id, type: "niche-discovery" }).sort({ createdAt: -1 }).lean();
+                if ((lastAction as any)?.aiModel) {
+                    discoveryAiModel = (lastAction as any).aiModel;
+                    // Backfill onto the niche so next call doesn't need to query TelegramAction
+                    await Niche.findByIdAndUpdate(id, { $set: { discoveryAiModel } });
+                }
             }
-            if (body.imagesPerCatalog) {
-                await Settings.findOneAndUpdate(
-                    { key: "AUTOPILOT_IMAGES_PER_CATALOG" },
-                    { $set: { key: "AUTOPILOT_IMAGES_PER_CATALOG", value: String(body.imagesPerCatalog) } },
-                    { upsert: true }
-                );
+            const aiModel = discoveryAiModel ?? await getAutopilotImageModel();
+
+            // Backfill generatedPrompt if it doesn't match discoveryImagePrompt
+            if (discoveryPrompt && (niche as any).generatedPrompt !== discoveryPrompt) {
+                await Niche.findByIdAndUpdate(id, { $set: { generatedPrompt: discoveryPrompt } });
             }
 
-            // Enable autopilot on this niche so runPipeline picks it up
-            await Niche.findByIdAndUpdate(id, {
-                $set: { autoPilotEnabled: true, status: "active" },
-            });
+            deps?.io?.emit("autopilot:log", { nicheId: id, message: `🚀 Creando ${catalogsPerNiche} catálogos para "${niche.name}" · ${aiModel.name}` });
 
+            let created = 0;
+            for (let i = 0; i < catalogsPerNiche; i++) {
+                const res = await internalFetch(`${base}/catalogs`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        name: `${niche.name} — v${i + 1}`,
+                        prompt: catalogPrompt,
+                        totalImages: imagesPerCatalog,
+                        aiModel,
+                        nicheIds: [id],
+                        productType: (niche as any).productType ?? "coloring-book",
+                    }),
+                });
+                if (res.ok) created++;
+                await new Promise(r => setTimeout(r, 200));
+            }
+
+            await Niche.findByIdAndUpdate(id, { $set: { status: "active" } });
             deps?.io?.emit("niches:updated");
-            deps?.io?.emit("autopilot:log", {
-                nicheId: id,
-                message: `🚀 Pipeline lanzado para "${(niche as any).name}"`,
-            });
+            deps?.io?.emit("catalogs:updated");
 
-            // Schedule an immediate autopilot run
-            if (deps?.agenda) {
-                await deps.agenda.schedule("in 2 seconds", "autopilot-run", {}).catch(() => {});
-            }
-
-            return reply.send({ ok: true, nicheId: id, message: "Pipeline iniciado en servidor" });
+            return reply.send({ ok: true, nicheId: id, created, message: `${created} catálogos creados` });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
         }

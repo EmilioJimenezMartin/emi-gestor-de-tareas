@@ -3,14 +3,27 @@ import { useCallback, useRef } from "react";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001").replace(/\/$/, "");
 
+// Module-level ref so all hook instances share the same current audio (only one voice at a time)
+let _currentAudio: HTMLAudioElement | null = null;
+
+function stopCurrentAudio() {
+    if (_currentAudio) {
+        _currentAudio.pause();
+        _currentAudio.src = "";
+        _currentAudio = null;
+    }
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+    }
+}
+
 function stripNonSpeech(text: string): string {
     return text.replace(/[^\p{L}\p{N}\s.,;:!?'"()\-]/gu, " ").replace(/\s+/g, " ").trim();
 }
 
 function browserSpeak(clean: string, lang: string) {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
-    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-    window.speechSynthesis.cancel();
+    stopCurrentAudio();
 
     const doSpeak = () => {
         const utterance = new SpeechSynthesisUtterance(clean);
@@ -45,10 +58,13 @@ async function serverSpeak(clean: string, lang: string): Promise<boolean> {
         const blob = await res.blob();
         if (blob.size < 500) return false;
 
+        stopCurrentAudio();
+
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
-        audio.onended = () => URL.revokeObjectURL(url);
-        audio.onerror = () => URL.revokeObjectURL(url);
+        _currentAudio = audio;
+        audio.onended = () => { URL.revokeObjectURL(url); if (_currentAudio === audio) _currentAudio = null; };
+        audio.onerror = () => { URL.revokeObjectURL(url); if (_currentAudio === audio) _currentAudio = null; };
         await audio.play();
         return true;
     } catch {
@@ -57,22 +73,18 @@ async function serverSpeak(clean: string, lang: string): Promise<boolean> {
 }
 
 export function useSpeech(lang = "es-ES") {
-    // Keep an AudioContext alive from first user interaction to unblock autoplay
-    const ctxRef = useRef<AudioContext | null>(null);
-
     const speak = useCallback(async (text: string) => {
         if (typeof window === "undefined") return;
         if (localStorage.getItem("voice_enabled") === "false") return;
         const clean = stripNonSpeech(text).slice(0, 200);
         if (!clean) return;
 
-        // Try server TTS first (more reliable for async notifications)
         const ok = await serverSpeak(clean, lang);
         if (!ok) browserSpeak(clean, lang);
     }, [lang]);
 
     const stop = useCallback(() => {
-        if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.cancel();
+        stopCurrentAudio();
     }, []);
 
     return { speak, stop };

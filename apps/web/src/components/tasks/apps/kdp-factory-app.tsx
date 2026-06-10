@@ -1578,7 +1578,7 @@ export function KdpFactoryApp() {
 
     const launchPipelineStep = async (niche: NicheFE, cfg?: { catalogs: number; imagesPerCatalog: number }) => {
         const phase = niche.phase ?? "niche";
-        if (phase === "niche" || phase === "catalog") {
+        if (phase === "niche" || phase === "catalog" || phase === "libro") {
             await runNichePipeline(niche, cfg);
         } else if (phase === "pdf") {
             setNichePublishPanelId(niche._id);
@@ -1769,7 +1769,7 @@ export function KdpFactoryApp() {
             setNicheFormStyles(niche.styleCategories?.length ? niche.styleCategories : [niche.styleCategory ?? "generic"]);
             setNicheFormNotes(niche.notes);
             setNicheFormEtsyUrl(niche.etsyUrl ?? "");
-            setNicheFormPrompt(niche.generatedPrompt ?? "");
+            setNicheFormPrompt(niche.discoveryImagePrompt ?? niche.generatedPrompt ?? "");
         } else {
             setNicheEditTarget(null);
             setNicheFormName("");
@@ -1793,7 +1793,7 @@ export function KdpFactoryApp() {
             ?? (niche.styleCategories?.length ? niche.styleCategories : [niche.styleCategory ?? "generic"]);
         setNicheGeneratingId(niche._id);
         const allNewCatalogIds: string[] = [...(niche.catalogIds ?? [])];
-        let lastPrompt = niche.generatedPrompt ?? "";
+        let lastPrompt = niche.discoveryImagePrompt ?? niche.generatedPrompt ?? "";
         try {
             for (const style of styles) {
                 const isColoringBook = niche.productType === "coloring-book";
@@ -2284,8 +2284,9 @@ export function KdpFactoryApp() {
     };
 
     const saveNichePromptToLibrary = (niche: NicheFE) => {
-        if (!niche.generatedPrompt) return;
-        setPromptTheme(niche.generatedPrompt);
+        const prompt = niche.discoveryImagePrompt ?? niche.generatedPrompt;
+        if (!prompt) return;
+        setPromptTheme(prompt);
         setPromptSpecs(""); setPromptDetails(""); setPromptParticulars("");
         const modelId = NICHE_STYLE_MODEL[niche.styleCategory ?? "generic"];
         const match = AI_MODELS.find(m => m.id === modelId);
@@ -4203,7 +4204,7 @@ export function KdpFactoryApp() {
                 setNicheFormStyles(niche.styleCategories?.length ? niche.styleCategories : [niche.styleCategory ?? "generic"]);
                 setNicheFormNotes(niche.notes);
                 setNicheFormEtsyUrl(niche.etsyUrl ?? "");
-                setNicheFormPrompt(niche.generatedPrompt ?? "");
+                setNicheFormPrompt(niche.discoveryImagePrompt ?? niche.generatedPrompt ?? "");
                 setPublishPanelAsin(niche.asin ?? "");
                 setPublishPanelEtsy(niche.etsyUrl ?? "");
                 setPublishPanelGumroad(niche.gumroadUrl ?? "");
@@ -4669,10 +4670,11 @@ export function KdpFactoryApp() {
 
     // ── Pipeline automático: genera catálogos + KDP listing ──────────────────
     const runNichePipeline = async (niche: NicheFE, cfg?: { catalogs: number; imagesPerCatalog: number }) => {
-        if (pipelineRunningRef.current === niche._id) return; // prevent double-press
+        if (pipelineRunningRef.current === niche._id) return;
 
         pipelineRunningRef.current = niche._id;
         setPipelineRunningId(niche._id);
+        const toastId = toast.loading("Creando catálogos…");
 
         try {
             const IMAGES_PER_CATALOG = cfg?.imagesPerCatalog ?? pipelineConfig.imagesPerCatalog;
@@ -4684,21 +4686,18 @@ export function KdpFactoryApp() {
                 body: JSON.stringify({ catalogsPerNiche: MAX_CATALOGS, imagesPerCatalog: IMAGES_PER_CATALOG }),
             });
 
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({})) as any;
-                throw new Error(err.error ?? "Error lanzando pipeline en servidor");
-            }
+            const data = await res.json().catch(() => ({})) as any;
+            if (!res.ok) throw new Error(data.error ?? "Error lanzando pipeline");
 
             const displayName = niche.nickname?.trim() || niche.name;
-            toast.success(`Pipeline de "${displayName}" iniciado en servidor`);
-            speak(`Pipeline lanzado para ${displayName}`);
-            changeTab("niches");
+            toast.success(`🚀 ${data.created ?? MAX_CATALOGS} catálogos creados para "${displayName}"`, { id: toastId });
+            void fetchCatalogs();
         } catch (e: any) {
-            toast.error(e.message ?? "Error en el pipeline");
+            toast.error(e.message ?? "Error en el pipeline", { id: toastId });
+        } finally {
             pipelineRunningRef.current = null;
             setPipelineRunningId(null);
         }
-        // pipelineRunningId is cleared when the autopilot:done socket event fires
     };
 
     const monthlyEarningsData = useMemo(() => {
@@ -11175,7 +11174,7 @@ export function KdpFactoryApp() {
                                                     </div>
                                                     {/* Actions — always visible on mobile, hover on desktop */}
                                                     <div className="flex items-center gap-0.5 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                                        {niche.generatedPrompt && (
+                                                        {(niche.discoveryImagePrompt || niche.generatedPrompt) && (
                                                             <button onClick={() => saveNichePromptToLibrary(niche)} title="Guardar prompt en biblioteca"
                                                                 className="p-2 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all">
                                                                 <BookMarked size={14} />
@@ -14980,7 +14979,7 @@ export function KdpFactoryApp() {
                                             <span>{linkedCats.length} catálogos</span>
                                             <span>·</span>
                                             <span>{detailNiche.listings?.length ?? 0} listings SEO</span>
-                                            {detailNiche.generatedPrompt && <><span>·</span><span>prompt generado</span></>}
+                                            {(detailNiche.discoveryImagePrompt || detailNiche.generatedPrompt) && <><span>·</span><span>prompt generado</span></>}
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
@@ -15275,7 +15274,7 @@ export function KdpFactoryApp() {
                                                 </div>
                                             </div>
                                         )}
-                                        {detailNiche.generatedPrompt && (
+                                        {!detailNiche.discoveryImagePrompt && detailNiche.generatedPrompt && (
                                             <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 space-y-1.5">
                                                 <div className="flex items-center justify-between">
                                                     <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Prompt de generación</p>
@@ -15288,7 +15287,7 @@ export function KdpFactoryApp() {
                                             <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.03] p-4 space-y-2">
                                                 <div className="flex items-center justify-between">
                                                     <div>
-                                                        <p className="text-sm font-black uppercase tracking-widest text-violet-400/80">Prompt de muestra IA</p>
+                                                        <p className="text-sm font-black uppercase tracking-widest text-violet-400/80">Prompt de imagen</p>
                                                         {detailNiche.pendingCatalogPrompts && detailNiche.pendingCatalogPrompts.length > 0 && (
                                                             <p className="text-[9px] text-violet-500/60 mt-0.5">{detailNiche.pendingCatalogPrompts.length} prompts de catálogo pre-generados</p>
                                                         )}

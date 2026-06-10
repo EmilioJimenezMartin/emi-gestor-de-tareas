@@ -1257,13 +1257,23 @@ Write ONLY the "particulars" — 55-80 words of precise visual description for t
 
 RULES:
 1. SUBJECT: Name it concretely with a specific action or state. Not "a fox" — "a red fox mid-leap, one forepaw raised"
-2. SECONDARY: 2-4 supporting elements that reinforce the niche. Specific, not generic.
-3. COMPOSITION: State it explicitly — close-up portrait / overhead flat lay / symmetrical mandala / dynamic diagonal / etc.
-4. DENSITY: Describe what fills the page — ornamental patterns, repeating motifs, background texture, decorative borders
-5. MOOD: One precise emotional quality — "reverent and ceremonial", "joyful and chaotic", "eerie and still"
+2. SECONDARY: 2-4 supporting elements that directly reinforce the SPECIFIC niche topic. No generic filler.
+3. COMPOSITION: Explicit spatial description — close-up portrait / overhead flat lay / symmetrical mandala / dynamic diagonal / etc.
+4. DENSITY: What fills the margins and background — ornamental patterns, repeating motifs, border details, negative space distribution
+5. MOOD: One concrete, visual, SPECIFIC emotional quality tied to the niche — NOT abstract filler. "Reverent and ceremonial" ✓ — "inviting calm and focus" ✗
+
+BAD EXAMPLES (what NOT to produce):
+- "Intricate patterns fill the page, inviting a sense of calm and focus." ← too abstract, no specifics
+- "A beautiful mandala with swirling lines and symmetrical designs." ← banned adjectives, no niche connection
+- "Detailed scene with decorative elements creating a peaceful atmosphere." ← says nothing concrete
+
+GOOD EXAMPLES:
+- "A barn owl perched on a gnarled oak branch, wings half-spread mid-rotation, large facial disc ringed by feather rays. Dense fern fronds and acorn clusters frame the lower corners. Composition: centered portrait, slightly low-angle. Margins packed with intertwined ivy vines and Celtic knotwork. Mood: alert and nocturnal."
+- "Sixteen-point star mandala centered on lotus bloom, each petal subdivided into three concentric leaf segments. Outer ring: eight elephant silhouettes trunk-raised, alternating with peacock feathers in full display. Corners: corner-fill geometric triangles with paisley fill. Composition: perfect top-down symmetry. Mood: ceremonial and dense."
+
+FORBIDDEN WORDS: beautiful, stunning, gorgeous, amazing, lovely, wonderful, intricate, delicate, elegant, inviting, serene, peaceful, calm, tranquil, soothing, whimsical, enchanting, magical.
 
 NEVER mention: line style, outlines, coloring, black and white, or page format.
-NEVER use: beautiful, stunning, gorgeous, amazing, lovely, wonderful.
 
 Return ONLY: {"particulars": "...55-80 words..."}`;
             })(),

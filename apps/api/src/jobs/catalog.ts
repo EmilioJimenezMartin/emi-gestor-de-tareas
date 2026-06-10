@@ -6,6 +6,9 @@ const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
 function authHeaders() {
     return _SERVER_API_KEY ? { Authorization: `Bearer ${_SERVER_API_KEY}` } : {};
 }
+function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
+    return fetch(url, { ...init, headers: { ...(_SERVER_API_KEY ? { Authorization: `Bearer ${_SERVER_API_KEY}` } : {}), ...(init.headers as Record<string, string> ?? {}) } });
+}
 import { PromptMetric } from "../models/prompt-metric.js";
 import { Settings } from "../models/settings.js";
 import { getCloudinaryConfig, initCloudinary } from "../routes/cloudinary.js";

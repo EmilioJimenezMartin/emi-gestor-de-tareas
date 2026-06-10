@@ -323,33 +323,18 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             }
 
             const sampleUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(samplePrompt)}?model=flux`;
-            await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: sampleUrl, discoveryImagePrompt: samplePrompt, discoveryAiModel: discoveryModel } });
+
+            // Resolve model BEFORE saving to niche so discoveryAiModel is always set
+            const discoveryModel = await getAutopilotImageModel();
+
+            await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: sampleUrl, discoveryImagePrompt: samplePrompt, generatedPrompt: samplePrompt, discoveryAiModel: discoveryModel } });
             deps.io?.emit("niches:updated");
 
             const port = process.env.PORT || 3001;
             const base = `http://localhost:${port}`;
 
-            // Pre-generate catalog prompts in background while image fetches
-            void (async () => {
-                try {
-                    const fallback = (niche as any).generatedPrompt || (niche as any).name as string;
-                    const prompts: string[] = [];
-                    for (let i = 0; i < catalogsPerNiche; i++) {
-                        const p = await withLlmSlot(`pre-catalog-prompt-${i}:${nicheId}`, () =>
-                            generateCatalogPrompt(base, (niche as any).name, productType, style, samplePrompt, i)
-                        );
-                        prompts.push((p as string | null) || fallback);
-                    }
-                    await Niche.findByIdAndUpdate(nicheId, { $set: { pendingCatalogPrompts: prompts } });
-                    deps.io?.emit("niches:updated");
-                } catch { /* non-critical */ }
-            })();
-
             let imageBytes: Buffer | null = null;
             let telegramImageUrl = sampleUrl;
-
-            // Use selected model via AI proxy
-            const discoveryModel = await getAutopilotImageModel();
             deps.io?.emit("autopilot:log", { message: `🎨 Generando imagen con ${discoveryModel.name}…` });
             try {
                 const aiRes = await internalFetch(`${base}/ai/generate-image`, {

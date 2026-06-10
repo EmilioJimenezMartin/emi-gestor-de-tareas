@@ -3,7 +3,7 @@ import { Catalog } from "../models/catalog.js";
 import { Settings } from "../models/settings.js";
 
 const JOB_NAME = "generate-catalog-image";
-const QUEUE_COOLDOWN = "in 2 minutes";
+const QUEUE_COOLDOWN = "in 10 seconds";
 const DEFAULT_MAX_ACTIVE = 1; // global AI semaphore serializes calls; 1 active catalog avoids Agenda lock races
 
 async function getMaxActiveCatalogs(): Promise<number> {
