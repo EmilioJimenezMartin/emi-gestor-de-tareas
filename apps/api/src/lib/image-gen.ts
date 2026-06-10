@@ -82,6 +82,70 @@ export async function generateImage(prompt: string, opts: GenerateImageOpts = {}
         console.warn(`[image-gen] Pollinations error: ${e.message}`);
     }
 
+    // ── Cloudflare Workers AI (gratis ~10k neurons/día) ──────────────────────
+    try {
+        const cfToken = process.env.CF_API_TOKEN || String((await Settings.findOne({ key: "CF_API_TOKEN" }).lean() as any)?.value ?? "");
+        const cfAccount = process.env.CF_ACCOUNT_ID || String((await Settings.findOne({ key: "CF_ACCOUNT_ID" }).lean() as any)?.value ?? "");
+        if (cfToken && cfAccount) {
+            console.log("[image-gen] Intentando Cloudflare flux-1-schnell...");
+            const cfRes = await fetch(
+                `https://api.cloudflare.com/client/v4/accounts/${cfAccount}/ai/run/@cf/black-forest-labs/flux-1-schnell`,
+                {
+                    method: "POST",
+                    headers: { Authorization: `Bearer ${cfToken}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ prompt: prompt.slice(0, 2048), steps: 8 }),
+                    signal: opts.signal ?? AbortSignal.timeout(60_000),
+                }
+            );
+            if (cfRes.ok) {
+                const data = await cfRes.json() as any;
+                const b64 = data?.result?.image;
+                if (b64) {
+                    console.log("[image-gen] Cloudflare OK");
+                    return Buffer.from(b64, "base64");
+                }
+            } else {
+                await cfRes.body?.cancel();
+                console.warn(`[image-gen] Cloudflare ${cfRes.status}`);
+            }
+        }
+    } catch (e: any) {
+        if (e?.name === "AbortError") return null;
+        console.warn(`[image-gen] Cloudflare error: ${e.message}`);
+    }
+
+    // ── SiliconFlow (FLUX.1-schnell gratis) ───────────────────────────────────
+    try {
+        const sfKey = _cachedSiliconflowKey || await getApiKey("SILICONFLOW_API_KEY");
+        if (sfKey && sfKey !== _cachedSiliconflowKey) _cachedSiliconflowKey = sfKey;
+        if (sfKey) {
+            console.log("[image-gen] Intentando SiliconFlow FLUX.1-schnell...");
+            const sfRes = await fetch("https://api.siliconflow.com/v1/images/generations", {
+                method: "POST",
+                headers: { Authorization: `Bearer ${sfKey}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ model: "black-forest-labs/FLUX.1-schnell", prompt, image_size: `${width}x${height}`, seed }),
+                signal: opts.signal ?? AbortSignal.timeout(60_000),
+            });
+            if (sfRes.ok) {
+                const data = await sfRes.json() as any;
+                const imgUrl = data?.images?.[0]?.url;
+                if (imgUrl) {
+                    const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(30_000) });
+                    if (imgRes.ok) {
+                        console.log("[image-gen] SiliconFlow OK");
+                        return Buffer.from(await imgRes.arrayBuffer());
+                    }
+                }
+            } else {
+                await sfRes.body?.cancel();
+                console.warn(`[image-gen] SiliconFlow ${sfRes.status}`);
+            }
+        }
+    } catch (e: any) {
+        if (e?.name === "AbortError") return null;
+        console.warn(`[image-gen] SiliconFlow error: ${e.message}`);
+    }
+
     // ── Segmind ───────────────────────────────────────────────────────────────
     const segmindKey = _cachedSegmindKey || await getApiKey("SEGMIND_API_KEY");
     if (segmindKey && segmindKey !== _cachedSegmindKey) _cachedSegmindKey = segmindKey;

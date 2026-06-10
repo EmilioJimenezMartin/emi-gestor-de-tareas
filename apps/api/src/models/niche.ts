@@ -45,6 +45,7 @@ export interface INiche extends Document {
     scoreBreakdown?: { demand: number; competition: number; uniqueness: number; potential: number };
     scoreReason?: string;
     scoredAt?: Date;
+    marketScan?: Record<string, unknown>;
     pendingCatalogPrompts?: string[];
     autoPilotEnabled?: boolean;
     sampleImageUrl?: string;
@@ -108,6 +109,8 @@ const NicheSchema = new Schema<INiche>(
         },
         scoreReason: { type: String },
         scoredAt: { type: Date },
+        // Resultado del market-scan real (demanda/oferta/competencia en Amazon .com/.es)
+        marketScan: { type: Object },
         pendingCatalogPrompts: [{ type: String }],
         autoPilotEnabled: { type: Boolean, default: false },
         sampleImageUrl: { type: String },

@@ -9,7 +9,7 @@ import { buildCollage, buildHalfColored, pickCatalogImages, type CollageLayout }
 import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
 import { pollinationsFetch } from "../lib/pollinations-circuit.js";
 import { generateImage, getAutopilotImageModel } from "../lib/image-gen.js";
-import { buildColoringBookPrompt } from "../routes/autopilot.js";
+import { buildColoringBookPrompt, buildPosterPrompt, buildSeamlessPatternPrompt } from "../routes/autopilot.js";
 import { getAmazonKeywords } from "../lib/amazon-autocomplete.js";
 import { createGumroadProduct } from "../lib/gumroad.js";
 
@@ -81,17 +81,11 @@ function buildSampleUrl(nicheName: string, style: string, productType: string, e
     let model = "flux";
     const core = enhancedCore ?? nicheName;
 
-    if (productType === "printable-poster" && style === "illustration") {
-        prompt = `${core} high quality digital illustration, 8K resolution, vibrant rich colors, fine detailed artwork, professional quality, no text, clean composition`;
-        model = "flux-realism";
-    } else if (productType === "printable-poster" && style === "realistic") {
-        prompt = `${core} realistic photo, ultra sharp, 8K resolution, professional photography, vibrant colors, no text`;
-        model = "flux-realism";
-    } else if (productType === "printable-poster") {
-        prompt = `${core} printable wall art poster, colorful illustration, clean design, no text`;
+    if (productType === "printable-poster") {
+        prompt = buildPosterPrompt(core, style);
         model = "flux-realism";
     } else if (productType === "seamless-pattern") {
-        prompt = `${core} seamless tileable repeat surface pattern, flat design, symmetrical layout, clean edges, no background noise, vector-like, POD ready`;
+        prompt = buildSeamlessPatternPrompt(core);
         model = "flux-realism";
     } else {
         // Style-aware coloring book formula
@@ -290,8 +284,8 @@ async function runDiscovery(
 
         const pt = niche.productType ?? "coloring-book";
         const imageGenPrompt = pt === "printable-poster"
-            ? `${niche.name}, professional printable wall art poster, vibrant colors, premium illustration`
-            : `${niche.name}, coloring page illustration, thick black outlines, white background, line art`;
+            ? buildPosterPrompt(niche.name, niche.styleCategory ?? "generic")
+            : buildColoringBookPrompt(niche.name, niche.styleCategory ?? "generic");
 
         let imageBytes: Buffer | null = null;
         let finalImageUrl = sampleUrl;

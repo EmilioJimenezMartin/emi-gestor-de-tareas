@@ -138,10 +138,10 @@ const PRODUCT_TYPES = [
 ];
 
 const AI_MODELS = [
-    { id: "flux-schnell", name: "FLUX.1 [schnell]", provider: "Hugging Face", type: "Ultra High Quality", modelId: "black-forest-labs/FLUX.1-schnell", status: "limited" },
-    { id: "flux-dev", name: "FLUX.1 [dev]", provider: "Hugging Face", type: "Higher fidelity (may be gated)", modelId: "black-forest-labs/FLUX.1-dev", status: "limited" },
-    { id: "sd-3.5", name: "Stable Diffusion 3.5", provider: "Hugging Face", type: "Versatile", modelId: "stabilityai/stable-diffusion-3.5-large-turbo", status: "limited" },
-    { id: "openjourney-v4", name: "OpenJourney v4", provider: "Hugging Face", type: "Artistic/MJ Style", modelId: "prompthero/openjourney", status: "limited" },
+    { id: "flux-schnell", name: "FLUX.1 [schnell]", provider: "Hugging Face", type: "Ultra High Quality", modelId: "black-forest-labs/FLUX.1-schnell", status: "blocked" },
+    { id: "flux-dev", name: "FLUX.1 [dev]", provider: "Hugging Face", type: "Higher fidelity (may be gated)", modelId: "black-forest-labs/FLUX.1-dev", status: "blocked" },
+    { id: "sd-3.5", name: "Stable Diffusion 3.5", provider: "Hugging Face", type: "Versatile", modelId: "stabilityai/stable-diffusion-3.5-large-turbo", status: "blocked" },
+    { id: "openjourney-v4", name: "OpenJourney v4", provider: "Hugging Face", type: "Artistic/MJ Style", modelId: "prompthero/openjourney", status: "blocked" },
     { id: "google-gemini-2-5", name: "Google Gemini 2.5 Flash Image", provider: "Google", type: "Fast image gen", modelId: "gemini-2.5-flash-image", status: "paid" },
     { id: "leo-phoenix",      name: "Phoenix 1.0 ✦ (Leonardo)",    provider: "Leonardo", type: "150 tok/día · Flagship · Fantasy · Mejor calidad", modelId: "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3", status: "limited" },
     { id: "leo-kino-xl",      name: "KINO XL ✦ (Leonardo)",        provider: "Leonardo", type: "150 tok/día · Cinematográfico · Escenas épicas",    modelId: "aa77f04e-3eec-4034-9c07-d0f619684628", status: "limited" },
@@ -150,48 +150,48 @@ const AI_MODELS = [
     { id: "leo-lucid-origin", name: "Lucid Origin (Leonardo)",     provider: "Leonardo", type: "150 tok/día · Generalista · Ilimitado relajado",     modelId: "7b592283-e8a7-4c5a-9ba6-d18c31f258b9", status: "limited" },
     { id: "leo-lucid-real",   name: "Lucid Realism (Leonardo)",    provider: "Leonardo", type: "150 tok/día · Hiperrealista · Ilimitado relajado",   modelId: "05ce0082-2d80-4a2d-8653-4d1c85e2418e", status: "limited" },
     { id: "leo-anime-xl",     name: "Leonardo Anime XL",           provider: "Leonardo", type: "150 tok/día · Anime · Ilustración 2D",               modelId: "e71a1c2f-4f80-4800-934f-2c68979d8cc8", status: "limited" },
-    { id: "sdxl-base", name: "Stable Diffusion XL Base 1.0", provider: "Hugging Face", type: "General (OSS weights)", modelId: "stabilityai/stable-diffusion-xl-base-1.0", status: "limited" },
-    { id: "sdxl-turbo", name: "SDXL Turbo", provider: "Hugging Face", type: "Fast (OSS weights)", modelId: "stabilityai/sdxl-turbo", status: "limited" },
-    { id: "sd-1.5", name: "Stable Diffusion 1.5", provider: "Hugging Face", type: "Classic (OSS weights)", modelId: "runwayml/stable-diffusion-v1-5", status: "limited" },
-    { id: "kandinsky-2.2", name: "Kandinsky 2.2", provider: "Hugging Face", type: "Creative", modelId: "ai-forever/Kandinsky-2.2", status: "limited" },
-    { id: "coloringbook-redmond", name: "ColoringBook.Redmond (LoRA)", provider: "Hugging Face", type: "Coloring Book (clean lines)", modelId: "artificialguybr/ColoringBookRedmond", status: "limited" },
-    { id: "coloringbook-redmond-v2", name: "ColoringBook.Redmond V2 (LoRA)", provider: "Hugging Face", type: "Coloring Book (clean lines)", modelId: "artificialguybr/ColoringBookRedmond-V2", status: "limited" },
+    { id: "sdxl-base", name: "Stable Diffusion XL Base 1.0", provider: "Hugging Face", type: "General (OSS weights)", modelId: "stabilityai/stable-diffusion-xl-base-1.0", status: "blocked" },
+    { id: "sdxl-turbo", name: "SDXL Turbo", provider: "Hugging Face", type: "Fast (OSS weights)", modelId: "stabilityai/sdxl-turbo", status: "blocked" },
+    { id: "sd-1.5", name: "Stable Diffusion 1.5", provider: "Hugging Face", type: "Classic (OSS weights)", modelId: "runwayml/stable-diffusion-v1-5", status: "blocked" },
+    { id: "kandinsky-2.2", name: "Kandinsky 2.2", provider: "Hugging Face", type: "Creative", modelId: "ai-forever/Kandinsky-2.2", status: "blocked" },
+    { id: "coloringbook-redmond", name: "ColoringBook.Redmond (LoRA)", provider: "Hugging Face", type: "Coloring Book (clean lines)", modelId: "artificialguybr/ColoringBookRedmond", status: "blocked" },
+    { id: "coloringbook-redmond-v2", name: "ColoringBook.Redmond V2 (LoRA)", provider: "Hugging Face", type: "Coloring Book (clean lines)", modelId: "artificialguybr/ColoringBookRedmond-V2", status: "blocked" },
     // Pollinations — gateway nuevo gen.pollinations.ai con API key (proxy backend)
     { id: "pollinations-flux", name: "FLUX (Pollinations)", provider: "Pollinations", type: "Gratis · API Key propia", modelId: "flux", status: "ok" },
     { id: "pollinations-flux-realism", name: "FLUX Realism (Pollinations)", provider: "Pollinations", type: "Gratis · Fotorrealista", modelId: "flux-realism", status: "ok" },
     { id: "pollinations-flux-anime", name: "FLUX Anime (Pollinations)", provider: "Pollinations", type: "Gratis · Anime/Ilustración", modelId: "flux-anime", status: "ok" },
     { id: "pollinations-turbo", name: "Turbo (Pollinations)", provider: "Pollinations", type: "Gratis · Ultra Rápido", modelId: "turbo", status: "ok" },
     // fal.ai — API key requerida ($0.003/img), inferencia muy rápida (<1s)
-    { id: "falai-flux-schnell", name: "FLUX Schnell (fal.ai)", provider: "fal.ai", type: "Rápido · $0.003/img", modelId: "fal-ai/flux/schnell", status: "paid" },
-    { id: "falai-flux-dev", name: "FLUX Dev (fal.ai)", provider: "fal.ai", type: "Alta calidad · fal.ai", modelId: "fal-ai/flux/dev", status: "paid" },
-    { id: "falai-flux-lora-coloring", name: "FLUX LoRA Coloring (fal.ai)", provider: "fal.ai", type: "Línea art · Coloring Book", modelId: "fal-ai/flux/dev/lora", status: "paid" },
+    { id: "falai-flux-schnell", name: "FLUX Schnell (fal.ai)", provider: "fal.ai", type: "Rápido · $0.003/img", modelId: "fal-ai/flux/schnell", status: "blocked" },
+    { id: "falai-flux-dev", name: "FLUX Dev (fal.ai)", provider: "fal.ai", type: "Alta calidad · fal.ai", modelId: "fal-ai/flux/dev", status: "blocked" },
+    { id: "falai-flux-lora-coloring", name: "FLUX LoRA Coloring (fal.ai)", provider: "fal.ai", type: "Línea art · Coloring Book", modelId: "fal-ai/flux/dev/lora", status: "blocked" },
     // Segmind — 100 créditos gratis/día, sin tarjeta
-    { id: "segmind-flux-schnell", name: "FLUX Schnell (Segmind)", provider: "Segmind", type: "100 gratis/día · Rápido", modelId: "flux-schnell", status: "limited" },
-    { id: "segmind-sdxl", name: "SDXL 1.0 (Segmind)", provider: "Segmind", type: "100 gratis/día · General", modelId: "sdxl1.0", status: "limited" },
-    { id: "segmind-canny", name: "SDXL Canny (Segmind)", provider: "Segmind", type: "100 gratis/día · Línea art", modelId: "canny-sdxl", status: "limited" },
+    { id: "segmind-flux-schnell", name: "FLUX Schnell (Segmind)", provider: "Segmind", type: "100 gratis/día · Rápido", modelId: "flux-schnell", status: "blocked" },
+    { id: "segmind-sdxl", name: "SDXL 1.0 (Segmind)", provider: "Segmind", type: "100 gratis/día · General", modelId: "sdxl1.0", status: "blocked" },
+    { id: "segmind-canny", name: "SDXL Canny (Segmind)", provider: "Segmind", type: "100 gratis/día · Línea art", modelId: "canny-sdxl", status: "blocked" },
     // Cloudflare Workers AI — gratis, sin bloqueos geo
-    { id: "cf-flux-schnell", name: "FLUX Schnell (Cloudflare)", provider: "Cloudflare", type: "Gratis · ~33img/día · FLUX · ~5s", modelId: "@cf/black-forest-labs/flux-1-schnell", status: "limited" },
-    { id: "cf-sdxl-lightning", name: "SDXL Lightning (Cloudflare)", provider: "Cloudflare", type: "Gratis · Ultrarrápido · Alta calidad", modelId: "@cf/bytedance/stable-diffusion-xl-lightning", status: "limited" },
-    { id: "cf-sdxl", name: "SDXL Base (Cloudflare)", provider: "Cloudflare", type: "Gratis · Detallado · SDXL 1.0", modelId: "@cf/stabilityai/stable-diffusion-xl-base-1.0", status: "limited" },
-    { id: "cf-dreamshaper", name: "DreamShaper LCM (Cloudflare)", provider: "Cloudflare", type: "Gratis · Artístico · Estilos creativos", modelId: "@cf/lykon/dreamshaper-8-lcm", status: "limited" },
+    { id: "cf-flux-schnell", name: "⭐ FLUX Schnell (Cloudflare)", provider: "Cloudflare", type: "Gratis · ~33img/día · FLUX · ~5s", modelId: "@cf/black-forest-labs/flux-1-schnell", status: "ok" },
+    { id: "cf-sdxl-lightning", name: "SDXL Lightning (Cloudflare)", provider: "Cloudflare", type: "Gratis · Ultrarrápido · Alta calidad", modelId: "@cf/bytedance/stable-diffusion-xl-lightning", status: "ok" },
+    { id: "cf-sdxl", name: "SDXL Base (Cloudflare)", provider: "Cloudflare", type: "Gratis · Detallado · SDXL 1.0", modelId: "@cf/stabilityai/stable-diffusion-xl-base-1.0", status: "ok" },
+    { id: "cf-dreamshaper", name: "DreamShaper LCM (Cloudflare)", provider: "Cloudflare", type: "Gratis · Artístico · Estilos creativos", modelId: "@cf/lykon/dreamshaper-8-lcm", status: "ok" },
     // Together AI — $5 gratis sin tarjeta, FLUX schnell, sin bloqueo geo
-    { id: "together-flux-schnell", name: "FLUX Schnell (Together AI)", provider: "Together AI", type: "$5 gratis · Sin bloqueo geo · ~5-10s", modelId: "black-forest-labs/FLUX.1-schnell-Free", status: "limited" },
+    { id: "together-flux-schnell", name: "FLUX Schnell (Together AI)", provider: "Together AI", type: "$5 gratis · Sin bloqueo geo · ~5-10s", modelId: "black-forest-labs/FLUX.1-schnell-Free", status: "blocked" },
     // Tensor.art — 100 créditos/día gratis · renovación diaria · sin tarjeta
-    { id: "ta-sdxl-base",        name: "SDXL 1.0 Base (Tensor.art)",          provider: "Tensor.art", type: "100 créd/día · Base SDXL · General",              modelId: "619225630271212879", status: "limited" },
-    { id: "ta-coloringbook-v2",  name: "ColoringBook Redmond XL (Tensor.art)", provider: "Tensor.art", type: "100 créd/día · LoRA Coloring Book · Línea limpia", modelId: "619225630271212879:656285193671448586:0.85", status: "limited" },
-    { id: "ta-coloringbook-dom", name: "Coloring Book Dominator (Tensor.art)", provider: "Tensor.art", type: "100 créd/día · LoRA Dominante · Línea gruesa",     modelId: "619225630271212879:647832655083339586:0.85", status: "limited" },
-    { id: "ta-extra-realistic",  name: "Extra Realistic XL (Tensor.art)",      provider: "Tensor.art", type: "100 créd/día · Fotorrealista · Fantasia",           modelId: "879130987013876797", status: "limited" },
-    { id: "ta-thinkdiffusion",   name: "ThinkDiffusion XL (Tensor.art)",       provider: "Tensor.art", type: "100 créd/día · Alta calidad · Versatil",            modelId: "651192230041814458", status: "limited" },
-    { id: "ta-autismmix-light",  name: "AutismMix SDXL Lightning (Tensor.art)", provider: "Tensor.art", type: "100 créd/día · Anime · Ultra rápido (4 steps)",   modelId: "705519017965662383", status: "limited" },
-    { id: "ta-sdxl-flash",       name: "SDXL Flash Mini (Tensor.art)",         provider: "Tensor.art", type: "100 créd/día · Ultrarrápido · Ligero",              modelId: "738164703605494864", status: "limited" },
+    { id: "ta-sdxl-base",        name: "SDXL 1.0 Base (Tensor.art)",          provider: "Tensor.art", type: "100 créd/día · Base SDXL · General",              modelId: "619225630271212879", status: "blocked" },
+    { id: "ta-coloringbook-v2",  name: "ColoringBook Redmond XL (Tensor.art)", provider: "Tensor.art", type: "100 créd/día · LoRA Coloring Book · Línea limpia", modelId: "619225630271212879:656285193671448586:0.85", status: "blocked" },
+    { id: "ta-coloringbook-dom", name: "Coloring Book Dominator (Tensor.art)", provider: "Tensor.art", type: "100 créd/día · LoRA Dominante · Línea gruesa",     modelId: "619225630271212879:647832655083339586:0.85", status: "blocked" },
+    { id: "ta-extra-realistic",  name: "Extra Realistic XL (Tensor.art)",      provider: "Tensor.art", type: "100 créd/día · Fotorrealista · Fantasia",           modelId: "879130987013876797", status: "blocked" },
+    { id: "ta-thinkdiffusion",   name: "ThinkDiffusion XL (Tensor.art)",       provider: "Tensor.art", type: "100 créd/día · Alta calidad · Versatil",            modelId: "651192230041814458", status: "blocked" },
+    { id: "ta-autismmix-light",  name: "AutismMix SDXL Lightning (Tensor.art)", provider: "Tensor.art", type: "100 créd/día · Anime · Ultra rápido (4 steps)",   modelId: "705519017965662383", status: "blocked" },
+    { id: "ta-sdxl-flash",       name: "SDXL Flash Mini (Tensor.art)",         provider: "Tensor.art", type: "100 créd/día · Ultrarrápido · Ligero",              modelId: "738164703605494864", status: "blocked" },
     // SiliconFlow — FLUX.1-schnell gratis y confirmado ✅
     { id: "sf-flux-schnell",  name: "FLUX.1-schnell ✦ (SiliconFlow)", provider: "SiliconFlow", type: "Gratis · Sin límite diario · FLUX · Rápido",     modelId: "black-forest-labs/FLUX.1-schnell", status: "ok" },
     { id: "sf-flux-dev",      name: "FLUX.1-dev (SiliconFlow)",        provider: "SiliconFlow", type: "Pago · Alta calidad · FLUX · ~$0.014/img",      modelId: "black-forest-labs/FLUX.1-dev", status: "paid" },
     { id: "sf-sdxl",          name: "SDXL Base 1.0 (SiliconFlow)",     provider: "SiliconFlow", type: "Pago · Versátil · $0.002/img",                  modelId: "stabilityai/stable-diffusion-xl-base-1.0", status: "paid" },
     // Dezgo — gratis sin API key, SD/SDXL
-    { id: "dezgo-sdxl",        name: "SDXL 1.0 (Dezgo)",        provider: "Dezgo", type: "Gratis · Sin key · SDXL · ~10s",          modelId: "sdxl", status: "ok" },
-    { id: "dezgo-dreamshaper", name: "DreamShaper 8 (Dezgo)",    provider: "Dezgo", type: "Gratis · Sin key · Artístico · SD 1.5",   modelId: "dreamshaper_8", status: "ok" },
-    { id: "dezgo-realistic",   name: "Realistic Vision (Dezgo)", provider: "Dezgo", type: "Gratis · Sin key · Fotorrealista · SD 1.5", modelId: "epicrealism_naturalSin_rc1vae", status: "ok" },
+    { id: "dezgo-sdxl",        name: "SDXL 1.0 (Dezgo)",        provider: "Dezgo", type: "Gratis · Sin key · SDXL · ~10s",          modelId: "sdxl", status: "blocked" },
+    { id: "dezgo-dreamshaper", name: "DreamShaper 8 (Dezgo)",    provider: "Dezgo", type: "Gratis · Sin key · Artístico · SD 1.5",   modelId: "dreamshaper_8", status: "blocked" },
+    { id: "dezgo-realistic",   name: "Realistic Vision (Dezgo)", provider: "Dezgo", type: "Gratis · Sin key · Fotorrealista · SD 1.5", modelId: "epicrealism_naturalSin_rc1vae", status: "blocked" },
     // Stable Horde — totalmente gratis, red comunitaria de GPUs voluntarias
     { id: "stable-horde-sdxl", name: "SDXL 1.0 (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · ~1-3min", modelId: "SDXL 1.0", status: "limited" },
     { id: "stable-horde-sd15", name: "SD 1.5 (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · Rápido", modelId: "stable_diffusion", status: "limited" },
@@ -269,6 +269,14 @@ interface NicheFE {
     scoreBreakdown?: { demand: number; competition: number; uniqueness: number; potential: number };
     scoreReason?: string;
     scoredAt?: string;
+    marketScan?: {
+        score: number;
+        verdict: "gold" | "good" | "saturated" | "dead";
+        scoreBreakdown?: { demand: number; supply: number; competition: number };
+        us?: { resultCount: number | null; medianReviews: number | null; bestsellerBadges: number };
+        es?: { resultCount: number | null; medianReviews: number | null; bestsellerBadges: number };
+        scannedAt?: string;
+    };
     autoPilotEnabled?: boolean;
     sampleImageUrl?: string;
     coverUrl?: string;
@@ -1248,6 +1256,7 @@ export function KdpFactoryApp() {
     const [nicheSortBy, setNicheSortBy] = useState<"score" | "date" | "name" | "images" | "catalogs">("score");
     const [nicheSearch, setNicheSearch] = useState("");
     const [scoringNicheId, setScoringNicheId] = useState<string | null>(null);
+    const [marketScanningId, setMarketScanningId] = useState<string | null>(null);
     // Auto-Pilot config
     const [qualityCheckEnabled, setQualityCheckEnabled] = useState(true);
     const [qualityVaultTelegramEnabled, setQualityVaultTelegramEnabled] = useState(false);
@@ -2026,6 +2035,27 @@ export function KdpFactoryApp() {
             toast.error(e.message ?? "Error al puntuar nicho");
         } finally {
             setScoringNicheId(null);
+        }
+    };
+
+    const runMarketScan = async (niche: NicheFE) => {
+        setMarketScanningId(niche._id);
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches/${niche._id}/market-scan`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({}),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            setNiches(ns => ns.map(n => n._id === niche._id ? { ...n, marketScan: data.scan } : n));
+            const v = data.scan?.verdict as string;
+            const label = v === "gold" ? "🥇 GOLD — demanda alta, poca competencia" : v === "good" ? "✅ Buen nicho" : v === "saturated" ? "⚠️ Saturado" : "💀 Sin mercado";
+            toast.success(`Market scan: ${data.scan?.score}/100 · ${label}`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error en market scan");
+        } finally {
+            setMarketScanningId(null);
         }
     };
 
@@ -11153,6 +11183,20 @@ export function KdpFactoryApp() {
                                                                     className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border border-white/10 text-neutral-600 hover:border-sky-500/30 hover:text-sky-400 hover:bg-sky-500/10 transition-all">
                                                                     {scoringNicheId === niche._id ? <span className="w-2 h-2 rounded-full border border-current border-t-transparent animate-spin inline-block" /> : <Sparkles size={8} />}
                                                                     Score IA
+                                                                </button>
+                                                            )}
+                                                            {niche.marketScan ? (
+                                                                <button onClick={() => void runMarketScan(niche)} disabled={marketScanningId === niche._id}
+                                                                    title={`Amazon real · US: ${niche.marketScan.us?.resultCount ?? "?"} resultados, mediana ${niche.marketScan.us?.medianReviews ?? "?"} reviews · ES: ${niche.marketScan.es?.resultCount ?? "?"} resultados · demanda ${niche.marketScan.scoreBreakdown?.demand ?? "?"}/40, oferta ${niche.marketScan.scoreBreakdown?.supply ?? "?"}/30, competencia ${niche.marketScan.scoreBreakdown?.competition ?? "?"}/30 — click para reescanear`}
+                                                                    className={`shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border transition-all ${niche.marketScan.verdict === "gold" ? "bg-yellow-500/15 border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/25" : niche.marketScan.verdict === "good" ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25" : niche.marketScan.verdict === "saturated" ? "bg-amber-500/15 border-amber-500/30 text-amber-400 hover:bg-amber-500/25" : "bg-rose-500/15 border-rose-500/30 text-rose-400 hover:bg-rose-500/25"}`}>
+                                                                    {marketScanningId === niche._id ? <span className="w-2 h-2 rounded-full border border-current border-t-transparent animate-spin inline-block" /> : <TrendingUp size={8} />}
+                                                                    {niche.marketScan.verdict === "gold" ? "🥇" : ""} {niche.marketScan.score}/100
+                                                                </button>
+                                                            ) : (
+                                                                <button onClick={() => void runMarketScan(niche)} disabled={marketScanningId === niche._id} title="Escanear Amazon .com/.es real: demanda, oferta y competencia (~30s)"
+                                                                    className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border border-white/10 text-neutral-600 hover:border-yellow-500/30 hover:text-yellow-400 hover:bg-yellow-500/10 transition-all">
+                                                                    {marketScanningId === niche._id ? <span className="w-2 h-2 rounded-full border border-current border-t-transparent animate-spin inline-block" /> : <TrendingUp size={8} />}
+                                                                    Market
                                                                 </button>
                                                             )}
                                                         </div>

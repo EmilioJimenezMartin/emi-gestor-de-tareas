@@ -44,13 +44,48 @@ const CB_STYLE_MODIFIERS: Record<string, string> = {
 };
 
 // Exclusions — reinforce what NOT to render (lowest weight, still effective)
-const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gradients, no stippling, no background texture, no watermark, pure white background, ultra thick clean outlines, high contrast";
+// "no text/words/letters" es crítico: el texto inventado es el fallo nº1 en páginas KDP
+const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gradients, no stippling, no background texture, no watermark, no text, no words, no letters, no page numbers, no signature, pure white background, ultra thick clean outlines, high contrast, full-page composition";
 
 export function buildColoringBookPrompt(particulars: string, style = "generic"): string {
     const modifier = CB_STYLE_MODIFIERS[style];
     return modifier
         ? `${CB_OPENER}, ${modifier}, ${particulars}, ${CB_EXCLUSIONS}`
         : `${CB_OPENER}, ${particulars}, ${CB_EXCLUSIONS}`;
+}
+
+// ── Poster prompts ────────────────────────────────────────────────────────────
+// Misma estructura FLUX: [OPENER] → [STYLE] → [SUBJECT] → [QUALITY/EXCLUSIONS]
+const POSTER_OPENER = "printable wall art poster, premium digital illustration";
+
+const POSTER_STYLE_MODIFIERS: Record<string, string> = {
+    realistic:    "ultra sharp photorealistic rendering, cinematic lighting, professional photography look",
+    watercolor:   "soft watercolor wash, organic pigment blooms, artistic paper texture",
+    abstract:     "bold abstract shapes, modern minimalist composition, generous negative space",
+    botanical:    "elegant botanical illustration, fine detail, muted earthy palette",
+    "wall-art":   "art nouveau decorative style, flowing ornamental linework",
+    retro:        "vintage mid-century poster design, bold flat shapes, classic print palette",
+    geometric:    "clean geometric composition, balanced symmetry, modern design",
+    celestial:    "dreamy celestial scene, deep night palette, glowing accents",
+    children:     "cheerful flat illustration, friendly rounded shapes, bright happy palette",
+    anime:        "anime illustration style, vibrant cel shading, expressive composition",
+    illustration: "detailed editorial illustration, confident shapes, rich texture",
+};
+
+const POSTER_QUALITY = "vibrant cohesive color palette, high contrast focal point, balanced centered composition, gallery print quality, sharp details, no text, no words, no watermark, no frame, no border";
+
+export function buildPosterPrompt(particulars: string, style = "generic"): string {
+    const modifier = POSTER_STYLE_MODIFIERS[style];
+    return modifier
+        ? `${POSTER_OPENER}, ${modifier}, ${particulars}, ${POSTER_QUALITY}`
+        : `${POSTER_OPENER}, ${particulars}, ${POSTER_QUALITY}`;
+}
+
+// ── Seamless pattern prompts ─────────────────────────────────────────────────
+const PATTERN_QUALITY = "perfectly seamless tileable repeat pattern, edge-to-edge uniform layout, flat design, consistent flat lighting, no borders, no vignette, no focal center, no text, no watermark, POD ready";
+
+export function buildSeamlessPatternPrompt(particulars: string): string {
+    return `seamless repeating surface pattern, ${particulars}, ${PATTERN_QUALITY}`;
 }
 
 function ensureMongo(reply: any): boolean {
@@ -316,7 +351,7 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             const sceneDesc = particulars || nicheName;
             let samplePrompt: string;
             if (productType === "printable-poster") {
-                samplePrompt = `${sceneDesc}, professional printable wall art poster, vibrant cohesive color palette, premium illustration quality, balanced centered composition, no text no watermarks`;
+                samplePrompt = buildPosterPrompt(sceneDesc, style);
             } else {
                 // Style-aware formula — modifier adapts to niche styleCategory
                 samplePrompt = buildColoringBookPrompt(sceneDesc, style);

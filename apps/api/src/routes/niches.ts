@@ -10,6 +10,7 @@ import { BookDraft } from "../models/book-draft.js";
 import { Settings } from "../models/settings.js";
 import { getMongoStatus } from "../lib/mongo.js";
 import { getAgenda } from "../lib/agenda.js";
+import { scanNicheMarket } from "../lib/market-scan.js";
 
 const RADAR_KEYS = [
     "RADAR_ETSY_RESULT", "RADAR_AMAZON_RESULT", "RADAR_REDDIT_RESULT",
@@ -373,6 +374,39 @@ Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": st
     });
 
     // POST /niches/suggest-description — AI-suggested description, tags and notes
+    // POST /niches/market-scan — balanza demanda/oferta/competencia en Amazon .com + .es
+    // Un keyword por llamada (~15-25s): la UI itera la lista que quiera escanear.
+    app.post("/niches/market-scan", async (request: any, reply) => {
+        const { keyword, keywordEs } = request.body ?? {};
+        if (!keyword?.trim()) return reply.status(400).send({ error: "keyword requerido" });
+        try {
+            const scan = await scanNicheMarket(String(keyword).trim(), keywordEs?.trim() || undefined);
+            return reply.send(scan);
+        } catch (err: any) {
+            return reply.status(500).send({ error: err.message ?? "Error en market-scan" });
+        }
+    });
+
+    // POST /niches/:id/market-scan — escanea el nicho por nombre y guarda el resultado
+    app.post("/niches/:id/market-scan", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        const { id } = request.params;
+        const { keywordEs } = request.body ?? {};
+        try {
+            const niche = await Niche.findById(id);
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+            const productSuffix = niche.productType === "printable-poster" ? "wall art print" : "coloring book";
+            const keyword = `${niche.name} ${productSuffix}`;
+            const scan = await scanNicheMarket(keyword, keywordEs?.trim() || undefined);
+            niche.marketScan = scan as unknown as Record<string, unknown>;
+            niche.markModified("marketScan");
+            await niche.save();
+            return reply.send({ niche: { id: String(niche._id), name: niche.name }, scan });
+        } catch (err: any) {
+            return reply.status(500).send({ error: err.message ?? "Error en market-scan" });
+        }
+    });
+
     app.post("/niches/suggest-description", async (request: any, reply) => {
         const { nicheName, productType, style, etsyUrl } = request.body ?? {};
         if (!nicheName?.trim()) return reply.status(400).send({ error: "nicheName requerido" });
