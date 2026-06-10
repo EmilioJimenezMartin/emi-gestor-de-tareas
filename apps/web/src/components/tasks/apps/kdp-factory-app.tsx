@@ -998,6 +998,84 @@ function GelatoUploadModal({
 
 type CloudinaryImage = { publicId: string; url: string; width: number; height: number; bytes: number; nicheId?: string | null; createdAt?: string };
 
+// ── Market Scan panel ─────────────────────────────────────────────────────────
+// Datos reales de Amazon (.com/.es): balanza demanda / oferta / competencia.
+const MARKET_VERDICT_STYLE: Record<string, { label: string; chip: string; glow: string }> = {
+    gold:      { label: "🥇 GOLD",     chip: "bg-gradient-to-r from-yellow-500/25 to-amber-500/15 border-yellow-500/40 text-yellow-300", glow: "shadow-[0_0_18px_rgba(234,179,8,0.15)]" },
+    good:      { label: "✓ BUENO",     chip: "bg-emerald-500/15 border-emerald-500/30 text-emerald-400", glow: "" },
+    saturated: { label: "⚠ SATURADO",  chip: "bg-amber-500/15 border-amber-500/30 text-amber-400", glow: "" },
+    dead:      { label: "✕ SIN MERCADO", chip: "bg-rose-500/15 border-rose-500/30 text-rose-400", glow: "" },
+};
+
+function MarketScanBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+    const pct = Math.max(4, Math.round((value / max) * 100));
+    return (
+        <div className="flex items-center gap-2">
+            <span className="text-[9px] text-neutral-600 uppercase font-black w-16 shrink-0">{label}</span>
+            <div className="flex-1 h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
+                <div className={`h-full rounded-full bg-gradient-to-r ${color} transition-all`} style={{ width: `${pct}%` }} />
+            </div>
+            <span className="text-[10px] font-black text-neutral-400 tabular-nums w-10 text-right">{value}/{max}</span>
+        </div>
+    );
+}
+
+function MarketScanMarketRow({ flag, data }: {
+    flag: string;
+    data?: { resultCount: number | null; medianReviews: number | null; bestsellerBadges: number; ok?: boolean; error?: string };
+}) {
+    const blocked = !data || data.ok === false || (data.resultCount === null && data.medianReviews === null);
+    return (
+        <div className="flex items-center gap-2 rounded-lg bg-white/[0.03] border border-white/[0.06] px-2.5 py-1.5">
+            <span className="text-sm shrink-0">{flag}</span>
+            {blocked ? (
+                <span className="text-[10px] text-neutral-600 italic">sin datos — reescanear más tarde</span>
+            ) : (
+                <div className="flex items-center gap-3 flex-wrap min-w-0">
+                    <span className="text-[10px] text-neutral-400"><span className="font-black text-white tabular-nums">{data!.resultCount?.toLocaleString("es-ES") ?? "?"}</span> resultados</span>
+                    <span className="text-[10px] text-neutral-400">mediana <span className="font-black text-white tabular-nums">{data!.medianReviews ?? "?"}</span> reviews</span>
+                    {data!.bestsellerBadges > 0 && (
+                        <span className="text-[10px] font-black text-orange-400">{data!.bestsellerBadges} bestsellers</span>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function MarketScanPanel({ scan }: { scan: NonNullable<NicheFE["marketScan"]> }) {
+    const v = MARKET_VERDICT_STYLE[scan.verdict] ?? MARKET_VERDICT_STYLE.dead;
+    const bd = scan.scoreBreakdown;
+    return (
+        <div className={`rounded-xl bg-white/[0.02] border border-white/[0.07] p-3 space-y-2.5 ${v.glow}`}>
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                    <TrendingUp size={11} className="text-yellow-400/80 shrink-0" />
+                    <span className="text-[9px] uppercase tracking-wider text-neutral-600 font-black">Market Scan · Amazon real</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-base font-black text-white tabular-nums leading-none">{scan.score}<span className="text-[9px] text-neutral-600">/100</span></span>
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${v.chip}`}>{v.label}</span>
+                </div>
+            </div>
+            {bd && (
+                <div className="space-y-1.5">
+                    <MarketScanBar label="Demanda" value={bd.demand} max={40} color="from-emerald-500 to-teal-400" />
+                    <MarketScanBar label="Hueco" value={bd.supply} max={30} color="from-sky-500 to-blue-400" />
+                    <MarketScanBar label="Comp. débil" value={bd.competition} max={30} color="from-violet-500 to-purple-400" />
+                </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                <MarketScanMarketRow flag="🇺🇸" data={scan.us as any} />
+                <MarketScanMarketRow flag="🇪🇸" data={scan.es as any} />
+            </div>
+            {scan.scannedAt && (
+                <p className="text-[9px] text-neutral-700 text-right">escaneado {new Date(scan.scannedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+            )}
+        </div>
+    );
+}
+
 function PipelineRuleRow({ rule, levelStyle }: {
     rule: { key: string; level: string; icon: string; label: string; items: string[]; count: number };
     levelStyle: Record<string, string>;
@@ -11241,6 +11319,9 @@ export function KdpFactoryApp() {
                                                         </div>
                                                     ))}
                                                 </div>
+
+                                                {/* ─ Market scan (datos reales Amazon) ─ */}
+                                                {niche.marketScan && <MarketScanPanel scan={niche.marketScan} />}
 
                                                 {/* ─ Competition & demand bars ─ */}
                                                 {(niche.competition !== "unknown" || niche.demand !== "unknown") && (
