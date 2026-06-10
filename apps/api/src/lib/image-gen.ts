@@ -1,4 +1,4 @@
-import { pollinationsFetch, pollinationsAuthHeaders } from "./pollinations-circuit.js";
+import { pollinationsFetch } from "./pollinations-circuit.js";
 import { getApiKey } from "./keys.js";
 import { Settings } from "../models/settings.js";
 
@@ -63,7 +63,6 @@ export async function generateImage(prompt: string, opts: GenerateImageOpts = {}
     const hfModelId = opts.hfModelId ?? "black-forest-labs/FLUX.1-schnell";
 
     // ── Pollinations ──────────────────────────────────────────────────────────
-    const hasToken = !!pollinationsAuthHeaders().Authorization;
     const pollinationsUrl =
         `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
         `?width=${width}&height=${height}&seed=${seed}&model=${encodeURIComponent(model)}&enhance=${enhance}&nologo=true`;
@@ -81,21 +80,6 @@ export async function generateImage(prompt: string, opts: GenerateImageOpts = {}
     } catch (e: any) {
         if (e?.name === "AbortError") return null;
         console.warn(`[image-gen] Pollinations error: ${e.message}`);
-    }
-
-    // Segundo intento anónimo si el primero usó token
-    if (hasToken) {
-        try {
-            const anonRes = await fetch(pollinationsUrl, { signal: opts.signal ?? AbortSignal.timeout(60_000) });
-            const ct = anonRes.headers.get("content-type") ?? "";
-            if (anonRes.ok && ct.startsWith("image/")) {
-                console.log(`[image-gen] Pollinations anon OK`);
-                return Buffer.from(await anonRes.arrayBuffer());
-            }
-            await anonRes.body?.cancel();
-        } catch (e: any) {
-            if (e?.name === "AbortError") return null;
-        }
     }
 
     // ── Segmind ───────────────────────────────────────────────────────────────

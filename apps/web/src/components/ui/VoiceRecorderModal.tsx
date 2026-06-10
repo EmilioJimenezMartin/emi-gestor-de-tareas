@@ -2,6 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { MicOff, Loader2, X, Check, RotateCcw, ImageIcon, BookOpen } from "lucide-react";
 import { useSpeech } from "@/hooks/useSpeech";
+import { clientFetch } from "@/lib/auth-client";
 
 type ModalMode = "niche" | "image";
 type ModalState = "recording" | "processing" | "confirm" | "creating" | "done" | "error";
@@ -137,10 +138,19 @@ export function VoiceRecorderModal({
             const prompt = stripped.charAt(0).toUpperCase() + stripped.slice(1);
             const model = /\banime\b/i.test(prompt) ? "flux-anime" : "flux-realism";
             const seed = Math.floor(Math.random() * 99999);
-            const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=${model}&width=1024&height=1024&seed=${seed}&enhance=true`;
+            // Proxy del backend con JWT — Pollinations requiere API key y el navegador no la tiene
+            const url = `${apiUrl}/ai/image-proxy?prompt=${encodeURIComponent(prompt)}&model=${model}&width=1024&height=1024&seed=${seed}&enhance=true`;
             speak(`Generando imagen: ${prompt.slice(0, 40)}`);
             setImgLoaded(false);
-            setGeneratedImageUrl(url);
+            try {
+                const res = await clientFetch(url);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const blob = await res.blob();
+                setGeneratedImageUrl(URL.createObjectURL(blob));
+            } catch (e: any) {
+                setError(e.message ?? "Error generando la imagen");
+                setState("error");
+            }
         }
     };
 

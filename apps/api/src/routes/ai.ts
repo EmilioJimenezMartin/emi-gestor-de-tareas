@@ -83,6 +83,28 @@ function ratioFromDims(width?: number, height?: number) {
 }
 
 export async function registerAIRoutes(app: FastifyInstance) {
+    // GET proxy para usar Pollinations como src de <img> desde el frontend.
+    // El navegador no tiene la API key — el backend la añade y devuelve los bytes.
+    app.get("/ai/image-proxy", async (request: any, reply) => {
+        const { prompt, model = "flux", width = "1024", height = "1024", seed, enhance } = request.query ?? {};
+        if (!prompt || typeof prompt !== "string") return reply.status(400).send({ error: "prompt es requerido" });
+        const params = new URLSearchParams({ width: String(width), height: String(height), model: String(model), nologo: "true" });
+        if (seed) params.set("seed", String(seed));
+        if (enhance) params.set("enhance", String(enhance));
+        const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?${params}`;
+        try {
+            const res = await pollinationsFetch(url, { signal: AbortSignal.timeout(120_000) });
+            const ct = res.headers.get("content-type") ?? "";
+            if (!res.ok || !ct.startsWith("image/")) {
+                return reply.status(502).send({ error: `Pollinations devolvió ${res.status} (${ct})` });
+            }
+            const buf = Buffer.from(await res.arrayBuffer());
+            return reply.header("Content-Type", ct).header("Cache-Control", "public, max-age=86400").send(buf);
+        } catch (e: any) {
+            return reply.status(502).send({ error: e?.message ?? "Error generando imagen" });
+        }
+    });
+
     app.post("/ai/generate-image", async (request: any, reply) => {
         const { prompt: rawPrompt, modelId, provider, width, height, initImage, advancedParams, productType, style } = request.body;
         const negativePrompt: string = advancedParams?.negativePrompt?.trim() || "";

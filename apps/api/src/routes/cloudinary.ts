@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { getMongoStatus } from "../lib/mongo.js";
 import { Settings } from "../models/settings.js";
+import { pollinationsFetch } from "../lib/pollinations-circuit.js";
 
 const FOLDER = "emi-kdp-assets";
 
@@ -182,7 +183,19 @@ export async function registerCloudinaryRoutes(app: FastifyInstance) {
             const { url, nicheId } = request.body || {};
             if (!url || typeof url !== "string") return reply.status(400).send({ error: "url es requerido" });
             const cld = await initCloudinary(config);
-            const result = await cld.uploader.upload(url, {
+            // Pollinations requiere API key — Cloudinary no puede descargar esas URLs
+            // directamente, así que las bajamos nosotros y subimos los bytes.
+            let uploadSource = url;
+            if (/\bpollinations\.ai\b|\bmyceli\.ai\b/.test(url)) {
+                const imgRes = await pollinationsFetch(url, { signal: AbortSignal.timeout(120_000) });
+                const ct = imgRes.headers.get("content-type") ?? "";
+                if (!imgRes.ok || !ct.startsWith("image/")) {
+                    return reply.status(502).send({ error: `Pollinations devolvió ${imgRes.status} (${ct})` });
+                }
+                const buf = Buffer.from(await imgRes.arrayBuffer());
+                uploadSource = `data:${ct};base64,${buf.toString("base64")}`;
+            }
+            const result = await cld.uploader.upload(uploadSource, {
                 folder: FOLDER,
                 resource_type: "image",
                 ...(nicheId ? { context: `nicheId=${nicheId}`, tags: [`nicho:${nicheId}`, "sample"] } : { tags: ["sample"] }),

@@ -7,6 +7,7 @@ function authHeaders() {
 }
 import { PatternGenJob } from "../models/pattern-gen-job.js";
 import { Settings } from "../models/settings.js";
+import { pollinationsFetch } from "../lib/pollinations-circuit.js";
 
 export const PATTERN_GEN_JOB_NAME = "generate-pattern";
 
@@ -36,11 +37,11 @@ export function definePatternGenJob(agenda: Agenda, io: any) {
                 const negParam = negativePrompt?.trim() ? `&negative=${encodeURIComponent(negativePrompt.trim())}` : "";
                 const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&seed=${seed}&model=${encodeURIComponent(modelParam)}&enhance=false${negParam}`;
                 console.log(`${tag} Calling Pollinations model=${modelParam}`);
-                const response = await axios.get(url, { responseType: "arraybuffer", timeout: 120000, validateStatus: s => s < 500 });
+                const response = await pollinationsFetch(url, { signal: AbortSignal.timeout(120_000) });
                 if (response.status !== 200) throw new Error(`Pollinations HTTP ${response.status}`);
-                const ct = (response.headers["content-type"] ?? "") as string;
+                const ct = response.headers.get("content-type") ?? "";
                 if (!ct.startsWith("image/")) throw new Error(`Pollinations devolvió ${ct}`);
-                imageBuffer = Buffer.from(response.data);
+                imageBuffer = Buffer.from(await response.arrayBuffer());
                 console.log(`${tag} Pollinations OK — ${imageBuffer.length} bytes`);
             } else {
                 const port = process.env.PORT || 3001;
