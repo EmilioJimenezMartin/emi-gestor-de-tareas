@@ -7,6 +7,7 @@ import {
     Users, DollarSign, Tag, Zap, Search,
     ShoppingCart, BookOpen, Flame,
     HelpCircle, Rocket, MessageCircle, Shuffle, ScanSearch,
+    Send, Package,
 } from "lucide-react";
 import { createApiSocket } from "@/lib/socket";
 import { Modal } from "@/components/ui/modal";
@@ -151,6 +152,52 @@ export function NicheRadar({
     const [showLogs, setShowLogs] = useState(true);
     const [history, setHistory] = useState<{ url: string; insight: NicheInsight; ts: number }[]>([]);
     const [showHelp, setShowHelp] = useState(false);
+    const [launchingAction, setLaunchingAction] = useState<"telegram" | "catalog" | null>(null);
+
+    // Crea (o reutiliza) el nicho desde el insight y lanza el pipeline elegido:
+    // - telegram: prompt perfecto → imagen → aprobación en Telegram (flujo discover del autopilot)
+    // - catalog:  prompt perfecto → catálogo en cola directamente, sin Telegram
+    const launchFromInsight = async (insight: NicheInsight, action: "telegram" | "catalog") => {
+        setLaunchingAction(action);
+        try {
+            const nicheRes = await fetch(`${apiUrl}/niches`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: insight.niche,
+                    description: insight.summary,
+                    tags: insight.topKeywords.slice(0, 8),
+                    competition: insight.competition,
+                    demand: insight.demand,
+                    notes: `Radar: ${insight.entryOpportunity}`,
+                }),
+            });
+            const nicheData = await nicheRes.json();
+            if (!nicheRes.ok) throw new Error(nicheData.error ?? "Error creando nicho");
+            const nicheId = nicheData.niche._id;
+            if (nicheData.duplicate) toast.info("El nicho ya existía — reutilizando");
+
+            if (action === "telegram") {
+                const res = await fetch(`${apiUrl}/autopilot/discover/${nicheId}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ force: true }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error ?? "Error lanzando discovery");
+                toast.success("🎨 Generando imagen… te llegará a Telegram para aceptar el nicho");
+            } else {
+                const res = await fetch(`${apiUrl}/autopilot/quick-catalog/${nicheId}`, { method: "POST" });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error ?? "Error creando catálogo");
+                toast.success(`📦 Catálogo creado con ${data.model} — generando imágenes en cola`);
+            }
+        } catch (e: any) {
+            toast.error(e.message ?? "Error lanzando el nicho");
+        } finally {
+            setLaunchingAction(null);
+        }
+    };
     const [geminiModel, setGeminiModel] = useState("gemini-2.0-flash");
     const logsEndRef = useRef<HTMLDivElement>(null);
     const isFirstLog = useRef(true);
@@ -840,6 +887,21 @@ export function NicheRadar({
                                 <div className="rounded-xl bg-white/[0.03] border border-white/8 p-3 space-y-1.5">
                                     <div className="flex items-center gap-1.5"><Users size={11} className="text-orange-400" /><span className="text-[9px] font-black uppercase tracking-widest text-neutral-500">Perfil del comprador</span></div>
                                     <p className="text-[10px] text-neutral-400 leading-relaxed">{generalResult.buyerProfile}</p>
+                                </div>
+                                {/* ─ CTAs: lanzar el nicho analizado al pipeline ─ */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <button onClick={() => void launchFromInsight(generalResult, "telegram")} disabled={launchingAction !== null}
+                                        title="Crea el nicho, genera el prompt perfecto + imagen de muestra y te la envía a Telegram para aceptar o descartar"
+                                        className="flex items-center justify-center gap-2 h-10 rounded-xl bg-gradient-to-r from-sky-500/20 to-blue-500/10 border border-sky-500/30 text-[9px] font-black uppercase text-sky-300 hover:from-sky-500/30 hover:to-blue-500/20 transition-all disabled:opacity-50">
+                                        {launchingAction === "telegram" ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                                        Validar por Telegram
+                                    </button>
+                                    <button onClick={() => void launchFromInsight(generalResult, "catalog")} disabled={launchingAction !== null}
+                                        title="Crea el nicho, genera el prompt perfecto y lanza un catálogo de imágenes directamente, sin pasar por Telegram"
+                                        className="flex items-center justify-center gap-2 h-10 rounded-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/10 border border-emerald-500/30 text-[9px] font-black uppercase text-emerald-300 hover:from-emerald-500/30 hover:to-teal-500/20 transition-all disabled:opacity-50">
+                                        {launchingAction === "catalog" ? <Loader2 size={11} className="animate-spin" /> : <Package size={11} />}
+                                        Crear catálogo directo
+                                    </button>
                                 </div>
                                 <button onClick={() => { setGeneralResult(null); void analyze(); }}
                                     className="w-full flex items-center justify-center gap-2 h-9 rounded-xl bg-white/5 border border-white/8 text-[9px] font-black uppercase text-neutral-400 hover:text-white hover:border-white/15 transition-all">

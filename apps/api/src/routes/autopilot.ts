@@ -296,6 +296,84 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
 
     // ── Trigger discovery for a specific niche ───────────────────────────────
     // force=true: skips shouldNotify gate (used by manual trigger from UI)
+    // POST /autopilot/quick-catalog/:nicheId — prompt perfecto → catálogo directo, SIN pasar por Telegram.
+    // Mismo pipeline que discover (particulars IA + fórmula probada) pero el destino es un catálogo en cola.
+    app.post("/autopilot/quick-catalog/:nicheId", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { nicheId } = request.params as { nicheId: string };
+            const niche = await Niche.findById(nicheId).lean();
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+
+            const productType = (niche as any).productType ?? "coloring-book";
+            const style = (niche as any).styleCategory ?? "generic";
+            const nicheName = (niche as any).name as string;
+            const port = process.env.PORT || 3001;
+            const base = `http://localhost:${port}`;
+
+            // Paso 1: particulars visuales del LLM (misma llamada que discover)
+            // OJO: discover guarda en generatedPrompt el prompt COMPLETO (con fórmula);
+            // si ya la incluye, no debemos envolverlo otra vez.
+            let particulars = (niche as any).generatedPrompt as string | undefined;
+            const alreadyWrapped = !!particulars && /coloring book page|printable wall art poster|seamless repeating/i.test(particulars);
+            if (!particulars) {
+                try {
+                    const aiType = productType === "printable-poster" ? "printable-particulars" : "niche-particulars";
+                    const aiRes = await internalFetch(`${base}/ai/generate-text`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ type: aiType, niche: nicheName, productType, extras: style }),
+                        signal: AbortSignal.timeout(25_000),
+                    });
+                    if (aiRes.ok) {
+                        const aiData = await aiRes.json() as any;
+                        particulars = aiData.result?.particulars as string | undefined;
+                    }
+                } catch { /* fallback al nombre */ }
+            }
+
+            // Paso 2: fórmula probada según tipo de producto (si no viene ya envuelto)
+            const sceneDesc = particulars || nicheName;
+            const prompt = alreadyWrapped
+                ? sceneDesc
+                : productType === "printable-poster"
+                    ? buildPosterPrompt(sceneDesc, style)
+                    : buildColoringBookPrompt(sceneDesc, style);
+
+            // Paso 3: crear catálogo con el modelo y tamaño configurados del autopilot
+            const model = await getAutopilotImageModel();
+            const imgRow = await Settings.findOne({ key: "AUTOPILOT_IMAGES_PER_CATALOG" }).lean();
+            const totalImages = parseInt(String((imgRow as any)?.value ?? "5")) || 5;
+
+            const catRes = await internalFetch(`${base}/catalogs`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: `${nicheName} — Quick`,
+                    prompt,
+                    aiModel: model,
+                    width: 1024,
+                    height: 1024,
+                    totalImages,
+                    productType,
+                    nicheIds: [nicheId],
+                }),
+            });
+            const catData = await catRes.json() as any;
+            if (!catRes.ok) return reply.status(502).send({ error: catData.error ?? "Error creando catálogo" });
+
+            await Niche.findByIdAndUpdate(nicheId, {
+                $set: { generatedPrompt: prompt, discoveryImagePrompt: prompt, pipelineHasCatalogs: true, phase: "catalog" },
+            });
+            deps.io?.emit("niches:updated");
+            deps.io?.emit("autopilot:log", { nicheId, message: `📦 Catálogo directo creado para "${nicheName}" (${totalImages} imágenes, ${model.name})` });
+
+            return reply.status(201).send({ catalog: catData.catalog, prompt, model: model.name });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message ?? "Error en quick-catalog" });
+        }
+    });
+
     app.post("/autopilot/discover/:nicheId", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;
         try {
