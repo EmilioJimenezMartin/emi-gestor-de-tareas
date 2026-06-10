@@ -114,7 +114,7 @@ export async function sendTelegramImageBinary(
     try {
         const formData = new FormData();
         formData.append("chat_id", cfg.chatId);
-        formData.append("photo", new Blob([buffer], { type: mimeType }), "image.jpg");
+        formData.append("photo", new Blob([new Uint8Array(buffer)], { type: mimeType }), "image.jpg");
         formData.append("caption", caption);
         formData.append("parse_mode", "HTML");
         const res = await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendPhoto`, {
@@ -141,7 +141,7 @@ export async function sendTelegramImageWithButtons(
     try {
         const formData = new FormData();
         formData.append("chat_id", cfg.chatId);
-        formData.append("photo", new Blob([buffer], { type: mimeType }), "image.jpg");
+        formData.append("photo", new Blob([new Uint8Array(buffer)], { type: mimeType }), "image.jpg");
         formData.append("caption", caption);
         formData.append("parse_mode", "HTML");
         formData.append("reply_markup", JSON.stringify({ inline_keyboard: rows }));
@@ -307,7 +307,7 @@ export async function sendTelegramAudio(audioBuffer: Buffer, caption = ""): Prom
     try {
         const form = new FormData();
         form.append("chat_id", cfg.chatId);
-        form.append("audio", new Blob([audioBuffer], { type: "audio/flac" }), "respuesta.flac");
+        form.append("audio", new Blob([new Uint8Array(audioBuffer)], { type: "audio/flac" }), "respuesta.flac");
         if (caption) form.append("caption", caption);
         await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendAudio`, {
             method: "POST",

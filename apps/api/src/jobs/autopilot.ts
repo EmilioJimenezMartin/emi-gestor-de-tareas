@@ -826,7 +826,7 @@ async function runPipeline(
                                 } catch { /* if check fails, include the image */ }
                             }
 
-                            let cleanBuffer = rawBuffer;
+                            let cleanBuffer: Buffer = rawBuffer;
                             if (isColoringBook) {
                                 try {
                                     const { data: px, info: pxi } = await sharp.default(rawBuffer)
