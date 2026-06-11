@@ -169,7 +169,7 @@ export function validateKdpKeywords(
 }
 
 /** Etsy: 13 tags, ≤20 chars cada uno, sin duplicados. Rellena con intel si faltan. */
-export function validateEtsyTags(rawTags: string[], intel?: KeywordIntel): string[] {
+export function validateEtsyTags(rawTags: string[], intel?: EtsyKeywordIntel | KeywordIntel): string[] {
     const seen = new Set<string>();
     const clean: string[] = [];
     const tryAdd = (t: string) => {
@@ -182,6 +182,85 @@ export function validateEtsyTags(rawTags: string[], intel?: KeywordIntel): strin
         clean.push(k);
     };
     rawTags.forEach(tryAdd);
-    if (intel) for (const t of intel.terms) { if (clean.length >= 13) break; tryAdd(t); }
+    // Prefer Etsy-specific terms (occasion/mood) when filling
+    if (intel && "occasionTerms" in intel) {
+        for (const t of intel.occasionTerms) { if (clean.length >= 13) break; tryAdd(t); }
+        for (const t of intel.moodTerms) { if (clean.length >= 13) break; tryAdd(t); }
+    }
+    const fallbackTerms = intel?.terms ?? [];
+    for (const t of fallbackTerms) { if (clean.length >= 13) break; tryAdd(t); }
     return clean.slice(0, 13);
+}
+
+// ── Etsy Intel: ocasión + estado de ánimo ────────────────────────────────────
+
+export interface EtsyKeywordIntel extends KeywordIntel {
+    occasionTerms: string[];   // "gift for mom", "birthday gift", "mothers day"
+    moodTerms: string[];       // "mindfulness gift", "stress relief", "self care"
+    lifestyleTerms: string[];  // "cozy home decor", "boho aesthetic"
+}
+
+// Etsy buyers search by emotion and occasion — these prefixes reveal high-intent terms
+const OCCASION_PREFIXES = ["gift for", "birthday gift", "mothers day", "christmas gift", "valentines gift", "self care gift", "gift for her", "unique gift"];
+const MOOD_PREFIXES     = ["mindfulness", "stress relief", "relaxing activity", "meditation", "self care", "cozy", "zen"];
+const LIFESTYLE_PREFIXES = ["boho", "minimalist", "aesthetic", "cottagecore", "home decor"];
+
+async function etsySuggest(prefix: string): Promise<string[]> {
+    // Etsy has an internal autocomplete but blocks bots — use Google with site filter instead
+    return googleSuggest(`${prefix} site:etsy.com`);
+}
+
+/**
+ * Reúne términos de búsqueda reales desde la perspectiva Etsy:
+ * ocasión (regalo cumpleaños, día de la madre…), estado de ánimo y estilo de vida.
+ * Complementa — no reemplaza — a gatherKeywordIntel.
+ */
+export async function gatherEtsyIntel(nicheName: string, productType: string): Promise<EtsyKeywordIntel> {
+    const core = nicheName.toLowerCase().trim();
+    const words = core.replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(w => w.length > 2);
+    const lastWord = words[words.length - 1] ?? core;
+    const shortCore = words.slice(-2).join(" ");
+
+    const productTerm =
+        productType === "printable-poster" ? "printable" :
+        productType === "seamless-pattern" ? "pattern" :
+        "coloring book";
+
+    // Fetch occasion + mood signals
+    const occasionQueries = OCCASION_PREFIXES.slice(0, 4).map(p => `${p} ${lastWord}`);
+    const moodQueries     = MOOD_PREFIXES.slice(0, 3).map(p => `${p} ${productTerm}`);
+    const lifestyleQueries = LIFESTYLE_PREFIXES.slice(0, 2).map(p => `${p} ${shortCore}`);
+
+    const [occasionRes, moodRes, lifestyleRes, baseRes] = await Promise.all([
+        Promise.all(occasionQueries.map(q => googleSuggest(q))),
+        Promise.all(moodQueries.map(q => googleSuggest(q))),
+        Promise.all(lifestyleQueries.map(q => googleSuggest(q))),
+        // Also grab Etsy-style Amazon search for the product type
+        Promise.all([
+            googleSuggest(`${shortCore} ${productTerm} etsy`),
+            googleSuggest(`${lastWord} ${productTerm} gift`),
+        ]),
+    ]);
+
+    const toTerms = (results: string[][], maxLen = 20): string[] => {
+        const seen = new Set<string>();
+        return results.flat()
+            .map(t => t.toLowerCase().replace(/\s+/g, " ").trim())
+            .filter(t => t.length >= 4 && t.length <= maxLen && !seen.has(t) && (seen.add(t), true));
+    };
+
+    const occasionTerms = toTerms(occasionRes);
+    const moodTerms     = toTerms(moodRes);
+    const lifestyleTerms = toTerms(lifestyleRes);
+    const baseTerms      = toTerms(baseRes);
+
+    const allTerms = [...new Set([...occasionTerms, ...moodTerms, ...lifestyleTerms, ...baseTerms])];
+
+    return {
+        terms: allTerms,
+        sources: { amazon: 0, google: allTerms.length },
+        occasionTerms,
+        moodTerms,
+        lifestyleTerms,
+    };
 }

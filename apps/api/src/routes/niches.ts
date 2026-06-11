@@ -248,7 +248,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 generate?: boolean;
             };
 
-            let listingData: { title: string; subtitle: string; description: string; keywords: string[]; etsyTags?: string[]; categories?: string[]; seoNotes?: string };
+            let listingData: { title: string; subtitle: string; description: string; keywords: string[]; etsyTags?: string[]; categories?: string[]; seoNotes?: string; platform?: "kdp" | "etsy" | "both" };
 
             if (body.generate || (!body.title && !body.description)) {
                 // Auto-generate using AI from niche context
@@ -256,57 +256,31 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
 
                 const { generateTextWithLLM } = await import("../lib/ai.js");
-                const { gatherKeywordIntel, validateKdpKeywords, validateEtsyTags } = await import("../lib/seo-engine.js");
+                const { gatherKeywordIntel, gatherEtsyIntel, validateKdpKeywords, validateEtsyTags } = await import("../lib/seo-engine.js");
 
                 const pt = (niche as any).productType ?? "coloring-book";
 
-                // ── Intel real: lo que la gente teclea en Amazon/Google AHORA ──
-                const intel = await gatherKeywordIntel((niche as any).name, pt);
+                // ── Etsy-first products only need Etsy intel; KDP products need both ──
+                const isEtsyFirst = pt === "printable-poster" || pt === "seamless-pattern";
                 const marketScan = (niche as any).marketScan as any;
                 const scanSuggestions: string[] = [
                     ...(marketScan?.demand?.usSuggestions ?? []),
                     ...(marketScan?.demand?.esSuggestions ?? []),
                 ];
-                const realTerms = [...new Set([...intel.terms, ...scanSuggestions.map(s => s.toLowerCase())])].slice(0, 25);
-                const KDP_SYSTEM = pt === "coloring-book"
-                    ? `Eres un especialista en SEO y copywriting para Amazon KDP. Genera metadatos de alta conversión para un LIBRO DE COLOREAR (coloring book).
-Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": string, "description": string, "keywords": string[] }
-- title: 50-80 chars. Formato: "[Keyword principal] Coloring Book: [Beneficio emocional] for [Audiencia]". Empieza por la keyword de mayor volumen de búsqueda en Amazon, NO hagas una simple lista de palabras.
-- subtitle: 60-90 chars. Menciona nº de páginas únicas (ej. "50 Unique Designs"), nivel de detalle (intricate / simple), y audiencia específica. No repitas palabras del título.
-- description: HTML para Amazon KDP. Estructura: (1) <p> hook emocional con <strong> en 2-3 keywords clave, (2) <ul><li> 4-5 beneficios concretos (alivio de estrés, mindfulness, regalo perfecto, horas de entretenimiento, páginas de una sola cara), (3) <p> llamada a la acción + para quién es ideal (adultos, niños, aficionados al arte, etc.). 450-650 chars visibles.
-- keywords: exactamente 7 frases de cola larga (2-5 palabras c/u) que NO repitan palabras del título. Combina: temática específica + audiencia + ocasión de regalo + "coloring pages" / "stress relief" / "adult coloring" / "activity book" según corresponda.`
-                    : pt === "printable-poster"
-                    ? `Eres un especialista en SEO y copywriting para productos digitales imprimibles en Etsy y Gumroad. Genera metadatos de alta conversión para un IMPRIMIBLE DIGITAL (printable).
-Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": string, "description": string, "keywords": string[] }
-- title: 50-80 chars. Formato: "[Keyword principal] Printable Wall Art — Instant Download". Empieza por la keyword de mayor volumen, destaca que es descarga instantánea, NO hagas lista de keywords.
-- subtitle: 60-90 chars. Menciona los formatos incluidos (ej. "A4, US Letter & 8×10" PDF + PNG"), el uso decorativo (home decor, nursery, office) y que no se necesita suscripción. No repitas palabras del título.
-- description: HTML para Etsy/Gumroad. Estructura: (1) <p> hook con <strong> en 2-3 keywords de decoración/regalo, (2) <ul><li> 4-5 puntos: descarga instantánea, formatos incluidos, resolución de impresión (300 DPI), uso permitido (personal/comercial), ideas de regalo; (3) <p> llamada a la acción + instrucciones de uso (descarga, imprime en casa o en imprenta). 450-650 chars visibles.
-- keywords: exactamente 7 frases de cola larga (2-5 palabras c/u) que NO repitan palabras del título. Combina: "printable wall art" + "instant download" + temática + habitación destino (nursery, bedroom, kitchen) + ocasión (birthday gift, housewarming) + "digital print" / "digital download".`
-                    : pt === "seamless-pattern"
-                    ? `Eres un especialista en SEO y copywriting para patrones digitales sin costura (seamless patterns) para Etsy, Creative Market y Spoonflower. Genera metadatos de alta conversión.
-Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": string, "description": string, "keywords": string[] }
-- title: 50-80 chars. Formato: "[Keyword] Seamless Pattern — Digital Download". Empieza por la keyword con mayor volumen, incluye "seamless pattern", NO hagas lista de keywords.
-- subtitle: 60-90 chars. Menciona archivos incluidos (ej. "PNG Tile 12×12" at 300 DPI + SVG"), usos (fabric, wallpaper, scrapbooking, POD). No repitas palabras del título.
-- description: HTML. Estructura: (1) <p> hook con <strong> en el estilo/temática + uso principal, (2) <ul><li> 4-5 puntos: tile size, DPI, formatos, licencia de uso (POD permitido / no comercial), instrucciones de repeat; (3) <p> llamada a la acción + plataformas compatibles (Spoonflower, Printful, Redbubble). 450-650 chars visibles.
-- keywords: exactamente 7 frases de cola larga (2-5 palabras c/u) que NO repitan palabras del título. Combina: "seamless pattern" + temática + estilo (watercolor, boho, minimalist) + material destino (fabric, wallpaper, gift wrap) + "digital paper" / "scrapbooking" / "surface design".`
-                    : `Eres un especialista en SEO y copywriting para Amazon KDP y productos digitales. Genera metadatos de alta conversión.
-Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": string, "description": string, "keywords": string[] }
-- title: 50-80 chars, empieza por la keyword de mayor volumen. Atractivo y orientado a la conversión. Formato: "[Keyword]: [Beneficio emocional] for [Audiencia]"
-- subtitle: 60-90 chars, keywords secundarias no repetidas del título, menciona cantidad de páginas/diseños y audiencia
-- description: HTML. Estructura: (1) <p> hook emocional con <strong> en 2-3 keywords, (2) <ul><li> 4-5 beneficios concretos, (3) <p> llamada a la acción. 450-650 chars visibles.
-- keywords: exactamente 7 frases de cola larga (2-5 palabras c/u), sin repetir palabras del título.`;
 
-                // Reglas duras comunes (algoritmo A9/A10) — se añaden a cualquier prompt de producto
-                const SEO_RULES = `
+                const [kdpIntel, etsyIntel] = await Promise.all([
+                    isEtsyFirst ? Promise.resolve(null) : gatherKeywordIntel((niche as any).name, pt),
+                    gatherEtsyIntel((niche as any).name, pt),
+                ]);
 
-REGLAS DURAS ADICIONALES (obligatorias):
-- IDIOMA: TODO el output (title, subtitle, description, keywords, etsyTags, categories) en INGLÉS — el mercado objetivo es amazon.com/etsy.com (US). Solo usa otro idioma si el contexto lo pide explícitamente.
-- "title": la keyword de mayor volumen REAL va al principio, pero debe leerse natural para un humano (Amazon penaliza keyword stuffing en título vía conversión).
-- "keywords": exactamente 7 frases long-tail, cada una de MÁXIMO 50 caracteres. PROHIBIDO: best, new, free, top, premium, book, amazon, kindle, y cualquier palabra que ya aparezca en title o subtitle (Amazon ya indexa título/subtítulo — repetir desperdicia el slot).
-- Construye las keywords COMBINANDO los TÉRMINOS REALES DE BÚSQUEDA del contexto (es lo que la gente teclea de verdad en Amazon). No inventes términos si hay reales disponibles.
-- "etsyTags": exactamente 13 tags de máximo 20 caracteres cada uno, frases de 2-3 palabras (el matching de Etsy es por frase, no por palabra suelta). Cubre: temática, estilo, audiencia, ocasión de regalo, uso.
-- "categories": 3 categorías lo más ESPECÍFICAS posible con su ruta completa (ej. "Crafts, Hobbies & Home > Crafts & Hobbies > Coloring Books for Adults"). Mejor top de categoría nicho que página 50 de una general.
-Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": string, "description": string, "keywords": string[], "etsyTags": string[], "categories": string[] }`;
+                const kdpTerms = kdpIntel
+                    ? [...new Set([...kdpIntel.terms, ...scanSuggestions.map(s => s.toLowerCase())])].slice(0, 20)
+                    : [];
+                const etsyTerms = [...new Set([
+                    ...etsyIntel.occasionTerms.slice(0, 8),
+                    ...etsyIntel.moodTerms.slice(0, 6),
+                    ...etsyIntel.lifestyleTerms.slice(0, 4),
+                ])];
 
                 // Fetch latest radar insight summary for market context
                 let radarMarketContext = "";
@@ -314,45 +288,111 @@ Responde SOLO con JSON válido (sin markdown): { "title": string, "subtitle": st
                     const { RadarInsight } = await import("../models/radar-insight.js");
                     const latestInsight = await RadarInsight.findOne({}).sort({ createdAt: -1 }).lean();
                     if (latestInsight?.analysis?.summary) {
-                        radarMarketContext = `En cuanto a productos similares detectados recientemente, hemos obtenido la siguiente información de mercado: ${latestInsight.analysis.summary}`;
+                        radarMarketContext = `Contexto de mercado reciente: ${latestInsight.analysis.summary}`;
                     }
                 } catch { /* non-blocking */ }
 
-                const context = [
+                const sharedContext = [
                     `Nicho: ${(niche as any).name}`,
                     `Tipo de producto: ${pt}`,
                     ((niche as any).tags as string[]).length > 0 ? `Tags: ${((niche as any).tags as string[]).join(", ")}` : "",
                     (niche as any).styleCategory && (niche as any).styleCategory !== "generic" ? `Estilo visual: ${(niche as any).styleCategory}` : "",
                     (niche as any).description ? `Descripción del nicho: ${(niche as any).description}` : "",
-                    realTerms.length > 0 ? `TÉRMINOS REALES DE BÚSQUEDA (autocomplete de Amazon/Google hoy — úsalos como base):\n${realTerms.map(t => `- ${t}`).join("\n")}` : "",
-                    marketScan?.us?.resultCount ? `Mercado US: ${marketScan.us.resultCount} resultados, mediana ${marketScan.us.medianReviews ?? "?"} reviews → ${marketScan.verdict}` : "",
+                    marketScan?.us?.resultCount ? `Mercado US: ${marketScan.us.resultCount} resultados, mediana ${marketScan.us.medianReviews ?? "?"} reviews` : "",
                     radarMarketContext,
                 ].filter(Boolean).join("\n");
 
-                const text = await generateTextWithLLM(KDP_SYSTEM + SEO_RULES, context);
-                const match = text.match(/\{[\s\S]*\}/);
-                if (!match) throw new Error("La IA no devolvió JSON válido");
-                const parsed = JSON.parse(match[0]);
+                // ── KDP Prompt (A9/A10 algorithm — keyword-first, backend slots) ─────────
+                const KDP_SYSTEM = `Eres especialista en SEO para Amazon KDP. Tu trabajo: metadatos que ranqueen en Amazon (algoritmo A9/A10).
+PRINCIPIOS KDP:
+- El título es el campo de mayor peso de indexación. Keyword principal (mayor volumen de búsqueda real) va PRIMERA.
+- Las 7 casillas de keywords backend son para long-tail que NO aparece en título/subtítulo. Repetir desperdicia el slot.
+- Amazon penaliza keyword stuffing visible en título (baja conversión → baja rank). El título debe leerse natural.
+- El comprador en Amazon busca CONTENIDO: "adult coloring book stress relief", "mandala coloring pages 50 designs".
 
-                // Validación dura por código — el LLM propone, las reglas disponen
-                const title = parsed.title ?? niche.name;
-                const subtitle = parsed.subtitle ?? "";
-                const kwResult = validateKdpKeywords(
-                    Array.isArray(parsed.keywords) ? parsed.keywords : [], title, subtitle, intel
-                );
-                const etsyTags = validateEtsyTags(Array.isArray(parsed.etsyTags) ? parsed.etsyTags : [], intel);
+REGLAS DURAS:
+- title: 50-80 chars. Formato "[Keyword volumen alto] Coloring Book: [Beneficio] for [Audiencia]"
+- subtitle: 60-90 chars. Nº páginas únicas, nivel detalle, audiencia específica. Sin repetir palabras del título.
+- description: HTML para KDP. (1) <p> hook con <strong> en 2-3 keywords, (2) <ul><li> 4-5 beneficios concretos, (3) <p> CTA. 450-650 chars.
+- keywords: EXACTAMENTE 7 frases long-tail, máx 50 chars c/u. PROHIBIDO: best/new/free/top/premium/book/amazon/kindle + cualquier palabra del título/subtítulo.
+- categories: 3 rutas completas y ESPECÍFICAS (ej: "Crafts, Hobbies & Home > Coloring Books for Adults").
+Responde SOLO con JSON: { "title": string, "subtitle": string, "description": string, "keywords": string[7], "categories": string[3] }`;
+
+                // ── Etsy Prompt (emotion-first, occasion/mood, lifestyle) ────────────────
+                const ETSY_SYSTEM = `Eres especialista en SEO para Etsy. Tu trabajo: metadatos que conviertan en Etsy donde el comprador busca EXPERIENCIAS y REGALOS.
+PRINCIPIOS ETSY:
+- El título debe despertar EMOCIÓN primero. El comprador busca "gift for mom who loves coloring", no "mandala coloring book".
+- Las 13 etiquetas (tags) son por FRASE (2-3 palabras). El matching de Etsy es por frase completa, no por palabra suelta.
+- Cubre siempre: ocasión de regalo (birthday, mothers day, christmas), estado de ánimo (mindfulness, stress relief, self care), audiencia, formato del producto.
+- La descripción cuenta una HISTORIA: quién lo usa, en qué momento del día, cómo se siente. El comprador debe verse en la imagen.
+- El comprador en Etsy busca: "gifts for her", "self care gift ideas", "mindfulness activity for adults", "unique birthday gift".
+
+REGLAS DURAS:
+- title: 100-140 chars. Empieza por la emoción/ocasión más fuerte. Incluye el tipo de producto y 2-3 atributos clave (para quién, qué hace).
+- description: HTML para Etsy. (1) <p> historia visual: quién es el comprador ideal y cómo usará el producto, (2) <ul><li> 4-5 puntos: qué incluye, para quién es perfecto, cuándo regalarlo, formato/specs, (3) <p> "Perfect for:" con 3-4 personas o momentos específicos. 500-700 chars.
+- tags: EXACTAMENTE 13 tags, máx 20 chars c/u, frases de 2-3 palabras. Distribuye: 4 de ocasión/regalo, 4 de estado de ánimo/lifestyle, 3 de audiencia/para quién, 2 de tipo de producto.
+- categories: 3 rutas Etsy ESPECÍFICAS (ej: "Books, Films & Music > Books > Activity Books").
+Responde SOLO con JSON: { "title": string, "description": string, "tags": string[13], "categories": string[3] }`;
+
+                const kdpContext = [
+                    sharedContext,
+                    kdpTerms.length > 0 ? `TÉRMINOS REALES AMAZON (úsalos como base para keywords):\n${kdpTerms.map(t => `- ${t}`).join("\n")}` : "",
+                ].filter(Boolean).join("\n\n");
+
+                const etsyContext = [
+                    sharedContext,
+                    etsyTerms.length > 0 ? `TÉRMINOS REALES ETSY (ocasión/mood — úsalos en title y tags):\n${etsyTerms.map(t => `- ${t}`).join("\n")}` : "",
+                    etsyIntel.occasionTerms.length > 0 ? `Señales de ocasión detectadas: ${etsyIntel.occasionTerms.slice(0, 6).join(", ")}` : "",
+                    etsyIntel.moodTerms.length > 0 ? `Señales de estado de ánimo: ${etsyIntel.moodTerms.slice(0, 5).join(", ")}` : "",
+                ].filter(Boolean).join("\n\n");
+
+                // Generate both listings in parallel
+                const [kdpText, etsyText] = await Promise.all([
+                    isEtsyFirst ? Promise.resolve("{}") : generateTextWithLLM(KDP_SYSTEM, kdpContext),
+                    generateTextWithLLM(ETSY_SYSTEM, etsyContext),
+                ]);
+
+                // Parse KDP listing
+                const kdpMatch = kdpText.match(/\{[\s\S]*\}/);
+                const kdpParsed = kdpMatch ? JSON.parse(kdpMatch[0]) : {};
+
+                // Parse Etsy listing
+                const etsyMatch = etsyText.match(/\{[\s\S]*\}/);
+                const etsyParsed = etsyMatch ? JSON.parse(etsyMatch[0]) : {};
+
+                // Validate KDP keywords with hard rules
+                const kdpTitle = kdpParsed.title ?? (niche as any).name;
+                const kdpSubtitle = kdpParsed.subtitle ?? "";
+                const kwResult = !isEtsyFirst && kdpIntel
+                    ? validateKdpKeywords(Array.isArray(kdpParsed.keywords) ? kdpParsed.keywords : [], kdpTitle, kdpSubtitle, kdpIntel)
+                    : { keywords: [], fixed: [] };
+
+                // Validate Etsy tags with semantic enforcement (occasion/mood)
+                const rawEtsyTags = Array.isArray(etsyParsed.tags) ? etsyParsed.tags : [];
+                const etsyTags = validateEtsyTags(rawEtsyTags, etsyIntel);
+
+                // For Etsy-first products the "main" listing is Etsy; for KDP-first it's KDP
+                const primaryTitle = isEtsyFirst ? (etsyParsed.title ?? (niche as any).name) : kdpTitle;
+                const primarySubtitle = isEtsyFirst ? "" : kdpSubtitle;
+                const primaryDescription = isEtsyFirst ? (etsyParsed.description ?? "") : (kdpParsed.description ?? "");
+                const primaryKeywords = kwResult.keywords;
+                const primaryCategories = isEtsyFirst
+                    ? (Array.isArray(etsyParsed.categories) ? etsyParsed.categories.slice(0, 3) : [])
+                    : (Array.isArray(kdpParsed.categories) ? kdpParsed.categories.slice(0, 3) : []);
 
                 listingData = {
-                    title,
-                    subtitle,
-                    description: parsed.description ?? "",
-                    keywords: kwResult.keywords,
+                    title: primaryTitle,
+                    subtitle: primarySubtitle,
+                    description: primaryDescription,
+                    keywords: primaryKeywords,
                     etsyTags,
-                    categories: Array.isArray(parsed.categories) ? parsed.categories.map((c: string) => c.trim()).filter(Boolean).slice(0, 3) : [],
+                    categories: primaryCategories.map((c: string) => c.trim()).filter(Boolean),
                     seoNotes: [
-                        realTerms.length > 0 ? `Basado en ${realTerms.length} términos reales de autocomplete.` : "",
-                        kwResult.fixed.length > 0 ? `Validador: ${kwResult.fixed.join(" · ")}` : "",
-                    ].filter(Boolean).join(" "),
+                        `KDP: ${kdpTerms.length} términos Amazon · Etsy: ${etsyTerms.length} señales ocasión/mood`,
+                        kwResult.fixed.length > 0 ? `Validador KDP: ${kwResult.fixed.join(" · ")}` : "",
+                        !isEtsyFirst && etsyParsed.title ? `Título Etsy sugerido: "${etsyParsed.title.slice(0, 80)}…"` : "",
+                    ].filter(Boolean).join(" | "),
+                    platform: isEtsyFirst ? "etsy" : "both",
                 };
             } else {
                 listingData = {

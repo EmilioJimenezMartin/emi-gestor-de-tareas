@@ -698,6 +698,7 @@ export function KdpFactoryApp() {
     const [contentProductType, setContentProductType] = useState("Coloring Book");
     const [contentExtras, setContentExtras] = useState("");
     const [contentLanguage, setContentLanguage] = useState<"es" | "en">("en");
+    const [contentPlatform, setContentPlatform] = useState<"kdp" | "etsy" | "both">("both");
     const [contentType, setContentType] = useState<"kdp-physical-book" | "full-listing" | "titles" | "description" | "keywords" | "back-cover" | "series">("kdp-physical-book");
     const [contentResult, setContentResult] = useState<any | null>(null);
     const [isGeneratingContent, setIsGeneratingContent] = useState(false);
@@ -9505,6 +9506,7 @@ export function KdpFactoryApp() {
                     productType: contentType === "kdp-physical-book" ? "Physical KDP Book" : contentProductType,
                     extras: contentExtras,
                     language: contentLanguage,
+                    platform: contentPlatform,
                     model: "gemini-2.5-flash",
                 }),
             });
@@ -11349,6 +11351,37 @@ export function KdpFactoryApp() {
                                 <textarea value={contentNiche} onChange={e => setContentNiche(e.target.value)} rows={3}
                                     placeholder="Describe tu libro: temática, género, público…&#10;ej: libro de colorear de mandalas zen para adultos"
                                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none leading-relaxed transition-all" />
+
+                                {/* Platform selector */}
+                                <div className="space-y-1.5">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Plataforma destino</p>
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                        {([
+                                            { id: "kdp" as const,  label: "Amazon KDP", icon: "📦", desc: "Keywords backend A9, título técnico" },
+                                            { id: "etsy" as const, label: "Etsy",       icon: "🛍️", desc: "Tags ocasión/mood, título emocional" },
+                                            { id: "both" as const, label: "Ambas",      icon: "✦",  desc: "Genera para KDP + Etsy en un click" },
+                                        ] as const).map(p => (
+                                            <button key={p.id} onClick={() => setContentPlatform(p.id)}
+                                                title={p.desc}
+                                                className={`flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl border text-center transition-all ${
+                                                    contentPlatform === p.id
+                                                        ? p.id === "kdp"  ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-300"
+                                                        : p.id === "etsy" ? "border-orange-500/40 bg-orange-500/10 text-orange-300"
+                                                        :                   "border-purple-500/40 bg-purple-500/10 text-purple-300"
+                                                        : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-400 hover:border-white/15"
+                                                }`}>
+                                                <span className="text-base leading-none">{p.icon}</span>
+                                                <span className="text-[9px] font-black uppercase tracking-wide leading-none">{p.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <p className="text-[9px] text-neutral-700 italic">
+                                        {contentPlatform === "kdp"  && "Generará: título técnico, 7 keywords backend (A9), descripción HTML para KDP"}
+                                        {contentPlatform === "etsy" && "Generará: título emocional, 13 tags ocasión/mood, descripción narrativa para Etsy"}
+                                        {contentPlatform === "both" && "Generará ambos: listing KDP + listing Etsy diferenciados en un solo click"}
+                                    </p>
+                                </div>
+
                                 <div className="flex items-center gap-3">
                                     <p className="text-sm font-black uppercase tracking-widest text-neutral-600 shrink-0">Idioma</p>
                                     <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl">
@@ -14313,6 +14346,37 @@ export function KdpFactoryApp() {
                                             value={contentNiche} onChange={e => setContentNiche(e.target.value)} rows={3}
                                             placeholder="Describe tu libro: temática, género, público objetivo, estilo visual…&#10;ej: libro de colorear de mandalas zen para adultos, estilo minimalista"
                                             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-amber-500/40 resize-none leading-relaxed transition-all" />
+
+                                        {/* Platform selector */}
+                                        <div className="space-y-1.5">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Plataforma destino</p>
+                                            <div className="grid grid-cols-3 gap-1.5">
+                                                {([
+                                                    { id: "kdp" as const,  label: "Amazon KDP", icon: "📦", desc: "Keywords backend A9, título técnico" },
+                                                    { id: "etsy" as const, label: "Etsy",        icon: "🛍️", desc: "Tags ocasión/mood, título emocional" },
+                                                    { id: "both" as const, label: "Ambas",       icon: "✦",  desc: "KDP + Etsy en un click" },
+                                                ] as const).map(p => (
+                                                    <button key={p.id} onClick={() => setContentPlatform(p.id)}
+                                                        title={p.desc}
+                                                        className={`flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl border text-center transition-all ${
+                                                            contentPlatform === p.id
+                                                                ? p.id === "kdp"  ? "border-indigo-500/40 bg-indigo-500/10 text-indigo-300"
+                                                                : p.id === "etsy" ? "border-orange-500/40 bg-orange-500/10 text-orange-300"
+                                                                :                   "border-purple-500/40 bg-purple-500/10 text-purple-300"
+                                                                : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-400 hover:border-white/15"
+                                                        }`}>
+                                                        <span className="text-base leading-none">{p.icon}</span>
+                                                        <span className="text-[9px] font-black uppercase tracking-wide leading-none">{p.label}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <p className="text-[9px] text-neutral-700 italic">
+                                                {contentPlatform === "kdp"  && "Generará: título técnico, 7 keywords backend (A9), descripción HTML para KDP"}
+                                                {contentPlatform === "etsy" && "Generará: título emocional, 13 tags ocasión/mood, descripción narrativa para Etsy"}
+                                                {contentPlatform === "both" && "Generará ambos: listing KDP + listing Etsy diferenciados en un solo click"}
+                                            </p>
+                                        </div>
+
                                         <div className="flex items-center gap-3">
                                             <p className="text-sm font-black uppercase tracking-widest text-neutral-600 shrink-0">Idioma</p>
                                             <div className="flex p-1 bg-white/5 border border-white/10 rounded-xl">

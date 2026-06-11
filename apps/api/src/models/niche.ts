@@ -17,6 +17,7 @@ export interface IKDPListing {
     appliedAt?: Date;         // cuándo se aplicó esta versión en KDP (rotador de metadatos)
     generatedAt: Date;
     language?: string;
+    platform?: "kdp" | "etsy" | "both";  // plataforma destino de este listing
 }
 
 export interface INiche extends Document {
@@ -116,6 +117,7 @@ const NicheSchema = new Schema<INiche>(
             appliedAt: { type: Date },
             generatedAt: { type: Date, default: Date.now },
             language: { type: String, default: "en" },
+            platform: { type: String, enum: ["kdp", "etsy", "both"], default: "both" },
         }],
         score: { type: Number },
         scoreBreakdown: {

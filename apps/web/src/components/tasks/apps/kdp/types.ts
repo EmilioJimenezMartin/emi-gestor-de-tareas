@@ -24,6 +24,7 @@ export interface NicheKDPListing {
     appliedAt?: string;
     generatedAt: string;
     language?: string;
+    platform?: "kdp" | "etsy" | "both";
 }
 
 export interface NicheFE {
