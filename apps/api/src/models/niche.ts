@@ -37,6 +37,9 @@ export interface INiche extends Document {
     coverUrl?: string;
     backCoverUrl?: string;
     publishedAt?: Date;
+    // Ciclo de vida comercial (manual): pre-publicado → publicado → fin de vida
+    lifecycleStage?: "pre-published" | "published" | "end-of-life";
+    lifecycleAlertsSent?: number[]; // fromDay de los hitos ya avisados por Telegram
     asin?: string;
     etsyUrl?: string;
     gumroadUrl?: string;
@@ -86,6 +89,8 @@ const NicheSchema = new Schema<INiche>(
         coverUrl: { type: String },
         backCoverUrl: { type: String },
         publishedAt: { type: Date },
+        lifecycleStage: { type: String, enum: ["pre-published", "published", "end-of-life"] },
+        lifecycleAlertsSent: [{ type: Number }],
         asin: { type: String, default: "" },
         etsyUrl: { type: String, default: "" },
         gumroadUrl: { type: String, default: "" },

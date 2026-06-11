@@ -296,6 +296,19 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
 
     // ── Trigger discovery for a specific niche ───────────────────────────────
     // force=true: skips shouldNotify gate (used by manual trigger from UI)
+    // GET /autopilot/pending-actions — decisiones esperándote en Telegram (para el inbox de la UI)
+    app.get("/autopilot/pending-actions", async (_request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const actions = await TelegramAction.find({ status: "pending" })
+                .sort({ createdAt: -1 }).limit(20)
+                .select("nicheName type createdAt autoApproveAt").lean();
+            return reply.send({ count: actions.length, actions });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // POST /autopilot/quick-catalog/:nicheId — prompt perfecto → catálogo directo, SIN pasar por Telegram.
     // Mismo pipeline que discover (particulars IA + fórmula probada) pero el destino es un catálogo en cola.
     app.post("/autopilot/quick-catalog/:nicheId", async (request: any, reply) => {

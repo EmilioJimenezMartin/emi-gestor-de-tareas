@@ -340,7 +340,8 @@ export async function generateVisionWithLLM(systemPrompt: string, userPrompt: st
 
 function isQuotaError(err: any): boolean {
     const msg: string = (err?.message ?? err?.toString() ?? "").toLowerCase();
-    return /quota|rate.?limit|429|too many requests|limit:\s*0|daily limit|exhausted|capacity|overloaded/i.test(msg);
+    // 402 "requires more credits" (OpenRouter sin saldo) también debe disparar el fallback
+    return /quota|rate.?limit|429|too many requests|limit:\s*0|daily limit|exhausted|capacity|overloaded|402|more credits|insufficient credits|payment required/i.test(msg);
 }
 
 /**
@@ -425,10 +426,12 @@ export async function analyzePageForRadar(
             return parseJson(result.response.text().trim());
         }
         if (provider === "openrouter" && config.openrouterKey) {
+            // 3000 en vez de 4096: con saldo bajo OpenRouter rechaza peticiones que "podrían"
+            // costar más de lo disponible, aunque la respuesta real sea corta
             const raw = await openrouterChat(config.openrouterKey, config.model, [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userMsg },
-            ], 4096, 0.1);
+            ], 3000, 0.1);
             return parseJson(raw);
         }
         if (provider === "groq" && config.groqKey) {

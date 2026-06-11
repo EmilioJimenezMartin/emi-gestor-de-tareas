@@ -128,7 +128,13 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             if (Array.isArray(catalogIds)) update.catalogIds = catalogIds;
             if (request.body.phase) update.phase = request.body.phase;
             if (request.body.autoPilotEnabled !== undefined) update.autoPilotEnabled = Boolean(request.body.autoPilotEnabled);
-            if (request.body.publishedAt !== undefined) update.publishedAt = request.body.publishedAt ? new Date(request.body.publishedAt) : null;
+            if (request.body.publishedAt !== undefined) {
+                update.publishedAt = request.body.publishedAt ? new Date(request.body.publishedAt) : null;
+                update.lifecycleAlertsSent = []; // nueva fecha = reiniciar los hitos avisados
+            }
+            if (request.body.lifecycleStage !== undefined) {
+                update.lifecycleStage = request.body.lifecycleStage || null;
+            }
             if (request.body.asin !== undefined) update.asin = request.body.asin;
             if (request.body.etsyUrl !== undefined) update.etsyUrl = request.body.etsyUrl;
             if (request.body.gumroadUrl !== undefined) update.gumroadUrl = request.body.gumroadUrl;

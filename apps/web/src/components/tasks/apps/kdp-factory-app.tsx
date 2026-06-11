@@ -138,67 +138,7 @@ const PRODUCT_TYPES = [
     { id: "landing-page-template", name: "Landing Page Template", icon: <FileText size={18} />, color: "text-cyan-400", bg: "bg-cyan-500/10" }
 ];
 
-const AI_MODELS = [
-    { id: "flux-schnell", name: "FLUX.1 [schnell]", provider: "Hugging Face", type: "Ultra High Quality", modelId: "black-forest-labs/FLUX.1-schnell", status: "blocked" },
-    { id: "flux-dev", name: "FLUX.1 [dev]", provider: "Hugging Face", type: "Higher fidelity (may be gated)", modelId: "black-forest-labs/FLUX.1-dev", status: "blocked" },
-    { id: "sd-3.5", name: "Stable Diffusion 3.5", provider: "Hugging Face", type: "Versatile", modelId: "stabilityai/stable-diffusion-3.5-large-turbo", status: "blocked" },
-    { id: "openjourney-v4", name: "OpenJourney v4", provider: "Hugging Face", type: "Artistic/MJ Style", modelId: "prompthero/openjourney", status: "blocked" },
-    { id: "google-gemini-2-5", name: "Google Gemini 2.5 Flash Image", provider: "Google", type: "Fast image gen", modelId: "gemini-2.5-flash-image", status: "paid" },
-    { id: "leo-phoenix",      name: "Phoenix 1.0 ✦ (Leonardo)",    provider: "Leonardo", type: "150 tok/día · Flagship · Fantasy · Mejor calidad", modelId: "de7d3faf-762f-48e0-b3b7-9d0ac3a3fcf3", status: "limited" },
-    { id: "leo-kino-xl",      name: "KINO XL ✦ (Leonardo)",        provider: "Leonardo", type: "150 tok/día · Cinematográfico · Escenas épicas",    modelId: "aa77f04e-3eec-4034-9c07-d0f619684628", status: "limited" },
-    { id: "leo-albedo-xl",    name: "AlbedoBase XL (Leonardo)",    provider: "Leonardo", type: "150 tok/día · CG · Fantasy · Concept art",           modelId: "2067ae52-33fd-4a82-bb92-c2c55e7d2786", status: "limited" },
-    { id: "leo-diffusion-xl", name: "Leonardo Diffusion XL",       provider: "Leonardo", type: "150 tok/día · Versátil · Ilustración",               modelId: "1e60896f-3c26-4296-8ecc-53e2afecc132", status: "limited" },
-    { id: "leo-lucid-origin", name: "Lucid Origin (Leonardo)",     provider: "Leonardo", type: "150 tok/día · Generalista · Ilimitado relajado",     modelId: "7b592283-e8a7-4c5a-9ba6-d18c31f258b9", status: "limited" },
-    { id: "leo-lucid-real",   name: "Lucid Realism (Leonardo)",    provider: "Leonardo", type: "150 tok/día · Hiperrealista · Ilimitado relajado",   modelId: "05ce0082-2d80-4a2d-8653-4d1c85e2418e", status: "limited" },
-    { id: "leo-anime-xl",     name: "Leonardo Anime XL",           provider: "Leonardo", type: "150 tok/día · Anime · Ilustración 2D",               modelId: "e71a1c2f-4f80-4800-934f-2c68979d8cc8", status: "limited" },
-    { id: "sdxl-base", name: "Stable Diffusion XL Base 1.0", provider: "Hugging Face", type: "General (OSS weights)", modelId: "stabilityai/stable-diffusion-xl-base-1.0", status: "blocked" },
-    { id: "sdxl-turbo", name: "SDXL Turbo", provider: "Hugging Face", type: "Fast (OSS weights)", modelId: "stabilityai/sdxl-turbo", status: "blocked" },
-    { id: "sd-1.5", name: "Stable Diffusion 1.5", provider: "Hugging Face", type: "Classic (OSS weights)", modelId: "runwayml/stable-diffusion-v1-5", status: "blocked" },
-    { id: "kandinsky-2.2", name: "Kandinsky 2.2", provider: "Hugging Face", type: "Creative", modelId: "ai-forever/Kandinsky-2.2", status: "blocked" },
-    { id: "coloringbook-redmond", name: "ColoringBook.Redmond (LoRA)", provider: "Hugging Face", type: "Coloring Book (clean lines)", modelId: "artificialguybr/ColoringBookRedmond", status: "blocked" },
-    { id: "coloringbook-redmond-v2", name: "ColoringBook.Redmond V2 (LoRA)", provider: "Hugging Face", type: "Coloring Book (clean lines)", modelId: "artificialguybr/ColoringBookRedmond-V2", status: "blocked" },
-    // Pollinations — gateway nuevo gen.pollinations.ai con API key (proxy backend)
-    { id: "pollinations-flux", name: "FLUX (Pollinations)", provider: "Pollinations", type: "Gratis · API Key propia", modelId: "flux", status: "ok" },
-    { id: "pollinations-flux-realism", name: "FLUX Realism (Pollinations)", provider: "Pollinations", type: "Gratis · Fotorrealista", modelId: "flux-realism", status: "ok" },
-    { id: "pollinations-flux-anime", name: "FLUX Anime (Pollinations)", provider: "Pollinations", type: "Gratis · Anime/Ilustración", modelId: "flux-anime", status: "ok" },
-    { id: "pollinations-turbo", name: "Turbo (Pollinations)", provider: "Pollinations", type: "Gratis · Ultra Rápido", modelId: "turbo", status: "ok" },
-    // fal.ai — API key requerida ($0.003/img), inferencia muy rápida (<1s)
-    { id: "falai-flux-schnell", name: "FLUX Schnell (fal.ai)", provider: "fal.ai", type: "Rápido · $0.003/img", modelId: "fal-ai/flux/schnell", status: "blocked" },
-    { id: "falai-flux-dev", name: "FLUX Dev (fal.ai)", provider: "fal.ai", type: "Alta calidad · fal.ai", modelId: "fal-ai/flux/dev", status: "blocked" },
-    { id: "falai-flux-lora-coloring", name: "FLUX LoRA Coloring (fal.ai)", provider: "fal.ai", type: "Línea art · Coloring Book", modelId: "fal-ai/flux/dev/lora", status: "blocked" },
-    // Segmind — 100 créditos gratis/día, sin tarjeta
-    { id: "segmind-flux-schnell", name: "FLUX Schnell (Segmind)", provider: "Segmind", type: "100 gratis/día · Rápido", modelId: "flux-schnell", status: "blocked" },
-    { id: "segmind-sdxl", name: "SDXL 1.0 (Segmind)", provider: "Segmind", type: "100 gratis/día · General", modelId: "sdxl1.0", status: "blocked" },
-    { id: "segmind-canny", name: "SDXL Canny (Segmind)", provider: "Segmind", type: "100 gratis/día · Línea art", modelId: "canny-sdxl", status: "blocked" },
-    // Cloudflare Workers AI — gratis, sin bloqueos geo
-    { id: "cf-flux-schnell", name: "⭐ FLUX Schnell (Cloudflare)", provider: "Cloudflare", type: "Gratis · ~33img/día · FLUX · ~5s", modelId: "@cf/black-forest-labs/flux-1-schnell", status: "ok" },
-    { id: "cf-sdxl-lightning", name: "SDXL Lightning (Cloudflare)", provider: "Cloudflare", type: "Gratis · Ultrarrápido · Alta calidad", modelId: "@cf/bytedance/stable-diffusion-xl-lightning", status: "ok" },
-    { id: "cf-sdxl", name: "SDXL Base (Cloudflare)", provider: "Cloudflare", type: "Gratis · Detallado · SDXL 1.0", modelId: "@cf/stabilityai/stable-diffusion-xl-base-1.0", status: "ok" },
-    { id: "cf-dreamshaper", name: "DreamShaper LCM (Cloudflare)", provider: "Cloudflare", type: "Gratis · Artístico · Estilos creativos", modelId: "@cf/lykon/dreamshaper-8-lcm", status: "ok" },
-    // Together AI — $5 gratis sin tarjeta, FLUX schnell, sin bloqueo geo
-    { id: "together-flux-schnell", name: "FLUX Schnell (Together AI)", provider: "Together AI", type: "$5 gratis · Sin bloqueo geo · ~5-10s", modelId: "black-forest-labs/FLUX.1-schnell-Free", status: "blocked" },
-    // Tensor.art — 100 créditos/día gratis · renovación diaria · sin tarjeta
-    { id: "ta-sdxl-base",        name: "SDXL 1.0 Base (Tensor.art)",          provider: "Tensor.art", type: "100 créd/día · Base SDXL · General",              modelId: "619225630271212879", status: "blocked" },
-    { id: "ta-coloringbook-v2",  name: "ColoringBook Redmond XL (Tensor.art)", provider: "Tensor.art", type: "100 créd/día · LoRA Coloring Book · Línea limpia", modelId: "619225630271212879:656285193671448586:0.85", status: "blocked" },
-    { id: "ta-coloringbook-dom", name: "Coloring Book Dominator (Tensor.art)", provider: "Tensor.art", type: "100 créd/día · LoRA Dominante · Línea gruesa",     modelId: "619225630271212879:647832655083339586:0.85", status: "blocked" },
-    { id: "ta-extra-realistic",  name: "Extra Realistic XL (Tensor.art)",      provider: "Tensor.art", type: "100 créd/día · Fotorrealista · Fantasia",           modelId: "879130987013876797", status: "blocked" },
-    { id: "ta-thinkdiffusion",   name: "ThinkDiffusion XL (Tensor.art)",       provider: "Tensor.art", type: "100 créd/día · Alta calidad · Versatil",            modelId: "651192230041814458", status: "blocked" },
-    { id: "ta-autismmix-light",  name: "AutismMix SDXL Lightning (Tensor.art)", provider: "Tensor.art", type: "100 créd/día · Anime · Ultra rápido (4 steps)",   modelId: "705519017965662383", status: "blocked" },
-    { id: "ta-sdxl-flash",       name: "SDXL Flash Mini (Tensor.art)",         provider: "Tensor.art", type: "100 créd/día · Ultrarrápido · Ligero",              modelId: "738164703605494864", status: "blocked" },
-    // SiliconFlow — FLUX.1-schnell gratis y confirmado ✅
-    { id: "sf-flux-schnell",  name: "FLUX.1-schnell ✦ (SiliconFlow)", provider: "SiliconFlow", type: "Gratis · Sin límite diario · FLUX · Rápido",     modelId: "black-forest-labs/FLUX.1-schnell", status: "ok" },
-    { id: "sf-flux-dev",      name: "FLUX.1-dev (SiliconFlow)",        provider: "SiliconFlow", type: "Pago · Alta calidad · FLUX · ~$0.014/img",      modelId: "black-forest-labs/FLUX.1-dev", status: "paid" },
-    { id: "sf-sdxl",          name: "SDXL Base 1.0 (SiliconFlow)",     provider: "SiliconFlow", type: "Pago · Versátil · $0.002/img",                  modelId: "stabilityai/stable-diffusion-xl-base-1.0", status: "paid" },
-    // Dezgo — gratis sin API key, SD/SDXL
-    { id: "dezgo-sdxl",        name: "SDXL 1.0 (Dezgo)",        provider: "Dezgo", type: "Gratis · Sin key · SDXL · ~10s",          modelId: "sdxl", status: "blocked" },
-    { id: "dezgo-dreamshaper", name: "DreamShaper 8 (Dezgo)",    provider: "Dezgo", type: "Gratis · Sin key · Artístico · SD 1.5",   modelId: "dreamshaper_8", status: "blocked" },
-    { id: "dezgo-realistic",   name: "Realistic Vision (Dezgo)", provider: "Dezgo", type: "Gratis · Sin key · Fotorrealista · SD 1.5", modelId: "epicrealism_naturalSin_rc1vae", status: "blocked" },
-    // Stable Horde — totalmente gratis, red comunitaria de GPUs voluntarias
-    { id: "stable-horde-sdxl", name: "SDXL 1.0 (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · ~1-3min", modelId: "SDXL 1.0", status: "limited" },
-    { id: "stable-horde-sd15", name: "SD 1.5 (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · Rápido", modelId: "stable_diffusion", status: "limited" },
-    { id: "stable-horde-dreamshaper", name: "DreamShaper 8 (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · Artístico", modelId: "dreamshaper_8", status: "limited" },
-    { id: "stable-horde-albedo", name: "AlbedoBase XL (Stable Horde)", provider: "Stable Horde", type: "Gratis · Sin API Key · SDXL", modelId: "AlbedoBase XL (SDXL)", status: "limited" },
-];
+import { AI_MODELS } from "./shared/ai-constants";
 
 const AI_DIMENSIONS = [
     { id: "sq", name: "Square", ratio: "1:1", width: 1024, height: 1024 },
@@ -220,82 +160,7 @@ const PLATFORMS = ["Amazon KDP", "Etsy", "Printify", "Creative Fabrica"];
 type TabID = "insights" | "creation" | "studio" | "niches" | "gelato" | "config";
 type PeriodID = "month" | "6months" | "year" | "all";
 
-type NicheStatus = "found" | "active" | "research" | "archived";
-type NicheProductType = "coloring-book" | "printable-poster" | "seamless-pattern" | "other";
-type NicheStyle = "generic" | "anime" | "illustration" | "children" | "realistic" | "watercolor" | "abstract"
-    | "wall-art" | "botanical" | "affirmation" | "geometric" | "celestial" | "retro";
-
-interface NicheRoyaltyEntry {
-    month: string;
-    sales: number;
-    revenue: number;
-}
-
-interface NicheKDPListing {
-    _id: string;
-    title: string;
-    subtitle: string;
-    description: string;
-    keywords: string[];
-    etsyTags?: string[];
-    categories?: string[];
-    seoNotes?: string;
-    appliedAt?: string;
-    generatedAt: string;
-    language?: string;
-}
-
-interface NicheFE {
-    _id: string;
-    name: string;
-    nickname?: string;
-    description: string;
-    tags: string[];
-    status: NicheStatus;
-    competition: "unknown" | "low" | "medium" | "high";
-    demand: "unknown" | "low" | "medium" | "high";
-    productType: NicheProductType;
-    styleCategory: NicheStyle;
-    styleCategories?: NicheStyle[];
-    notes: string;
-    generatedPrompt?: string;
-    discoveryImagePrompt?: string;
-    pendingCatalogPrompts?: string[];
-    catalogIds?: string[];
-    phase?: "niche" | "catalog" | "libro" | "seo" | "pdf" | "cover" | "published";
-    publishedAt?: string;
-    asin?: string;
-    etsyUrl?: string;
-    gumroadUrl?: string;
-    sourceTitulo?: string;
-    royalties?: NicheRoyaltyEntry[];
-    listings?: NicheKDPListing[];
-    score?: number;
-    scoreBreakdown?: { demand: number; competition: number; uniqueness: number; potential: number };
-    scoreReason?: string;
-    scoredAt?: string;
-    marketScan?: {
-        score: number;
-        verdict: "gold" | "good" | "saturated" | "dead";
-        scoreBreakdown?: { demand: number; supply: number; competition: number };
-        us?: { resultCount: number | null; medianReviews: number | null; bestsellerBadges: number };
-        es?: { resultCount: number | null; medianReviews: number | null; bestsellerBadges: number };
-        scannedAt?: string;
-    };
-    autoPilotEnabled?: boolean;
-    sampleImageUrl?: string;
-    coverUrl?: string;
-    backCoverUrl?: string;
-    bookPdfUrl?: string;
-    coverCandidates?: string[];
-    phaseChangedAt?: string;
-    pipelineHasCatalogs?: boolean;
-    pipelineHasPdf?: boolean;
-    pipelineHasListings?: boolean;
-    pipelineHasCover?: boolean;
-    createdAt: string;
-    updatedAt?: string;
-}
+import type { NicheStatus, NicheProductType, NicheStyle, NicheRoyaltyEntry, NicheKDPListing, NicheFE } from "./kdp/types";
 
 const NICHE_STYLE_OPTIONS: { id: NicheStyle; label: string; desc: string }[] = [
     { id: "generic", label: "Dibujo genérico", desc: "Estilo versátil y limpio" },
@@ -485,23 +350,7 @@ interface SavedPromptFE {
 
 const DEFAULT_PROMPT_CATEGORIES = ["General", "Anime", "Mandala", "Acuarela", "Ilustración", "Arte Digital", "Coloring Book", "Fotografía", "Retrato", "Paisaje", "Abstracto", "Cómic"];
 
-interface PageTextStyle {
-    content: string;
-    bold: boolean;
-    italic: boolean;
-    fontSize: number;
-    color: string;
-    align: "left" | "center" | "right";
-    verticalAlign: "top" | "middle" | "bottom";
-    fontFamily: "helvetica" | "times" | "courier";
-}
-
-interface BookPage {
-    id: string;
-    type: "image" | "text" | "both" | "owner";
-    image?: { url: string; scale: number; label?: string; border?: { width: number; color: string } };
-    text: PageTextStyle;
-}
+import type { PageTextStyle, BookPage } from "./kdp/types";
 
 interface FavoriteImage {
     url: string;
@@ -514,689 +363,21 @@ const defaultTextStyle = (): PageTextStyle => ({
     content: "", bold: false, italic: false, fontSize: 14, color: "#333333", align: "center", verticalAlign: "middle", fontFamily: "helvetica",
 });
 
-function KdpSelect({ value, onChange, options, accent = "white" }: {
-    value: string;
-    onChange: (v: string) => void;
-    options: { value: string; label: string }[];
-    accent?: "white" | "violet" | "amber";
-}) {
-    const [open, setOpen] = React.useState(false);
-    const ref = React.useRef<HTMLDivElement>(null);
-    React.useEffect(() => {
-        const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-        document.addEventListener("mousedown", handler);
-        return () => document.removeEventListener("mousedown", handler);
-    }, []);
-    const current = options.find(o => o.value === value);
-    const ringCls = accent === "violet" ? "border-sky-500/50 bg-sky-500/5" : accent === "amber" ? "border-amber-500/50 bg-amber-500/5" : "border-white/20 bg-white/5";
-    const activeCls = accent === "violet" ? "text-sky-300 bg-sky-500/10" : accent === "amber" ? "text-amber-300 bg-amber-500/10" : "text-white bg-white/10";
-    return (
-        <div ref={ref} className="relative">
-            <button type="button" onClick={() => setOpen(o => !o)}
-                className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border text-sm font-bold text-white transition-all bg-white/[0.03] border-white/8 hover:${ringCls} ${open ? ringCls : ""}`}>
-                <span>{current?.label ?? value}</span>
-                <ChevronDown size={12} className={`text-neutral-500 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
-            </button>
-            {open && (
-                <div className="absolute z-50 top-full mt-1.5 left-0 right-0 bg-[#141414] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
-                    {options.map(opt => (
-                        <button key={opt.value} type="button" onClick={() => { onChange(opt.value); setOpen(false); }}
-                            className={`w-full text-left px-3 py-2 text-sm font-medium transition-colors hover:bg-white/5 ${opt.value === value ? activeCls : "text-neutral-300"}`}>
-                            {opt.label}
-                        </button>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-}
-
-// ── NicheSelect — shared searchable dropdown for picking a niche ─────────────
-function NicheSelect({
-    niches,
-    selectedId,
-    onChange,
-    placeholder = "Seleccionar nicho…",
-    className = "",
-}: {
-    niches: NicheFE[];
-    selectedId: string | null;
-    onChange: (niche: NicheFE | null) => void;
-    placeholder?: string;
-    className?: string;
-}) {
-    const [open, setOpen] = React.useState(false);
-    const [query, setQuery] = React.useState("");
-    const ref = React.useRef<HTMLDivElement>(null);
-    const inputRef = React.useRef<HTMLInputElement>(null);
-
-    React.useEffect(() => {
-        const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-        document.addEventListener("mousedown", handler);
-        return () => document.removeEventListener("mousedown", handler);
-    }, []);
-
-    React.useEffect(() => {
-        if (open) { setQuery(""); setTimeout(() => inputRef.current?.focus(), 50); }
-    }, [open]);
-
-    const selected = niches.find(n => n._id === selectedId) ?? null;
-    const display = selected ? (selected.nickname?.trim() || selected.name) : null;
-
-    const filtered = niches.filter(n => {
-        if (!query.trim()) return true;
-        const q = query.toLowerCase();
-        return (n.nickname?.toLowerCase().includes(q) || n.name.toLowerCase().includes(q));
-    });
-
-    const nicheColor = (n: NicheFE) =>
-        n.phase === "published" ? "text-emerald-400" : "text-neutral-300";
-
-    return (
-        <div ref={ref} className={`relative ${className}`}>
-            <button
-                type="button"
-                onClick={() => setOpen(o => !o)}
-                className={`w-full h-8 px-3 rounded-xl border text-sm font-semibold flex items-center gap-2 transition-all ${
-                    selectedId
-                        ? "border-sky-500/40 bg-sky-500/10 text-sky-300"
-                        : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white hover:bg-white/6"
-                }`}
-            >
-                <Target size={9} className="shrink-0 opacity-60" />
-                <span className="flex-1 truncate text-left">{display ?? placeholder}</span>
-                {selectedId && (
-                    <span
-                        role="button"
-                        onClick={e => { e.stopPropagation(); onChange(null); }}
-                        className="shrink-0 opacity-50 hover:opacity-100 transition-opacity"
-                    >
-                        <X size={10} />
-                    </span>
-                )}
-                <ChevronDown size={10} className={`shrink-0 opacity-40 transition-transform ${open ? "rotate-180" : ""}`} />
-            </button>
-            {open && (
-                <div className="absolute z-50 top-full mt-1 left-0 right-0 rounded-xl border border-white/12 bg-[#141414] shadow-2xl overflow-hidden">
-                    <div className="px-2 pt-2 pb-1">
-                        <input
-                            ref={inputRef}
-                            value={query}
-                            onChange={e => setQuery(e.target.value)}
-                            placeholder="Buscar nicho…"
-                            className="w-full h-7 px-2.5 rounded-lg bg-white/6 border border-white/10 text-sm text-white outline-none placeholder:text-neutral-600"
-                        />
-                    </div>
-                    <div className="max-h-52 overflow-y-auto py-1">
-                        {filtered.length === 0 ? (
-                            <p className="px-3 py-2 text-xs text-neutral-600">Sin resultados</p>
-                        ) : filtered.map(n => {
-                            const label = n.nickname?.trim() || n.name;
-                            const isSelected = n._id === selectedId;
-                            return (
-                                <button
-                                    key={n._id}
-                                    type="button"
-                                    onClick={() => { onChange(isSelected ? null : n); setOpen(false); }}
-                                    className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors ${
-                                        isSelected ? "bg-sky-500/15 text-sky-300" : "hover:bg-white/5 " + nicheColor(n)
-                                    }`}
-                                >
-                                    <Target size={8} className="shrink-0 opacity-50" />
-                                    <span className="flex-1 truncate font-medium">{label}</span>
-                                    {isSelected && <Check size={9} className="shrink-0" />}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
+import { KdpSelect, NicheSelect } from "./kdp/selects";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 // ── Listing card fields (reusable inside content panel) ───────────────────────
-function ListingCardFields({
-    listing, onCopy, onExpand, expandedId,
-}: {
-    listing: { _id: string; title: string; subtitle: string; description: string; keywords: string[]; etsyTags?: string[]; categories?: string[]; seoNotes?: string };
-    onCopy: (text: string) => void;
-    onExpand: (id: string | null) => void;
-    expandedId: string | null;
-}) {
-    const KWField = ({ label, value }: { label: string; value: string }) => (
-        <div className="space-y-1">
-            <div className="flex items-center justify-between">
-                <span className="text-sm font-black uppercase tracking-widest text-neutral-600">{label}</span>
-                <button onClick={() => onCopy(value)} className="text-sm text-neutral-700 hover:text-indigo-400 flex items-center gap-0.5 transition-colors">
-                    <Copy size={7} /> Copiar
-                </button>
-            </div>
-            <p className="text-sm text-neutral-300 leading-relaxed bg-white/[0.03] border border-white/[0.05] rounded-lg px-2.5 py-2">{value || <span className="italic text-neutral-700">—</span>}</p>
-        </div>
-    );
-    return (
-        <div className="space-y-2">
-            {listing.title && <KWField label="Título" value={listing.title} />}
-            {listing.subtitle && <KWField label="Subtítulo" value={listing.subtitle} />}
-            {listing.keywords.length > 0 && (
-                <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                        <span className="text-sm font-black uppercase tracking-widest text-neutral-600">Keywords KDP ({listing.keywords.length}/7)</span>
-                        <button onClick={() => onCopy(listing.keywords.join(", "))} className="text-sm text-neutral-700 hover:text-indigo-400 flex items-center gap-0.5 transition-colors"><Copy size={7} /> Todas</button>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                        {listing.keywords.map((kw, i) => (
-                            <button key={i} onClick={() => onCopy(kw)} title={`${kw.length}/50 chars — click para copiar`}
-                                className="px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/20 rounded-md text-sm text-indigo-300 hover:bg-indigo-500/20 transition-all font-mono">
-                                {kw}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-            {(listing.etsyTags?.length ?? 0) > 0 && (
-                <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                        <span className="text-sm font-black uppercase tracking-widest text-neutral-600">Etsy Tags ({listing.etsyTags!.length}/13)</span>
-                        <button onClick={() => onCopy(listing.etsyTags!.join(", "))} className="text-sm text-neutral-700 hover:text-orange-400 flex items-center gap-0.5 transition-colors"><Copy size={7} /> Todas</button>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                        {listing.etsyTags!.map((tag, i) => (
-                            <button key={i} onClick={() => onCopy(tag)} title={`${tag.length}/20 chars — click para copiar`}
-                                className="px-2 py-0.5 bg-orange-500/10 border border-orange-500/20 rounded-md text-sm text-orange-300 hover:bg-orange-500/20 transition-all font-mono">
-                                {tag}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-            {(listing.categories?.length ?? 0) > 0 && (
-                <div className="space-y-1">
-                    <span className="text-sm font-black uppercase tracking-widest text-neutral-600">Categorías sugeridas</span>
-                    <div className="space-y-1">
-                        {listing.categories!.map((cat, i) => (
-                            <button key={i} onClick={() => onCopy(cat)}
-                                className="w-full text-left px-2.5 py-1.5 bg-emerald-500/[0.06] border border-emerald-500/15 rounded-lg text-sm text-emerald-300/90 hover:bg-emerald-500/15 transition-all">
-                                {cat}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
-            {listing.seoNotes && (
-                <p className="text-[10px] text-neutral-600 italic leading-relaxed border-l-2 border-white/10 pl-2">{listing.seoNotes}</p>
-            )}
-            {listing.description && (
-                <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                        <span className="text-sm font-black uppercase tracking-widest text-neutral-600">Descripción</span>
-                        <button onClick={() => onCopy(listing.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())} className="text-sm text-neutral-700 hover:text-indigo-400 flex items-center gap-0.5 transition-colors"><Copy size={7} /> Copiar</button>
-                    </div>
-                    {/<[a-z][\s\S]*>/i.test(listing.description)
-                        ? <div className="text-sm text-neutral-300 leading-relaxed bg-white/[0.03] border border-white/[0.05] rounded-lg px-2.5 py-2 [&_p]:mb-1.5 [&_ul]:list-disc [&_ul]:pl-3 [&_li]:mb-0.5 [&_strong]:text-amber-300" dangerouslySetInnerHTML={{ __html: listing.description }} />
-                        : <p className="text-sm text-neutral-300 leading-relaxed bg-white/[0.03] border border-white/[0.05] rounded-lg px-2.5 py-2">{listing.description}</p>
-                    }
-                </div>
-            )}
-            <button
-                onClick={() => onCopy([listing.title, listing.subtitle, listing.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(), listing.keywords.length > 0 ? `Keywords: ${listing.keywords.join(", ")}` : ""].filter(Boolean).join("\n\n"))}
-                className="w-full flex items-center justify-center gap-1 h-6 rounded-lg bg-white/[0.04] border border-white/8 text-sm text-neutral-500 hover:text-white hover:bg-white/8 transition-all"
-            >
-                <Copy size={8} /> Copiar listing completo
-            </button>
-        </div>
-    );
-}
+import { ListingCardFields } from "./kdp/ListingCardFields";
 
-// ── Gelato Upload Modal ───────────────────────────────────────────────────────
-const WIRE_O_UID = "wire-o-multi-page-brochures_pf_a4_pt_115-gsm-uncoated_cl_4-4_bt_wire-o-left_cpt_300-gsm-uncoated_ver";
-
-const MAX_GELATO_PAGES = 148; // max even image pages per PDF (+ owner page = 149 total, within 150 limit)
-
-function GelatoUploadModal({
-    bookPages,
-    bookFileName,
-    buildPdf,
-    apiUrl,
-    onClose,
-}: {
-    bookPages: BookPage[];
-    bookFileName: string;
-    buildPdf: (pages?: BookPage[], forceNoOwnerPage?: boolean) => Promise<Uint8Array | null>;
-    apiUrl: string;
-    onClose: () => void;
-}) {
-    const pageCount = bookPages.length;
-    const needsSplit = pageCount > MAX_GELATO_PAGES;
-    // Build even-sized chunks of max MAX_GELATO_PAGES content pages.
-    // Each PDF will be: owner page (1) + blank separator (1) + chunk pages (even) = even total.
-    const chunks: BookPage[][] = [];
-    if (needsSplit) {
-        let i = 0;
-        while (i < bookPages.length) {
-            let end = Math.min(i + MAX_GELATO_PAGES, bookPages.length);
-            // ensure even content count
-            if ((end - i) % 2 !== 0) {
-                if (end < bookPages.length) end--;   // trim last to keep even
-                else end--;                          // last chunk: drop one rather than overflow
-                if (end <= i) end = i + 2;          // floor at 2 if near end
-            }
-            chunks.push(bookPages.slice(i, Math.min(end, bookPages.length)));
-            i = end;
-        }
-    }
-    // blank page inserted after owner page so images always start on a right-side (odd) page
-    const blankSeparator: BookPage = {
-        id: "__blank-sep__",
-        type: "image",
-        text: { content: "", bold: false, italic: false, fontSize: 14, color: "#333333", align: "center", verticalAlign: "middle", fontFamily: "helvetica" },
-    };
-    const validPageCount = Math.max(20, pageCount % 2 === 0 ? pageCount : pageCount + 1);
-    const isValidForWireO = pageCount >= 20;
-
-    // Manual flow
-    const [manualGenerating, setManualGenerating] = useState(false);
-    const [manualDone, setManualDone] = useState(false);
-    const [manualError, setManualError] = useState("");
-
-    // Auto flow
-    type AutoStep = "idle" | "generating" | "uploading" | "done" | "error";
-    const [autoStep, setAutoStep] = useState<AutoStep>("idle");
-    const [autoLog, setAutoLog] = useState<string[]>([]);
-    const [autoError, setAutoError] = useState("");
-    const [uploadedUrl, setUploadedUrl] = useState("");
-
-    const addLog = (msg: string) => setAutoLog(p => [...p, msg]);
-
-    const [multiProgress, setMultiProgress] = useState<{ current: number; total: number } | null>(null);
-
-    const downloadBlob = (bytes: Uint8Array, name: string) => {
-        const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = name;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 10_000);
-    };
-
-    const handleDownload = async () => {
-        setManualGenerating(true);
-        setManualError("");
-        setManualDone(false);
-        try {
-            const bytes = await buildPdf();
-            if (!bytes) throw new Error("No se pudo generar el PDF");
-            downloadBlob(bytes, `${bookFileName || "libro-kdp"}.pdf`);
-            setManualDone(true);
-        } catch (e: any) {
-            setManualError(e.message);
-        } finally {
-            setManualGenerating(false);
-        }
-    };
-
-    const handleDownloadMultiple = async () => {
-        setManualGenerating(true);
-        setManualError("");
-        setManualDone(false);
-        setMultiProgress({ current: 0, total: chunks.length });
-        try {
-            for (let i = 0; i < chunks.length; i++) {
-                setMultiProgress({ current: i + 1, total: chunks.length });
-                // owner page (auto-added by buildBookPdf) + blank separator + even content pages = even total
-                const firstIsBlank = !chunks[i][0]?.image;
-                let chunkPages = firstIsBlank ? chunks[i] : [blankSeparator, ...chunks[i]];
-                // ensure blank after first image in this chunk
-                const fii = chunkPages.findIndex(p => p.image);
-                if (fii !== -1 && chunkPages[fii + 1]?.image) {
-                    chunkPages = [...chunkPages.slice(0, fii + 1), blankSeparator, ...chunkPages.slice(fii + 1)];
-                }
-                const pagesForPdf = chunkPages;
-                const bytes = await buildPdf(pagesForPdf, i > 0);
-                if (!bytes) throw new Error(`Error generando parte ${i + 1}`);
-                const partName = `${bookFileName || "libro-kdp"}-parte${i + 1}.pdf`;
-                downloadBlob(bytes, partName);
-                if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 600));
-            }
-            setManualDone(true);
-        } catch (e: any) {
-            setManualError(e.message);
-        } finally {
-            setManualGenerating(false);
-            setMultiProgress(null);
-        }
-    };
-
-    const handleAutoUpload = async () => {
-        setAutoStep("generating");
-        setAutoLog([]);
-        setAutoError("");
-        setUploadedUrl("");
-        try {
-            addLog("Generando PDF...");
-            const bytes = await buildPdf();
-            if (!bytes) throw new Error("No se pudo generar el PDF");
-            addLog(`✓ PDF generado · ${(bytes.length / 1048576).toFixed(1)} MB`);
-
-            setAutoStep("uploading");
-            addLog("Subiendo al servidor...");
-            let binary = "";
-            const chunk = 0x8000;
-            for (let i = 0; i < bytes.length; i += chunk) {
-                binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-            }
-            const base64 = btoa(binary);
-            const upRes = await fetch(`${apiUrl}/uploads/pdf`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ base64, fileName: bookFileName }),
-            });
-            const upData = await upRes.json();
-            if (!upRes.ok) throw new Error(upData.error ?? "Error al subir PDF");
-            setUploadedUrl(upData.url);
-            addLog(`✓ PDF subido · expira en ${upData.expiresInMinutes} min`);
-            setAutoStep("done");
-        } catch (e: any) {
-            setAutoError(e.message);
-            setAutoStep("error");
-        }
-    };
-
-    const SPECS = [
-        ["Páginas", `${pageCount}${pageCount !== validPageCount ? ` → ${validPageCount} (par)` : ""}`],
-        ["Formato", "A4 · 210×297 mm"],
-        ["Interior", "115 gsm · 4+4 color"],
-        ["Encuadernado", "Wire-O izquierda"],
-    ];
-
-    const MANUAL_STEPS = [
-        { n: "1", text: "Descarga el PDF con el botón de abajo" },
-        { n: "2", text: "Abre el Gelato Dashboard → Products → Create new" },
-        { n: "3", text: 'Elige "Wire-O Brochure" · A4 · 115 gsm · 4+4 · Wire-O left' },
-        { n: "4", text: "Sube el PDF en el paso Print files" },
-        { n: "5", text: "Configura título, precio y publica → sincroniza a Etsy" },
-    ];
-
-    return (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={onClose} />
-            <div className="relative w-full max-w-lg rounded-3xl border border-white/15 bg-neutral-950/95 p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-
-                {/* Header */}
-                <div className="flex items-center gap-3 mb-5">
-                    <div className="w-10 h-10 rounded-2xl bg-orange-500/15 border border-orange-500/25 flex items-center justify-center">
-                        <Package size={17} className="text-orange-400" />
-                    </div>
-                    <div>
-                        <p className="font-bold text-white">Subir a Gelato</p>
-                        <p className="text-sm text-neutral-500">Impresión Wire-O bajo demanda</p>
-                    </div>
-                    <button onClick={onClose} className="ml-auto p-1.5 rounded-lg hover:bg-white/8">
-                        <X size={14} className="text-neutral-400" />
-                    </button>
-                </div>
-
-                {pageCount < 20 && (
-                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 flex gap-2 mb-4">
-                        <AlertTriangle size={14} className="text-amber-400 shrink-0 mt-0.5" />
-                        <p className="text-sm text-amber-300">Wire-O requiere mínimo 20 páginas. Tu libro tiene {pageCount}.</p>
-                    </div>
-                )}
-                {needsSplit && (
-                    <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 p-3 flex gap-2 mb-4">
-                        <AlertTriangle size={14} className="text-sky-400 shrink-0 mt-0.5" />
-                        <div className="text-sm text-sky-300 space-y-1">
-                            <p className="font-bold">Tu libro tiene {pageCount} páginas — máximo {MAX_GELATO_PAGES} imágenes por PDF en Gelato.</p>
-                            <p>Se dividirá en <span className="font-bold">{chunks.length} archivos</span>. Cada uno: <span className="font-mono text-white/70">prueba colores + blanco + {chunks.map(c => c.length).join(" / ")} imágenes</span> = <span className="font-bold">{chunks.map(c => 2 + c.length).join(" / ")} páginas totales (par ✓)</span>.</p>
-                        </div>
-                    </div>
-                )}
-
-                {/* Specs strip */}
-                <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3 mb-4">
-                    {SPECS.map(([k, v]) => (
-                        <div key={k} className="flex items-baseline gap-1">
-                            <span className="text-sm text-neutral-600">{k}:</span>
-                            <span className="text-sm text-neutral-300 font-medium">{v}</span>
-                        </div>
-                    ))}
-                </div>
-
-                <div className="space-y-3">
-                    {/* ── Manual ── */}
-                    <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                            <div className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
-                                <Check size={9} className="text-emerald-400" />
-                            </div>
-                            <p className="text-sm font-bold text-white">Manual</p>
-                            <span className="ml-auto text-sm font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/15 border border-emerald-500/25 rounded-full px-2 py-0.5">Disponible</span>
-                        </div>
-                        <ol className="space-y-2 mb-4">
-                            {MANUAL_STEPS.map(({ n, text }) => (
-                                <li key={n} className="flex gap-2.5 items-start">
-                                    <span className="w-4 h-4 rounded-full bg-white/8 flex items-center justify-center text-sm font-black text-neutral-400 shrink-0 mt-0.5">{n}</span>
-                                    <span className="text-sm text-neutral-400 leading-relaxed">{text}</span>
-                                </li>
-                            ))}
-                        </ol>
-                        {manualError && <p className="text-sm text-red-400 bg-red-500/10 rounded-xl px-3 py-2 mb-3">{manualError}</p>}
-                        {manualDone && (
-                            <div className="flex items-center gap-2 text-sm text-emerald-400 mb-3">
-                                <Check size={12} /> {needsSplit ? `${chunks.length} PDFs descargados` : "PDF descargado"} — continúa en Gelato Dashboard
-                            </div>
-                        )}
-                        {multiProgress && (
-                            <div className="flex items-center gap-2 text-sm text-sky-400 mb-3">
-                                <Loader2 size={12} className="animate-spin" /> Generando parte {multiProgress.current} de {multiProgress.total}...
-                            </div>
-                        )}
-                        <div className="flex gap-2">
-                            <button
-                                onClick={needsSplit ? handleDownloadMultiple : handleDownload}
-                                disabled={manualGenerating || !isValidForWireO}
-                                className="flex-1 py-2.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40 transition-all"
-                            >
-                                {manualGenerating ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                                {manualGenerating ? (multiProgress ? `Parte ${multiProgress.current}/${multiProgress.total}...` : "Generando...") : needsSplit ? `1. Descargar ${chunks.length} PDFs` : "1. Descargar PDF"}
-                            </button>
-                            <a
-                                href="https://dashboard.gelato.com/price-navigator/prices"
-                                target="_blank" rel="noreferrer"
-                                className="flex-1 py-2.5 rounded-2xl bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 font-bold text-sm flex items-center justify-center gap-2 transition-all"
-                            >
-                                <ExternalLink size={12} /> 2. Abrir Gelato
-                            </a>
-                        </div>
-                    </div>
-
-                    {/* ── Automática (deshabilitada) ── */}
-                    <div className="rounded-2xl border border-white/8 bg-white/[0.015] p-4 opacity-50 select-none">
-                        <div className="flex items-center gap-2 mb-2">
-                            <div className="w-5 h-5 rounded-full bg-white/8 border border-white/15 flex items-center justify-center shrink-0">
-                                <Zap size={9} className="text-neutral-500" />
-                            </div>
-                            <p className="text-sm font-bold text-neutral-400">Automática</p>
-                            <span className="ml-auto text-sm font-black uppercase tracking-widest text-neutral-500 bg-white/5 border border-white/10 rounded-full px-2 py-0.5">Próximamente</span>
-                        </div>
-                        <p className="text-sm text-neutral-600 pl-7">
-                            Cuando alguien compre en Etsy, generará el PDF y creará el pedido en Gelato automáticamente. Requiere servidor en producción y webhooks de Etsy.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
+import { GelatoUploadModal } from "./kdp/GelatoUploadModal";
 
 type CloudinaryImage = { publicId: string; url: string; width: number; height: number; bytes: number; nicheId?: string | null; createdAt?: string };
 
-// ── Market Scan panel ─────────────────────────────────────────────────────────
-// Datos reales de Amazon (.com/.es): balanza demanda / oferta / competencia.
-const MARKET_VERDICT_STYLE: Record<string, { label: string; chip: string; glow: string }> = {
-    gold:      { label: "🥇 GOLD",     chip: "bg-gradient-to-r from-yellow-500/25 to-amber-500/15 border-yellow-500/40 text-yellow-300", glow: "shadow-[0_0_18px_rgba(234,179,8,0.15)]" },
-    good:      { label: "✓ BUENO",     chip: "bg-emerald-500/15 border-emerald-500/30 text-emerald-400", glow: "" },
-    saturated: { label: "⚠ SATURADO",  chip: "bg-amber-500/15 border-amber-500/30 text-amber-400", glow: "" },
-    dead:      { label: "✕ SIN MERCADO", chip: "bg-rose-500/15 border-rose-500/30 text-rose-400", glow: "" },
-};
+import { MarketScanPanel, LaunchPlaybookPanel } from "./kdp/MarketScanPanel";
+import { LifecyclePanel, type LifecycleStage } from "./kdp/LifecyclePanel";
 
-function MarketScanBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
-    const pct = Math.max(4, Math.round((value / max) * 100));
-    return (
-        <div className="flex items-center gap-2">
-            <span className="text-[9px] text-neutral-600 uppercase font-black w-16 shrink-0">{label}</span>
-            <div className="flex-1 h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
-                <div className={`h-full rounded-full bg-gradient-to-r ${color} transition-all`} style={{ width: `${pct}%` }} />
-            </div>
-            <span className="text-[10px] font-black text-neutral-400 tabular-nums w-10 text-right">{value}/{max}</span>
-        </div>
-    );
-}
-
-function MarketScanMarketRow({ flag, data }: {
-    flag: string;
-    data?: { resultCount: number | null; medianReviews: number | null; bestsellerBadges: number; ok?: boolean; error?: string };
-}) {
-    const blocked = !data || data.ok === false || (data.resultCount === null && data.medianReviews === null);
-    return (
-        <div className="flex items-center gap-2 rounded-lg bg-white/[0.03] border border-white/[0.06] px-2.5 py-1.5">
-            <span className="text-sm shrink-0">{flag}</span>
-            {blocked ? (
-                <span className="text-[10px] text-neutral-600 italic">sin datos — reescanear más tarde</span>
-            ) : (
-                <div className="flex items-center gap-3 flex-wrap min-w-0">
-                    <span className="text-[10px] text-neutral-400"><span className="font-black text-white tabular-nums">{data!.resultCount?.toLocaleString("es-ES") ?? "?"}</span> resultados</span>
-                    <span className="text-[10px] text-neutral-400">mediana <span className="font-black text-white tabular-nums">{data!.medianReviews ?? "?"}</span> reviews</span>
-                    {data!.bestsellerBadges > 0 && (
-                        <span className="text-[10px] font-black text-orange-400">{data!.bestsellerBadges} bestsellers</span>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-}
-
-// ── Launch Playbook ───────────────────────────────────────────────────────────
-// Los primeros 30 días deciden el posicionamiento: Amazon da una "luna de miel"
-// de visibilidad a los lanzamientos. Día 0 = cuando se aplicó el listing en KDP.
-const LAUNCH_PLAYBOOK: Array<{ fromDay: number; toDay: number | null; title: string; action: string; why: string }> = [
-    { fromDay: 0, toDay: 0, title: "Día 0 — Precio de lanzamiento", action: "Publica a precio bajo ($6.99)", why: "Velocidad de ventas inicial = el algoritmo te da \"luna de miel\" de ~30 días" },
-    { fromDay: 0, toDay: 7, title: "Día 0-7 — Primeras reviews", action: "Pide reviews a conocidos QUE COMPREN (no regalado)", why: "Verified Purchase pesa mucho más para el algoritmo" },
-    { fromDay: 14, toDay: 14, title: "Día 14 — Re-validar mercado", action: "Lanza otro Market Scan del nicho", why: "¿Entró competencia? ¿Tu libro aparece ya en autocomplete?" },
-    { fromDay: 30, toDay: 30, title: "Día 30 — Rotar metadatos si no vende", action: "Cambia la keyword principal del título por la 2ª del intel (KDP permite editar sin perder histórico)", why: "A/B testing gratis" },
-    { fromDay: 30, toDay: null, title: "Día 30+ — Subir precio", action: "Sube gradualmente ($8.99 → $10.99) si hay tracción", why: "Maximiza royalty una vez posicionado" },
-];
-
-function LaunchPlaybookPanel({ appliedAt }: { appliedAt?: string }) {
-    const day = appliedAt ? Math.floor((Date.now() - new Date(appliedAt).getTime()) / 86_400_000) : null;
-    const stepState = (s: typeof LAUNCH_PLAYBOOK[number]): "done" | "current" | "upcoming" => {
-        if (day === null) return "upcoming";
-        const end = s.toDay ?? Infinity;
-        if (day > end) return "done";
-        if (day >= s.fromDay) return "current";
-        return "upcoming";
-    };
-    return (
-        <div className="rounded-xl bg-white/[0.02] border border-white/[0.07] p-3 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                    <Rocket size={11} className="text-sky-400/80 shrink-0" />
-                    <span className="text-[9px] uppercase tracking-wider text-neutral-600 font-black">Launch Playbook · primeros 30 días</span>
-                </div>
-                {day !== null ? (
-                    <span className="text-[10px] font-black text-sky-400 tabular-nums">Día {day}</span>
-                ) : (
-                    <span className="text-[9px] text-neutral-600 italic">marca un listing como aplicado para activar el reloj</span>
-                )}
-            </div>
-            <div className="space-y-1">
-                {LAUNCH_PLAYBOOK.map((s, i) => {
-                    const st = stepState(s);
-                    return (
-                        <div key={i} title={s.why}
-                            className={`flex items-start gap-2 rounded-lg px-2 py-1.5 border transition-all ${
-                                st === "current" ? "bg-sky-500/[0.08] border-sky-500/25" :
-                                st === "done" ? "bg-white/[0.015] border-white/[0.04] opacity-50" :
-                                "bg-white/[0.015] border-white/[0.04]"
-                            }`}>
-                            <span className="text-[10px] mt-px shrink-0">{st === "done" ? "✅" : st === "current" ? "🔵" : "⚪"}</span>
-                            <div className="min-w-0">
-                                <p className={`text-[10px] font-black leading-tight ${st === "current" ? "text-sky-300" : "text-neutral-400"}`}>{s.title}</p>
-                                <p className="text-[10px] text-neutral-500 leading-snug">{s.action}</p>
-                                {st === "current" && <p className="text-[9px] text-neutral-600 italic mt-0.5">{s.why}</p>}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-}
-
-function MarketScanPanel({ scan }: { scan: NonNullable<NicheFE["marketScan"]> }) {
-    const v = MARKET_VERDICT_STYLE[scan.verdict] ?? MARKET_VERDICT_STYLE.dead;
-    const bd = scan.scoreBreakdown;
-    return (
-        <div className={`rounded-xl bg-white/[0.02] border border-white/[0.07] p-3 space-y-2.5 ${v.glow}`}>
-            <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                    <TrendingUp size={11} className="text-yellow-400/80 shrink-0" />
-                    <span className="text-[9px] uppercase tracking-wider text-neutral-600 font-black">Market Scan · Amazon real</span>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-base font-black text-white tabular-nums leading-none">{scan.score}<span className="text-[9px] text-neutral-600">/100</span></span>
-                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${v.chip}`}>{v.label}</span>
-                </div>
-            </div>
-            {bd && (
-                <div className="space-y-1.5">
-                    <MarketScanBar label="Demanda" value={bd.demand} max={40} color="from-emerald-500 to-teal-400" />
-                    <MarketScanBar label="Hueco" value={bd.supply} max={30} color="from-sky-500 to-blue-400" />
-                    <MarketScanBar label="Comp. débil" value={bd.competition} max={30} color="from-violet-500 to-purple-400" />
-                </div>
-            )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                <MarketScanMarketRow flag="🇺🇸" data={scan.us as any} />
-                <MarketScanMarketRow flag="🇪🇸" data={scan.es as any} />
-            </div>
-            {scan.scannedAt && (
-                <p className="text-[9px] text-neutral-700 text-right">escaneado {new Date(scan.scannedAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
-            )}
-        </div>
-    );
-}
-
-function PipelineRuleRow({ rule, levelStyle }: {
-    rule: { key: string; level: string; icon: string; label: string; items: string[]; count: number };
-    levelStyle: Record<string, string>;
-}) {
-    const [open, setOpen] = React.useState(false);
-    return (
-        <div className={`rounded-xl border px-3 py-2 ${levelStyle[rule.level] ?? levelStyle.warn}`}>
-            <button
-                className="w-full flex items-center gap-2 text-left"
-                onClick={() => rule.items.length > 0 && setOpen(o => !o)}
-            >
-                <span className="text-sm shrink-0">{rule.icon}</span>
-                <span className="text-[12px] font-bold flex-1 leading-tight">{rule.label}</span>
-                {rule.items.length > 0 && (
-                    <ChevronDown size={12} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
-                )}
-            </button>
-            {open && rule.items.length > 0 && (
-                <div className="mt-1.5 ml-5 space-y-0.5">
-                    {rule.items.map((item, i) => (
-                        <p key={i} className="text-[11px] opacity-70 truncate">· {item}</p>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-}
+import { PipelineRuleRow } from "./kdp/PipelineRuleRow";
 
 export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
@@ -1427,6 +608,16 @@ export function KdpFactoryApp() {
     // Feature: niche sort + filter + AI score
     const [nicheSortBy, setNicheSortBy] = useState<"score" | "date" | "name" | "images" | "catalogs">("score");
     const [nicheSearch, setNicheSearch] = useState("");
+    // Funnel: filtra los nichos por la fase mental del negocio (descubrir→producir→lanzar→vender)
+    const [funnelFilter, setFunnelFilter] = useState<"all" | "discover" | "produce" | "launch" | "sell">("all");
+    // Inbox: decisiones pendientes en Telegram (se refresca al cargar nichos)
+    const [pendingActions, setPendingActions] = useState<{ count: number; actions: Array<{ nicheName: string; type: string; createdAt: string }> }>({ count: 0, actions: [] });
+    useEffect(() => {
+        fetch(`${API_BASE_URL}/autopilot/pending-actions`)
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d) setPendingActions(d); })
+            .catch(() => {});
+    }, [niches.length]);
     const [scoringNicheId, setScoringNicheId] = useState<string | null>(null);
     const [marketScanningId, setMarketScanningId] = useState<string | null>(null);
     // Auto-Pilot config
@@ -2182,6 +1373,15 @@ export function KdpFactoryApp() {
 
     const nd = (n: { name: string; nickname?: string }) => n.nickname?.trim() || n.name;
 
+    // Fase del funnel de negocio a la que pertenece un nicho (descubrir→producir→lanzar→vender)
+    const nicheFunnelStage = (n: NicheFE): "discover" | "produce" | "launch" | "sell" => {
+        const p = n.phase ?? "niche";
+        if (p === "published") return "sell";
+        if (p === "seo" || p === "pdf" || p === "cover") return "launch";
+        if (p === "catalog" || p === "libro") return "produce";
+        return "discover";
+    };
+
     const nicheScore = (n: NicheFE): number => {
         if (n.score != null) return n.score;
         const demandPts = { unknown: 0, low: 10, medium: 25, high: 40 }[n.demand] ?? 0;
@@ -2207,6 +1407,30 @@ export function KdpFactoryApp() {
             toast.error(e.message ?? "Error al puntuar nicho");
         } finally {
             setScoringNicheId(null);
+        }
+    };
+
+    // Ciclo de vida manual: fase comercial + fecha de publicación
+    const updateNicheLifecycle = async (nicheId: string, patch: { lifecycleStage?: LifecycleStage | null; publishedAt?: string | null }) => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches/${nicheId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(patch),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error ?? "Error");
+            setNiches(prev => prev.map(n => n._id === nicheId ? {
+                ...n,
+                lifecycleStage: patch.lifecycleStage !== undefined ? (patch.lifecycleStage ?? undefined) : n.lifecycleStage,
+                publishedAt: patch.publishedAt !== undefined ? (patch.publishedAt ?? undefined) : n.publishedAt,
+                ...(patch.publishedAt !== undefined ? { lifecycleAlertsSent: [] } : {}),
+            } : n));
+            if (patch.lifecycleStage === "published") toast.success("🚀 Publicado — pon la fecha para activar consejos y alertas");
+            else if (patch.lifecycleStage === "end-of-life") toast.success("Fin de vida — sin más alertas para este nicho");
+            else if (patch.publishedAt) toast.success("Fecha guardada — alertas de hitos activadas");
+        } catch (e: any) {
+            toast.error(e.message ?? "Error actualizando ciclo de vida");
         }
     };
 
@@ -11056,6 +10280,57 @@ export function KdpFactoryApp() {
                         );
                     })()}
 
+                    {/* ── Inbox: lo que requiere TU acción ── */}
+                    {(() => {
+                        const failedCatalogs = iaCatalogs.filter(c => c.status === "failed");
+                        if (pendingActions.count === 0 && failedCatalogs.length === 0) return null;
+                        return (
+                            <div className="flex gap-2 flex-wrap">
+                                {pendingActions.count > 0 && (
+                                    <div className="flex items-center gap-2 px-3 h-9 rounded-xl bg-sky-500/[0.08] border border-sky-500/25"
+                                        title={pendingActions.actions.map(a => `· ${a.nicheName} (${a.type})`).join("\n")}>
+                                        <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-60" /><span className="relative inline-flex rounded-full h-2 w-2 bg-sky-400" /></span>
+                                        <span className="text-[10px] font-black text-sky-300">{pendingActions.count} esperando tu decisión en Telegram</span>
+                                    </div>
+                                )}
+                                {failedCatalogs.length > 0 && (
+                                    <div className="flex items-center gap-2 px-3 h-9 rounded-xl bg-amber-500/[0.08] border border-amber-500/25"
+                                        title={failedCatalogs.map(c => `· ${c.name}${c.lastError ? ` — ${c.lastError.slice(0, 60)}` : ""}`).join("\n")}>
+                                        <AlertTriangle size={11} className="text-amber-400" />
+                                        <span className="text-[10px] font-black text-amber-300">{failedCatalogs.length} catálogo{failedCatalogs.length !== 1 ? "s" : ""} fallido{failedCatalogs.length !== 1 ? "s" : ""} — relanzar</span>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+
+                    {/* ── Funnel: fase del negocio ── */}
+                    {(() => {
+                        const counts = { all: niches.length, discover: 0, produce: 0, launch: 0, sell: 0 } as Record<string, number>;
+                        for (const n of niches) counts[nicheFunnelStage(n)]++;
+                        const stages = [
+                            { id: "all" as const, label: "Todos", icon: "∗" },
+                            { id: "discover" as const, label: "Descubrir", icon: "🔍" },
+                            { id: "produce" as const, label: "Producir", icon: "🏭" },
+                            { id: "launch" as const, label: "Lanzar", icon: "🚀" },
+                            { id: "sell" as const, label: "Vender", icon: "📈" },
+                        ];
+                        return (
+                            <div className="flex p-1 bg-white/[0.03] border border-white/8 rounded-2xl gap-0.5 overflow-x-auto no-scrollbar">
+                                {stages.map(s => {
+                                    const act = funnelFilter === s.id;
+                                    return (
+                                        <button key={s.id} onClick={() => setFunnelFilter(s.id)}
+                                            className={`flex-1 min-w-fit h-9 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 px-3 ${act ? "bg-gradient-to-r from-white/15 to-white/8 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                            <span>{s.icon}</span> {s.label}
+                                            <span className={`text-[9px] px-1.5 py-px rounded-full tabular-nums ${act ? "bg-white/15 text-white" : "bg-white/[0.05] text-neutral-600"}`}>{counts[s.id]}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        );
+                    })()}
+
                     {/* ── Search + product type + sort ── */}
                     <div className="flex gap-2 flex-wrap">
                         <div className="relative flex-1 min-w-[140px]">
@@ -11324,6 +10599,7 @@ export function KdpFactoryApp() {
                     {/* ── Niche cards grid (list mode) ── */}
                     {!isLoadingNiches && nicheViewMode === "list" && (() => {
                         const listNiches = niches
+                            .filter(n => funnelFilter === "all" || nicheFunnelStage(n) === funnelFilter)
                             .filter(n => kanbanProductFilter === "all" || (n.productType ?? "coloring-book") === kanbanProductFilter)
                             .filter(n => !nicheSearch.trim() || n.name.toLowerCase().includes(nicheSearch.toLowerCase()))
                             .slice()
@@ -11462,9 +10738,14 @@ export function KdpFactoryApp() {
                                                 {/* ─ Market scan (datos reales Amazon) ─ */}
                                                 {niche.marketScan && <MarketScanPanel scan={niche.marketScan} />}
 
+                                                {/* ─ Ciclo de vida (gestión manual: pre-publicado → publicado → fin de vida) ─ */}
+                                                {(niche.lifecycleStage || niche.phase === "published" || (niche.pipelineHasPdf && niche.pipelineHasListings) || !!niche.asin?.trim()) && (
+                                                    <LifecyclePanel niche={niche} onUpdate={(patch) => updateNicheLifecycle(niche._id, patch)} />
+                                                )}
+
                                                 {/* ─ Launch Playbook (nichos publicados o con listing aplicado) ─ */}
-                                                {(niche.phase === "published" || !!niche.asin?.trim() || niche.listings?.some(l => l.appliedAt)) && (
-                                                    <LaunchPlaybookPanel appliedAt={[...(niche.listings ?? [])].reverse().find(l => l.appliedAt)?.appliedAt} />
+                                                {!niche.lifecycleStage && (niche.phase === "published" || !!niche.asin?.trim() || niche.listings?.some(l => l.appliedAt)) && (
+                                                    <LaunchPlaybookPanel appliedAt={niche.publishedAt ?? [...(niche.listings ?? [])].reverse().find(l => l.appliedAt)?.appliedAt} />
                                                 )}
 
                                                 {/* ─ Competition & demand bars ─ */}
