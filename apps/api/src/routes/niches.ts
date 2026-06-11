@@ -11,6 +11,7 @@ import { Settings } from "../models/settings.js";
 import { getMongoStatus } from "../lib/mongo.js";
 import { getAgenda } from "../lib/agenda.js";
 import { scanNicheMarket } from "../lib/market-scan.js";
+import { fetchTrendsReport } from "../lib/trends.js";
 
 const RADAR_KEYS = [
     "RADAR_ETSY_RESULT", "RADAR_AMAZON_RESULT", "RADAR_REDDIT_RESULT",
@@ -629,6 +630,59 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
             }
 
             return reply.send({ ok: true, total: niches.length, updated, phases: phaseCounts });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // ── Trends: GET cached report or fetch fresh ─────────────────────────────
+    app.get("/trends/signals", async (_req, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const row = await Settings.findOne({ key: "TRENDS_REPORT" }).lean();
+            if (row?.value) {
+                return reply.send(JSON.parse(row.value as string));
+            }
+            // No cache yet — fetch on demand
+            const report = await fetchTrendsReport();
+            await Settings.findOneAndUpdate(
+                { key: "TRENDS_REPORT" },
+                { key: "TRENDS_REPORT", value: JSON.stringify(report) },
+                { upsert: true }
+            );
+            return reply.send(report);
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // Refresh trends manually
+    app.post("/trends/refresh", async (_req, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const report = await fetchTrendsReport();
+            await Settings.findOneAndUpdate(
+                { key: "TRENDS_REPORT" },
+                { key: "TRENDS_REPORT", value: JSON.stringify(report) },
+                { upsert: true }
+            );
+            return reply.send({ ok: true, signals: report.signals.length, nicheMatches: report.nicheMatches.length });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // ── Autopilot: toggle enable/disable per niche ───────────────────────────
+    app.patch("/niches/:id/autopilot", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { enabled, currentPrice } = request.body as { enabled?: boolean; currentPrice?: number };
+            const update: Record<string, any> = {};
+            if (typeof enabled === "boolean") update.autoPilotEnabled = enabled;
+            if (typeof currentPrice === "number") update.currentPrice = currentPrice;
+            const niche = await Niche.findByIdAndUpdate(request.params.id, { $set: update }, { new: true }).lean();
+            if (!niche) return reply.status(404).send({ error: "Not found" });
+            return reply.send({ niche });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
         }

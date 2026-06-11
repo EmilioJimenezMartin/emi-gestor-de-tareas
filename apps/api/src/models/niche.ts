@@ -56,6 +56,9 @@ export interface INiche extends Document {
     radarInsight?: Record<string, unknown>;
     pendingCatalogPrompts?: string[];
     autoPilotEnabled?: boolean;
+    currentPrice?: number;
+    suggestedPrice?: number;
+    autopilotLog?: Array<{ type: string; details: string; suggestedPrice?: number; executedAt: Date }>;
     sampleImageUrl?: string;
     catalogImageOrder?: string[];
     coverCandidates?: string[];
@@ -129,6 +132,14 @@ const NicheSchema = new Schema<INiche>(
         radarInsight: { type: Object },
         pendingCatalogPrompts: [{ type: String }],
         autoPilotEnabled: { type: Boolean, default: false },
+        currentPrice: { type: Number },
+        suggestedPrice: { type: Number },
+        autopilotLog: [{
+            type: { type: String },
+            details: { type: String },
+            suggestedPrice: { type: Number },
+            executedAt: { type: Date, default: Date.now },
+        }],
         sampleImageUrl: { type: String },
         catalogImageOrder: [{ type: String }],
         coverCandidates: [{ type: String }],

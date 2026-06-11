@@ -11,7 +11,8 @@ import { defineWeeklyDigestJob, scheduleWeeklyDigest, WEEKLY_DIGEST_JOB_NAME } f
 import { defineSeasonalCheckJob, scheduleSeasonalCheck, SEASONAL_CHECK_JOB_NAME } from "./seasonal-check.js";
 import { defineSeoTrackerJob, scheduleSeoTracker, SEO_TRACKER_JOB_NAME } from "./seo-tracker.js";
 import { defineLifecycleAlertsJob, scheduleLifecycleAlerts, LIFECYCLE_ALERTS_JOB_NAME } from "./lifecycle-alerts.js";
-export { AUTOPILOT_JOB_NAME, KDP_PUBLISHER_JOB_NAME, ALERTS_JOB_NAME, WEEKLY_DIGEST_JOB_NAME, SEASONAL_CHECK_JOB_NAME, SEO_TRACKER_JOB_NAME, LIFECYCLE_ALERTS_JOB_NAME };
+import { defineTrendsWatcherJob, scheduleTrendsWatcher, TRENDS_WATCHER_JOB_NAME } from "./trends-watcher.js";
+export { AUTOPILOT_JOB_NAME, KDP_PUBLISHER_JOB_NAME, ALERTS_JOB_NAME, WEEKLY_DIGEST_JOB_NAME, SEASONAL_CHECK_JOB_NAME, SEO_TRACKER_JOB_NAME, LIFECYCLE_ALERTS_JOB_NAME, TRENDS_WATCHER_JOB_NAME };
 
 export function defineJobs(agenda: Agenda, io?: any) {
     agenda.define("dummy-task", async (job: Job) => {
@@ -41,6 +42,7 @@ export function defineJobs(agenda: Agenda, io?: any) {
         defineSeasonalCheckJob(agenda, io);
         defineSeoTrackerJob(agenda, io);
         defineLifecycleAlertsJob(agenda, io);
+        defineTrendsWatcherJob(agenda, io);
     }
 }
 
@@ -50,4 +52,4 @@ export async function scheduleRadarRules(agenda: Agenda): Promise<void> {
     await agenda.every("0 * * * *", RADAR_SCHEDULE_JOB_NAME);
 }
 
-export { scheduleWatchdog, scheduleAlerts, scheduleWeeklyDigest, scheduleSeasonalCheck, scheduleSeoTracker, scheduleLifecycleAlerts };
+export { scheduleWatchdog, scheduleAlerts, scheduleWeeklyDigest, scheduleSeasonalCheck, scheduleSeoTracker, scheduleLifecycleAlerts, scheduleTrendsWatcher };

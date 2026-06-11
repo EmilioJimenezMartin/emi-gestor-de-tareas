@@ -7,6 +7,7 @@
 import { Niche } from "../models/niche.js";
 import { KdpSale } from "../models/kdp-sale.js";
 import { sendTelegram, shouldNotify } from "./telegram.js";
+import { executeAutopilotDecision } from "./autopilot-decisions.js";
 
 export interface LifecycleMilestone {
     fromDay: number;
@@ -65,7 +66,7 @@ export async function checkLifecycleAlerts(io?: any): Promise<{ alerted: number 
         lifecycleStage: "published",
         publishedAt: { $ne: null },
         status: { $ne: "archived" },
-    }).select("name publishedAt lifecycleAlertsSent").lean() as any[];
+    }).select("name publishedAt lifecycleAlertsSent autoPilotEnabled").lean() as any[];
 
     for (const n of published) {
         const day = Math.floor((Date.now() - new Date(n.publishedAt).getTime()) / 86_400_000);
@@ -83,6 +84,16 @@ export async function checkLifecycleAlerts(io?: any): Promise<{ alerted: number 
             await sendTelegram(`📖 <b>${n.name}</b> — día ${day} desde publicación\n\n${blocks.join("\n\n")}`);
         }
         await Niche.findByIdAndUpdate(n._id, { $addToSet: { lifecycleAlertsSent: { $each: due.map(m => m.fromDay) } } });
+
+        // Autopilot: ejecutar decisión automática si está habilitado
+        if (n.autoPilotEnabled) {
+            for (const m of due.filter(ms => ms.salesAware)) {
+                await executeAutopilotDecision(String(n._id), day, units > 0, io).catch(e =>
+                    console.error(`[autopilot] error en ${n.name}:`, e.message)
+                );
+            }
+        }
+
         io?.emit("niches:updated");
         alerted += due.length;
     }

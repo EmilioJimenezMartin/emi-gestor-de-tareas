@@ -170,6 +170,19 @@ async function getGoogleKey(): Promise<string> {
     return key;
 }
 
+// Serializa los save() del mismo documento: los onLog callbacks disparaban saves
+// fire-and-forget que chocaban con los saves awaited → "Can't save() in parallel".
+const _saveChains = new WeakMap<object, Promise<unknown>>();
+function safeSave(doc: { save: () => Promise<unknown> }): Promise<unknown> {
+    const prev = _saveChains.get(doc) ?? Promise.resolve();
+    const next = prev
+        .catch(() => { /* el error del save anterior ya se gestionó */ })
+        .then(() => doc.save())
+        .catch((e: any) => console.warn(`[radar] save serializado falló: ${e?.message}`));
+    _saveChains.set(doc, next);
+    return next;
+}
+
 function pushLog(jobDoc: InstanceType<typeof RadarJob>, io: any, level: "info" | "success" | "error" | "warning", message: string) {
     const entry = { timestamp: new Date(), level, message };
     jobDoc.logs.push(entry);
@@ -456,20 +469,20 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             // ── Google Trends: skip Playwright entirely — direct HTTP avoids 429 ───
             if (mode === "trends-niches") {
                 pushLog(jobDoc, io, "info", `[FETCH] Google Trends — descargando via API directa (sin navegador)...`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 const trendsText = await fetchTrendsData(url);
 
                 pushLog(jobDoc, io, "info", `[FETCH] ✓ ${trendsText.length.toLocaleString()} chars extraídos`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 const activeProvider = await getActiveProvider();
                 pushLog(jobDoc, io, "info", `[AI] Analizando tendencias con ${activeProvider}...`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 const systemPrompt = buildRadarSystemPrompt(mode, nicheName, context, existingNicheNames);
                 const data = await analyzePageForRadar(trendsText, systemPrompt, {
-                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void safeSave(jobDoc); },
                 });
 
                 if (data?.nichos_detectados?.length) {
@@ -491,7 +504,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
                 jobDoc.status = "completed";
                 jobDoc.result = data;
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 // Persist to settings and emit
                 let dataToEmit = data;
@@ -535,18 +548,18 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             // ── Gap-finder: no HTTP, reads niches from DB + AI ─────────────────────
             if (mode === "gap-finder") {
                 pushLog(jobDoc, io, "info", `[DB] Leyendo catálogo de nichos...`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 const catalogText = await readNichesForGapFinder();
                 pushLog(jobDoc, io, "info", `[DB] ✓ ${catalogText.split("\n").length - 2} nichos en catálogo`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 pushLog(jobDoc, io, "info", `[AI] Buscando huecos con IA...`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 const systemPrompt = buildRadarSystemPrompt(mode);
                 const data = await analyzePageForRadar(catalogText, systemPrompt, {
-                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void safeSave(jobDoc); },
                 });
 
                 const count = (data?.nichos_detectados ?? []).length;
@@ -561,7 +574,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
                 jobDoc.status = "completed";
                 jobDoc.result = data;
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 try {
                     const { Settings } = await import("../models/settings.js");
@@ -578,7 +591,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             // ── Gumroad: AI-suggested niches → Jina per query → Bing/DDG fallback ───
             if (mode === "gumroad-niches") {
                 pushLog(jobDoc, io, "info", `[FETCH] Gumroad — extrayendo categoría y consultando IA para nichos...`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 // Extract base URL and category from path
                 let baseGumroadUrl = url;
@@ -601,7 +614,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 if (!explicitQuery) {
                     try {
                         pushLog(jobDoc, io, "info", `[AI] Generando términos de nicho para "${categoryName}"...`);
-                        await jobDoc.save();
+                        await safeSave(jobDoc);
                         const existingList = existingNicheNames.length > 0
                             ? ` Ya tenemos en el sistema: ${existingNicheNames.slice(0, 25).map(n => `"${n}"`).join(", ")}. Sugiere términos que lleven a micro-nichos DISTINTOS y sin explorar, no variaciones de los anteriores.`
                             : "";
@@ -690,7 +703,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 if (!gumroadText) {
                     try {
                         pushLog(jobDoc, io, "info", `[FETCH] Fallback: DuckDuckGo site:gumroad.com ${categoryName}...`);
-                        await jobDoc.save();
+                        await safeSave(jobDoc);
                         const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(`site:gumroad.com ${categoryName} coloring printable`)}&kl=us-en`;
                         const res = await fetch(ddgUrl, {
                             headers: {
@@ -715,14 +728,14 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 }
 
                 pushLog(jobDoc, io, "info", `[FETCH] ✓ ${gumroadText.length.toLocaleString()} chars extraídos vía ${fetchSource || "múltiples fuentes"}`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 pushLog(jobDoc, io, "info", `[AI] Analizando resultados Gumroad con IA...`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 const systemPrompt = buildRadarSystemPrompt(mode, undefined, undefined, existingNicheNames);
                 const data = await analyzePageForRadar(gumroadText, systemPrompt, {
-                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void safeSave(jobDoc); },
                 });
 
                 if (data?.nichos_detectados?.length) {
@@ -743,7 +756,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
                 jobDoc.status = "completed";
                 jobDoc.result = data;
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 let gumroadToEmit: any = { nichos_detectados: [], ...(data ?? {}) };
                 try {
@@ -775,18 +788,18 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             // ── Reddit: direct HTTP (no Playwright) ────────────────────────────────
             if (mode === "reddit-niches") {
                 pushLog(jobDoc, io, "info", `[FETCH] Obteniendo posts de Reddit...`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 const redditText = await fetchRedditData(url);
                 pushLog(jobDoc, io, "info", `[FETCH] ✓ ${redditText.split("\n").length} líneas extraídas`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 pushLog(jobDoc, io, "info", `[AI] Analizando tendencias de Reddit con IA...`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 const systemPrompt = buildRadarSystemPrompt(mode, undefined, undefined, existingNicheNames);
                 const data = await analyzePageForRadar(redditText, systemPrompt, {
-                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void safeSave(jobDoc); },
                 });
 
                 if (data?.nichos_detectados?.length) {
@@ -807,7 +820,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
                 jobDoc.status = "completed";
                 jobDoc.result = data;
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 // Normalise: guarantee nichos_detectados is always an array
                 const redditData: any = { nichos_detectados: [], ...(data ?? {}) };
@@ -916,18 +929,18 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             // ── Cross-niche: Google Trends HTTP (no Playwright) ────────────────────
             if (mode === "cross-niche") {
                 pushLog(jobDoc, io, "info", `[FETCH] Google Trends (cross-niche) — descargando via API directa...`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 const trendsText = await fetchTrendsData(url);
                 pushLog(jobDoc, io, "info", `[FETCH] ✓ ${trendsText.length.toLocaleString()} chars extraídos`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 pushLog(jobDoc, io, "info", `[AI] Detectando cross-nichos KDP...`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 const systemPrompt = buildRadarSystemPrompt(mode, undefined, undefined, existingNicheNames);
                 const data = await analyzePageForRadar(trendsText, systemPrompt, {
-                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void safeSave(jobDoc); },
                 });
 
                 if (data?.nichos_detectados?.length) {
@@ -948,7 +961,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
                 jobDoc.status = "completed";
                 jobDoc.result = data;
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 let dataToEmit = data;
                 try {
@@ -982,7 +995,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             // ── Pinterest: Playwright scraping ────────────────────────────────────
             if (mode === "pinterest-niches") {
                 pushLog(jobDoc, io, "info", `[BROWSER] Lanzando navegador para Pinterest...`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 const { chromium: chromiumP } = await import("playwright");
                 browser = await chromiumP.launch({
@@ -1024,7 +1037,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
                 const pPage = await pCtx.newPage();
                 pushLog(jobDoc, io, "info", `[FETCH] Cargando Pinterest: ${pinterestUrl}`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 await pPage.goto(pinterestUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
                 await pPage.waitForTimeout(3000);
@@ -1054,7 +1067,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 } else {
                     pushLog(jobDoc, io, "info", `[FETCH] ✓ ${pPageText.length.toLocaleString()} chars extraídos de Pinterest`);
                 }
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 await pPage.close();
                 await browser.close();
@@ -1062,10 +1075,10 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
                 const pSystemPrompt = buildRadarSystemPrompt(mode, nicheName, context, existingNicheNames);
                 pushLog(jobDoc, io, "info", `[AI] Analizando Pinterest con IA...`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 const pData = await analyzePageForRadar(pPageText, pSystemPrompt, {
-                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void safeSave(jobDoc); },
                 });
 
                 if (pData?.nichos_detectados?.length) {
@@ -1086,7 +1099,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
                 jobDoc.status = "completed";
                 jobDoc.result = pData;
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 let pDataToEmit: any = { nichos_detectados: [], ...(pData ?? {}) };
                 try {
@@ -1184,7 +1197,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
             // ── Normal Playwright flow for Etsy, Amazon, Opportunity, Movers, General
             pushLog(jobDoc, io, "info", `[BROWSER] Lanzando navegador headless (modo stealth)...`);
-            await jobDoc.save();
+            await safeSave(jobDoc);
 
             const { chromium } = await import("playwright");
             browser = await chromium.launch({
@@ -1232,7 +1245,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             const page = await browserCtx.newPage();
 
             pushLog(jobDoc, io, "info", `[FETCH] Cargando página: ${url}`);
-            await jobDoc.save();
+            await safeSave(jobDoc);
             await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
 
             // Wait for JS hydration (SPAs like Etsy render after domcontentloaded)
@@ -1254,7 +1267,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
             // Capture full HTML BEFORE pruning — this is what the HF fallback uses
             const rawHtml: string = await page.content().catch(() => "");
-            const pageText = rawHtml
+            let pageText = rawHtml
                 .replace(/<script[\s\S]*?<\/script>/gi, "")
                 .replace(/<style[\s\S]*?<\/style>/gi, "")
                 .replace(/<[^>]+>/g, " ")
@@ -1262,8 +1275,27 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 .replace(/\s{2,}/g, " ")
                 .trim();
 
+            // Anti-bot: con contenido vacío el LLM se INVENTA el análisis. Fallback a
+            // Jina Reader (IP distinta) y, si tampoco funciona, fallar con error claro.
+            let domBlocked = false;
             if (pageText.length < 500) {
-                pushLog(jobDoc, io, "warning", `[FETCH] ⚠ Contenido corto (${pageText.length} chars) — posible bloqueo anti-bot`);
+                pushLog(jobDoc, io, "warning", `[FETCH] ⚠ Contenido corto (${pageText.length} chars) — bloqueo anti-bot. Probando vía Jina Reader...`);
+                await safeSave(jobDoc);
+                try {
+                    const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
+                        headers: { "X-Return-Format": "text", "User-Agent": "Mozilla/5.0" },
+                        signal: AbortSignal.timeout(60_000),
+                    });
+                    const jinaText = jinaRes.ok ? (await jinaRes.text()).trim() : "";
+                    if (jinaText.length >= 500) {
+                        pageText = jinaText.slice(0, 60_000);
+                        domBlocked = true; // el DOM del navegador no sirve — usar análisis por texto
+                        pushLog(jobDoc, io, "success", `[FETCH] ✓ Jina Reader OK — ${pageText.length.toLocaleString()} chars (análisis por texto)`);
+                    }
+                } catch { /* cae al error de abajo */ }
+                if (!domBlocked) {
+                    throw new Error(`Página bloqueada por anti-bot (${pageText.length} chars) y Jina Reader tampoco pudo. Prueba otra URL o reintenta en unos minutos — analizar contenido vacío genera resultados inventados.`);
+                }
             } else {
                 pushLog(jobDoc, io, "info", `[FETCH] ✓ ${pageText.length.toLocaleString()} chars extraídos`);
             }
@@ -1277,17 +1309,18 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             `);
 
             pushLog(jobDoc, io, "success", `[FETCH] ✓ DOM podado — listo para análisis`);
-            await jobDoc.save();
+            await safeSave(jobDoc);
 
             const activeProvider = await getActiveProvider();
             let data: any;
 
             // Google provider → use llm-scraper (structured DOM extraction, most accurate)
-            if (activeProvider === "google") {
+            // Con el DOM bloqueado, llm-scraper no tiene nada que extraer — ir directo al análisis por texto (Jina)
+            if (activeProvider === "google" && !domBlocked) {
                 const googleKey = await getGoogleKey();
                 if (!googleKey) throw new Error("Google API key no configurada. Añádela en Ajustes.");
                 pushLog(jobDoc, io, "info", `[AI] Analizando con Gemini (${geminiModel}) · modo: ${mode}...`);
-                await jobDoc.save();
+                await safeSave(jobDoc);
 
                 const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
                 const { default: LLMScraper } = await import("llm-scraper");
@@ -1304,7 +1337,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                             () => scraper.run(page, output, { format: "markdown", system: systemPrompt }),
                             (secs, attempt) => {
                                 pushLog(jobDoc, io, "warning", `[QUOTA] Límite RPM · esperando ${secs}s (intento ${attempt}/1)...`);
-                                jobDoc.save().catch(() => {});
+                                safeSave(jobDoc).catch(() => {});
                             }
                         );
                         data = result.data;
@@ -1315,7 +1348,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                             () => scraper.run(page, output, { format: "markdown", system: systemPrompt }),
                             (secs, attempt) => {
                                 pushLog(jobDoc, io, "warning", `[QUOTA] Límite RPM · esperando ${secs}s (intento ${attempt}/1)...`);
-                                jobDoc.save().catch(() => {});
+                                safeSave(jobDoc).catch(() => {});
                             }
                         );
                         data = result.data;
@@ -1329,12 +1362,12 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 } catch (geminiErr: any) {
                     if (!isHardQuota(geminiErr)) throw geminiErr;
                     pushLog(jobDoc, io, "warning", `[QUOTA] Cuota diaria de Gemini agotada → buscando siguiente provider...`);
-                    await jobDoc.save();
+                    await safeSave(jobDoc);
                     // Fall through to text-based chain, skip google since it's exhausted
                     const systemPrompt = buildRadarSystemPrompt(mode, nicheName, context, existingNicheNames);
                     data = await analyzePageForRadar(pageText, systemPrompt, {
                         skipProviders: ["google"],
-                        onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                        onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void safeSave(jobDoc); },
                     });
                 }
             } else {
@@ -1342,11 +1375,11 @@ export function defineRadarJob(agenda: Agenda, io: any) {
                 if (activeProvider === "huggingface") {
                     pushLog(jobDoc, io, "warning", `[INFO] HuggingFace puede tardar entre 30-90s. Por favor, espera...`);
                 }
-                await jobDoc.save();
+                await safeSave(jobDoc);
                 const systemPrompt = buildRadarSystemPrompt(mode, nicheName, context, existingNicheNames);
                 pushLog(jobDoc, io, "info", `[AI] Analizando con ${activeProvider} · modo: ${mode}...`);
                 data = await analyzePageForRadar(pageText, systemPrompt, {
-                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void jobDoc.save(); },
+                    onLog: (msg) => { pushLog(jobDoc, io, "warning", msg); void safeSave(jobDoc); },
                 });
             }
 
@@ -1382,7 +1415,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
 
             jobDoc.status = "completed";
             jobDoc.result = data;
-            await jobDoc.save();
+            await safeSave(jobDoc);
 
             // Merge with existing saved results and persist — frontend may not be mounted
             let dataToEmit = data;
@@ -1531,7 +1564,7 @@ export function defineRadarJob(agenda: Agenda, io: any) {
             pushLog(jobDoc, io, "error", msg);
             jobDoc.status = "failed";
             jobDoc.error = msg;
-            await jobDoc.save();
+            await safeSave(jobDoc);
 
             io?.emit("radar:error", { jobId, message: msg });
 

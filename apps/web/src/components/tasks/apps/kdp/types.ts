@@ -66,6 +66,9 @@ export interface NicheFE {
         scannedAt?: string;
     };
     autoPilotEnabled?: boolean;
+    currentPrice?: number;
+    suggestedPrice?: number;
+    autopilotLog?: Array<{ type: string; details: string; suggestedPrice?: number; executedAt: string }>;
     sampleImageUrl?: string;
     coverUrl?: string;
     backCoverUrl?: string;

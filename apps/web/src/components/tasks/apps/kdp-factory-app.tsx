@@ -376,6 +376,8 @@ type CloudinaryImage = { publicId: string; url: string; width: number; height: n
 
 import { MarketScanPanel, LaunchPlaybookPanel } from "./kdp/MarketScanPanel";
 import { LifecyclePanel, type LifecycleStage } from "./kdp/LifecyclePanel";
+import { TrendsPanel } from "./kdp/TrendsPanel";
+import { AutopilotPanel } from "./kdp/AutopilotPanel";
 
 import { PipelineRuleRow } from "./kdp/PipelineRuleRow";
 
@@ -1432,6 +1434,10 @@ export function KdpFactoryApp() {
         } catch (e: any) {
             toast.error(e.message ?? "Error actualizando ciclo de vida");
         }
+    };
+
+    const updateNicheInState = (nicheId: string, patch: Partial<NicheFE>) => {
+        setNiches(prev => prev.map(n => n._id === nicheId ? { ...n, ...patch } : n));
     };
 
     const runMarketScan = async (niche: NicheFE) => {
@@ -10304,6 +10310,9 @@ export function KdpFactoryApp() {
                         );
                     })()}
 
+                    {/* ── Tendencias del día ── */}
+                    <TrendsPanel />
+
                     {/* ── Funnel: fase del negocio ── */}
                     {(() => {
                         const counts = { all: niches.length, discover: 0, produce: 0, launch: 0, sell: 0 } as Record<string, number>;
@@ -10741,6 +10750,11 @@ export function KdpFactoryApp() {
                                                 {/* ─ Ciclo de vida (gestión manual: pre-publicado → publicado → fin de vida) ─ */}
                                                 {(niche.lifecycleStage || niche.phase === "published" || (niche.pipelineHasPdf && niche.pipelineHasListings) || !!niche.asin?.trim()) && (
                                                     <LifecyclePanel niche={niche} onUpdate={(patch) => updateNicheLifecycle(niche._id, patch)} />
+                                                )}
+
+                                                {/* ─ Autopilot (nichos en fase publicado) ─ */}
+                                                {niche.lifecycleStage === "published" && (
+                                                    <AutopilotPanel niche={niche} onUpdate={(patch) => updateNicheInState(niche._id, patch)} />
                                                 )}
 
                                                 {/* ─ Launch Playbook (nichos publicados o con listing aplicado) ─ */}
