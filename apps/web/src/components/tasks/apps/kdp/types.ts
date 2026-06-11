@@ -66,6 +66,7 @@ export interface NicheFE {
         es?: { resultCount: number | null; medianReviews: number | null; bestsellerBadges: number };
         scannedAt?: string;
     };
+    radarInsight?: Record<string, unknown>;
     autoPilotEnabled?: boolean;
     currentPrice?: number;
     suggestedPrice?: number;

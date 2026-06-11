@@ -221,62 +221,89 @@ export async function varyTextWithLLM(text: string, creativity = 50): Promise<st
  */
 export async function generateTextWithLLM(systemPrompt: string, userPrompt: string): Promise<string> {
     const config = await getConfig();
+    const jsonStrip = (s: string) => s.replace(/^```(?:json|html|xml|)?\s*/i, "").replace(/```\s*$/i, "").trim();
+    const jsonEnforcement = "\n\nCRITICAL: Respond with ONLY a valid JSON object. No markdown, no code fences (```), no backticks, no explanations. Start with { and end with }.";
+    const errors: string[] = [];
 
-    if (config.provider === "google" && config.googleKey) {
-        // Use the new SDK with thinking disabled so responses arrive in seconds, not minutes
-        const { GoogleGenAI } = await import("@google/genai");
-        const ai = new GoogleGenAI({ apiKey: config.googleKey });
-        const response = await ai.models.generateContent({
-            model: config.model || "gemini-2.5-flash",
-            contents: userPrompt,
-            config: {
-                systemInstruction: systemPrompt,
-                thinkingConfig: { thinkingBudget: 0 },
-                maxOutputTokens: 1500,
-                temperature: 0.4,
-            } as any,
-        });
-        return (response.text ?? "").trim();
+    // ── Google Gemini (primary if configured) ────────────────────────────────
+    if (config.googleKey) {
+        try {
+            const { GoogleGenAI } = await import("@google/genai");
+            const ai = new GoogleGenAI({ apiKey: config.googleKey });
+            const response = await ai.models.generateContent({
+                model: config.model || "gemini-2.5-flash",
+                contents: userPrompt,
+                config: {
+                    systemInstruction: systemPrompt,
+                    thinkingConfig: { thinkingBudget: 0 },
+                    maxOutputTokens: 1500,
+                    temperature: 0.4,
+                } as any,
+            });
+            const text = (response.text ?? "").trim();
+            if (text) return text;
+        } catch (err: any) {
+            errors.push(`Google: ${err.message ?? err}`);
+            if (!isQuotaError(err)) throw err; // error real, no reintentar
+            console.warn("[ai] Gemini no disponible, intentando fallback →", err.message?.slice(0, 80));
+        }
     }
 
-    if (config.provider === "groq" && config.groqKey) {
-        const jsonEnforcement = "\n\nCRITICAL: Respond with ONLY a valid JSON object. No markdown, no code fences (```), no backticks, no explanations. Start with { and end with }.";
-        const raw = await groqChat(config.groqKey, config.model, [
-            { role: "system", content: systemPrompt + jsonEnforcement },
-            { role: "user", content: userPrompt },
-        ], 1024, 0.4);
-        return raw.replace(/^```(?:json|html|xml|)?\s*/i, "").replace(/```\s*$/i, "").trim();
-    }
-
-    if (config.provider === "openrouter" && config.openrouterKey) {
-        const raw = await openrouterChat(config.openrouterKey, config.model, [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-        ], 1024, 0.4);
-        return raw.replace(/^```(?:json|html|xml|)?\s*/i, "").replace(/```\s*$/i, "").trim();
-    }
-
-    if (config.provider === "huggingface" && config.hfKey) {
-        const { HfInference } = await import("@huggingface/inference");
-        const hf = new HfInference(config.hfKey);
-        const jsonEnforcement = "\n\nCRITICAL: Respond with ONLY a valid JSON object. No markdown, no code fences (```), no backticks, no explanations. Start with { and end with }.";
-        const response = await hf.chatCompletion({
-            model: config.model || "Qwen/Qwen2.5-7B-Instruct",
-            messages: [
+    // ── Groq (fallback rápido — llama-3.3-70b) ───────────────────────────────
+    if (config.groqKey) {
+        try {
+            const raw = await groqChat(config.groqKey, config.model || "llama-3.3-70b-versatile", [
                 { role: "system", content: systemPrompt + jsonEnforcement },
                 { role: "user", content: userPrompt },
-            ],
-            max_tokens: 1024,
-            temperature: 0.4,
-        });
-        const raw = (response.choices[0].message.content ?? "").trim();
-        return raw
-            .replace(/^```(?:json|html|xml|)?\s*/i, "")
-            .replace(/```\s*$/i, "")
-            .trim();
+            ], 1500, 0.4);
+            const text = jsonStrip(raw);
+            if (text) { console.log("[ai] Usó fallback: Groq"); return text; }
+        } catch (err: any) {
+            errors.push(`Groq: ${err.message ?? err}`);
+            if (!isQuotaError(err)) throw err;
+            console.warn("[ai] Groq no disponible →", err.message?.slice(0, 80));
+        }
     }
 
-    throw new Error("No hay proveedor de IA configurado. Configura Google, Groq, OpenRouter o HuggingFace en Ajustes → Núcleo de Inteligencia.");
+    // ── OpenRouter (segundo fallback) ────────────────────────────────────────
+    if (config.openrouterKey) {
+        try {
+            const raw = await openrouterChat(config.openrouterKey, config.model || "google/gemini-2.5-flash", [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt },
+            ], 1500, 0.4);
+            const text = jsonStrip(raw);
+            if (text) { console.log("[ai] Usó fallback: OpenRouter"); return text; }
+        } catch (err: any) {
+            errors.push(`OpenRouter: ${err.message ?? err}`);
+            if (!isQuotaError(err)) throw err;
+            console.warn("[ai] OpenRouter no disponible →", err.message?.slice(0, 80));
+        }
+    }
+
+    // ── HuggingFace (último recurso) ─────────────────────────────────────────
+    if (config.hfKey) {
+        try {
+            const { HfInference } = await import("@huggingface/inference");
+            const hf = new HfInference(config.hfKey);
+            const response = await hf.chatCompletion({
+                model: "Qwen/Qwen2.5-72B-Instruct",
+                messages: [
+                    { role: "system", content: systemPrompt + jsonEnforcement },
+                    { role: "user", content: userPrompt },
+                ],
+                max_tokens: 1500,
+                temperature: 0.4,
+            });
+            const raw = (response.choices[0].message.content ?? "").trim();
+            const text = jsonStrip(raw);
+            if (text) { console.log("[ai] Usó fallback: HuggingFace"); return text; }
+        } catch (err: any) {
+            errors.push(`HuggingFace: ${err.message ?? err}`);
+        }
+    }
+
+    throw new Error(`Todos los proveedores de IA fallaron: ${errors.join(" | ")}`);
 }
 
 /**
@@ -340,8 +367,8 @@ export async function generateVisionWithLLM(systemPrompt: string, userPrompt: st
 
 function isQuotaError(err: any): boolean {
     const msg: string = (err?.message ?? err?.toString() ?? "").toLowerCase();
-    // 402 "requires more credits" (OpenRouter sin saldo) también debe disparar el fallback
-    return /quota|rate.?limit|429|too many requests|limit:\s*0|daily limit|exhausted|capacity|overloaded|402|more credits|insufficient credits|payment required/i.test(msg);
+    // 503 UNAVAILABLE (Gemini high demand) + 402 (OpenRouter sin saldo) también fallan
+    return /quota|rate.?limit|429|too many requests|limit:\s*0|daily limit|exhausted|capacity|overloaded|402|more credits|insufficient credits|payment required|503|unavailable|high demand/i.test(msg);
 }
 
 /**

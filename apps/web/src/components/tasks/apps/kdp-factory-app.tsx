@@ -378,6 +378,7 @@ import { MarketScanPanel, LaunchPlaybookPanel } from "./kdp/MarketScanPanel";
 import { LifecyclePanel, type LifecycleStage } from "./kdp/LifecyclePanel";
 import { TrendsPanel } from "./kdp/TrendsPanel";
 import { AutopilotPanel } from "./kdp/AutopilotPanel";
+import { RadarInsightCard } from "./kdp/RadarInsightCard";
 
 import { PipelineRuleRow } from "./kdp/PipelineRuleRow";
 
@@ -10745,6 +10746,11 @@ export function KdpFactoryApp() {
                                                         </div>
                                                     ))}
                                                 </div>
+
+                                                {/* ─ Análisis Radar (guardado desde NicheRadar) ─ */}
+                                                {niche.radarInsight && Object.keys(niche.radarInsight).length > 0 && (
+                                                    <RadarInsightCard insight={niche.radarInsight as any} />
+                                                )}
 
                                                 {/* ─ Market scan (datos reales Amazon) ─ */}
                                                 {niche.marketScan && <MarketScanPanel scan={niche.marketScan} />}

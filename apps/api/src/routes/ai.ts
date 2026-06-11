@@ -1375,119 +1375,127 @@ Return ONLY a JSON object:
             : type === "image-prompt" ? IMAGE_PROMPT_SYSTEM_INSTRUCTION
             : undefined;
 
+        const isUnavailable = (e: any) => {
+            const msg = String(e?.message ?? e ?? "").toLowerCase();
+            return /503|unavailable|high demand|quota|rate.?limit|429|too many|overloaded|capacity|exhausted|402|more credits/i.test(msg);
+        };
+
+        const parseJsonResult = (raw: string) => {
+            const stripped = raw.replace(/^```(?:json|html|xml|)?\s*/i, "").replace(/```\s*$/i, "").trim();
+            const objStart = stripped.indexOf("{"); const objEnd = stripped.lastIndexOf("}");
+            const arrStart = stripped.indexOf("["); const arrEnd = stripped.lastIndexOf("]");
+            const jsonStr = (objStart !== -1 && objEnd > objStart) ? stripped.substring(objStart, objEnd + 1)
+                : (arrStart !== -1 && arrEnd > arrStart) ? stripped.substring(arrStart, arrEnd + 1)
+                : stripped;
+            try { return JSON.parse(jsonStr); } catch { return jsonStr; }
+        };
+
+        const applyPostProcess = (parsed: any) => {
+            if (type === "kdp-physical-book" && Array.isArray(parsed?.keywords)) {
+                parsed.keywords = sanitizeKdpKeywords(parsed.keywords);
+            }
+            return parsed;
+        };
+
+        const groqKey = process.env.GROQ_API_KEY ?? "";
+        const jsonEnforcement = "\n\nCRITICAL: Respond with ONLY a valid JSON object. No markdown, no code fences, no backticks. Start with { and end with }.";
+
+        // Explicit field schemas for Groq (no native schema support like Gemini)
+        const groqSchemaHint: Record<string, string> = {
+            "kdp-physical-book": `\n\nRESPONSE FORMAT — return ONLY this JSON (no other text):\n{"title":"<30-55 char title>","subtitle":"<80-120 char subtitle>","description":"<HTML description 450-650 chars>","keywords":["kw1","kw2","kw3","kw4","kw5","kw6","kw7"]}`,
+            "image-prompt":      `\n\nRESPONSE FORMAT — return ONLY: {"prompt":"<image prompt 30-80 words>"}`,
+            "niche-particulars": `\n\nRESPONSE FORMAT — return ONLY: {"particulars":"<15-30 words visual description>"}`,
+            "printable-particulars": `\n\nRESPONSE FORMAT — return ONLY: {"particulars":"<15-30 words visual description>"}`,
+            "titles":            `\n\nRESPONSE FORMAT — return ONLY a JSON array: ["Title 1","Title 2","Title 3","Title 4","Title 5","Title 6","Title 7","Title 8"]`,
+            "description":       `\n\nRESPONSE FORMAT — return ONLY: {"description":"<full description>","bullets":["benefit 1","benefit 2","benefit 3"]}`,
+            "keywords":          `\n\nRESPONSE FORMAT — return ONLY a JSON array of 30 keyword strings: ["kw1","kw2",...]`,
+            "full-listing":      `\n\nRESPONSE FORMAT — return ONLY: {"title":"...","subtitle":"...","description":"...","bullets":["..."],"keywords":["..."],"categories":["..."],"price_suggestion_usd":9.99,"series_name":"..."}`,
+            "back-cover":        `\n\nRESPONSE FORMAT — return ONLY: {"back_cover":"<200 word back cover text>"}`,
+            "series":            `\n\nRESPONSE FORMAT — return ONLY: {"series_name":"...","concept":"...","volumes":[{"title":"...","theme":"...","angle":"..."}]}`,
+        };
+
         try {
-            if (config.provider !== "huggingface" && config.googleKey) {
+            // ── 1. Google Gemini ─────────────────────────────────────────────
+            if (config.googleKey) {
                 const { GoogleGenAI, Type } = await import("@google/genai");
                 const ai = new GoogleGenAI({ apiKey: config.googleKey });
                 const textModel = modelOverride || config.model || "gemini-2.5-flash";
 
-                const kdpSchema = {
-                    type: Type.OBJECT,
-                    properties: {
-                        title: { type: Type.STRING, description: "Título SEO para KDP. 30-55 chars. Empieza por la keyword principal. SIEMPRE más corto que el subtítulo. Sin mencionar páginas." },
-                        subtitle: { type: Type.STRING, description: "Subtítulo SEO para KDP. 80-120 chars. SIEMPRE más largo que el título. Keywords secundarias + audiencia + beneficio. Sin mencionar páginas." },
-                        description: { type: Type.STRING, description: "Descripción HTML para Amazon KDP. Hook + bullets + CTA. 450-650 chars visibles. Sin mencionar número de páginas." },
-                        keywords: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Exactamente 7 frases de cola larga (2-5 palabras). LÍMITE: máximo 49 caracteres por frase" },
-                    },
-                    required: ["title", "subtitle", "description", "keywords"],
-                };
-
-                const imagePromptSchema = {
-                    type: Type.OBJECT,
-                    properties: {
-                        prompt: { type: Type.STRING, description: "Ready-to-use image generation prompt, 30-80 words" },
-                    },
-                    required: ["prompt"],
-                };
-
-                const nicheParticularsSchema = {
-                    type: Type.OBJECT,
-                    properties: {
-                        particulars: { type: Type.STRING, description: "15-30 words of specific visual details for the coloring page" },
-                    },
-                    required: ["particulars"],
-                };
-
-                const useSchema = type === "kdp-physical-book" ? kdpSchema
-                    : type === "image-prompt" ? imagePromptSchema
-                    : (type === "niche-particulars" || type === "printable-particulars") ? nicheParticularsSchema
-                    : undefined;
+                const kdpSchema = { type: Type.OBJECT, properties: { title: { type: Type.STRING }, subtitle: { type: Type.STRING }, description: { type: Type.STRING }, keywords: { type: Type.ARRAY, items: { type: Type.STRING } } }, required: ["title", "subtitle", "description", "keywords"] };
+                const imagePromptSchema = { type: Type.OBJECT, properties: { prompt: { type: Type.STRING } }, required: ["prompt"] };
+                const nicheParticularsSchema = { type: Type.OBJECT, properties: { particulars: { type: Type.STRING } }, required: ["particulars"] };
+                const useSchema = type === "kdp-physical-book" ? kdpSchema : type === "image-prompt" ? imagePromptSchema : (type === "niche-particulars" || type === "printable-particulars") ? nicheParticularsSchema : undefined;
 
                 const geminiCall = async (model: string) => ai.models.generateContent({
                     model,
                     contents: prompt,
-                    config: {
-                        ...(systemInstruction ? { systemInstruction } : {}),
-                        responseMimeType: "application/json",
-                        ...(useSchema ? { responseSchema: useSchema } : {}),
-                    },
+                    config: { ...(systemInstruction ? { systemInstruction } : {}), responseMimeType: "application/json", ...(useSchema ? { responseSchema: useSchema } : {}) },
                 });
 
-                let response;
                 try {
-                    response = await geminiCall(textModel);
-                } catch (e: any) {
-                    // Model not found — fall back to stable default
-                    const is404 = e?.status === 404 || String(e?.message ?? "").includes("404") || String(e?.message ?? "").includes("Not Found");
-                    if (is404 && textModel !== "gemini-2.5-flash") {
-                        app.log.warn(`[ai] Model "${textModel}" returned 404, retrying with gemini-2.5-flash`);
-                        response = await geminiCall("gemini-2.5-flash");
-                    } else {
-                        throw e;
+                    let response;
+                    try {
+                        response = await geminiCall(textModel);
+                    } catch (e: any) {
+                        const is404 = e?.status === 404 || String(e?.message ?? "").includes("404") || String(e?.message ?? "").includes("Not Found");
+                        if (is404 && textModel !== "gemini-2.5-flash") {
+                            response = await geminiCall("gemini-2.5-flash");
+                        } else throw e;
                     }
-                }
-
-                const raw = (response.text ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
-                try {
-                    const parsed = JSON.parse(raw);
-                    if (type === "kdp-physical-book" && Array.isArray(parsed?.keywords)) {
-                        parsed.keywords = sanitizeKdpKeywords(parsed.keywords);
-                    }
+                    const raw = (response.text ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+                    const parsed = applyPostProcess(parseJsonResult(raw));
                     return reply.send({ result: parsed });
-                } catch {
-                    return reply.send({ result: raw });
+                } catch (e: any) {
+                    if (!isUnavailable(e)) throw e;
+                    app.log.warn(`[ai/generate-text] Gemini no disponible (${e.message?.slice(0, 60)}), probando Groq…`);
                 }
             }
 
-            if (config.provider === "huggingface" && config.hfKey) {
+            // ── 2. Groq fallback (llama-3.3-70b) ────────────────────────────
+            if (groqKey) {
+                try {
+                    const sysMsg = (systemInstruction ?? "") + (groqSchemaHint[type] ?? "") + jsonEnforcement;
+                    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
+                        body: JSON.stringify({
+                            model: "llama-3.3-70b-versatile",
+                            messages: [{ role: "system", content: sysMsg }, { role: "user", content: prompt }],
+                            max_tokens: 1500, temperature: 0.4,
+                        }),
+                        signal: AbortSignal.timeout(30_000),
+                    });
+                    if (!res.ok) {
+                        const err = await res.text();
+                        if (isUnavailable({ message: err })) throw new Error(err);
+                        throw new Error(`Groq ${res.status}: ${err}`);
+                    }
+                    const data = await res.json() as any;
+                    const raw = (data.choices?.[0]?.message?.content ?? "").trim();
+                    const parsed = applyPostProcess(parseJsonResult(raw));
+                    app.log.info("[ai/generate-text] Usó fallback: Groq");
+                    return reply.send({ result: parsed });
+                } catch (e: any) {
+                    if (!isUnavailable(e)) throw e;
+                    app.log.warn(`[ai/generate-text] Groq no disponible, probando HuggingFace…`);
+                }
+            }
+
+            // ── 3. HuggingFace (último recurso) ──────────────────────────────
+            if (config.hfKey) {
                 const { HfInference } = await import("@huggingface/inference");
                 const hf = new HfInference(config.hfKey);
-                // Force JSON-only output — many open-source models tend to wrap with markdown
-                const jsonEnforcement = "\n\nCRITICAL INSTRUCTION: Your entire response must be ONLY a valid JSON object or array. Do NOT include markdown, code fences (```), backticks, explanations, or any text outside the JSON. Start your response with { or [ and end with } or ]. Nothing before, nothing after.";
                 const messages: { role: "system" | "user"; content: string }[] = systemInstruction
                     ? [{ role: "system", content: systemInstruction + jsonEnforcement }, { role: "user", content: prompt }]
                     : [{ role: "user", content: prompt + jsonEnforcement }];
-                const response = await hf.chatCompletion({
-                    model: config.model || "Qwen/Qwen2.5-7B-Instruct",
-                    messages,
-                    max_tokens: 1200,
-                    temperature: 0.4,
-                });
+                const response = await hf.chatCompletion({ model: config.model || "Qwen/Qwen2.5-7B-Instruct", messages, max_tokens: 1200, temperature: 0.4 });
                 const raw = (response.choices[0].message.content ?? "").trim();
-                // Strip markdown code fences (```json ... ``` or ``` ... ```)
-                const stripped = raw
-                    .replace(/^```(?:json|html|xml|)?\s*/i, "")
-                    .replace(/```\s*$/i, "")
-                    .trim();
-                // Try object first, then array
-                const objStart = stripped.indexOf("{"); const objEnd = stripped.lastIndexOf("}");
-                const arrStart = stripped.indexOf("["); const arrEnd = stripped.lastIndexOf("]");
-                const jsonStr = (objStart !== -1 && objEnd > objStart) ? stripped.substring(objStart, objEnd + 1)
-                    : (arrStart !== -1 && arrEnd > arrStart) ? stripped.substring(arrStart, arrEnd + 1)
-                    : null;
-                if (jsonStr) {
-                    try {
-                        const parsed = JSON.parse(jsonStr);
-                        if (type === "kdp-physical-book" && Array.isArray(parsed?.keywords)) {
-                            parsed.keywords = sanitizeKdpKeywords(parsed.keywords);
-                        }
-                        return reply.send({ result: parsed });
-                    } catch {}
-                }
-                return reply.send({ result: stripped });
+                const parsed = applyPostProcess(parseJsonResult(raw));
+                app.log.info("[ai/generate-text] Usó fallback: HuggingFace");
+                return reply.send({ result: parsed });
             }
 
-            return reply.status(503).send({ error: "No hay proveedor de IA configurado. Configura Google API key o HuggingFace en Ajustes → Núcleo de Inteligencia." });
+            return reply.status(503).send({ error: "No hay proveedor de IA disponible ahora mismo. Gemini está saturado y no hay fallback configurado. Prueba en unos minutos o configura Groq en Ajustes." });
         } catch (e: any) {
             app.log.error({ err: e }, "AI text generation failed");
             return reply.status(500).send({ error: e?.message ?? "LLM error" });
