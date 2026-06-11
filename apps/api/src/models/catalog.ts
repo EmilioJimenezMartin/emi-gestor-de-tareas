@@ -37,6 +37,8 @@ export interface ICatalog extends Document {
     skippedImages: number;
     queueOrder: number;
     nicheIds: string[];
+    /** true cuando ya se aplicó (o se intentó) la micro-variación automática entre catálogos del mismo nicho */
+    autoVariedPrompt?: boolean;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -86,6 +88,7 @@ const CatalogSchema = new Schema<ICatalog>(
         skippedImages: { type: Number, default: 0 },
         queueOrder: { type: Number, default: 0 },
         nicheIds: [{ type: String }],
+        autoVariedPrompt: { type: Boolean, default: false },
     },
     { timestamps: true }
 );

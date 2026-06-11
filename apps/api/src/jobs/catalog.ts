@@ -368,6 +368,36 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 if (particulars) finalPrompt += `, y las siguientes particularidades: ${particulars}`;
             }
 
+            // ── Micro-variación automática entre catálogos del mismo nicho ──
+            // Si el nicho ya tiene otro catálogo, la IA reformula ligeramente el prompt
+            // (sinónimos, mismo sujeto) UNA vez por catálogo para que las tiradas no
+            // salgan clónicas. Fail-safe total: si el LLM falla o tarda, prompt intacto.
+            if (!catalog.promptParts?.theme && !overridePrompt && !catalog.autoVariedPrompt
+                && (catalog.nicheIds?.length ?? 0) > 0
+                && !finalPrompt.includes("coloring book page")) {
+                catalog.autoVariedPrompt = true; // marcar SIEMPRE — un intento por catálogo
+                try {
+                    const siblings = await Catalog.countDocuments({
+                        _id: { $ne: catalog._id },
+                        nicheIds: { $in: catalog.nicheIds },
+                    });
+                    if (siblings > 0) {
+                        const { varyTextWithLLM } = await import("../lib/ai.js");
+                        const timeout = new Promise<string>((_, reject) =>
+                            setTimeout(() => reject(new Error("vary timeout 12s")), 12_000));
+                        const varied = await Promise.race([varyTextWithLLM(finalPrompt, 30), timeout]);
+                        if (varied && varied !== finalPrompt && varied.length > 10) {
+                            finalPrompt = varied;
+                            catalog.prompt = varied; // persistir: todos los slots usan la misma variación
+                            console.log(`${tag} Variación auto (catálogo nº${siblings + 1} del nicho): "${varied.slice(0, 70)}…"`);
+                        }
+                    }
+                } catch (e: any) {
+                    console.warn(`${tag} Variación auto falló (prompt intacto): ${e?.message ?? e}`);
+                }
+                await catalog.save().catch(() => {});
+            }
+
             // Apply product-type modifiers and build negative prompt
             const productType = catalog.productType ?? "coloring-book";
             const catalogStyle = ((catalog as any).styleCategory ?? (catalog as any).styleCategories?.[0] ?? "generic") as string;

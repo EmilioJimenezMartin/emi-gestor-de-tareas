@@ -90,64 +90,23 @@ Rules:
 Raw content (truncated to 4000 chars):
 ${rawText.substring(0, 4000)}`;
 
-    if (config.provider === "google" && config.googleKey) {
-        const { GoogleGenerativeAI } = await import("@google/generative-ai");
-        const genAI = new GoogleGenerativeAI(config.googleKey);
-        const model = genAI.getGenerativeModel({ model: config.model });
-        const result = await model.generateContent(systemPrompt);
-        const text = result.response.text().trim();
+    const hasAnyKey = config.googleKey || config.groqKey || config.openrouterKey || config.hfKey;
+    if (hasAnyKey) {
+        const jsonNote = "\n\nCRITICAL: Respond with ONLY a valid JSON array. No markdown, no code fences, no backticks. Start with [ and end with ].";
         try {
-            const parsed = JSON.parse(text);
-            return Array.isArray(parsed) ? parsed : [];
+            const raw = await chatWithFallback(
+                [{ role: "user", content: systemPrompt + jsonNote }],
+                { maxTokens: 1024, temperature: 0.1, label: "extract" },
+            );
+            const text = raw.replace(/^```(?:json|)?\s*/i, "").replace(/```\s*$/i, "").trim();
+            const s = text.indexOf("["), e = text.lastIndexOf("]");
+            if (s !== -1 && e !== -1) {
+                try { return JSON.parse(text.substring(s, e + 1)); } catch { return []; }
+            }
+            return [];
         } catch {
             return [];
         }
-    }
-
-    if (config.provider === "groq" && config.groqKey) {
-        const jsonNote = "\n\nCRITICAL: Respond with ONLY a valid JSON array. No markdown, no code fences, no backticks. Start with [ and end with ].";
-        const raw = await groqChat(config.groqKey, config.model, [{ role: "user", content: systemPrompt + jsonNote }], 1024, 0.1);
-        const text = raw.replace(/^```(?:json|)?\s*/i, "").replace(/```\s*$/i, "").trim();
-        const s = text.indexOf("["), e = text.lastIndexOf("]");
-        if (s !== -1 && e !== -1) {
-            try { return JSON.parse(text.substring(s, e + 1)); } catch { return []; }
-        }
-        return [];
-    }
-
-    if (config.provider === "openrouter" && config.openrouterKey) {
-        const jsonNote = "\n\nCRITICAL: Respond with ONLY a valid JSON array. No markdown, no code fences, no backticks. Start with [ and end with ].";
-        const raw = await openrouterChat(config.openrouterKey, config.model, [{ role: "user", content: systemPrompt + jsonNote }], 1024, 0.1);
-        const text = raw.replace(/^```(?:json|)?\s*/i, "").replace(/```\s*$/i, "").trim();
-        const s = text.indexOf("["), e = text.lastIndexOf("]");
-        if (s !== -1 && e !== -1) {
-            try { return JSON.parse(text.substring(s, e + 1)); } catch { return []; }
-        }
-        return [];
-    }
-
-    if (config.provider === "huggingface" && config.hfKey) {
-        const { HfInference } = await import("@huggingface/inference");
-        const hf = new HfInference(config.hfKey);
-        const jsonEnforcement = "\n\nCRITICAL: Respond with ONLY a valid JSON array. No markdown, no code fences, no backticks, no explanations. Start with [ and end with ].";
-        const response = await hf.chatCompletion({
-            model: config.model || "Qwen/Qwen2.5-7B-Instruct",
-            messages: [{ role: "user", content: systemPrompt + jsonEnforcement }],
-            max_tokens: 1024,
-            temperature: 0.1,
-        });
-        const raw = (response.choices[0].message.content ?? "").trim();
-        const text = raw.replace(/^```(?:json|)?\s*/i, "").replace(/```\s*$/i, "").trim();
-        const jsonStart = text.indexOf("[");
-        const jsonEnd = text.lastIndexOf("]");
-        if (jsonStart !== -1 && jsonEnd !== -1) {
-            try {
-                return JSON.parse(text.substring(jsonStart, jsonEnd + 1));
-            } catch {
-                return [];
-            }
-        }
-        return [];
     }
 
     // No valid provider/key — return mock fallback
@@ -163,9 +122,77 @@ ${rawText.substring(0, 4000)}`;
     }];
 }
 
-export async function varyTextWithLLM(text: string, creativity = 50): Promise<string> {
+/**
+ * Cadena de fallback compartida: prueba cada proveedor disponible en orden
+ * (el preferido primero) y solo pasa al siguiente en errores de cuota/saturación.
+ * Devuelve "" si todos fallan — el caller decide el fallback final.
+ */
+async function chatWithFallback(
+    messages: Array<{ role: string; content: string }>,
+    opts: { maxTokens?: number; temperature?: number; label?: string } = {},
+): Promise<string> {
     const config = await getConfig();
+    const { maxTokens = 1024, temperature = 0.4, label = "llm" } = opts;
 
+    type Provider = { name: string; available: boolean; call: () => Promise<string> };
+    const providers: Provider[] = [
+        {
+            name: "google", available: !!config.googleKey,
+            call: async () => {
+                const { GoogleGenAI } = await import("@google/genai");
+                const ai = new GoogleGenAI({ apiKey: config.googleKey });
+                const system = messages.find(m => m.role === "system")?.content;
+                const user = messages.filter(m => m.role !== "system").map(m => m.content).join("\n\n");
+                const response = await ai.models.generateContent({
+                    model: config.provider === "google" ? (config.model || "gemini-2.5-flash") : "gemini-2.5-flash",
+                    contents: user,
+                    config: { ...(system ? { systemInstruction: system } : {}), thinkingConfig: { thinkingBudget: 0 }, maxOutputTokens: maxTokens, temperature } as any,
+                });
+                return (response.text ?? "").trim();
+            },
+        },
+        {
+            name: "groq", available: !!config.groqKey,
+            call: () => groqChat(config.groqKey, config.provider === "groq" ? config.model : "llama-3.3-70b-versatile", messages, maxTokens, temperature),
+        },
+        {
+            name: "openrouter", available: !!config.openrouterKey,
+            call: () => openrouterChat(config.openrouterKey, config.provider === "openrouter" ? config.model : "google/gemini-2.5-flash", messages, maxTokens, temperature),
+        },
+        {
+            name: "huggingface", available: !!config.hfKey,
+            call: async () => {
+                const { HfInference } = await import("@huggingface/inference");
+                const hf = new HfInference(config.hfKey);
+                const response = await hf.chatCompletion({
+                    model: config.provider === "huggingface" ? (config.model || "Qwen/Qwen2.5-7B-Instruct") : "Qwen/Qwen2.5-72B-Instruct",
+                    messages: messages as any, max_tokens: maxTokens, temperature,
+                });
+                return (response.choices[0]?.message?.content ?? "").trim();
+            },
+        },
+    ];
+
+    // El proveedor configurado va primero; el resto mantiene el orden de la cadena
+    providers.sort((a, b) => (a.name === config.provider ? -1 : 0) - (b.name === config.provider ? -1 : 0));
+
+    for (const p of providers) {
+        if (!p.available) continue;
+        try {
+            const result = await p.call();
+            if (result) {
+                if (p.name !== config.provider) console.log(`[ai/${label}] Usó fallback: ${p.name}`);
+                return result;
+            }
+        } catch (err: any) {
+            if (!isQuotaError(err)) throw err; // error real (auth, red…) — no seguir enmascarándolo
+            console.warn(`[ai/${label}] ${p.name} saturado (${String(err?.message ?? err).slice(0, 70)}), probando siguiente…`);
+        }
+    }
+    return "";
+}
+
+export async function varyTextWithLLM(text: string, creativity = 50): Promise<string> {
     let instruction: string;
     if (creativity <= 10) {
         return text;
@@ -181,38 +208,15 @@ export async function varyTextWithLLM(text: string, creativity = 50): Promise<st
 
     const prompt = `${instruction} Return ONLY the result, no quotes, no explanations.\n\nText: ${text}`;
 
-    if (config.provider === "google" && config.googleKey) {
-        const { GoogleGenAI } = await import("@google/genai");
-        const ai = new GoogleGenAI({ apiKey: config.googleKey });
-        const model = config.model || "gemini-2.5-flash";
-        const response = await ai.models.generateContent({ model, contents: prompt });
-        return (response.text ?? "").trim() || text;
-    }
-
-    if (config.provider === "groq" && config.groqKey) {
-        const result = await groqChat(config.groqKey, config.model, [{ role: "user", content: prompt }], 200, Math.max(0.3, creativity / 100));
+    try {
+        const result = await chatWithFallback(
+            [{ role: "user", content: prompt }],
+            { maxTokens: 250, temperature: Math.max(0.3, creativity / 100), label: "vary" },
+        );
         return result || text;
+    } catch {
+        return text; // nunca interrumpir al caller — el texto original siempre es válido
     }
-
-    if (config.provider === "openrouter" && config.openrouterKey) {
-        const result = await openrouterChat(config.openrouterKey, config.model, [{ role: "user", content: prompt }], 200, Math.max(0.3, creativity / 100));
-        return result || text;
-    }
-
-    if (config.provider === "huggingface" && config.hfKey) {
-        const { HfInference } = await import("@huggingface/inference");
-        const hf = new HfInference(config.hfKey);
-        const response = await hf.chatCompletion({
-            model: config.model || "Qwen/Qwen2.5-7B-Instruct",
-            messages: [{ role: "user", content: prompt }],
-            max_tokens: 200,
-            temperature: Math.max(0.3, creativity / 100),
-        });
-        const result = (response.choices[0].message.content ?? "").trim();
-        return result || text;
-    }
-
-    return text;
 }
 
 /**

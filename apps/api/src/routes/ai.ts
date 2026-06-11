@@ -1550,30 +1550,15 @@ Return ONLY a JSON object with this exact structure:
 }`;
 
         try {
-            let result: any = null;
-
-            if ((config.provider === "openrouter" || !config.googleKey) && config.openrouterKey) {
-                const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${config.openrouterKey}`, "HTTP-Referer": "https://emi-gestor-de-tareas.local", "X-Title": "Emi Gestor de Tareas" },
-                    body: JSON.stringify({ model: config.model || "google/gemini-2.5-flash", messages: [{ role: "user", content: prompt }], max_tokens: 512, temperature: 0.3 }),
-                });
-                const data = await res.json() as any;
-                const raw = (data.choices?.[0]?.message?.content ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
-                result = JSON.parse(raw);
-            } else if (config.googleKey) {
-                const { GoogleGenAI } = await import("@google/genai");
-                const ai = new GoogleGenAI({ apiKey: config.googleKey });
-                const response = await ai.models.generateContent({
-                    model: config.model || "gemini-2.5-flash",
-                    contents: prompt,
-                    config: { responseMimeType: "application/json" },
-                });
-                const raw = (response.text ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
-                result = JSON.parse(raw);
-            } else {
-                return reply.status(503).send({ error: "No hay proveedor de IA configurado." });
-            }
+            // generateTextWithLLM lleva la cadena de fallback completa (Google→Groq→OpenRouter→HF)
+            const { generateTextWithLLM } = await import("../lib/ai.js");
+            const raw = await generateTextWithLLM(
+                "You are a scoring engine. Respond with ONLY the requested JSON object — no markdown, no fences.",
+                prompt,
+            );
+            const objStart = raw.indexOf("{"); const objEnd = raw.lastIndexOf("}");
+            if (objStart === -1 || objEnd <= objStart) throw new Error("La IA no devolvió JSON válido");
+            const result: any = JSON.parse(raw.substring(objStart, objEnd + 1));
 
             const score = Math.min(100, Math.max(0, Math.round(result.score ?? 0)));
             const breakdown = { demand: result.breakdown?.demand ?? 0, competition: result.breakdown?.competition ?? 0, uniqueness: result.breakdown?.uniqueness ?? 0, potential: result.breakdown?.potential ?? 0 };
@@ -1626,9 +1611,8 @@ Return ONLY a JSON object with this exact structure:
             return { model, googleKey };
         })();
 
-        if (!config.googleKey) {
-            return reply.status(503).send({ error: "No hay GOOGLE_API_KEY configurada. Añádela en Ajustes." });
-        }
+        // Nota: ya no exigimos GOOGLE_API_KEY — generateTextWithLLM usa cualquier proveedor disponible
+        void config;
 
         // If rate-limited, try to return stale cache before giving up
         const stale = trendsCache.get(cacheKey);
@@ -1669,16 +1653,15 @@ Return ONLY a JSON object with this exact structure:
 Generate exactly 15 diverse, actionable trends. Focus on currently profitable and rising niches. Be specific and practical.`;
 
         try {
-            const { GoogleGenAI } = await import("@google/genai");
-            const ai = new GoogleGenAI({ apiKey: config.googleKey });
-            const response = await ai.models.generateContent({
-                model: config.model || "gemini-2.5-flash",
-                contents: prompt,
-                config: { responseMimeType: "application/json" },
-            });
-            const raw = (response.text ?? "").trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+            // Cadena de fallback completa — si Gemini está saturado, Groq/OpenRouter/HF responden
+            const { generateTextWithLLM } = await import("../lib/ai.js");
+            const raw = (await generateTextWithLLM(
+                "You are a market trends engine. Respond with ONLY the requested JSON object — no markdown, no fences.",
+                prompt,
+            )).replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+            const objStart = raw.indexOf("{"); const objEnd = raw.lastIndexOf("}");
             try {
-                const parsed = JSON.parse(raw);
+                const parsed = JSON.parse(objStart !== -1 && objEnd > objStart ? raw.substring(objStart, objEnd + 1) : raw);
                 trendsCache.set(cacheKey, { data: parsed, expiresAt: Date.now() + TRENDS_TTL_MS });
                 return reply.send(parsed);
             } catch {
@@ -1688,13 +1671,13 @@ Generate exactly 15 diverse, actionable trends. Focus on currently profitable an
             const status = e?.response?.status ?? e?.status ?? e?.code;
             app.log.error({ err: e, status }, "AI trends failed");
 
-            // Rate limit — serve stale cache if available, otherwise informative error
-            if (status === 429) {
-                if (stale) {
-                    return reply.send({ ...stale.data, _cached: true, _stale: true });
-                }
+            // Todos los proveedores agotados — servir caché caducada si existe
+            if (stale) {
+                return reply.send({ ...stale.data, _cached: true, _stale: true });
+            }
+            if (status === 429 || /quota|rate|429|saturado|fallaron/i.test(String(e?.message ?? ""))) {
                 return reply.status(429).send({
-                    error: "Límite de cuota de Gemini alcanzado. El tier gratuito tiene ~1500 req/día. Espera unos minutos o usa Gemini 1.5 Flash en Ajustes.",
+                    error: "Todos los proveedores de IA están al límite ahora mismo. Espera unos minutos.",
                     retryable: true,
                 });
             }

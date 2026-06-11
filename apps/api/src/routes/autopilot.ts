@@ -26,7 +26,8 @@ function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
 // Structure: [MODE OPENER] → [STYLE MODIFIER] → [SUBJECT/PARTICULARS] → [EXCLUSIONS]
 
 // Short opener — immediately tells FLUX the output format (highest weight tokens)
-const CB_OPENER = "coloring book page, black line art on white";
+// "bold thick" va aquí (peso máximo de atención) para asegurar línea gruesa consistente
+const CB_OPENER = "coloring book page, bold black line art on white, thick heavy outlines";
 
 // Style modifiers — what KIND of coloring page (medium weight)
 const CB_STYLE_MODIFIERS: Record<string, string> = {
@@ -45,7 +46,7 @@ const CB_STYLE_MODIFIERS: Record<string, string> = {
 
 // Exclusions — reinforce what NOT to render (lowest weight, still effective)
 // "no text/words/letters" es crítico: el texto inventado es el fallo nº1 en páginas KDP
-const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gradients, no stippling, no background texture, no watermark, no text, no words, no letters, no page numbers, no signature, pure white background, ultra thick clean outlines, high contrast, full-page composition";
+const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gradients, no stippling, no background texture, no watermark, no text, no words, no letters, no page numbers, no signature, pure white background, extra bold ultra thick clean outlines, heavy line weight, high contrast, full-page composition";
 
 export function buildColoringBookPrompt(particulars: string, style = "generic"): string {
     const modifier = CB_STYLE_MODIFIERS[style];
