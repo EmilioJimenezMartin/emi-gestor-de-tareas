@@ -108,6 +108,11 @@ export function LaunchPlaybookPanel({ appliedAt }: { appliedAt?: string }) {
 export function MarketScanPanel({ scan }: { scan: NonNullable<NicheFE["marketScan"]> }) {
     const v = MARKET_VERDICT_STYLE[scan.verdict] ?? MARKET_VERDICT_STYLE.dead;
     const bd = scan.scoreBreakdown;
+    // Score ajustado por TU histórico de ventas (score predictivo)
+    const adj = (scan as any).adjustedScore as number | undefined;
+    const factor = (scan as any).adjustmentFactor as number | undefined;
+    const confidence = (scan as any).calibrationConfidence as string | undefined;
+    const hasAdjustment = typeof adj === "number" && adj !== scan.score;
     return (
         <div className={`rounded-xl bg-white/[0.02] border border-white/[0.07] p-3 space-y-2.5 ${v.glow}`}>
             <div className="flex items-center justify-between gap-2">
@@ -116,7 +121,17 @@ export function MarketScanPanel({ scan }: { scan: NonNullable<NicheFE["marketSca
                     <span className="text-[9px] uppercase tracking-wider text-neutral-600 font-black">Market Scan · Amazon real</span>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-base font-black text-white tabular-nums leading-none">{scan.score}<span className="text-[9px] text-neutral-600">/100</span></span>
+                    {hasAdjustment ? (
+                        <span className="flex items-baseline gap-1" title={`Ajustado por tu histórico real (×${factor}, confianza ${confidence}). Score bruto: ${scan.score}`}>
+                            <span className="text-[10px] text-neutral-600 line-through tabular-nums">{scan.score}</span>
+                            <span className={`text-base font-black tabular-nums leading-none ${adj! > scan.score ? "text-emerald-300" : "text-amber-300"}`}>
+                                {adj}<span className="text-[9px] text-neutral-600">/100</span>
+                            </span>
+                            <span className="text-[8px] text-violet-400 font-black uppercase">tuyo</span>
+                        </span>
+                    ) : (
+                        <span className="text-base font-black text-white tabular-nums leading-none">{scan.score}<span className="text-[9px] text-neutral-600">/100</span></span>
+                    )}
                     <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${v.chip}`}>{v.label}</span>
                 </div>
             </div>

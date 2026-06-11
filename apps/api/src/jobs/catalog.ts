@@ -162,6 +162,7 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
             let whitePixels = 0;     // R,G,B all > 220
             let darkLinePixels = 0;  // max(R,G,B) < 100 — pure black AND dark-grey outlines
             let colorPixels = 0;     // high saturation non-dark pixel — sign of full-color art
+            let grayFillPixels = 0;  // gris medio sin saturación — RELLENO (árboles, tejados, sombras)
             let blankSuspect = 0;    // near-white (> 240 brightness)
 
             const step = channels > 3 ? 4 : 3;
@@ -175,6 +176,9 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
                 if (r > 220 && g > 220 && b > 220) whitePixels++;
                 else if (maxC < 100) darkLinePixels++;                      // dark grey or black
                 else if (saturation > 0.3 && brightness < 210) colorPixels++;
+                // Gris medio plano (100-215 de brillo, casi sin color): es relleno, no línea.
+                // La binarización posterior lo convierte en negro sólido o lo borra — ambos mal.
+                else if (saturation < 0.18 && brightness >= 100 && brightness <= 215) grayFillPixels++;
 
                 if (brightness > 240) blankSuspect++;
             }
@@ -182,6 +186,7 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
             const whitePct = whitePixels / pixelCount;
             const darkLinePct = darkLinePixels / pixelCount;
             const colorPct = colorPixels / pixelCount;
+            const grayFillPct = grayFillPixels / pixelCount;
             const blankPct = blankSuspect / pixelCount;
 
             // Blank image: >98% near-white → failed generation
@@ -199,10 +204,21 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
                 return { ok: false, score: 20, reason: `Imagen a color (${(colorPct * 100).toFixed(0)}% píxeles coloreados) — se esperaba línea B&W` };
             }
 
+            // Rellenos grises (árboles/tejados/pelo sombreados) → regenerar con otra seed.
+            // Umbral 8%: tolera anti-aliasing de líneas, caza áreas rellenas de verdad.
+            if (grayFillPct > 0.08) {
+                return { ok: false, score: 25, reason: `Rellenos grises (${(grayFillPct * 100).toFixed(0)}% gris medio) — áreas sombreadas en vez de contorno vacío` };
+            }
+
+            // Masas negras sólidas (silueta/relleno tinta) → no se puede colorear
+            if (darkLinePct > 0.28) {
+                return { ok: false, score: 25, reason: `Rellenos negros (${(darkLinePct * 100).toFixed(0)}% píxeles oscuros) — siluetas o masas de tinta` };
+            }
+
             const score = Math.round(
                 Math.min(whitePct * 60, 60) +
                 Math.min(darkLinePct * 1000, 30) +
-                Math.max(10 - colorPct * 100, 0)
+                Math.max(10 - colorPct * 100 - grayFillPct * 50, 0)
             );
 
             return { ok: true, score };
@@ -410,7 +426,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 if (!alreadyHasFormula) {
                     finalPrompt = buildColoringBookPrompt(finalPrompt, catalogStyle);
                 }
-                const coloringNegative = "gray, grey, gray background, grey background, gray fill, grey fill, gray tones, off-white, cream, beige, shading, shadow, shadows, soft shadow, drop shadow, inner shadow, cast shadow, gradient, gradients, color, colors, sepia, tones, halftone, texture, textures, rough texture, paper texture, canvas texture, crosshatching, stippling, hatching, watercolor, painterly, painting, illustrated, blur, blurry, soft focus, glow, bloom, soft edges, feathered edges, background pattern, noise, film grain, grain, vignette, fog, mist, ambient occlusion, depth of field, bokeh, watermark, signature, logo, frame, border decoration, 3d render, 3d, realistic, photo, photograph";
+                const coloringNegative = "gray, grey, gray background, grey background, gray fill, grey fill, gray tones, solid fill, solid black, black fill, filled shapes, filled areas, black areas, heavy blacks, silhouette, black silhouette, ink wash, grayscale, charcoal, dark fill, dark foliage, shaded foliage, shaded rooftop, off-white, cream, beige, shading, shadow, shadows, soft shadow, drop shadow, inner shadow, cast shadow, gradient, gradients, color, colors, sepia, tones, halftone, texture, textures, rough texture, paper texture, canvas texture, crosshatching, stippling, hatching, watercolor, painterly, painting, illustrated, blur, blurry, soft focus, glow, bloom, soft edges, feathered edges, background pattern, noise, film grain, grain, vignette, fog, mist, ambient occlusion, depth of field, bokeh, watermark, signature, logo, frame, border decoration, 3d render, 3d, realistic, photo, photograph";
                 finalNegativePrompt = userNegative ? `${coloringNegative}, ${userNegative}` : coloringNegative;
             } else if (productType === "printable-poster") {
                 finalPrompt += ". Style: high quality, high resolution, vibrant colors, print-ready, professional poster design, sharp fine details, suitable for large format printing";

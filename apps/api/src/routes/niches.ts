@@ -515,6 +515,46 @@ Responde SOLO con JSON: { "title": string, "description": string, "tags": string
         }
     });
 
+    // Calibración con histórico propio — cacheada 10 min (agrega ventas de todos los nichos)
+    let _calibCache: { data: any; expiresAt: number } | null = null;
+    const getCalibration = async () => {
+        if (_calibCache && _calibCache.expiresAt > Date.now()) return _calibCache.data;
+        const { computeScoreCalibration } = await import("../lib/score-calibration.js");
+        const data = await computeScoreCalibration();
+        _calibCache = { data, expiresAt: Date.now() + 10 * 60 * 1000 };
+        return data;
+    };
+
+    // Adjunta el score ajustado por tu histórico real al resultado del scan (fail-safe)
+    const withAdjustedScore = async (scan: any) => {
+        try {
+            const calibration = await getCalibration();
+            const { adjustScore } = await import("../lib/score-calibration.js");
+            const adj = adjustScore(scan.score, scan.verdict, calibration);
+            return {
+                ...scan,
+                ...(adj.applied ? {
+                    adjustedScore: adj.adjustedScore,
+                    adjustmentFactor: adj.factor,
+                    calibrationConfidence: calibration.confidence,
+                    calibrationSample: calibration.sampleSize,
+                } : {}),
+            };
+        } catch {
+            return scan; // sin calibración no se bloquea nada
+        }
+    };
+
+    // GET /niches/score-calibration — cómo predicen TUS scans vs tus ventas reales
+    app.get("/niches/score-calibration", async (_req, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            return reply.send(await getCalibration());
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // POST /niches/market-scan — balanza demanda/oferta/competencia en Amazon .com + .es
     // Un keyword por llamada (~15-25s): la UI itera la lista que quiera escanear.
     app.post("/niches/market-scan", async (request: any, reply) => {
@@ -522,7 +562,7 @@ Responde SOLO con JSON: { "title": string, "description": string, "tags": string
         if (!keyword?.trim()) return reply.status(400).send({ error: "keyword requerido" });
         try {
             const scan = await scanNicheMarket(String(keyword).trim(), keywordEs?.trim() || undefined);
-            return reply.send(scan);
+            return reply.send(await withAdjustedScore(scan));
         } catch (err: any) {
             return reply.status(500).send({ error: err.message ?? "Error en market-scan" });
         }
@@ -538,13 +578,85 @@ Responde SOLO con JSON: { "title": string, "description": string, "tags": string
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
             const productSuffix = niche.productType === "printable-poster" ? "wall art print" : "coloring book";
             const keyword = `${niche.name} ${productSuffix}`;
-            const scan = await scanNicheMarket(keyword, keywordEs?.trim() || undefined);
+            const scan = await withAdjustedScore(await scanNicheMarket(keyword, keywordEs?.trim() || undefined));
             niche.marketScan = scan as unknown as Record<string, unknown>;
             niche.markModified("marketScan");
             await niche.save();
             return reply.send({ niche: { id: String(niche._id), name: niche.name }, scan });
         } catch (err: any) {
             return reply.status(500).send({ error: err.message ?? "Error en market-scan" });
+        }
+    });
+
+    // GET /niches/cohorts — curva de ventas de cada nicho publicado vs la media
+    // de tus nichos anteriores en el mismo mes de vida ("¿va mejor o peor de lo normal?")
+    app.get("/niches/cohorts", async (_req, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { KdpSale } = await import("../models/kdp-sale.js");
+            const published = await Niche.find({
+                lifecycleStage: { $in: ["published", "end-of-life"] },
+                publishedAt: { $ne: null },
+            }).select("name publishedAt lifecycleStage marketScan.verdict").lean() as any[];
+
+            if (published.length === 0) return reply.send({ cohorts: [], average: [], sampleSize: 0 });
+
+            // Unidades por mes-de-vida para cada nicho (mes 0 = mes de publicación)
+            const MAX_MONTHS = 6;
+            const cohorts: Array<{
+                nicheId: string; name: string; lifecycleStage: string; verdict?: string;
+                monthsLive: number; curve: number[]; totalUnits: number;
+            }> = [];
+
+            for (const n of published) {
+                const pub = new Date(n.publishedAt);
+                const monthsLive = Math.min(
+                    MAX_MONTHS,
+                    (new Date().getFullYear() - pub.getFullYear()) * 12 + (new Date().getMonth() - pub.getMonth()) + 1,
+                );
+                const periods: string[] = [];
+                for (let m = 0; m < monthsLive; m++) {
+                    const d = new Date(pub.getFullYear(), pub.getMonth() + m, 1);
+                    periods.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+                }
+                const sales = await KdpSale.aggregate([
+                    { $match: { nicheId: String(n._id), period: { $in: periods } } },
+                    { $group: { _id: "$period", units: { $sum: "$unitsSold" } } },
+                ]);
+                const byPeriod = new Map(sales.map((s: any) => [s._id, s.units]));
+                const curve = periods.map(p => byPeriod.get(p) ?? 0);
+                cohorts.push({
+                    nicheId: String(n._id),
+                    name: n.name,
+                    lifecycleStage: n.lifecycleStage,
+                    verdict: n.marketScan?.verdict,
+                    monthsLive,
+                    curve,
+                    totalUnits: curve.reduce((a, b) => a + b, 0),
+                });
+            }
+
+            // Curva media por mes de vida (solo con los nichos que llegaron a ese mes)
+            const average: Array<{ month: number; avgUnits: number; niches: number }> = [];
+            for (let m = 0; m < MAX_MONTHS; m++) {
+                const present = cohorts.filter(c => c.curve.length > m);
+                if (present.length === 0) break;
+                const avg = present.reduce((a, c) => a + c.curve[m], 0) / present.length;
+                average.push({ month: m, avgUnits: Math.round(avg * 10) / 10, niches: present.length });
+            }
+
+            // Comparativa: cada nicho vs la media en su último mes completo
+            const enriched = cohorts.map(c => {
+                const lastMonth = c.monthsLive - 1;
+                const avgAtMonth = average[lastMonth]?.avgUnits ?? 0;
+                const own = c.curve[lastMonth] ?? 0;
+                const vsAverage = avgAtMonth > 0 ? Math.round((own / avgAtMonth) * 100) / 100 : null;
+                return { ...c, currentMonth: lastMonth, unitsThisMonth: own, avgAtSameMonth: avgAtMonth, vsAverage };
+            }).sort((a, b) => (b.vsAverage ?? 0) - (a.vsAverage ?? 0));
+
+            return reply.send({ cohorts: enriched, average, sampleSize: cohorts.length });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
         }
     });
 

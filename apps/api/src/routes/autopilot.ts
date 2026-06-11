@@ -26,8 +26,9 @@ function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
 // Structure: [MODE OPENER] → [STYLE MODIFIER] → [SUBJECT/PARTICULARS] → [EXCLUSIONS]
 
 // Short opener — immediately tells FLUX the output format (highest weight tokens)
-// "bold thick" va aquí (peso máximo de atención) para asegurar línea gruesa consistente
-const CB_OPENER = "coloring book page, bold black line art on white, thick heavy outlines";
+// "bold thick" + "outline-only unfilled" van aquí (peso máximo de atención):
+// línea gruesa consistente y CERO rellenos grises/negros en árboles, tejados, pelo…
+const CB_OPENER = "coloring book page, bold black line art on white, thick heavy outlines, outline-only drawing, every shape left empty white inside";
 
 // Style modifiers — what KIND of coloring page (medium weight)
 const CB_STYLE_MODIFIERS: Record<string, string> = {
@@ -45,8 +46,10 @@ const CB_STYLE_MODIFIERS: Record<string, string> = {
 };
 
 // Exclusions — reinforce what NOT to render (lowest weight, still effective)
-// "no text/words/letters" es crítico: el texto inventado es el fallo nº1 en páginas KDP
-const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gradients, no stippling, no background texture, no watermark, no text, no words, no letters, no page numbers, no signature, pure white background, extra bold ultra thick clean outlines, heavy line weight, high contrast, full-page composition";
+// "no text/words/letters" es crítico: el texto inventado es el fallo nº1 en páginas KDP.
+// Los anti-relleno ("no solid black areas…") matan el fallo nº2: árboles/tejados/pelo
+// que FLUX tiende a rellenar de gris o negro en vez de dejarlos en blanco.
+const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gray tones, no gradients, no stippling, no background texture, no solid black areas, no filled-in shapes, no black silhouettes, no dark fills on foliage rooftops hair or clothing, all surfaces drawn as empty white outlines ready to color, no watermark, no text, no words, no letters, no page numbers, no signature, pure white background, extra bold ultra thick clean outlines, heavy line weight, high contrast, full-page composition";
 
 export function buildColoringBookPrompt(particulars: string, style = "generic"): string {
     const modifier = CB_STYLE_MODIFIERS[style];

@@ -379,6 +379,7 @@ import { LifecyclePanel, type LifecycleStage } from "./kdp/LifecyclePanel";
 import { TrendsPanel } from "./kdp/TrendsPanel";
 import { AutopilotPanel } from "./kdp/AutopilotPanel";
 import { RadarInsightCard } from "./kdp/RadarInsightCard";
+import { CohortsPanel } from "./kdp/CohortsPanel";
 
 import { PipelineRuleRow } from "./kdp/PipelineRuleRow";
 
@@ -10313,8 +10314,11 @@ export function KdpFactoryApp() {
                         );
                     })()}
 
-                    {/* ── Tendencias del día ── */}
-                    <TrendsPanel />
+                    {/* ── Tendencias del día + cohortes de ventas ── */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <TrendsPanel />
+                        <CohortsPanel />
+                    </div>
 
                     {/* ── Funnel: fase del negocio ── */}
                     {(() => {
