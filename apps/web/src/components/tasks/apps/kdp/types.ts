@@ -4,7 +4,7 @@
 export type NicheStatus = "found" | "active" | "research" | "archived";
 export type NicheProductType = "coloring-book" | "printable-poster" | "seamless-pattern" | "other";
 export type NicheStyle = "generic" | "anime" | "illustration" | "children" | "realistic" | "watercolor" | "abstract"
-    | "wall-art" | "botanical" | "affirmation" | "geometric" | "celestial" | "retro";
+    | "wall-art" | "botanical" | "affirmation" | "geometric" | "celestial" | "retro" | "funko";
 
 export interface NicheRoyaltyEntry {
     month: string;

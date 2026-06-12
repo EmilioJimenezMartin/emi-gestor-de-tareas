@@ -838,20 +838,8 @@ Pick the single best coloring book niche from this data. Return this exact JSON:
             if (!picked?.title || !picked?.sceneDescription) return reply.status(500).send({ error: `JSON incompleto: ${clean.slice(0, 200)}` });
 
             // Coloring book formula applied to the scene description
-            const CB_OPENER = "coloring book page, black line art on white";
-            const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gradients, no stippling, no background texture, no watermark, pure white background, ultra thick clean outlines, high contrast";
-            const CB_STYLE_MODIFIERS: Record<string, string> = {
-                anime: "manga-style linework, chibi proportions", botanical: "botanical etching style, fine precise linework",
-                celestial: "mandala-style composition, symmetrical sacred geometry", geometric: "precise geometric tessellation, perfect symmetrical pattern",
-                children: "large simple bold shapes, thick friendly cartoon outlines, easy-to-color for kids",
-                watercolor: "flowing organic botanical, delicate graceful shapes", "wall-art": "art nouveau decorative style, elegant ornamental linework",
-                retro: "vintage mid-century illustration, bold graphic design", abstract: "flowing abstract organic forms, balanced negative space",
-                illustration: "detailed character illustration, expressive confident linework", realistic: "detailed naturalistic line art, precise rendering",
-            };
-            const mod = CB_STYLE_MODIFIERS[picked.styleCategory];
-            const imagePrompt = mod
-                ? `${CB_OPENER}, ${mod}, ${picked.sceneDescription}, ${CB_EXCLUSIONS}`
-                : `${CB_OPENER}, ${picked.sceneDescription}, ${CB_EXCLUSIONS}`;
+            const { buildColoringBookPrompt } = await import("./autopilot.js");
+            const imagePrompt = buildColoringBookPrompt(picked.sceneDescription, picked.styleCategory);
 
             // Upsert atómico — evita duplicados si el botón se pulsa dos veces
             const { Niche } = await import("../models/niche.js");

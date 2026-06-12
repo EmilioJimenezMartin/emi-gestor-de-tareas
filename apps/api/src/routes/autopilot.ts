@@ -26,36 +26,38 @@ function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
 // Structure: [MODE OPENER] → [STYLE MODIFIER] → [SUBJECT/PARTICULARS] → [EXCLUSIONS]
 
 // Short opener — immediately tells FLUX the output format (highest weight tokens)
-// "bold thick" + "outline-only unfilled" van aquí (peso máximo de atención):
-// línea gruesa consistente y CERO rellenos grises/negros en árboles, tejados, pelo…
-const CB_OPENER = "coloring book page, bold black line art on white, thick heavy outlines, outline-only drawing, every shape left empty white inside";
+// Calidad de línea sí; "densely layered/breathtaking composition" NO: esos tokens
+// hacían que FLUX inventara fondos (flores, casas…) que el usuario no pidió.
+const CB_OPENER = "masterful coloring book page, crisp black ink line art on pure white, bold ultra-thick confident outlines, outline-only drawing, every shape hollow and empty white inside";
 
-// Style modifiers — what KIND of coloring page (medium weight)
+// Sujeto fiel: va justo después del estilo, y se refuerza que NO se añada contenido extra
+const CB_FIDELITY = "depicting exactly and only the following subject, faithful to the description, intricate detail concentrated on the subject itself";
+
+// Style modifiers — describen CÓMO dibujar, nunca QUÉ añadir (no inventan escenas)
 const CB_STYLE_MODIFIERS: Record<string, string> = {
-    anime:        "manga-style linework, chibi proportions, expressive character design",
-    botanical:    "botanical etching style, fine precise linework, intricate natural detail",
-    celestial:    "mandala-style composition, symmetrical sacred geometry, radial pattern",
-    geometric:    "precise geometric tessellation, perfect symmetrical pattern, Islamic lattice style",
-    children:     "large simple bold shapes, thick friendly cartoon outlines, easy-to-color for kids",
-    watercolor:   "flowing organic botanical, delicate graceful shapes, natural subject",
-    "wall-art":   "art nouveau decorative style, elegant ornamental linework, flowing composition",
-    retro:        "vintage mid-century illustration, bold graphic design, classic advertising style",
-    abstract:     "flowing abstract organic forms, balanced negative space, fluid curvilinear shapes",
-    illustration: "detailed character illustration, expressive confident linework",
-    realistic:    "detailed naturalistic line art, precise rendering, intricate realistic detail",
+    funko:        "funko pop vinyl figure style, oversized spherical head twice the body size, large circular blank eyes, no nose, tiny stubby body and limbs, chibi collectible toy proportions, bold rounded simplified silhouette, clean toy product design",
+    anime:        "expressive manga linework, confident dynamic strokes, exaggerated expressive emotion, strong character presence",
+    botanical:    "specimen-quality botanical etching, fine precise linework, elegant natural detail within the subject",
+    celestial:    "sacred geometry mandala precision, perfectly symmetrical radial composition, intricate concentric patterning",
+    geometric:    "precise interlocking geometric tessellation, flawless symmetry, mesmerizing ornamental precision",
+    children:     "large friendly bold shapes, thick playful cartoon outlines, charming easy-to-color simplicity",
+    watercolor:   "flowing graceful organic shapes, delicate elegant curves, natural fluid linework",
+    "wall-art":   "art nouveau ornamental linework, sinuous elegant flowing curves, decorative sophistication",
+    retro:        "bold vintage mid-century graphic style, strong confident shapes, classic print-era linework",
+    abstract:     "fluid biomorphic abstract forms, balanced rhythmic composition, hypnotic interlocking curves",
+    illustration: "expressive confident character linework, dramatic line-weight contrast, skilled draftsmanship",
+    realistic:    "naturalistic specimen-level precision, anatomically accurate rendering, texture implied through line density",
 };
 
-// Exclusions — reinforce what NOT to render (lowest weight, still effective)
-// "no text/words/letters" es crítico: el texto inventado es el fallo nº1 en páginas KDP.
-// Los anti-relleno ("no solid black areas…") matan el fallo nº2: árboles/tejados/pelo
-// que FLUX tiende a rellenar de gris o negro en vez de dejarlos en blanco.
-const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gray tones, no gradients, no stippling, no background texture, no solid black areas, no filled-in shapes, no black silhouettes, no dark fills on foliage rooftops hair or clothing, all surfaces drawn as empty white outlines ready to color, no watermark, no text, no words, no letters, no page numbers, no signature, pure white background, extra bold ultra thick clean outlines, heavy line weight, high contrast, full-page composition";
+const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gray tones, no gradients, no stippling, no background texture, no solid black areas, no filled-in shapes, no black silhouettes, no dark fills on foliage rooftops hair or clothing, all surfaces drawn as empty white outlines ready to color, no extra background elements, no invented scenery, no added objects beyond the described subject, no watermark, no text, no words, no letters, no page numbers, no signature, pure white background, extra bold ultra thick clean outlines, heavy line weight, high contrast";
 
 export function buildColoringBookPrompt(particulars: string, style = "generic"): string {
-    const modifier = CB_STYLE_MODIFIERS[style];
+    // Si el usuario menciona "funko" en su prompt, ese estilo manda sobre el seleccionado
+    const effectiveStyle = /funko/i.test(particulars) ? "funko" : style;
+    const modifier = CB_STYLE_MODIFIERS[effectiveStyle];
     return modifier
-        ? `${CB_OPENER}, ${modifier}, ${particulars}, ${CB_EXCLUSIONS}`
-        : `${CB_OPENER}, ${particulars}, ${CB_EXCLUSIONS}`;
+        ? `${CB_OPENER}, ${modifier}, ${CB_FIDELITY}: ${particulars}, ${CB_EXCLUSIONS}`
+        : `${CB_OPENER}, ${CB_FIDELITY}: ${particulars}, ${CB_EXCLUSIONS}`;
 }
 
 // ── Poster prompts ────────────────────────────────────────────────────────────

@@ -165,6 +165,7 @@ import type { NicheStatus, NicheProductType, NicheStyle, NicheRoyaltyEntry, Nich
 
 const NICHE_STYLE_OPTIONS: { id: NicheStyle; label: string; desc: string }[] = [
     { id: "generic", label: "Dibujo genérico", desc: "Estilo versátil y limpio" },
+    { id: "funko", label: "Funko Pop", desc: "Chibi vinyl toy, cabeza grande, proporciones exageradas" },
     { id: "anime", label: "Anime", desc: "Estilo japonés animado" },
     { id: "illustration", label: "Ilustración", desc: "Estilo artístico/MJ" },
     { id: "children", label: "Dibujos para niños", desc: "Líneas limpias, coloreables" },
@@ -176,6 +177,7 @@ const NICHE_STYLE_OPTIONS: { id: NicheStyle; label: string; desc: string }[] = [
 const NICHE_STYLE_MODEL: Record<NicheStyle, string> = {
     // Coloring book styles
     generic: "cf-flux-schnell",
+    funko: "cf-flux-schnell",
     anime: "cf-flux-schnell",
     illustration: "openjourney-v4",
     children: "coloringbook-redmond-v2",
@@ -194,6 +196,7 @@ const NICHE_STYLE_MODEL: Record<NicheStyle, string> = {
 const NICHE_STYLE_TO_COVER: Record<NicheStyle, { style: string; colorTheme: string }> = {
     // Coloring book styles
     generic:      { style: "clean professional illustration, detailed decorative artwork, elegant composition",       colorTheme: "soft blue and white" },
+    funko:        { style: "funko pop vinyl collectible figure, stylized chibi character, bold graphic design",       colorTheme: "vibrant pop art colors, bright yellow and black" },
     anime:        { style: "anime manga illustration, vibrant colors, Japanese art style, bold linework",             colorTheme: "vibrant pink and purple" },
     illustration: { style: "detailed artistic illustration, painterly fantasy art, rich textures",                    colorTheme: "deep forest green and gold" },
     children:     { style: "cute children's book illustration, bright cheerful colors, friendly characters",          colorTheme: "pastel rainbow colors" },

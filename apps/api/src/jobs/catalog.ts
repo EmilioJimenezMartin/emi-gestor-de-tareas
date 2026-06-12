@@ -579,8 +579,15 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                                 reason: `Estilo incoherente: densidad ${(quality.darkLinePct * 100).toFixed(1)}% vs referencia ${(catalog.styleRefDensity * 100).toFixed(1)}% (desvío ${(deviation * 100).toFixed(0)}%)`,
                                 score: quality.score, finalPrompt, io,
                             });
+                            // Un reintento para intentar acercarse a la referencia
+                            throw new Error(`Estilo incoherente con el catálogo (desvío ${(deviation * 100).toFixed(0)}% en densidad de línea)`);
                         }
-                        throw new Error(`Estilo incoherente con el catálogo (desvío ${(deviation * 100).toFixed(0)}% en densidad de línea)`);
+                        // Último intento: aceptar y rebasear la referencia al nuevo estilo.
+                        // El prompt pudo cambiar (fórmula nueva, variación auto) — bloquear
+                        // indefinidamente contra una referencia obsoleta mata el catálogo.
+                        catalog.styleRefDensity = quality.darkLinePct;
+                        await Catalog.findByIdAndUpdate(catalogId, { $set: { styleRefDensity: quality.darkLinePct } }).catch(() => {});
+                        console.warn(`${tag} Estilo desviado ${(deviation * 100).toFixed(0)}% pero calidad OK — aceptada y referencia rebasada a ${(quality.darkLinePct * 100).toFixed(1)}%`);
                     }
                 }
             }
