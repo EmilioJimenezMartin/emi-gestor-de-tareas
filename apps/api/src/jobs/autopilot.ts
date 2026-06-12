@@ -1229,8 +1229,38 @@ async function runPipeline(
 
                 if (!candidateUrls.length) throw new Error("No se generó ninguna variante de portada");
 
-                // Auto-select best candidate by file size (larger = more detail)
-                const coverUrl = candidateUrls[0]; // first generated is the auto-pick; UI shows all to choose
+                // ── QA de portadas: contraste/saturación para el thumbnail de Amazon ──
+                // Puntúa todas las candidatas y elige la mejor como auto-pick. Si todas
+                // flojean, avisa pero no bloquea (la UI muestra todas para elegir a mano).
+                let coverUrl = candidateUrls[0];
+                try {
+                    const { analyzeCoverQuality } = await import("../lib/cover-qa.js");
+                    const scored: Array<{ url: string; ok: boolean; score: number; warnings: string[] }> = [];
+                    for (const url of candidateUrls) {
+                        try {
+                            const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+                            if (!res.ok) continue;
+                            const qa = await analyzeCoverQuality(Buffer.from(await res.arrayBuffer()));
+                            scored.push({ url, ok: qa.ok, score: qa.contrast + qa.saturation * 100, warnings: qa.warnings });
+                        } catch { /* candidata no evaluable — se queda con score 0 */ }
+                    }
+                    const best = scored.filter(s => s.ok).sort((a, b) => b.score - a.score)[0]
+                        ?? scored.sort((a, b) => b.score - a.score)[0];
+                    if (best) {
+                        coverUrl = best.url;
+                        if (!best.ok) {
+                            const warn = best.warnings.join(" · ");
+                            io?.emit("autopilot:log", { nicheId: nicheIdStr, message: `⚠️ Ninguna portada pasa el QA de thumbnail (${warn}) — revisa antes de publicar` });
+                            if (await shouldNotify("autopilot.cover-qa")) {
+                                await sendTelegram(`⚠️ <b>${niche.name}</b> — portadas con poca fuerza para el thumbnail de Amazon:\n${warn}\n\nElige a mano o regenera.`).catch(() => {});
+                            }
+                        } else {
+                            console.log(`[autopilot] cover QA: elegida la candidata con score ${best.score.toFixed(0)}`);
+                        }
+                    }
+                } catch (qaErr: any) {
+                    console.warn(`[autopilot] cover QA skipped: ${qaErr.message}`);
+                }
 
                 await Niche.findByIdAndUpdate(niche._id, {
                     $set: { coverUrl, coverCandidates: candidateUrls, phase: "published", pipelineHasCover: true },

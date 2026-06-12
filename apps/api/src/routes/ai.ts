@@ -1197,6 +1197,16 @@ Responde SOLO con JSON válido (sin markdown): { "scores": [ { "index": number, 
         }
     });
 
+    // ── Telemetría LLM: éxitos/fallos/latencia por proveedor (últimos 7 días) ──
+    app.get("/ai/llm-telemetry", async (_req, reply) => {
+        try {
+            const { getLlmTelemetry } = await import("../lib/ai.js");
+            return reply.send(await getLlmTelemetry());
+        } catch (e: any) {
+            return reply.status(500).send({ error: e?.message ?? "telemetry error" });
+        }
+    });
+
     app.post("/ai/generate-text", async (request: any, reply) => {
         const { type, niche, productType, extras, language = "es", model: modelOverride } = request.body as {
             type: "titles" | "description" | "keywords" | "full-listing" | "back-cover" | "series" | "kdp-physical-book" | "image-prompt" | "niche-particulars" | "printable-particulars";

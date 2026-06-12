@@ -122,6 +122,69 @@ ${rawText.substring(0, 4000)}`;
     }];
 }
 
+// ── Telemetría de proveedores LLM ────────────────────────────────────────────
+// Cuenta éxitos/fallos/latencia por proveedor desde el arranque y persiste un
+// snapshot en Settings (throttled) para sobrevivir reinicios. GET /ai/llm-telemetry.
+type ProviderStat = { ok: number; fail: number; totalMs: number; lastError?: string; lastUsedAt?: string };
+const _llmStats: Record<string, ProviderStat> = {};
+let _lastFlush = 0;
+
+function recordLLM(provider: string, ok: boolean, ms: number, err?: string): void {
+    const s = (_llmStats[provider] ??= { ok: 0, fail: 0, totalMs: 0 });
+    if (ok) s.ok++; else { s.fail++; s.lastError = String(err ?? "").slice(0, 120); }
+    s.totalMs += ms;
+    s.lastUsedAt = new Date().toISOString();
+
+    // Persistir como mucho 1 vez/min — fire-and-forget
+    if (Date.now() - _lastFlush > 60_000 && mongoose.connection.readyState === 1) {
+        _lastFlush = Date.now();
+        Settings.findOneAndUpdate(
+            { key: "LLM_TELEMETRY" },
+            { key: "LLM_TELEMETRY", value: JSON.stringify({ stats: _llmStats, since: _telemetrySince }) },
+            { upsert: true },
+        ).catch(() => {});
+    }
+}
+const _telemetrySince = new Date().toISOString();
+
+export async function getLlmTelemetry(): Promise<{ stats: Record<string, ProviderStat & { avgMs: number; successRate: number }>; since: string }> {
+    // Mezclar memoria con el snapshot persistido (si el proceso acaba de arrancar)
+    let base: Record<string, ProviderStat> = {};
+    let since = _telemetrySince;
+    try {
+        if (mongoose.connection.readyState === 1) {
+            const row = await Settings.findOne({ key: "LLM_TELEMETRY" }).lean();
+            if (row?.value) {
+                const saved = JSON.parse(row.value as string);
+                // descartar snapshots de hace >7 días
+                if (saved.since && Date.now() - new Date(saved.since).getTime() < 7 * 86_400_000) {
+                    base = saved.stats ?? {};
+                    since = saved.since;
+                }
+            }
+        }
+    } catch { /* memoria solamente */ }
+
+    const merged: Record<string, ProviderStat & { avgMs: number; successRate: number }> = {};
+    const providers = new Set([...Object.keys(base), ...Object.keys(_llmStats)]);
+    for (const p of providers) {
+        const a = base[p] ?? { ok: 0, fail: 0, totalMs: 0 };
+        const b = _llmStats[p] ?? { ok: 0, fail: 0, totalMs: 0 };
+        // el snapshot ya incluye lo acumulado en memoria si este proceso lo escribió —
+        // tomar el máximo evita doble conteo y nunca pierde datos
+        const ok = Math.max(a.ok, b.ok), fail = Math.max(a.fail, b.fail), totalMs = Math.max(a.totalMs, b.totalMs);
+        const total = ok + fail;
+        merged[p] = {
+            ok, fail, totalMs,
+            lastError: b.lastError ?? a.lastError,
+            lastUsedAt: b.lastUsedAt ?? a.lastUsedAt,
+            avgMs: total > 0 ? Math.round(totalMs / total) : 0,
+            successRate: total > 0 ? Math.round((ok / total) * 100) : 0,
+        };
+    }
+    return { stats: merged, since };
+}
+
 /**
  * Cadena de fallback compartida: prueba cada proveedor disponible en orden
  * (el preferido primero) y solo pasa al siguiente en errores de cuota/saturación.
@@ -178,13 +241,17 @@ async function chatWithFallback(
 
     for (const p of providers) {
         if (!p.available) continue;
+        const t0 = Date.now();
         try {
             const result = await p.call();
             if (result) {
+                recordLLM(p.name, true, Date.now() - t0);
                 if (p.name !== config.provider) console.log(`[ai/${label}] Usó fallback: ${p.name}`);
                 return result;
             }
+            recordLLM(p.name, false, Date.now() - t0, "respuesta vacía");
         } catch (err: any) {
+            recordLLM(p.name, false, Date.now() - t0, err?.message);
             if (!isQuotaError(err)) throw err; // error real (auth, red…) — no seguir enmascarándolo
             console.warn(`[ai/${label}] ${p.name} saturado (${String(err?.message ?? err).slice(0, 70)}), probando siguiente…`);
         }
@@ -229,13 +296,18 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
     const jsonEnforcement = "\n\nCRITICAL: Respond with ONLY a valid JSON object. No markdown, no code fences (```), no backticks, no explanations. Start with { and end with }.";
     const errors: string[] = [];
 
+    // El modelo configurado solo aplica a SU proveedor — los fallbacks usan su propio default
+    const modelFor = (provider: string, fallback: string) =>
+        config.provider === provider && config.model ? config.model : fallback;
+
     // ── Google Gemini (primary if configured) ────────────────────────────────
     if (config.googleKey) {
+        const t0 = Date.now();
         try {
             const { GoogleGenAI } = await import("@google/genai");
             const ai = new GoogleGenAI({ apiKey: config.googleKey });
             const response = await ai.models.generateContent({
-                model: config.model || "gemini-2.5-flash",
+                model: modelFor("google", "gemini-2.5-flash"),
                 contents: userPrompt,
                 config: {
                     systemInstruction: systemPrompt,
@@ -245,8 +317,10 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
                 } as any,
             });
             const text = (response.text ?? "").trim();
-            if (text) return text;
+            if (text) { recordLLM("google", true, Date.now() - t0); return text; }
+            recordLLM("google", false, Date.now() - t0, "respuesta vacía");
         } catch (err: any) {
+            recordLLM("google", false, Date.now() - t0, err?.message);
             errors.push(`Google: ${err.message ?? err}`);
             if (!isQuotaError(err)) throw err; // error real, no reintentar
             console.warn("[ai] Gemini no disponible, intentando fallback →", err.message?.slice(0, 80));
@@ -255,14 +329,17 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
 
     // ── Groq (fallback rápido — llama-3.3-70b) ───────────────────────────────
     if (config.groqKey) {
+        const t0 = Date.now();
         try {
-            const raw = await groqChat(config.groqKey, config.model || "llama-3.3-70b-versatile", [
+            const raw = await groqChat(config.groqKey, modelFor("groq", "llama-3.3-70b-versatile"), [
                 { role: "system", content: systemPrompt + jsonEnforcement },
                 { role: "user", content: userPrompt },
             ], 1500, 0.4);
             const text = jsonStrip(raw);
-            if (text) { console.log("[ai] Usó fallback: Groq"); return text; }
+            if (text) { recordLLM("groq", true, Date.now() - t0); console.log("[ai] Usó fallback: Groq"); return text; }
+            recordLLM("groq", false, Date.now() - t0, "respuesta vacía");
         } catch (err: any) {
+            recordLLM("groq", false, Date.now() - t0, err?.message);
             errors.push(`Groq: ${err.message ?? err}`);
             if (!isQuotaError(err)) throw err;
             console.warn("[ai] Groq no disponible →", err.message?.slice(0, 80));
@@ -271,14 +348,17 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
 
     // ── OpenRouter (segundo fallback) ────────────────────────────────────────
     if (config.openrouterKey) {
+        const t0 = Date.now();
         try {
-            const raw = await openrouterChat(config.openrouterKey, config.model || "google/gemini-2.5-flash", [
+            const raw = await openrouterChat(config.openrouterKey, modelFor("openrouter", "google/gemini-2.5-flash"), [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userPrompt },
             ], 1500, 0.4);
             const text = jsonStrip(raw);
-            if (text) { console.log("[ai] Usó fallback: OpenRouter"); return text; }
+            if (text) { recordLLM("openrouter", true, Date.now() - t0); console.log("[ai] Usó fallback: OpenRouter"); return text; }
+            recordLLM("openrouter", false, Date.now() - t0, "respuesta vacía");
         } catch (err: any) {
+            recordLLM("openrouter", false, Date.now() - t0, err?.message);
             errors.push(`OpenRouter: ${err.message ?? err}`);
             if (!isQuotaError(err)) throw err;
             console.warn("[ai] OpenRouter no disponible →", err.message?.slice(0, 80));
@@ -287,11 +367,12 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
 
     // ── HuggingFace (último recurso) ─────────────────────────────────────────
     if (config.hfKey) {
+        const t0 = Date.now();
         try {
             const { HfInference } = await import("@huggingface/inference");
             const hf = new HfInference(config.hfKey);
             const response = await hf.chatCompletion({
-                model: "Qwen/Qwen2.5-72B-Instruct",
+                model: modelFor("huggingface", "Qwen/Qwen2.5-72B-Instruct"),
                 messages: [
                     { role: "system", content: systemPrompt + jsonEnforcement },
                     { role: "user", content: userPrompt },
@@ -301,8 +382,10 @@ export async function generateTextWithLLM(systemPrompt: string, userPrompt: stri
             });
             const raw = (response.choices[0].message.content ?? "").trim();
             const text = jsonStrip(raw);
-            if (text) { console.log("[ai] Usó fallback: HuggingFace"); return text; }
+            if (text) { recordLLM("huggingface", true, Date.now() - t0); console.log("[ai] Usó fallback: HuggingFace"); return text; }
+            recordLLM("huggingface", false, Date.now() - t0, "respuesta vacía");
         } catch (err: any) {
+            recordLLM("huggingface", false, Date.now() - t0, err?.message);
             errors.push(`HuggingFace: ${err.message ?? err}`);
         }
     }

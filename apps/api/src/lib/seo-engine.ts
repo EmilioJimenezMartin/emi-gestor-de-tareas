@@ -192,6 +192,71 @@ export function validateEtsyTags(rawTags: string[], intel?: EtsyKeywordIntel | K
     return clean.slice(0, 13);
 }
 
+// ── Calidad editorial: legibilidad del título + densidad de keywords ─────────
+
+/**
+ * Detecta títulos que "suenan a robot": palabra repetida, ristras de sustantivos
+ * sin conectores, longitud excesiva. Amazon no los rechaza — los penaliza por
+ * conversión baja, que es peor. Devuelve avisos para seoNotes.
+ */
+export function checkTitleReadability(title: string): string[] {
+    const warnings: string[] = [];
+    const words = title.toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, " ").split(/\s+/).filter(Boolean);
+
+    // Palabra significativa repetida (keyword stuffing clásico)
+    const counts = new Map<string, number>();
+    for (const w of words) {
+        if (w.length <= 3 || STOPWORDS.has(w)) continue;
+        counts.set(w, (counts.get(w) ?? 0) + 1);
+    }
+    const repeated = [...counts.entries()].filter(([, c]) => c >= 2).map(([w]) => w);
+    if (repeated.length > 0) warnings.push(`título repite "${repeated.join('", "')}" — suena a stuffing`);
+
+    // Ristra de 5+ palabras significativas seguidas sin un solo conector → lista de keywords
+    let run = 0, maxRun = 0;
+    for (const w of words) {
+        if (STOPWORDS.has(w) || /^[-:|·]$/.test(w)) run = 0;
+        else { run++; maxRun = Math.max(maxRun, run); }
+    }
+    if (maxRun >= 6) warnings.push(`${maxRun} palabras seguidas sin conectores — no se lee natural`);
+
+    if (title.length > 130) warnings.push(`título de ${title.length} chars — Amazon corta ~115 en resultados`);
+
+    return warnings;
+}
+
+/**
+ * Densidad de keywords en la descripción: las 2-3 principales deben aparecer
+ * (A9 también indexa la descripción) pero <3 veces cada una (sobre-optimización).
+ */
+export function checkDescriptionKeywordCoverage(
+    descriptionHtml: string,
+    title: string,
+    keywords: string[],
+): string[] {
+    const warnings: string[] = [];
+    const plain = descriptionHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").toLowerCase();
+    if (plain.length < 50) return warnings; // descripción vacía — no evaluar densidad
+
+    // Keywords principales: las 2 primeras del backend + la frase inicial del título
+    const titleHead = title.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)
+        .filter(w => w.length > 3 && !STOPWORDS.has(w)).slice(0, 2).join(" ");
+    const mainTerms = [...new Set([titleHead, ...keywords.slice(0, 2).map(k => k.toLowerCase())])].filter(t => t.length > 3);
+
+    for (const term of mainTerms) {
+        // contar ocurrencias de la frase completa; si es multi-palabra y no aparece, probar su palabra clave
+        const occurrences = plain.split(term).length - 1;
+        if (occurrences === 0) {
+            const fallbackWord = term.split(" ").sort((a, b) => b.length - a.length)[0];
+            const wordHits = fallbackWord ? plain.split(fallbackWord).length - 1 : 0;
+            if (wordHits === 0) warnings.push(`"${term}" no aparece en la descripción — A9 también la indexa`);
+        } else if (occurrences >= 3) {
+            warnings.push(`"${term}" aparece ${occurrences}× en la descripción — sobre-optimización (máx. 2)`);
+        }
+    }
+    return warnings;
+}
+
 // ── Etsy Intel: ocasión + estado de ánimo ────────────────────────────────────
 
 export interface EtsyKeywordIntel extends KeywordIntel {

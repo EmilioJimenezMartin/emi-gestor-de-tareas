@@ -41,6 +41,7 @@ import { createApiSocket } from "@/lib/socket";
 import { toast } from "sonner";
 import { KdpTabBar } from "@/components/ui/kdp-tab-bar";
 import { speakBrowser } from "@/hooks/useSpeech";
+import { LlmTelemetryPanel } from "@/components/settings/LlmTelemetryPanel";
 
 interface LogEntry { t: number; level: "info" | "warn" | "error"; msg: string; }
 
@@ -510,6 +511,9 @@ export default function AjustesPage() {
                             <Badge variant="neutral" className="text-[8px] font-black uppercase bg-primary/10 text-primary border-primary/20">ALPHA-v2</Badge>
                         </div>
                     </div>
+
+                    {/* Salud real de los proveedores: % de éxito y latencia (7 días) */}
+                    <LlmTelemetryPanel apiUrl={apiUrl} />
 
                     <Card variant="outline" className="relative overflow-hidden p-1 sm:p-1 border-white/5 bg-white/[0.01]">
                         <div className="grid grid-cols-1 md:grid-cols-2">

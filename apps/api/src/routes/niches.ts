@@ -256,7 +256,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
 
                 const { generateTextWithLLM } = await import("../lib/ai.js");
-                const { gatherKeywordIntel, gatherEtsyIntel, validateKdpKeywords, validateEtsyTags } = await import("../lib/seo-engine.js");
+                const { gatherKeywordIntel, gatherEtsyIntel, validateKdpKeywords, validateEtsyTags, checkTitleReadability, checkDescriptionKeywordCoverage } = await import("../lib/seo-engine.js");
 
                 const pt = (niche as any).productType ?? "coloring-book";
 
@@ -380,6 +380,10 @@ Responde SOLO con JSON: { "title": string, "description": string, "tags": string
                     ? (Array.isArray(etsyParsed.categories) ? etsyParsed.categories.slice(0, 3) : [])
                     : (Array.isArray(kdpParsed.categories) ? kdpParsed.categories.slice(0, 3) : []);
 
+                // Calidad editorial: ¿el título suena humano? ¿la descripción cubre las keywords?
+                const readabilityWarnings = checkTitleReadability(primaryTitle);
+                const densityWarnings = checkDescriptionKeywordCoverage(primaryDescription, primaryTitle, primaryKeywords);
+
                 listingData = {
                     title: primaryTitle,
                     subtitle: primarySubtitle,
@@ -390,6 +394,8 @@ Responde SOLO con JSON: { "title": string, "description": string, "tags": string
                     seoNotes: [
                         `KDP: ${kdpTerms.length} términos Amazon · Etsy: ${etsyTerms.length} señales ocasión/mood`,
                         kwResult.fixed.length > 0 ? `Validador KDP: ${kwResult.fixed.join(" · ")}` : "",
+                        readabilityWarnings.length > 0 ? `⚠ Legibilidad: ${readabilityWarnings.join(" · ")}` : "",
+                        densityWarnings.length > 0 ? `⚠ Densidad: ${densityWarnings.join(" · ")}` : "",
                         !isEtsyFirst && etsyParsed.title ? `Título Etsy sugerido: "${etsyParsed.title.slice(0, 80)}…"` : "",
                     ].filter(Boolean).join(" | "),
                     platform: isEtsyFirst ? "etsy" : "both",

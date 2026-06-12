@@ -144,7 +144,13 @@ async function trackPromptMetric(prompt: string, productType: string, success: b
     }
 }
 
-type QualityResult = { ok: boolean; score: number; reason?: string };
+type QualityResult = {
+    ok: boolean;
+    score: number;
+    reason?: string;
+    /** densidad de línea (% píxeles oscuros) — referencia de coherencia de estilo del catálogo */
+    darkLinePct?: number;
+};
 
 async function analyzeImageQuality(buffer: Buffer, productType: string): Promise<QualityResult> {
     try {
@@ -165,6 +171,13 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
             let grayFillPixels = 0;  // gris medio sin saturación — RELLENO (árboles, tejados, sombras)
             let blankSuspect = 0;    // near-white (> 240 brightness)
 
+            // Detección de elementos cortados: densidad de píxeles oscuros en cada borde.
+            // Banda del 2% del lado correspondiente (mín. 4px).
+            const bandX = Math.max(4, Math.round(width * 0.02));
+            const bandY = Math.max(4, Math.round(height * 0.02));
+            const edgeDark = { top: 0, bottom: 0, left: 0, right: 0 };
+            const edgeTotal = { top: 0, bottom: 0, left: 0, right: 0 };
+
             const step = channels > 3 ? 4 : 3;
             for (let i = 0; i < raw.length; i += step) {
                 const r = raw[i], g = raw[i + 1], b = raw[i + 2];
@@ -172,15 +185,24 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
                 const maxC = Math.max(r, g, b);
                 const minC = Math.min(r, g, b);
                 const saturation = maxC > 0 ? (maxC - minC) / maxC : 0;
+                const isDark = maxC < 100;
 
                 if (r > 220 && g > 220 && b > 220) whitePixels++;
-                else if (maxC < 100) darkLinePixels++;                      // dark grey or black
+                else if (isDark) darkLinePixels++;                          // dark grey or black
                 else if (saturation > 0.3 && brightness < 210) colorPixels++;
                 // Gris medio plano (100-215 de brillo, casi sin color): es relleno, no línea.
                 // La binarización posterior lo convierte en negro sólido o lo borra — ambos mal.
                 else if (saturation < 0.18 && brightness >= 100 && brightness <= 215) grayFillPixels++;
 
                 if (brightness > 240) blankSuspect++;
+
+                // Posición del píxel para las bandas de borde
+                const px = (i / step) % width;
+                const py = Math.floor((i / step) / width);
+                if (py < bandY) { edgeTotal.top++; if (isDark) edgeDark.top++; }
+                else if (py >= height - bandY) { edgeTotal.bottom++; if (isDark) edgeDark.bottom++; }
+                if (px < bandX) { edgeTotal.left++; if (isDark) edgeDark.left++; }
+                else if (px >= width - bandX) { edgeTotal.right++; if (isDark) edgeDark.right++; }
             }
 
             const whitePct = whitePixels / pixelCount;
@@ -215,13 +237,28 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
                 return { ok: false, score: 25, reason: `Rellenos negros (${(darkLinePct * 100).toFixed(0)}% píxeles oscuros) — siluetas o masas de tinta` };
             }
 
+            // Elemento cortado por el marco: un borde con >30% de tinta indica figura
+            // truncada (mandala a la mitad, cabeza cortada…). Los marcos ornamentales
+            // legítimos tocan los 4 bordes por igual — eso NO se penaliza.
+            const edgePcts = (["top", "bottom", "left", "right"] as const)
+                .map(e => ({ edge: e, pct: edgeTotal[e] > 0 ? edgeDark[e] / edgeTotal[e] : 0 }));
+            const hotEdges = edgePcts.filter(e => e.pct > 0.30);
+            const isOrnamentalFrame = hotEdges.length === 4; // marco decorativo completo — válido
+            if (hotEdges.length > 0 && !isOrnamentalFrame) {
+                const worst = hotEdges.sort((a, b) => b.pct - a.pct)[0];
+                return {
+                    ok: false, score: 30, darkLinePct,
+                    reason: `Elemento cortado por el borde ${worst.edge} (${(worst.pct * 100).toFixed(0)}% tinta en el margen)`,
+                };
+            }
+
             const score = Math.round(
                 Math.min(whitePct * 60, 60) +
                 Math.min(darkLinePct * 1000, 30) +
                 Math.max(10 - colorPct * 100 - grayFillPct * 50, 0)
             );
 
-            return { ok: true, score };
+            return { ok: true, score, darkLinePct };
         } else {
             // Printable poster: just check it's not blank
             let blankPixels = 0;
@@ -524,15 +561,47 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 throw new Error(`Calidad insuficiente (score ${quality.score}): ${quality.reason}`);
             }
 
-            // Binarize coloring books — eliminate all grey tones, shadows, textures
-            // threshold(128): pixels ≥ 128 → pure white (background, grays, soft shadows)
-            //                 pixels  < 128 → pure black (outlines and their halos)
+            // ── Coherencia de estilo dentro del catálogo ──
+            // La 1ª imagen aceptada fija la densidad de línea de referencia; las siguientes
+            // no pueden desviarse >40% (libro visualmente "de la misma mano").
+            if (qualityEnabled && (catalog.productType ?? "coloring-book") === "coloring-book"
+                && typeof quality.darkLinePct === "number") {
+                if (typeof catalog.styleRefDensity !== "number") {
+                    catalog.styleRefDensity = quality.darkLinePct;
+                    await Catalog.findByIdAndUpdate(catalogId, { $set: { styleRefDensity: quality.darkLinePct } }).catch(() => {});
+                    console.log(`${tag} Densidad de referencia del catálogo: ${(quality.darkLinePct * 100).toFixed(1)}%`);
+                } else if (catalog.styleRefDensity > 0.005) {
+                    const deviation = Math.abs(quality.darkLinePct - catalog.styleRefDensity) / catalog.styleRefDensity;
+                    if (deviation > 0.40) {
+                        if (retryCount === 0) {
+                            void saveRejectedImageToVault({
+                                imageBuffer, catalog, catalogId,
+                                reason: `Estilo incoherente: densidad ${(quality.darkLinePct * 100).toFixed(1)}% vs referencia ${(catalog.styleRefDensity * 100).toFixed(1)}% (desvío ${(deviation * 100).toFixed(0)}%)`,
+                                score: quality.score, finalPrompt, io,
+                            });
+                        }
+                        throw new Error(`Estilo incoherente con el catálogo (desvío ${(deviation * 100).toFixed(0)}% en densidad de línea)`);
+                    }
+                }
+            }
+
+            // Binarize coloring books — eliminate all grey tones, shadows, textures.
+            // Suavizado de línea para impresión: upscale 2× (lanczos) → blur sutil →
+            // threshold. El blur a doble resolución redondea el aliasing del trazo y el
+            // threshold lo vuelve a hacer nítido — líneas lisas en el PDF impreso.
             if ((catalog.productType ?? "coloring-book") === "coloring-book") {
                 try {
-                    imageBuffer = await sharp(imageBuffer)
+                    const meta = await sharp(imageBuffer).metadata();
+                    const w = meta.width ?? 0;
+                    // Solo upscale si la imagen es razonablemente pequeña (evitar buffers gigantes)
+                    const scale = w > 0 && w <= 1600 ? 2 : 1;
+                    let pipeline = sharp(imageBuffer)
                         .flatten({ background: { r: 255, g: 255, b: 255 } })
-                        .greyscale()
-                        .threshold(128)
+                        .greyscale();
+                    if (scale > 1) pipeline = pipeline.resize(w * scale, undefined, { kernel: "lanczos3" });
+                    imageBuffer = await pipeline
+                        .blur(scale > 1 ? 1.2 : 0.6)   // redondea bordes dentados
+                        .threshold(128)                 // re-nitidez: blanco/negro puros
                         .png()
                         .toBuffer();
                 } catch (e: any) {
