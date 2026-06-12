@@ -557,7 +557,7 @@ export function KdpFactoryApp() {
     const [lightboxUrl, setLightboxUrl] = useState<{ url: string; catalogId?: string; publicId?: string } | null>(null);
     const [explodeNicheId, setExplodeNicheId] = useState<string | null>(null);
     const [nichePage, setNichePage] = useState(0);
-    const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban">("list");
+    const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban">("kanban");
     const [kanbanProductFilter, setKanbanProductFilter] = useState<"all" | "coloring-book" | "printable-poster" | "seamless-pattern">("all");
     const [studioSubTab, setStudioSubTab] = useState<"niches" | "radar" | "pipeline">(() =>
         (typeof window !== "undefined" && localStorage.getItem("kdp-studio-subtab") as "niches" | "radar" | "pipeline") || "niches"
@@ -617,8 +617,13 @@ export function KdpFactoryApp() {
     const [customCatalogName, setCustomCatalogName] = useState("");
     const [isCreatingCustomCatalog, setIsCreatingCustomCatalog] = useState(false);
     // Feature: niche sort + filter + AI score
-    const [nicheSortBy, setNicheSortBy] = useState<"score" | "date" | "name" | "images" | "catalogs">("score");
+    const [nicheSortBy, setNicheSortBy] = useState<"score" | "market" | "date" | "name" | "images" | "catalogs">("score");
     const [nicheSearch, setNicheSearch] = useState("");
+    const [nicheQuickFilter, setNicheQuickFilter] = useState<"all" | "gold" | "no-catalogs" | "book" | "published">("all");
+    // Toolbar de catálogos IA
+    const [iaCatalogSearch, setIaCatalogSearch] = useState("");
+    const [iaCatalogStatusFilter, setIaCatalogStatusFilter] = useState<"all" | "active" | "queued" | "completed" | "failed" | "cancelled">("all");
+    const [iaCatalogSort, setIaCatalogSort] = useState<"date" | "images" | "name">("date");
     // Funnel: filtra los nichos por la fase mental del negocio (descubrir→producir→lanzar→vender)
     const [funnelFilter, setFunnelFilter] = useState<"all" | "discover" | "produce" | "launch" | "sell">("all");
     // Inbox: decisiones pendientes en Telegram (se refresca al cargar nichos)
@@ -1392,6 +1397,23 @@ export function KdpFactoryApp() {
         if (p === "seo" || p === "pdf" || p === "cover") return "launch";
         if (p === "catalog" || p === "libro") return "produce";
         return "discover";
+    };
+
+    // Filtro combinado de nichos: búsqueda multi-campo + tipo de producto + chip rápido.
+    // Usado por la vista lista, el kanban y el contador de "sin resultados".
+    const nicheMatchesFilters = (n: NicheFE): boolean => {
+        if (kanbanProductFilter !== "all" && (n.productType ?? "coloring-book") !== kanbanProductFilter) return false;
+        const q = nicheSearch.trim().toLowerCase();
+        if (q) {
+            const hay = [n.name, n.nickname, n.description, ...(n.tags ?? [])]
+                .filter(Boolean).join(" ").toLowerCase();
+            if (!hay.includes(q)) return false;
+        }
+        if (nicheQuickFilter === "gold" && n.marketScan?.verdict !== "gold") return false;
+        if (nicheQuickFilter === "no-catalogs" && (n.catalogIds?.length ?? 0) > 0) return false;
+        if (nicheQuickFilter === "book" && !n.pipelineHasPdf) return false;
+        if (nicheQuickFilter === "published" && !(n.phase === "published" || n.lifecycleStage === "published")) return false;
+        return true;
     };
 
     const nicheScore = (n: NicheFE): number => {
@@ -8838,6 +8860,18 @@ export function KdpFactoryApp() {
                             if (catalogNicheFilter) {
                                 base = base.filter(c => (c.nicheIds ?? []).includes(catalogNicheFilter));
                             }
+                            // Búsqueda por nombre o prompt
+                            const q = iaCatalogSearch.trim().toLowerCase();
+                            if (q) base = base.filter(c => `${c.name} ${c.prompt}`.toLowerCase().includes(q));
+                            // Filtro por estado
+                            if (iaCatalogStatusFilter === "active") base = base.filter(c => c.status === "running" || c.status === "pending");
+                            else if (iaCatalogStatusFilter !== "all") base = base.filter(c => c.status === iaCatalogStatusFilter);
+                            // Orden
+                            base = base.slice().sort((a, b) => {
+                                if (iaCatalogSort === "images") return b.images.length - a.images.length;
+                                if (iaCatalogSort === "name") return a.name.localeCompare(b.name, "es");
+                                return new Date((b as any).createdAt ?? 0).getTime() - new Date((a as any).createdAt ?? 0).getTime();
+                            });
                             return base;
                         })();
                         const activeCatalogs = filteredByCatalogNiche.filter(c => c.status === "running" || c.status === "pending" || c.status === "queued");
@@ -8879,6 +8913,58 @@ export function KdpFactoryApp() {
                                         onNicheChange={setCatalogNicheFilter}
                                     />
                                 )}
+
+                                {/* ── Buscador + estado + orden de catálogos ── */}
+                                <div className="flex gap-2 flex-wrap items-center">
+                                    <div className="relative flex-1 min-w-[140px]">
+                                        <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600 pointer-events-none" />
+                                        <input
+                                            value={iaCatalogSearch}
+                                            onChange={e => setIaCatalogSearch(e.target.value)}
+                                            placeholder="Buscar por nombre o prompt…"
+                                            className="w-full h-9 bg-white/[0.04] border border-white/[0.08] rounded-xl pl-8 pr-8 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 focus:bg-white/[0.06] transition-all"
+                                        />
+                                        {iaCatalogSearch && (
+                                            <button onClick={() => setIaCatalogSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                                <X size={11} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest overflow-x-auto no-scrollbar">
+                                        {([
+                                            { id: "all" as const, label: "Todos", count: iaCatalogs.length },
+                                            { id: "active" as const, label: "⚡ Activos", count: iaCatalogs.filter(c => c.status === "running" || c.status === "pending").length },
+                                            { id: "queued" as const, label: "⏳ Cola", count: iaCatalogs.filter(c => c.status === "queued").length },
+                                            { id: "completed" as const, label: "✅", count: iaCatalogs.filter(c => c.status === "completed").length },
+                                            { id: "failed" as const, label: "❌", count: iaCatalogs.filter(c => c.status === "failed").length },
+                                            { id: "cancelled" as const, label: "🚫", count: iaCatalogs.filter(c => c.status === "cancelled").length },
+                                        ]).map(c => (
+                                            <button key={c.id} onClick={() => setIaCatalogStatusFilter(c.id)}
+                                                className={`px-2 h-8 rounded-[10px] transition-all whitespace-nowrap flex items-center gap-1 ${iaCatalogStatusFilter === c.id ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                                {c.label}
+                                                <span className={`text-[9px] px-1 py-px rounded-full tabular-nums ${iaCatalogStatusFilter === c.id ? "bg-white/15" : "bg-white/[0.05]"}`}>{c.count}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest shrink-0">
+                                        {([
+                                            { id: "date" as const, label: "↓ Reciente" },
+                                            { id: "images" as const, label: "🖼" },
+                                            { id: "name" as const, label: "A→Z" },
+                                        ]).map(opt => (
+                                            <button key={opt.id} onClick={() => setIaCatalogSort(opt.id)}
+                                                className={`px-2.5 h-8 rounded-[10px] transition-all whitespace-nowrap ${iaCatalogSort === opt.id ? "bg-white/10 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {(iaCatalogSearch.trim() || iaCatalogStatusFilter !== "all") && (
+                                        <button onClick={() => { setIaCatalogSearch(""); setIaCatalogStatusFilter("all"); }}
+                                            className="h-8 px-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-rose-400/70 hover:text-rose-300 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all">
+                                            ✕ Limpiar ({filteredByCatalogNiche.length})
+                                        </button>
+                                    )}
+                                </div>
 
                                 {/* ── Queue time estimate banner ── */}
                                 {activeCatalogs.length > 0 && queueEstimateMs !== null && (() => {
@@ -9506,14 +9592,30 @@ export function KdpFactoryApp() {
         setIsGeneratingContent(true);
         setContentResult(null);
         try {
+            // Si hay un nicho vinculado, su contexto completo enriquece la generación:
+            // descripción, tags, estilo, demanda/competencia, market scan y radar insight.
+            const linked = contentSaveNicheId ? niches.find(n => n._id === contentSaveNicheId) : undefined;
+            const nicheContext = linked ? [
+                linked.description ? `descripción del nicho: ${linked.description}` : "",
+                linked.tags.length > 0 ? `tags: ${linked.tags.join(", ")}` : "",
+                linked.styleCategory ? `estilo: ${linked.styleCategory}` : "",
+                linked.demand !== "unknown" ? `demanda: ${linked.demand}` : "",
+                linked.competition !== "unknown" ? `competencia: ${linked.competition}` : "",
+                linked.marketScan ? `market scan Amazon: veredicto ${linked.marketScan.verdict}, score ${linked.marketScan.score}/100` : "",
+                (linked as any).radarInsight?.keyword_opportunities?.length
+                    ? `keywords detectadas por radar: ${(linked as any).radarInsight.keyword_opportunities.slice(0, 8).join(", ")}`
+                    : "",
+                linked.notes ? `notas: ${linked.notes}` : "",
+            ].filter(Boolean).join(" · ") : "";
+            const mergedExtras = [contentExtras, nicheContext].filter(Boolean).join(" · ");
             const res = await fetch(`${API_BASE_URL}/ai/generate-text`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     type: contentType,
-                    niche: contentNiche,
+                    niche: linked ? `${contentNiche} (nicho: ${linked.name})` : contentNiche,
                     productType: contentType === "kdp-physical-book" ? "Physical KDP Book" : contentProductType,
-                    extras: contentExtras,
+                    extras: mergedExtras,
                     language: contentLanguage,
                     platform: contentPlatform,
                     model: "gemini-2.5-flash",
@@ -10361,9 +10463,14 @@ export function KdpFactoryApp() {
                             <input
                                 value={nicheSearch}
                                 onChange={e => setNicheSearch(e.target.value)}
-                                placeholder="Buscar nicho…"
-                                className="w-full h-9 bg-white/[0.04] border border-white/[0.08] rounded-xl pl-8 pr-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 focus:bg-white/[0.06] transition-all"
+                                placeholder="Buscar por nombre, descripción o tags…"
+                                className="w-full h-9 bg-white/[0.04] border border-white/[0.08] rounded-xl pl-8 pr-8 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 focus:bg-white/[0.06] transition-all"
                             />
+                            {nicheSearch && (
+                                <button onClick={() => setNicheSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                    <X size={11} />
+                                </button>
+                            )}
                         </div>
                         <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest shrink-0">
                             {(["all", "coloring-book", "printable-poster", "seamless-pattern"] as const).map(f => (
@@ -10376,23 +10483,44 @@ export function KdpFactoryApp() {
                         </div>
                     </div>
 
-                    {/* ── Ordenar por ── */}
-                    <div className="flex p-1 bg-white/[0.03] border border-white/8 rounded-2xl gap-0.5 overflow-x-auto no-scrollbar">
-                        {([
-                            { id: "score" as const, label: "★ Score" },
-                            { id: "date" as const, label: "↓ Reciente" },
-                            { id: "catalogs" as const, label: "📚 Catálogos" },
-                            { id: "images" as const, label: "🖼 Imágenes" },
-                            { id: "name" as const, label: "A→Z" },
-                        ]).map(opt => {
-                            const isAct = nicheSortBy === opt.id;
-                            return (
+                    {/* ── Chips rápidos + ordenar ── */}
+                    <div className="flex gap-2 flex-wrap items-center">
+                        <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest overflow-x-auto no-scrollbar">
+                            {([
+                                { id: "all" as const, label: "Todos", count: niches.length },
+                                { id: "gold" as const, label: "🥇 Gold", count: niches.filter(n => n.marketScan?.verdict === "gold").length },
+                                { id: "no-catalogs" as const, label: "Sin catálogos", count: niches.filter(n => (n.catalogIds?.length ?? 0) === 0).length },
+                                { id: "book" as const, label: "📕 Con libro", count: niches.filter(n => n.pipelineHasPdf).length },
+                                { id: "published" as const, label: "✅ Publicados", count: niches.filter(n => n.phase === "published" || n.lifecycleStage === "published").length },
+                            ]).map(c => (
+                                <button key={c.id} onClick={() => setNicheQuickFilter(c.id)}
+                                    className={`px-2.5 h-8 rounded-[10px] transition-all whitespace-nowrap flex items-center gap-1 ${nicheQuickFilter === c.id ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                    {c.label}
+                                    <span className={`text-[9px] px-1 py-px rounded-full tabular-nums ${nicheQuickFilter === c.id ? "bg-white/15" : "bg-white/[0.05]"}`}>{c.count}</span>
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest overflow-x-auto no-scrollbar ml-auto">
+                            {([
+                                { id: "score" as const, label: "★ Score" },
+                                { id: "market" as const, label: "📊 Market" },
+                                { id: "date" as const, label: "↓ Reciente" },
+                                { id: "catalogs" as const, label: "📚" },
+                                { id: "images" as const, label: "🖼" },
+                                { id: "name" as const, label: "A→Z" },
+                            ]).map(opt => (
                                 <button key={opt.id} onClick={() => setNicheSortBy(opt.id)}
-                                    className={`flex-1 min-w-fit h-8 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1 px-2 ${isAct ? "bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                    className={`px-2.5 h-8 rounded-[10px] transition-all whitespace-nowrap ${nicheSortBy === opt.id ? "bg-white/10 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
                                     {opt.label}
                                 </button>
-                            );
-                        })}
+                            ))}
+                        </div>
+                        {(nicheSearch.trim() || nicheQuickFilter !== "all" || kanbanProductFilter !== "all") && (
+                            <button onClick={() => { setNicheSearch(""); setNicheQuickFilter("all"); setKanbanProductFilter("all"); }}
+                                className="h-8 px-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-rose-400/70 hover:text-rose-300 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all">
+                                ✕ Limpiar ({niches.filter(nicheMatchesFilters).length})
+                            </button>
+                        )}
                     </div>
 
                     {/* ── Loading skeletons ── */}
@@ -10433,8 +10561,7 @@ export function KdpFactoryApp() {
                                     const colNiches = niches.filter(n => {
                                         const p = nicheComputedPhases.get(n._id) ?? "niche";
                                         if (p !== col.id) return false;
-                                        if (kanbanProductFilter !== "all" && (n.productType ?? "coloring-book") !== kanbanProductFilter) return false;
-                                        return true;
+                                        return nicheMatchesFilters(n);
                                     });
                                     const colImgs = colNiches.reduce((sum, n) => sum + iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id)).reduce((s, c) => s + c.images.length, 0), 0);
                                     return (
@@ -10473,7 +10600,7 @@ export function KdpFactoryApp() {
                                                         <div key={niche._id}
                                                             className={`group relative rounded-xl border border-white/[0.07] bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/[0.12] hover:shadow-[0_0_20px_var(--col-glow)] transition-all cursor-pointer overflow-hidden`}
                                                             style={{ "--col-glow": col.glow } as React.CSSProperties}
-                                                            onClick={() => openNicheForm(niche)}>
+                                                            onClick={() => { setNicheDetailId(niche._id); setNicheDetailTab("images"); }}>
                                                             <div className={`absolute -right-2 -top-2 w-10 h-10 ${col.blob} blur-xl rounded-full opacity-40 group-hover:scale-[2.5] group-hover:opacity-70 transition-all duration-500`} />
                                                             {/* Card body */}
                                                             <div className="p-3 space-y-2.5 relative">
@@ -10608,7 +10735,7 @@ export function KdpFactoryApp() {
                     })()}
 
                     {/* ── Empty state (list mode only) ── */}
-                    {!isLoadingNiches && nicheViewMode === "list" && niches.filter(n => (kanbanProductFilter === "all" || (n.productType ?? "coloring-book") === kanbanProductFilter) && (!nicheSearch.trim() || n.name.toLowerCase().includes(nicheSearch.toLowerCase()))).length === 0 && (
+                    {!isLoadingNiches && nicheViewMode === "list" && niches.filter(nicheMatchesFilters).length === 0 && (
                         <div className="flex flex-col items-center gap-4 py-16 opacity-40">
                             <div className="w-16 h-16 rounded-3xl bg-white/5 border border-white/8 flex items-center justify-center">
                                 <Target size={28} strokeWidth={1.2} className="text-neutral-600" />
@@ -10623,11 +10750,11 @@ export function KdpFactoryApp() {
                     {!isLoadingNiches && nicheViewMode === "list" && (() => {
                         const listNiches = niches
                             .filter(n => funnelFilter === "all" || nicheFunnelStage(n) === funnelFilter)
-                            .filter(n => kanbanProductFilter === "all" || (n.productType ?? "coloring-book") === kanbanProductFilter)
-                            .filter(n => !nicheSearch.trim() || n.name.toLowerCase().includes(nicheSearch.toLowerCase()))
+                            .filter(nicheMatchesFilters)
                             .slice()
                             .sort((a, b) => {
                                 if (nicheSortBy === "score") return nicheScore(b) - nicheScore(a);
+                                if (nicheSortBy === "market") return (b.marketScan?.score ?? -1) - (a.marketScan?.score ?? -1);
                                 if (nicheSortBy === "date") return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
                                 if (nicheSortBy === "name") return a.name.localeCompare(b.name, "es");
                                 if (nicheSortBy === "catalogs") {
