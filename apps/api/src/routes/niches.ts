@@ -855,4 +855,89 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
             return reply.status(500).send({ error: e.message });
         }
     });
+
+    // POST /niches/:id/explode-catalogs — la IA detecta N situaciones visuales
+    // distintas del nicho y lanza un catálogo por cada una (encolados en serie).
+    app.post("/niches/:id/explode-catalogs", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { count = 5, imagesPerCatalog = 5, model } = request.body ?? {};
+            const n = Math.min(Math.max(2, Number(count)), 8);
+            const imgsPer = Math.min(Math.max(1, Number(imagesPerCatalog)), 20);
+
+            const niche = await Niche.findById(request.params.id).lean() as any;
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+
+            // 1. La IA detecta N situaciones/sub-temáticas visuales distintas
+            const { generateTextWithLLM } = await import("../lib/ai.js");
+            const style = niche.styleCategory ?? "generic";
+            const system = `You are a creative director for coloring book and printable art production. Reply ONLY with valid JSON, no markdown fences, no explanations.`;
+            const user = `Niche: "${niche.name}"
+Description: ${niche.description || "(none)"}
+Product type: ${niche.productType ?? "coloring-book"} · Style: ${style}
+
+Detect exactly ${n} DISTINCT visual situations/sub-themes within this niche, each one different enough to justify its own catalog (e.g. for mandalas: animal-inspired, floral, zen figures, temples, geometric patterns).
+
+For each, write an IMAGE GENERATION PROMPT in English (30-60 words): concrete scene/subject description only — no style/technical keywords (those are added automatically later).
+
+Return JSON: [{"situation": "<2-4 word label in Spanish>", "prompt": "<the scene prompt in English>"}]`;
+
+            const raw = await generateTextWithLLM(system, user);
+            const clean = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+            const start = clean.indexOf("[");
+            const end = clean.lastIndexOf("]");
+            if (start === -1 || end === -1) return reply.status(502).send({ error: `La IA no devolvió JSON válido: ${clean.slice(0, 150)}` });
+            let situations: Array<{ situation: string; prompt: string }>;
+            try { situations = JSON.parse(clean.slice(start, end + 1)); }
+            catch { return reply.status(502).send({ error: "JSON de situaciones malformado" }); }
+            situations = situations.filter(s => s?.situation && s?.prompt).slice(0, n);
+            if (situations.length === 0) return reply.status(502).send({ error: "La IA no detectó situaciones" });
+
+            // 2. Modelo: el elegido o el por defecto (Pollinations flux)
+            const aiModel = model?.provider && model?.modelId
+                ? model
+                : { id: "pollinations-flux", name: "FLUX (Pollinations)", provider: "Pollinations", modelId: "flux" };
+
+            // 3. Crear un catálogo por situación — el primero arranca, el resto en cola
+            const hasActive = await Catalog.exists({ status: { $in: ["queued", "pending", "running"] } });
+            const created: any[] = [];
+            for (let i = 0; i < situations.length; i++) {
+                const s = situations[i];
+                const initialStatus = (i === 0 && !hasActive) ? "pending" : "queued";
+                const catalog = await Catalog.create({
+                    name: `${niche.name} — ${s.situation}`,
+                    prompt: s.prompt.trim(),
+                    productType: niche.productType ?? "coloring-book",
+                    creativity: 50,
+                    negativePrompt: "",
+                    aiModel,
+                    width: 1024,
+                    height: 1024,
+                    totalImages: imgsPer,
+                    images: [],
+                    status: initialStatus,
+                    queueOrder: Date.now() + i,
+                    nicheIds: [String(niche._id)],
+                });
+                created.push(catalog);
+                if (initialStatus === "pending") {
+                    const agenda = getAgenda();
+                    await agenda.now("generate-catalog-image", { catalogId: String(catalog._id) });
+                }
+            }
+
+            // 4. Vincular al nicho
+            await Niche.findByIdAndUpdate(niche._id, {
+                $addToSet: { catalogIds: { $each: created.map(c => String(c._id)) } },
+                $set: { pipelineHasCatalogs: true, phase: niche.phase === "niche" ? "catalog" : niche.phase },
+            });
+
+            return reply.status(201).send({
+                catalogs: created,
+                situations: situations.map(s => s.situation),
+            });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
 }

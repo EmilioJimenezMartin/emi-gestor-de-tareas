@@ -51,6 +51,15 @@ const CB_STYLE_MODIFIERS: Record<string, string> = {
 
 const CB_EXCLUSIONS = "no color, no shading, no grey fills, no gray tones, no gradients, no stippling, no background texture, no solid black areas, no filled-in shapes, no black silhouettes, no dark fills on foliage rooftops hair or clothing, all surfaces drawn as empty white outlines ready to color, no extra background elements, no invented scenery, no added objects beyond the described subject, no watermark, no text, no words, no letters, no page numbers, no signature, pure white background, extra bold ultra thick clean outlines, heavy line weight, high contrast";
 
+// Si el prompt del usuario pide explícitamente algo que NO es página de colorear
+// (color, foto, póster, patrón…), la fórmula CB no debe aplicarse aunque el
+// productType por defecto sea coloring-book.
+const NON_COLORING_INTENT = /full[ -]?color|colorful|vibrant colors?|in color|a todo color|con colores|watercolor painting|oil painting|acrylic|photograph|photo[- ]?realistic|realistic photo|poster|seamless pattern|sticker design|t-?shirt design|logo design|wall art|book cover|portada/i;
+
+export function isNonColoringIntent(prompt: string): boolean {
+    return NON_COLORING_INTENT.test(prompt);
+}
+
 export function buildColoringBookPrompt(particulars: string, style = "generic"): string {
     // Si el usuario menciona "funko" en su prompt, ese estilo manda sobre el seleccionado
     const effectiveStyle = /funko/i.test(particulars) ? "funko" : style;

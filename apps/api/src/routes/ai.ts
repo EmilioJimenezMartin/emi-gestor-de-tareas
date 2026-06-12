@@ -376,6 +376,9 @@ export async function registerAIRoutes(app: FastifyInstance) {
                             width: typeof width === "number" ? width : 1024,
                             height: typeof height === "number" ? height : 1024,
                             num_images: 1,
+                            // Sin seed Leonardo repite la misma imagen para el mismo prompt —
+                            // cada petición lleva el seed del slot o uno aleatorio
+                            seed: fixedSeed ?? Math.floor(Math.random() * 2_147_483_647),
                             ...(typeof modelId === "string" && modelId.trim().length > 0 ? { modelId: modelId.trim() } : {}),
                             ...(initImageId ? { init_image_id: initImageId, init_strength: initStrength } : {}),
                             ...(negativePrompt ? { negative_prompt: negativePrompt } : {}),

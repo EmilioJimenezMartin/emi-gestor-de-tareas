@@ -382,6 +382,7 @@ import { MarketScanPanel, LaunchPlaybookPanel } from "./kdp/MarketScanPanel";
 import { LifecyclePanel, type LifecycleStage } from "./kdp/LifecyclePanel";
 import { TrendsPanel } from "./kdp/TrendsPanel";
 import { AutopilotPanel } from "./kdp/AutopilotPanel";
+import { ExplodeCatalogsModal } from "./kdp/ExplodeCatalogsModal";
 import { RadarInsightCard } from "./kdp/RadarInsightCard";
 import { CohortsPanel } from "./kdp/CohortsPanel";
 
@@ -554,6 +555,7 @@ export function KdpFactoryApp() {
     const [isSavingNiche, setIsSavingNiche] = useState(false);
     const [nicheDeleteId, setNicheDeleteId] = useState<string | null>(null);
     const [lightboxUrl, setLightboxUrl] = useState<{ url: string; catalogId?: string; publicId?: string } | null>(null);
+    const [explodeNicheId, setExplodeNicheId] = useState<string | null>(null);
     const [nichePage, setNichePage] = useState(0);
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban">("list");
     const [kanbanProductFilter, setKanbanProductFilter] = useState<"all" | "coloring-book" | "printable-poster" | "seamless-pattern">("all");
@@ -10748,6 +10750,7 @@ export function KdpFactoryApp() {
                                                             )}
                                                             <button onClick={() => openNicheForm(niche)} className="p-2 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Pencil size={14} /></button>
                                                         </div>
+                                                        <button onClick={() => setExplodeNicheId(niche._id)} className="p-2 rounded-lg text-violet-500/70 hover:text-violet-300 hover:bg-violet-500/10 transition-all" title="Explosión IA: 5 catálogos con situaciones distintas"><Layers size={14} /></button>
                                                         <button onClick={() => setNicheDeleteId(niche._id)} className="p-2 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all" title="Eliminar nicho"><Trash2 size={14} /></button>
                                                     </div>
                                                 </div>
@@ -13806,6 +13809,24 @@ export function KdpFactoryApp() {
                     </div>
                 </div>
             )}
+
+            {/* Explosión multi-catálogo */}
+            {explodeNicheId && (() => {
+                const n = niches.find(x => x._id === explodeNicheId);
+                return n ? (
+                    <ExplodeCatalogsModal
+                        niche={n}
+                        onClose={() => setExplodeNicheId(null)}
+                        onLaunched={(catalogs, situations) => {
+                            setIaCatalogs(prev => [...catalogs.map((c: any) => ({ ...c, images: c.images ?? [] })), ...prev]);
+                            setNiches(prev => prev.map(x => x._id === explodeNicheId
+                                ? { ...x, catalogIds: [...(x.catalogIds ?? []), ...catalogs.map((c: any) => String(c._id))], pipelineHasCatalogs: true }
+                                : x));
+                            toast.success(`${catalogs.length} catálogos lanzados: ${situations.join(", ")}`);
+                        }}
+                    />
+                ) : null;
+            })()}
 
             {/* Niche Delete Confirm */}
             {nicheDeleteId && (

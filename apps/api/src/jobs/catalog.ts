@@ -452,7 +452,15 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             }
 
             // Apply product-type modifiers and build negative prompt
-            const productType = catalog.productType ?? "coloring-book";
+            // Si el prompt pide explícitamente algo que no es página de colorear
+            // (color, póster, foto…), se trata como "other": sin fórmula CB,
+            // sin negative anti-color y sin binarización.
+            const { isNonColoringIntent } = await import("../routes/autopilot.js");
+            let productType = catalog.productType ?? "coloring-book";
+            if (productType === "coloring-book" && isNonColoringIntent(finalPrompt)) {
+                console.log(`${tag} Prompt pide contenido no-colorear → fórmula CB omitida`);
+                productType = "other";
+            }
             const catalogStyle = ((catalog as any).styleCategory ?? (catalog as any).styleCategories?.[0] ?? "generic") as string;
             const userNegative = catalog.negativePrompt?.trim() ?? "";
 
@@ -543,7 +551,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
 
             // Quality gate — analyze pixels before uploading (skipped when disabled in settings)
             const qualityEnabled = await isQualityCheckEnabled();
-            const quality = await analyzeImageQuality(imageBuffer, catalog.productType ?? "coloring-book");
+            const quality = await analyzeImageQuality(imageBuffer, productType);
             console.log(`${tag} Quality: score=${quality.score} ok=${quality.ok} enabled=${qualityEnabled}${quality.reason ? ` reason="${quality.reason}"` : ""}`);
             if (qualityEnabled && !quality.ok) {
                 // Save to vault on first attempt only (avoid duplicate vault entries per slot across retries)
@@ -564,7 +572,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             // ── Coherencia de estilo dentro del catálogo ──
             // La 1ª imagen aceptada fija la densidad de línea de referencia; las siguientes
             // no pueden desviarse >40% (libro visualmente "de la misma mano").
-            if (qualityEnabled && (catalog.productType ?? "coloring-book") === "coloring-book"
+            if (qualityEnabled && productType === "coloring-book"
                 && typeof quality.darkLinePct === "number") {
                 if (typeof catalog.styleRefDensity !== "number") {
                     catalog.styleRefDensity = quality.darkLinePct;
@@ -596,7 +604,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             // Suavizado de línea para impresión: upscale 2× (lanczos) → blur sutil →
             // threshold. El blur a doble resolución redondea el aliasing del trazo y el
             // threshold lo vuelve a hacer nítido — líneas lisas en el PDF impreso.
-            if ((catalog.productType ?? "coloring-book") === "coloring-book") {
+            if (productType === "coloring-book") {
                 try {
                     const meta = await sharp(imageBuffer).metadata();
                     const w = meta.width ?? 0;
@@ -650,7 +658,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             freshCatalog.images.push(newImage);
             freshCatalog.lastError = "";
             const newCount = freshCatalog.images.length;
-            void trackPromptMetric(finalPrompt, catalog.productType ?? "coloring-book", true, quality.score);
+            void trackPromptMetric(finalPrompt, productType, true, quality.score);
             const newAttempted = newCount + (freshCatalog.skippedImages ?? 0);
             const isComplete = newAttempted >= freshCatalog.totalImages;
             freshCatalog.status = isComplete ? "completed" : "running";
