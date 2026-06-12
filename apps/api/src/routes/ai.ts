@@ -1386,8 +1386,9 @@ Return ONLY a JSON object:
             : undefined;
 
         const isUnavailable = (e: any) => {
-            const msg = String(e?.message ?? e ?? "").toLowerCase();
-            return /503|unavailable|high demand|quota|rate.?limit|429|too many|overloaded|capacity|exhausted|402|more credits/i.test(msg);
+            const parts = [e?.message, e?.status, e?.code, typeof e?.body === "string" ? e.body : JSON.stringify(e?.body ?? "")]
+                .map(v => String(v ?? "").toLowerCase()).join(" ");
+            return /503|unavailable|high demand|quota|rate.?limit|429|too many|overloaded|capacity|exhausted|402|more credits/i.test(parts);
         };
 
         const parseJsonResult = (raw: string) => {

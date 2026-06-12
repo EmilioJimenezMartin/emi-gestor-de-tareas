@@ -5,6 +5,16 @@ const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
 function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
     return fetch(url, { ...init, headers: { ...(_SERVER_API_KEY ? { Authorization: `Bearer ${_SERVER_API_KEY}` } : {}), ...(init.headers as Record<string, string> ?? {}) } });
 }
+
+const LEVEL_MAP: Record<string, "low" | "medium" | "high"> = {
+    baja: "low", low: "low", bajo: "low",
+    media: "medium", medium: "medium", medio: "medium", moderate: "medium",
+    alta: "high", high: "high", alto: "high",
+};
+function normalizeLevel(v: unknown): "unknown" | "low" | "medium" | "high" {
+    if (!v || typeof v !== "string") return "unknown";
+    return LEVEL_MAP[v.trim().toLowerCase()] ?? "unknown";
+}
 import { Catalog } from "../models/catalog.js";
 import { BookDraft } from "../models/book-draft.js";
 import { Settings } from "../models/settings.js";
@@ -56,8 +66,8 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 description: description?.trim() ?? "",
                 tags: Array.isArray(tags) ? tags.map((t: string) => t.trim()).filter(Boolean) : [],
                 status: status ?? "found",
-                competition: competition ?? "unknown",
-                demand: demand ?? "unknown",
+                competition: normalizeLevel(competition),
+                demand: normalizeLevel(demand),
                 productType: productType ?? "coloring-book",
                 styleCategory: resolvedStyles[0] as any,
                 styleCategories: resolvedStyles as any,
@@ -114,8 +124,8 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             if (description !== undefined) update.description = description.trim();
             if (Array.isArray(tags)) update.tags = tags.map((t: string) => t.trim()).filter(Boolean);
             if (status) update.status = status;
-            if (competition) update.competition = competition;
-            if (demand) update.demand = demand;
+            if (competition) update.competition = normalizeLevel(competition);
+            if (demand) update.demand = normalizeLevel(demand);
             if (productType) update.productType = productType;
             if (Array.isArray(styleCategories) && styleCategories.length > 0) {
                 update.styleCategories = styleCategories;

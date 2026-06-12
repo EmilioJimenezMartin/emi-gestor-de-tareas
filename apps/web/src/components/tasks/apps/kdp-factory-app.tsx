@@ -41,6 +41,7 @@ import {
     ChevronLeft,
     Lightbulb,
     Download,
+    ZoomIn,
     Store,
     RefreshCw,
     StopCircle,
@@ -549,6 +550,7 @@ export function KdpFactoryApp() {
     const [nicheFormPrompt, setNicheFormPrompt] = useState("");
     const [isSavingNiche, setIsSavingNiche] = useState(false);
     const [nicheDeleteId, setNicheDeleteId] = useState<string | null>(null);
+    const [lightboxUrl, setLightboxUrl] = useState<{ url: string; catalogId?: string; publicId?: string } | null>(null);
     const [nichePage, setNichePage] = useState(0);
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban">("list");
     const [kanbanProductFilter, setKanbanProductFilter] = useState<"all" | "coloring-book" | "printable-poster" | "seamless-pattern">("all");
@@ -10663,19 +10665,26 @@ export function KdpFactoryApp() {
                                                         const thumb = niche.coverUrl || niche.sampleImageUrl ||
                                                             linkedCats.find(c => c.images.length > 0)?.images[0]?.url;
                                                         return thumb ? (
-                                                            <div className="shrink-0 w-14 h-14 rounded-xl overflow-hidden border border-white/10 bg-white/5 relative">
+                                                            <button
+                                                                onClick={() => setLightboxUrl({ url: thumb })}
+                                                                className="shrink-0 w-14 h-14 rounded-xl overflow-hidden border border-white/10 bg-white/5 relative group/thumb hover:border-white/30 transition-all"
+                                                                title="Ampliar imagen"
+                                                            >
                                                                 <img
                                                                     src={thumb}
                                                                     alt={niche.name}
-                                                                    className="w-full h-full object-cover"
+                                                                    className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-300"
                                                                     loading="lazy"
                                                                 />
+                                                                <div className="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/30 transition-all flex items-center justify-center">
+                                                                    <ZoomIn size={14} className="text-white opacity-0 group-hover/thumb:opacity-100 transition-opacity drop-shadow" />
+                                                                </div>
                                                                 {!niche.coverUrl && !niche.sampleImageUrl && (
                                                                     <div className="absolute bottom-0 right-0 w-4 h-4 bg-black/60 rounded-tl-lg flex items-center justify-center">
                                                                         <span className="text-[7px] text-neutral-400">🖼</span>
                                                                     </div>
                                                                 )}
-                                                            </div>
+                                                            </button>
                                                         ) : null;
                                                     })()}
                                                     <div className="flex-1 min-w-0">
@@ -10725,16 +10734,18 @@ export function KdpFactoryApp() {
                                                             </a>
                                                         )}
                                                     </div>
-                                                    {/* Actions — always visible on mobile, hover on desktop */}
-                                                    <div className="flex items-center gap-0.5 shrink-0 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                                        {(niche.discoveryImagePrompt || niche.generatedPrompt) && (
-                                                            <button onClick={() => saveNichePromptToLibrary(niche)} title="Guardar prompt en biblioteca"
-                                                                className="p-2 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all">
-                                                                <BookMarked size={14} />
-                                                            </button>
-                                                        )}
-                                                        <button onClick={() => openNicheForm(niche)} className="p-2 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Pencil size={14} /></button>
-                                                        <button onClick={() => setNicheDeleteId(niche._id)} className="p-2 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all"><Trash2 size={14} /></button>
+                                                    {/* Actions */}
+                                                    <div className="flex items-center gap-0.5 shrink-0">
+                                                        <div className="flex items-center gap-0.5 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                                            {(niche.discoveryImagePrompt || niche.generatedPrompt) && (
+                                                                <button onClick={() => saveNichePromptToLibrary(niche)} title="Guardar prompt en biblioteca"
+                                                                    className="p-2 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all">
+                                                                    <BookMarked size={14} />
+                                                                </button>
+                                                            )}
+                                                            <button onClick={() => openNicheForm(niche)} className="p-2 rounded-lg text-neutral-600 hover:text-white hover:bg-white/8 transition-all"><Pencil size={14} /></button>
+                                                        </div>
+                                                        <button onClick={() => setNicheDeleteId(niche._id)} className="p-2 rounded-lg text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all" title="Eliminar nicho"><Trash2 size={14} /></button>
                                                     </div>
                                                 </div>
 
@@ -13745,6 +13756,54 @@ export function KdpFactoryApp() {
                 </div>
             )}
 
+            {/* Lightbox */}
+            {lightboxUrl && (
+                <div
+                    className="fixed inset-0 z-[500] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"
+                    onClick={() => setLightboxUrl(null)}
+                >
+                    <div className="relative max-w-4xl max-h-full" onClick={e => e.stopPropagation()}>
+                        <img
+                            src={lightboxUrl.url}
+                            alt="Portada ampliada"
+                            className="max-w-full max-h-[90vh] rounded-2xl shadow-2xl object-contain border border-white/10"
+                        />
+                        <div className="absolute top-3 right-3 flex gap-2">
+                            <a
+                                href={lightboxUrl.url}
+                                download
+                                onClick={e => e.stopPropagation()}
+                                className="p-2 rounded-xl bg-black/60 border border-white/10 text-neutral-400 hover:text-white hover:bg-black/80 transition-all"
+                                title="Descargar"
+                            >
+                                <Download size={14} />
+                            </a>
+                            {lightboxUrl.publicId && (
+                                <button
+                                    onClick={() => {
+                                        const { catalogId, publicId } = lightboxUrl;
+                                        setLightboxUrl(null);
+                                        if (catalogId && publicId) setConfirmDeleteImageInfo({ catalogId, publicId });
+                                        else if (publicId) void deleteFromCloudinary(publicId);
+                                    }}
+                                    className="p-2 rounded-xl bg-black/60 border border-rose-500/30 text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 transition-all"
+                                    title="Eliminar imagen"
+                                >
+                                    <Trash2 size={14} />
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setLightboxUrl(null)}
+                                className="p-2 rounded-xl bg-black/60 border border-white/10 text-neutral-400 hover:text-white hover:bg-black/80 transition-all"
+                                title="Cerrar"
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Niche Delete Confirm */}
             {nicheDeleteId && (
                 <div className="fixed inset-0 z-[160] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
@@ -14610,8 +14669,8 @@ export function KdpFactoryApp() {
                 if (!detailNiche) return null;
                 const linkedCats = iaCatalogs.filter(c => c.nicheIds?.includes(nicheDetailId));
                 const linkedCloudImgs = cloudinaryImages.filter(img => img.nicheId === nicheDetailId);
-                const allImgs: { publicId: string; url: string; width?: number; height?: number }[] = [
-                    ...linkedCats.flatMap(c => c.images),
+                const allImgs: { publicId: string; url: string; width?: number; height?: number; catalogId?: string }[] = [
+                    ...linkedCats.flatMap(c => c.images.map(img => ({ ...img, catalogId: c._id }))),
                     ...linkedCloudImgs.map(img => ({ publicId: img.publicId, url: img.url, width: img.width, height: img.height })),
                 ];
                 const pipelineDraft = bookDrafts.find(d => d.id.startsWith(`pipeline-${nicheDetailId}`) || d.nicheId === nicheDetailId);
@@ -14687,6 +14746,26 @@ export function KdpFactoryApp() {
                                                 {allImgs.map(img => (
                                                     <div key={img.publicId} className="aspect-square rounded-xl overflow-hidden border border-white/8 bg-white/[0.02] group relative">
                                                         <img src={img.url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                                        {/* Overlay: ampliar + borrar */}
+                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                                                            <button
+                                                                onClick={() => setLightboxUrl({ url: img.url, catalogId: img.catalogId, publicId: img.publicId })}
+                                                                className="p-1.5 rounded-lg bg-black/60 border border-white/20 text-white hover:bg-white/20 transition-all"
+                                                                title="Ampliar"
+                                                            >
+                                                                <ZoomIn size={13} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => img.catalogId
+                                                                    ? setConfirmDeleteImageInfo({ catalogId: img.catalogId, publicId: img.publicId })
+                                                                    : void deleteFromCloudinary(img.publicId)
+                                                                }
+                                                                className="p-1.5 rounded-lg bg-black/60 border border-rose-500/40 text-rose-400 hover:bg-rose-500/30 transition-all"
+                                                                title="Eliminar imagen"
+                                                            >
+                                                                <Trash2 size={13} />
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>

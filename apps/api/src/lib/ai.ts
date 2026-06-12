@@ -453,9 +453,15 @@ export async function generateVisionWithLLM(systemPrompt: string, userPrompt: st
 }
 
 function isQuotaError(err: any): boolean {
-    const msg: string = (err?.message ?? err?.toString() ?? "").toLowerCase();
-    // 503 UNAVAILABLE (Gemini high demand) + 402 (OpenRouter sin saldo) también fallan
-    return /quota|rate.?limit|429|too many requests|limit:\s*0|daily limit|exhausted|capacity|overloaded|402|more credits|insufficient credits|payment required|503|unavailable|high demand/i.test(msg);
+    // Cover err.message, err.status, err.code, and stringified JSON bodies
+    const parts = [
+        err?.message,
+        err?.status,
+        err?.code,
+        err?.errorDetails?.[0]?.reason,
+        typeof err?.body === "string" ? err.body : JSON.stringify(err?.body ?? ""),
+    ].map(v => String(v ?? "").toLowerCase()).join(" ");
+    return /quota|rate.?limit|429|too many requests|limit:\s*0|daily limit|exhausted|capacity|overloaded|402|more credits|insufficient credits|payment required|503|unavailable|high demand/i.test(parts);
 }
 
 /**
@@ -531,6 +537,9 @@ export async function analyzePageForRadar(
         ...ALL_PROVIDERS.filter(p => p !== config.provider),
     ];
 
+    const modelFor = (provider: string, fallback: string) =>
+        config.provider === provider && config.model ? config.model : fallback;
+
     const tryProvider = async (provider: LLMProvider): Promise<any> => {
         if (provider === "google" && config.googleKey) {
             const { GoogleGenerativeAI } = await import("@google/generative-ai");
@@ -542,14 +551,14 @@ export async function analyzePageForRadar(
         if (provider === "openrouter" && config.openrouterKey) {
             // 3000 en vez de 4096: con saldo bajo OpenRouter rechaza peticiones que "podrían"
             // costar más de lo disponible, aunque la respuesta real sea corta
-            const raw = await openrouterChat(config.openrouterKey, config.model, [
+            const raw = await openrouterChat(config.openrouterKey, modelFor("openrouter", "google/gemini-2.5-flash"), [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userMsg },
             ], 3000, 0.1);
             return parseJson(raw);
         }
         if (provider === "groq" && config.groqKey) {
-            const raw = await groqChat(config.groqKey, config.model, [
+            const raw = await groqChat(config.groqKey, modelFor("groq", "llama-3.3-70b-versatile"), [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userMsg },
             ], 4096, 0.1);
