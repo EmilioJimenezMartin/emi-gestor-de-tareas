@@ -89,6 +89,7 @@ import {
     Sliders,
     CornerUpLeft,
     Maximize2,
+    CalendarDays,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -564,10 +565,58 @@ export function KdpFactoryApp() {
     const [nichePage, setNichePage] = useState(0);
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban">("kanban");
     const [kanbanProductFilter, setKanbanProductFilter] = useState<"all" | "coloring-book" | "printable-poster" | "seamless-pattern">("all");
-    const [studioSubTab, setStudioSubTab] = useState<"niches" | "radar">(() => {
+    const [studioSubTab, setStudioSubTab] = useState<"niches" | "radar" | "series" | "calendar">(() => {
         const saved = typeof window !== "undefined" ? localStorage.getItem("kdp-studio-subtab") : null;
-        return (saved === "niches" || saved === "radar") ? saved : "niches";
+        return (saved === "niches" || saved === "radar" || saved === "series" || saved === "calendar") ? saved : "niches";
     });
+
+    // ── Series Builder state ─────────────────────────────────────────────────
+    type BookSeries = { id: string; name: string; description: string; nicheIds: string[]; coverUrl?: string; createdAt: string };
+    const [series, setSeries] = useState<BookSeries[]>(() => {
+        try { return JSON.parse(localStorage.getItem("kdp-book-series") ?? "[]"); } catch { return []; }
+    });
+    const [seriesFormOpen, setSeriesFormOpen] = useState(false);
+    const [editingSeriesId, setEditingSeriesId] = useState<string | null>(null);
+    const [seriesName, setSeriesName] = useState("");
+    const [seriesDesc, setSeriesDesc] = useState("");
+    const [seriesNicheIds, setSeriesNicheIds] = useState<string[]>([]);
+    const saveSeries = (updated: BookSeries[]) => { setSeries(updated); localStorage.setItem("kdp-book-series", JSON.stringify(updated)); };
+    const openSeriesForm = (s?: BookSeries) => { setEditingSeriesId(s?.id ?? null); setSeriesName(s?.name ?? ""); setSeriesDesc(s?.description ?? ""); setSeriesNicheIds(s?.nicheIds ?? []); setSeriesFormOpen(true); };
+    const submitSeries = () => {
+        if (!seriesName.trim()) return;
+        const next = editingSeriesId
+            ? series.map(s => s.id === editingSeriesId ? { ...s, name: seriesName.trim(), description: seriesDesc.trim(), nicheIds: seriesNicheIds } : s)
+            : [...series, { id: Date.now().toString(), name: seriesName.trim(), description: seriesDesc.trim(), nicheIds: seriesNicheIds, createdAt: new Date().toISOString() }];
+        saveSeries(next); setSeriesFormOpen(false);
+    };
+    const deleteSeries = (id: string) => { if (window.confirm("¿Eliminar esta serie?")) saveSeries(series.filter(s => s.id !== id)); };
+
+    // ── Publishing Calendar state ────────────────────────────────────────────
+    type PublishEvent = { id: string; title: string; date: string; nicheId?: string; status: "planned" | "inprogress" | "published" | "idea"; color: string };
+    const [pubEvents, setPubEvents] = useState<PublishEvent[]>(() => {
+        try { return JSON.parse(localStorage.getItem("kdp-pub-calendar") ?? "[]"); } catch { return []; }
+    });
+    const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; });
+    const [pubEventFormOpen, setPubEventFormOpen] = useState(false);
+    const [editingEventId, setEditingEventId] = useState<string | null>(null);
+    const [eventTitle, setEventTitle] = useState("");
+    const [eventDate, setEventDate] = useState("");
+    const [eventStatus, setEventStatus] = useState<PublishEvent["status"]>("planned");
+    const [eventNicheId, setEventNicheId] = useState("");
+    const [calAiSuggestions, setCalAiSuggestions] = useState<string[]>([]);
+    const [calAiLoading, setCalAiLoading] = useState(false);
+    const savePubEvents = (updated: PublishEvent[]) => { setPubEvents(updated); localStorage.setItem("kdp-pub-calendar", JSON.stringify(updated)); };
+    const openEventForm = (e?: PublishEvent, defaultDate?: string) => {
+        setEditingEventId(e?.id ?? null); setEventTitle(e?.title ?? ""); setEventDate(e?.date ?? defaultDate ?? ""); setEventStatus(e?.status ?? "planned"); setEventNicheId(e?.nicheId ?? ""); setPubEventFormOpen(true);
+    };
+    const submitEvent = () => {
+        if (!eventTitle.trim() || !eventDate) return;
+        const colors: Record<PublishEvent["status"], string> = { planned: "#6366f1", inprogress: "#f59e0b", published: "#10b981", idea: "#8b5cf6" };
+        const ev: PublishEvent = { id: editingEventId ?? Date.now().toString(), title: eventTitle.trim(), date: eventDate, nicheId: eventNicheId || undefined, status: eventStatus, color: colors[eventStatus] };
+        const next = editingEventId ? pubEvents.map(e => e.id === editingEventId ? ev : e) : [...pubEvents, ev];
+        savePubEvents(next); setPubEventFormOpen(false);
+    };
+    const deleteEvent = (id: string) => { if (window.confirm("¿Eliminar este evento?")) savePubEvents(pubEvents.filter(e => e.id !== id)); };
     // ── Manual catalog upload state ──────────────────────────────────────────
     type UploadedImage = { dataUrl: string; file: File; uploading: boolean; uploaded: boolean; error?: string; cloudUrl?: string; publicId?: string; width?: number; height?: number };
     const [uploadImages, setUploadImages] = useState<UploadedImage[]>([]);
@@ -752,7 +801,7 @@ export function KdpFactoryApp() {
     const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "columns">(() =>
         (typeof window !== "undefined" && (localStorage.getItem("kdp-pipeline-view") as "list" | "columns")) || "list"
     );
-    const studioSubTabRef = useRef<"niches" | "radar">("niches");
+    const studioSubTabRef = useRef<"niches" | "radar" | "series" | "calendar">("niches");
     // Keep ref in sync so socket handlers read current tab without stale closure
     studioSubTabRef.current = studioSubTab;
     // --- Ventas / KDP Sales state ---
@@ -6666,6 +6715,333 @@ export function KdpFactoryApp() {
 
 
 
+    // ══ PUBLISHING CALENDAR ════════════════════════════════════════════════════
+    const renderCalendar = () => {
+        // Seasonal events with countdown logic
+        const SEASONAL_EVENTS: { name: string; month: number; day: number; weeksNeeded: number; emoji: string; color: string; tip: string }[] = [
+            { name: "Halloween",     month: 10, day: 31, weeksNeeded: 8, emoji: "🎃", color: "text-orange-400", tip: "Libros de colorear de terror, mandalas oscuros, motivos de calabazas y fantasmas" },
+            { name: "Navidad",       month: 12, day: 25, weeksNeeded: 10, emoji: "🎄", color: "text-emerald-400", tip: "Libros festivos, renos, Papá Noel, escenas navideñas para colorear" },
+            { name: "San Valentín",  month: 2,  day: 14, weeksNeeded: 6, emoji: "💕", color: "text-pink-400", tip: "Mandalas románticos, corazones, flores, parejas" },
+            { name: "Pascua",        month: 4,  day: 1,  weeksNeeded: 6, emoji: "🐣", color: "text-yellow-400", tip: "Huevos decorados, conejos, flores de primavera" },
+            { name: "Día de Madres", month: 5,  day: 11, weeksNeeded: 5, emoji: "💐", color: "text-rose-400", tip: "Flores, jardines, mariposas, diseños elegantes" },
+            { name: "Verano",        month: 6,  day: 21, weeksNeeded: 6, emoji: "☀️", color: "text-amber-400", tip: "Mandalas de playa, conchas, paisajes tropicales, animales marinos" },
+            { name: "Back to School",month: 9,  day: 1,  weeksNeeded: 6, emoji: "🎒", color: "text-sky-400", tip: "Útiles escolares, animales listos, personajes educativos" },
+            { name: "Año Nuevo",     month: 1,  day: 1,  weeksNeeded: 6, emoji: "🎆", color: "text-violet-400", tip: "Fuegos artificiales, mandalas de abundancia, motivos de año nuevo" },
+        ];
+
+        const today = new Date();
+        const getSeasonalAlerts = () => {
+            return SEASONAL_EVENTS.map(ev => {
+                const year = today.getMonth() + 1 > ev.month || (today.getMonth() + 1 === ev.month && today.getDate() > ev.day)
+                    ? today.getFullYear() + 1 : today.getFullYear();
+                const target = new Date(year, ev.month - 1, ev.day);
+                const msLeft = target.getTime() - today.getTime();
+                const weeksLeft = Math.ceil(msLeft / (7 * 24 * 3600 * 1000));
+                const daysLeft = Math.ceil(msLeft / (24 * 3600 * 1000));
+                return { ...ev, weeksLeft, daysLeft, target };
+            }).sort((a, b) => a.daysLeft - b.daysLeft);
+        };
+
+        const alerts = getSeasonalAlerts();
+        const urgent = alerts.filter(a => a.weeksLeft <= a.weeksNeeded + 2 && a.daysLeft > 0);
+        const upcoming = alerts.filter(a => a.weeksLeft > a.weeksNeeded + 2).slice(0, 4);
+
+        // Calendar grid
+        const [calYear, calMonthNum] = calMonth.split("-").map(Number);
+        const firstDay = new Date(calYear, calMonthNum - 1, 1);
+        const lastDay = new Date(calYear, calMonthNum, 0);
+        const daysInMonth = lastDay.getDate();
+        const startOffset = (firstDay.getDay() + 6) % 7; // Mon=0
+        const eventsThisMonth = pubEvents.filter(e => e.date.startsWith(calMonth));
+
+        const prevMonth = () => {
+            const d = new Date(calYear, calMonthNum - 2, 1);
+            setCalMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+        };
+        const nextMonth = () => {
+            const d = new Date(calYear, calMonthNum, 1);
+            setCalMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+        };
+
+        const monthName = firstDay.toLocaleDateString("es-ES", { month: "long", year: "numeric" });
+        const statusColors: Record<string, string> = { planned: "bg-indigo-500", inprogress: "bg-amber-500", published: "bg-emerald-500", idea: "bg-purple-500" };
+        const statusLabels: Record<string, string> = { planned: "Planificado", inprogress: "En progreso", published: "Publicado", idea: "Idea" };
+
+        const fetchCalAiSuggestions = async () => {
+            setCalAiLoading(true);
+            setCalAiSuggestions([]);
+            try {
+                const nicheNames = niches.slice(0, 5).map(n => n.name).join(", ");
+                const alertNames = urgent.slice(0, 3).map(a => `${a.name} (en ${a.weeksLeft} semanas)`).join(", ");
+                const prompt = `Eres un consultor KDP experto. El usuario tiene estos nichos: ${nicheNames || "libros para colorear para adultos"}. Las próximas fechas estacionales son: ${alertNames || "Halloween en 8 semanas"}. Dame 4-5 sugerencias concretas y accionables de lanzamientos de libros KDP para aprovechar estas fechas. Cada sugerencia en una línea, empezando con un emoji. Sé específico con el título del libro y la temática.`;
+                const res = await fetch(`${API_BASE_URL}/ai/generate-text`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ type: "custom", prompt }),
+                });
+                if (res.ok) {
+                    const d = await res.json() as any;
+                    const text = d.result?.text ?? d.text ?? "";
+                    const lines = text.split("\n").map((l: string) => l.trim()).filter((l: string) => l.length > 5);
+                    setCalAiSuggestions(lines);
+                }
+            } catch { /* ignore */ } finally { setCalAiLoading(false); }
+        };
+
+        return (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6">
+
+                {/* ── Seasonal Alerts ── */}
+                {urgent.length > 0 && (
+                    <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                        <div className="h-px w-full bg-gradient-to-r from-orange-500/80 via-amber-400/40 to-transparent" />
+                        <div className="p-5 space-y-3">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-lg">⚡</span>
+                                <span className="text-sm font-bold text-orange-300">Alertas estacionales</span>
+                                <span className="text-[10px] text-neutral-500 ml-auto">Fechas clave que se aproximan</span>
+                            </div>
+                            <div className="space-y-2">
+                                {urgent.map(a => {
+                                    const isUrgent = a.weeksLeft <= a.weeksNeeded;
+                                    const isCritical = a.weeksLeft <= 2;
+                                    return (
+                                        <div key={a.name} className={`flex items-start gap-3 px-4 py-3 rounded-2xl border transition-all ${isCritical ? "border-red-500/30 bg-red-500/10" : isUrgent ? "border-orange-500/25 bg-orange-500/8" : "border-white/8 bg-white/[0.03]"}`}>
+                                            <span className="text-xl shrink-0 mt-0.5">{a.emoji}</span>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className={`text-sm font-bold ${a.color}`}>{a.name}</span>
+                                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isCritical ? "bg-red-500/20 text-red-300" : isUrgent ? "bg-orange-500/20 text-orange-300" : "bg-white/5 text-neutral-400"}`}>
+                                                        {a.weeksLeft <= 0 ? "¡Hoy!" : `${a.weeksLeft} sem · ${a.daysLeft} días`}
+                                                    </span>
+                                                    {isUrgent && <span className="text-[10px] text-red-400 font-semibold">⚠ ¡Ponte en marcha ya!</span>}
+                                                </div>
+                                                <p className="text-[11px] text-neutral-500 mt-1 leading-relaxed">{a.tip}</p>
+                                            </div>
+                                            <button onClick={() => openEventForm(undefined, `${calYear}-${String(a.target.getMonth() + 1).padStart(2, "0")}-${String(a.target.getDate()).padStart(2, "0")}`)}
+                                                className="shrink-0 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-[10px] text-neutral-400 font-semibold transition-all border border-white/8">
+                                                + Agendar
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── Main Content: Calendar + Sidebar ── */}
+                <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6 items-start">
+
+                    {/* Calendar */}
+                    <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                        <div className="h-px w-full bg-gradient-to-r from-indigo-500/80 via-violet-400/40 to-transparent" />
+                        <div className="p-6 space-y-5">
+                            {/* Cal header */}
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-xl bg-indigo-500/15 flex items-center justify-center">
+                                        <CalendarDays size={16} className="text-indigo-400" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-bold text-white capitalize">{monthName}</h3>
+                                        <p className="text-xs text-neutral-500">{eventsThisMonth.length} evento{eventsThisMonth.length !== 1 ? "s" : ""} este mes</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={prevMonth} className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all border border-white/8">
+                                        <ChevronLeft size={14} className="text-neutral-400" />
+                                    </button>
+                                    <button onClick={nextMonth} className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all border border-white/8">
+                                        <ChevronRight size={14} className="text-neutral-400" />
+                                    </button>
+                                    <button onClick={() => openEventForm()} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 text-xs font-semibold transition-all border border-indigo-500/30">
+                                        <Plus size={12} /> Evento
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Day labels */}
+                            <div className="grid grid-cols-7 gap-1">
+                                {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map(d => (
+                                    <div key={d} className="text-center text-[10px] font-bold text-neutral-600 uppercase tracking-widest py-1">{d}</div>
+                                ))}
+                            </div>
+
+                            {/* Grid */}
+                            <div className="grid grid-cols-7 gap-1">
+                                {Array.from({ length: startOffset }).map((_, i) => <div key={`pad-${i}`} />)}
+                                {Array.from({ length: daysInMonth }).map((_, i) => {
+                                    const day = i + 1;
+                                    const dateStr = `${calMonth}-${String(day).padStart(2, "0")}`;
+                                    const dayEvents = pubEvents.filter(e => e.date === dateStr);
+                                    const isToday = dateStr === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+                                    return (
+                                        <div key={day} onClick={() => openEventForm(undefined, dateStr)}
+                                            className={`min-h-[60px] rounded-xl p-1.5 cursor-pointer transition-all border group ${isToday ? "border-indigo-500/50 bg-indigo-500/10" : "border-white/5 hover:border-white/15 hover:bg-white/[0.04]"}`}>
+                                            <div className={`text-[11px] font-bold mb-1 w-5 h-5 rounded-full flex items-center justify-center ${isToday ? "bg-indigo-500 text-white" : "text-neutral-500 group-hover:text-neutral-300"}`}>{day}</div>
+                                            <div className="space-y-0.5">
+                                                {dayEvents.map(ev => (
+                                                    <div key={ev.id} onClick={e => { e.stopPropagation(); openEventForm(ev); }}
+                                                        className={`w-full px-1 py-0.5 rounded text-[9px] font-semibold leading-tight truncate text-white ${statusColors[ev.status]}`}>
+                                                        {ev.title}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Legend */}
+                            <div className="flex items-center gap-4 pt-2 border-t border-white/5 flex-wrap">
+                                {Object.entries(statusLabels).map(([s, l]) => (
+                                    <div key={s} className="flex items-center gap-1.5">
+                                        <div className={`w-2.5 h-2.5 rounded-full ${statusColors[s]}`} />
+                                        <span className="text-[10px] text-neutral-500">{l}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Sidebar */}
+                    <div className="space-y-4">
+                        {/* Upcoming seasonal */}
+                        <div className="rounded-2xl border border-white/8 bg-white/[0.025] overflow-hidden">
+                            <div className="h-px w-full bg-gradient-to-r from-violet-500/60 to-transparent" />
+                            <div className="p-4 space-y-3">
+                                <p className="text-xs font-bold text-neutral-300 uppercase tracking-widest">Próximas fechas clave</p>
+                                {upcoming.map(a => (
+                                    <div key={a.name} className="flex items-center gap-3 py-2 border-b border-white/5 last:border-0">
+                                        <span className="text-base">{a.emoji}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <p className={`text-xs font-semibold ${a.color}`}>{a.name}</p>
+                                            <p className="text-[10px] text-neutral-600">{a.weeksLeft} semanas</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* AI Suggestions */}
+                        <div className="rounded-2xl border border-white/8 bg-white/[0.025] overflow-hidden">
+                            <div className="h-px w-full bg-gradient-to-r from-fuchsia-500/60 to-transparent" />
+                            <div className="p-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-xs font-bold text-neutral-300 uppercase tracking-widest">Sugerencias IA</p>
+                                    <button onClick={() => void fetchCalAiSuggestions()} disabled={calAiLoading}
+                                        className="px-3 py-1 rounded-lg bg-fuchsia-600/20 hover:bg-fuchsia-600/30 text-fuchsia-300 text-[10px] font-bold transition-all border border-fuchsia-500/30 disabled:opacity-50">
+                                        {calAiLoading ? "..." : "✨ Generar"}
+                                    </button>
+                                </div>
+                                {calAiSuggestions.length === 0 && !calAiLoading && (
+                                    <p className="text-[11px] text-neutral-600 italic">Pulsa "Generar" para obtener ideas de lanzamiento basadas en tus nichos y las fechas estacionales.</p>
+                                )}
+                                {calAiLoading && (
+                                    <div className="space-y-2">
+                                        {[1,2,3].map(i => <div key={i} className="h-3 rounded-full bg-white/5 animate-pulse" style={{ width: `${60 + i * 12}%` }} />)}
+                                    </div>
+                                )}
+                                {calAiSuggestions.map((s, i) => (
+                                    <div key={i} className="text-[11px] text-neutral-300 leading-relaxed py-2 border-b border-white/5 last:border-0">{s}</div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Events this month */}
+                        <div className="rounded-2xl border border-white/8 bg-white/[0.025] overflow-hidden">
+                            <div className="h-px w-full bg-gradient-to-r from-indigo-500/60 to-transparent" />
+                            <div className="p-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-xs font-bold text-neutral-300 uppercase tracking-widest">Este mes</p>
+                                    <button onClick={() => openEventForm()} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold transition-colors">+ Añadir</button>
+                                </div>
+                                {eventsThisMonth.length === 0
+                                    ? <p className="text-[11px] text-neutral-600 italic">Sin eventos. Haz clic en un día del calendario.</p>
+                                    : eventsThisMonth.sort((a, b) => a.date.localeCompare(b.date)).map(ev => (
+                                        <div key={ev.id} className="flex items-center gap-2.5 py-2 border-b border-white/5 last:border-0 group">
+                                            <div className={`w-2 h-2 rounded-full shrink-0 ${statusColors[ev.status]}`} />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-xs text-white font-medium truncate">{ev.title}</p>
+                                                <p className="text-[10px] text-neutral-600">{ev.date.split("-")[2]} · {statusLabels[ev.status]}</p>
+                                            </div>
+                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button onClick={() => openEventForm(ev)} className="w-6 h-6 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all">
+                                                    <Pencil size={9} className="text-neutral-400" />
+                                                </button>
+                                                <button onClick={() => deleteEvent(ev.id)} className="w-6 h-6 rounded-lg bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center transition-all">
+                                                    <Trash2 size={9} className="text-red-400" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ── Event Form Modal ── */}
+                {pubEventFormOpen && <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div className="w-full max-w-md rounded-3xl border border-white/10 bg-neutral-950 shadow-2xl overflow-hidden">
+                        <div className="h-px w-full bg-gradient-to-r from-indigo-500 via-violet-400 to-transparent" />
+                        <div className="p-6 space-y-5">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-white">{editingEventId ? "Editar evento" : "Nuevo evento"}</h3>
+                                <button onClick={() => setPubEventFormOpen(false)} className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all">
+                                    <X size={14} className="text-neutral-400" />
+                                </button>
+                            </div>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-1.5 block">Título *</label>
+                                    <input value={eventTitle} onChange={e => setEventTitle(e.target.value)}
+                                        placeholder="Ej: Lanzar libro de Halloween"
+                                        className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-indigo-500/50" />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-1.5 block">Fecha *</label>
+                                    <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)}
+                                        className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-indigo-500/50" />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-1.5 block">Estado</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {(["idea", "planned", "inprogress", "published"] as const).map(s => (
+                                            <button key={s} onClick={() => setEventStatus(s)}
+                                                className={`py-2 rounded-xl text-xs font-semibold transition-all border ${eventStatus === s ? `${statusColors[s]} border-transparent text-white` : "bg-white/5 border-white/10 text-neutral-400 hover:bg-white/10"}`}>
+                                                {statusLabels[s]}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-1.5 block">Nicho vinculado</label>
+                                    <select value={eventNicheId} onChange={e => setEventNicheId(e.target.value)}
+                                        className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-indigo-500/50">
+                                        <option value="">Sin nicho</option>
+                                        {niches.map(n => <option key={n._id} value={n._id}>{n.name}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                {editingEventId && <button onClick={() => { deleteEvent(editingEventId); setPubEventFormOpen(false); }}
+                                    className="px-4 py-2.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-semibold hover:bg-red-500/20 transition-all">
+                                    Eliminar
+                                </button>}
+                                <button onClick={() => setPubEventFormOpen(false)} className="flex-1 py-2.5 rounded-2xl bg-white/5 border border-white/10 text-sm text-neutral-400 hover:bg-white/10 transition-all font-semibold">Cancelar</button>
+                                <button onClick={submitEvent} disabled={!eventTitle.trim() || !eventDate}
+                                    className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-bold disabled:opacity-40 hover:from-indigo-500 hover:to-violet-500 transition-all shadow-lg shadow-indigo-900/40">
+                                    {editingEventId ? "Guardar" : "Crear"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>}
+            </div>
+        );
+    };
+
     const renderConfig = () => {
         const DAY_LABELS = ["L", "M", "X", "J", "V", "S", "D"];
         const DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
@@ -10490,11 +10866,13 @@ export function KdpFactoryApp() {
     };
 
     const renderStudio = () => {
-        const STUDIO_TABS: KdpTabDef<"niches" | "radar">[] = [
-            { id: "niches", label: "Nichos", icon: <Target size={13} />, color: "text-sky-400",   activeBg: "bg-sky-500/10 border-sky-500/25 text-sky-300"      },
-            { id: "radar",  label: "Radar",  icon: <Search size={13} />, color: "text-amber-400", activeBg: "bg-amber-500/10 border-amber-500/25 text-amber-300" },
+        const STUDIO_TABS: KdpTabDef<"niches" | "radar" | "series" | "calendar">[] = [
+            { id: "niches",   label: "Nichos",     icon: <Target size={13} />,       color: "text-sky-400",    activeBg: "bg-sky-500/10 border-sky-500/25 text-sky-300"         },
+            { id: "radar",    label: "Radar",      icon: <Search size={13} />,       color: "text-amber-400",  activeBg: "bg-amber-500/10 border-amber-500/25 text-amber-300"   },
+            { id: "series",   label: "Series",     icon: <Layers size={13} />,       color: "text-purple-400", activeBg: "bg-purple-500/10 border-purple-500/25 text-purple-300" },
+            { id: "calendar", label: "Calendario", icon: <CalendarDays size={13} />, color: "text-indigo-400", activeBg: "bg-indigo-500/10 border-indigo-500/25 text-indigo-300" },
         ];
-        const switchStudioTab = (t: "niches" | "radar") => {
+        const switchStudioTab = (t: "niches" | "radar" | "series" | "calendar") => {
             setStudioSubTab(t);
             localStorage.setItem("kdp-studio-subtab", t);
         };
@@ -11625,6 +12003,146 @@ export function KdpFactoryApp() {
                 </div>
             </div>}
 
+            {/* ══ SERIES BUILDER ══ */}
+            {studioSubTab === "series" && <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                    <div className="h-px w-full bg-gradient-to-r from-purple-500/80 via-fuchsia-400/40 to-transparent" />
+                    <div className="p-6 space-y-6">
+                        {/* Header */}
+                        <div className="flex items-start justify-between gap-4">
+                            <SectionHeader
+                                icon={<Layers size={20} />}
+                                title={<><span className="text-white">Series </span><span className="bg-gradient-to-r from-purple-300 to-fuchsia-400 bg-clip-text text-transparent">Builder</span></>}
+                                subtitle="Agrupa nichos en colecciones con branding compartido"
+                                color="violet"
+                                size="lg"
+                            />
+                            <button onClick={() => openSeriesForm()}
+                                className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-2xl bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white text-xs font-bold hover:from-purple-500 hover:to-fuchsia-500 transition-all shadow-lg shadow-purple-900/40">
+                                <Plus size={13} /> Nueva serie
+                            </button>
+                        </div>
+
+                        {/* Series list */}
+                        {series.length === 0 ? (
+                            <div className="py-16 flex flex-col items-center gap-4 text-center">
+                                <div className="w-14 h-14 rounded-2xl bg-purple-500/10 flex items-center justify-center">
+                                    <Layers size={24} className="text-purple-400/60" />
+                                </div>
+                                <div>
+                                    <p className="text-neutral-400 font-semibold text-sm">Sin series todavía</p>
+                                    <p className="text-neutral-600 text-xs mt-1">Crea una serie para agrupar nichos con branding compartido</p>
+                                </div>
+                                <button onClick={() => openSeriesForm()}
+                                    className="px-4 py-2 rounded-xl bg-purple-600/20 border border-purple-500/30 text-purple-300 text-xs font-semibold hover:bg-purple-600/30 transition-all">
+                                    Crear primera serie
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {series.map(s => {
+                                    const linkedNiches = niches.filter(n => s.nicheIds.includes(n._id));
+                                    const coverUrl = (linkedNiches.find(n => (n as any).coverImageUrl) as any)?.coverImageUrl as string | undefined;
+                                    return (
+                                        <div key={s.id} className="group relative rounded-2xl border border-white/8 bg-white/[0.03] hover:bg-white/[0.05] transition-all overflow-hidden">
+                                            {/* Cover strip */}
+                                            <div className="h-2 w-full bg-gradient-to-r from-purple-600 to-fuchsia-500" />
+                                            <div className="p-4 space-y-3">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div>
+                                                        <p className="text-sm font-bold text-white leading-tight">{s.name}</p>
+                                                        {s.description && <p className="text-xs text-neutral-500 mt-1 line-clamp-2">{s.description}</p>}
+                                                    </div>
+                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                                        <button onClick={() => openSeriesForm(s)} className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all">
+                                                            <Pencil size={11} className="text-neutral-400" />
+                                                        </button>
+                                                        <button onClick={() => deleteSeries(s.id)} className="w-7 h-7 rounded-lg bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center transition-all">
+                                                            <Trash2 size={11} className="text-red-400" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                {/* Niches */}
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {linkedNiches.length === 0
+                                                        ? <span className="text-[10px] text-neutral-600 italic">Sin nichos vinculados</span>
+                                                        : linkedNiches.map(n => (
+                                                            <span key={n._id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/20 text-purple-300 text-[10px] font-medium">
+                                                                <BookOpen size={9} />{n.name}
+                                                            </span>
+                                                        ))
+                                                    }
+                                                </div>
+                                                {/* Stats */}
+                                                <div className="flex items-center gap-3 pt-1 border-t border-white/5">
+                                                    <span className="text-[10px] text-neutral-600">{linkedNiches.length} nicho{linkedNiches.length !== 1 ? "s" : ""}</span>
+                                                    <span className="text-[10px] text-neutral-600">{linkedNiches.reduce((acc, n) => acc + ((n as any).catalogCount ?? 0), 0)} catálogos</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Series Form Modal */}
+                {seriesFormOpen && <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-neutral-950 shadow-2xl overflow-hidden">
+                        <div className="h-px w-full bg-gradient-to-r from-purple-500 via-fuchsia-400 to-transparent" />
+                        <div className="p-6 space-y-5">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-white">{editingSeriesId ? "Editar serie" : "Nueva serie"}</h3>
+                                <button onClick={() => setSeriesFormOpen(false)} className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all">
+                                    <X size={14} className="text-neutral-400" />
+                                </button>
+                            </div>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-1.5 block">Nombre de la serie *</label>
+                                    <input value={seriesName} onChange={e => setSeriesName(e.target.value)}
+                                        placeholder="Ej: Mandalas para la paz interior"
+                                        className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-purple-500/50" />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-1.5 block">Descripción</label>
+                                    <textarea value={seriesDesc} onChange={e => setSeriesDesc(e.target.value)} rows={2}
+                                        placeholder="Breve descripción del concepto o branding de la serie"
+                                        className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-purple-500/50 resize-none" />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-1.5 block">Nichos vinculados</label>
+                                    <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
+                                        {niches.length === 0
+                                            ? <p className="text-xs text-neutral-600 italic">No hay nichos disponibles</p>
+                                            : niches.map(n => (
+                                                <label key={n._id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] cursor-pointer transition-all">
+                                                    <input type="checkbox" checked={seriesNicheIds.includes(n._id)} onChange={ev => {
+                                                        setSeriesNicheIds(prev => ev.target.checked ? [...prev, n._id] : prev.filter(id => id !== n._id));
+                                                    }} className="accent-purple-500 w-3.5 h-3.5" />
+                                                    <span className="text-xs text-neutral-300 font-medium">{n.name}</span>
+                                                    <span className="ml-auto text-[10px] text-neutral-600">{n.productType ?? "coloring-book"}</span>
+                                                </label>
+                                            ))
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button onClick={() => setSeriesFormOpen(false)} className="flex-1 py-2.5 rounded-2xl bg-white/5 border border-white/10 text-sm text-neutral-400 hover:bg-white/10 transition-all font-semibold">Cancelar</button>
+                                <button onClick={submitSeries} disabled={!seriesName.trim()} className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white text-sm font-bold disabled:opacity-40 hover:from-purple-500 hover:to-fuchsia-500 transition-all shadow-lg shadow-purple-900/40">
+                                    {editingSeriesId ? "Guardar cambios" : "Crear serie"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>}
+            </div>}
+
+            {/* ══ PUBLISHING CALENDAR (sub-tab) ══ */}
+            {studioSubTab === "calendar" && renderCalendar()}
+
 
         </div>
         );
@@ -12185,11 +12703,11 @@ export function KdpFactoryApp() {
         <div className="space-y-8 pb-24 px-0 sm:px-0">
             <AppTabNav
                 tabs={[
-                    { id: "studio", name: "Nichos", icon: <Target size={15} /> },
+                    { id: "studio",   name: "Nichos",   icon: <Target size={15} /> },
                     { id: "creation", name: "Imágenes", icon: <ImageIcon size={15} /> },
-                    { id: "gelato", name: "Factory", icon: <Package size={15} /> },
+                    { id: "gelato",   name: "Factory",  icon: <Package size={15} /> },
                     { id: "insights", name: "Insights", icon: <Activity size={15} /> },
-                    { id: "config", name: "Config", icon: <Settings size={15} /> },
+                    { id: "config",   name: "Config",   icon: <Settings size={15} /> },
                 ] satisfies AppTab[]}
                 activeTab={activeTab}
                 onChange={(id) => changeTab(id as TabID)}
@@ -13117,25 +13635,21 @@ export function KdpFactoryApp() {
                                                         <span className="text-sm">Editor de portada</span>
                                                     </button>
                                                 )}
-                                                {/* Save button */}
-                                                {selectedCoverNicheId && url && (
-                                                    <button
-                                                        onClick={() => void saveCoverToNiche(coverModalTab)}
-                                                        className="w-full h-9 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-[0_4px_16px_rgba(192,38,211,0.3)] active:scale-[0.98]">
-                                                        <Save size={12} /> {coverTextLayers.length > 0 ? "Guardar con texto" : "Guardar en nicho"}
-                                                    </button>
-                                                )}
-                                                <div className="flex gap-1.5">
+                                                {/* Regen + Delete */}
+                                                <div className="flex gap-2 pt-1">
                                                     <button onClick={() => coverModalTab === "front"
                                                         ? (coverMode === "ai" ? void generateCover() : coverMode === "collage" ? void buildCollage() : void colorizeCover())
                                                         : void generateBackCover()}
                                                         disabled={isBuildingCover || isBuildingCollage || isBuildingBackCover || isColorizing}
-                                                        className="flex-1 h-8 rounded-xl bg-white/5 border border-white/10 text-sm font-black text-neutral-500 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40 flex items-center justify-center gap-1">
-                                                        <RefreshCw size={10} /> Regen.
+                                                        className="flex-1 h-9 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-black text-neutral-500 hover:text-white hover:bg-white/8 hover:border-white/20 transition-all disabled:opacity-40 flex items-center justify-center gap-1.5">
+                                                        <RefreshCw size={12} /> Regenerar
                                                     </button>
                                                     <button onClick={async () => {
+                                                        const label = coverModalTab === "front" ? "portada" : "contraportada";
+                                                        if (!window.confirm(`¿Eliminar la ${label}? Esta acción no se puede deshacer.`)) return;
                                                         if (coverModalTab === "front") {
                                                             setGeneratedCoverUrl(null);
+                                                            pendingCoverBlobRef.current = null;
                                                             if (selectedCoverNicheId) {
                                                                 await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
                                                                     method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -13145,6 +13659,7 @@ export function KdpFactoryApp() {
                                                             }
                                                         } else {
                                                             setGeneratedBackCoverUrl(null);
+                                                            pendingBackCoverBlobRef.current = null;
                                                             if (selectedCoverNicheId) {
                                                                 await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
                                                                     method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -13154,8 +13669,8 @@ export function KdpFactoryApp() {
                                                             }
                                                         }
                                                     }}
-                                                        className="h-8 w-9 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 transition-all flex items-center justify-center">
-                                                        <Trash2 size={10} />
+                                                        className="h-9 w-9 rounded-xl bg-rose-500/[0.06] border border-rose-500/15 text-rose-500/60 hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/30 transition-all flex items-center justify-center shrink-0">
+                                                        <Trash2 size={12} />
                                                     </button>
                                                 </div>
                                             </div>
@@ -13238,6 +13753,7 @@ export function KdpFactoryApp() {
                                                             {/* Delete candidate */}
                                                             <button
                                                                 onClick={async () => {
+                                                                    if (!window.confirm("¿Eliminar esta variante de portada?")) return;
                                                                     if (!selectedCoverNicheId) return;
                                                                     const niche = niches.find(n => n._id === selectedCoverNicheId);
                                                                     const newCandidates = (niche?.coverCandidates ?? []).filter(u => u !== candUrl);

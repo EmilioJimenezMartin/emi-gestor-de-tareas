@@ -457,7 +457,9 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             // sin negative anti-color y sin binarización.
             const { isNonColoringIntent } = await import("../routes/autopilot.js");
             let productType = catalog.productType ?? "coloring-book";
-            if (productType === "coloring-book" && isNonColoringIntent(finalPrompt)) {
+            // Only apply heuristic when productType was NOT explicitly stored (null/undefined).
+            // If the catalog already has productType:"coloring-book" set by autopilot/user, honor it.
+            if (!catalog.productType && productType === "coloring-book" && isNonColoringIntent(finalPrompt)) {
                 console.log(`${tag} Prompt pide contenido no-colorear → fórmula CB omitida`);
                 productType = "other";
             }
