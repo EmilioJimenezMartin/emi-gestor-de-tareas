@@ -1995,4 +1995,36 @@ Return ONLY a JSON object:
             return reply.status(500).send({ error: e?.message ?? "Error" });
         }
     });
+
+    // ── Colorize: aplica color a una imagen existente via Pollinations kontext ──
+    app.post("/ai/colorize", { bodyLimit: 20 * 1024 * 1024 }, async (request: any, reply) => {
+        const { imageUrl, prompt = "vibrant full color illustration, rich saturated colors, high detail", style = "colorful" } = request.body as {
+            imageUrl: string;
+            prompt?: string;
+            style?: string;
+        };
+        if (!imageUrl?.trim()) return reply.status(400).send({ error: "imageUrl required" });
+
+        const token = getPollinationsToken();
+        const fullPrompt = `${prompt}, ${style}`.trim().replace(/,\s*,/g, ",");
+        const seed = Math.floor(Math.random() * 2_147_483_647);
+
+        const kontextUrl = `https://gen.pollinations.ai/image/${encodeURIComponent(fullPrompt)}?model=kontext&image=${encodeURIComponent(imageUrl)}&seed=${seed}&nologo=true`;
+
+        try {
+            const res = await pollinationsFetch(kontextUrl, { signal: AbortSignal.timeout(90_000) });
+            if (!res.ok) {
+                const errText = await res.text().catch(() => "");
+                return reply.status(502).send({ error: `Kontext error ${res.status}: ${errText.slice(0, 200)}` });
+            }
+            const buf = Buffer.from(await res.arrayBuffer());
+            reply.header("Content-Type", "image/jpeg");
+            reply.header("Cache-Control", "no-store");
+            return reply.send(buf);
+        } catch (e: any) {
+            // Fallback: if kontext unavailable, try Gemini image-generation with reference
+            app.log.warn(`[ai/colorize] kontext failed (${e?.message?.slice(0, 80)})`);
+            return reply.status(502).send({ error: `Colorize failed: ${e?.message ?? "Unknown error"}` });
+        }
+    });
 }

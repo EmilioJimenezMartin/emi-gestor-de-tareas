@@ -2575,7 +2575,7 @@ export function KdpFactoryApp() {
     };
     const [showCoverModal, setShowCoverModal] = useState(false);
     const [coverModalTab, setCoverModalTab] = useState<"front" | "back">("front");
-    const [coverMode, setCoverMode] = useState<"ai" | "collage">("ai");
+    const [coverMode, setCoverMode] = useState<"ai" | "collage" | "colorize">("ai");
     const [coverDescription, setCoverDescription] = useState("");
     const [coverAuthor, setCoverAuthor] = useState("");
     const [generatedBackCoverUrl, setGeneratedBackCoverUrl] = useState<string | null>(null);
@@ -2598,6 +2598,15 @@ export function KdpFactoryApp() {
     const [showSplitModal, setShowSplitModal] = useState(false);
     const [showKdpTips, setShowKdpTips] = useState(false);
     const [guideTab, setGuideTab] = useState<"specs" | "pre" | "days7" | "post">("days7");
+    // Text overlay for cover editor
+    type TextLayer = { id: string; text: string; x: number; y: number; fontSize: number; color: string; bold: boolean; italic: boolean; shadow: boolean; stroke: boolean; strokeColor: string; uppercase: boolean; align: "left" | "center" | "right" };
+    const [coverTextLayers, setCoverTextLayers] = useState<TextLayer[]>([]);
+    const draggingLayerRef = useRef<{ id: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
+    const previewContainerRef = useRef<HTMLDivElement | null>(null);
+    // Colorize mode
+    const [colorizeSourceUrl, setColorizeSourceUrl] = useState<string | null>(null);
+    const [colorizePrompt, setColorizePrompt] = useState("vibrant full color illustration, rich saturated colors, highly detailed");
+    const [isColorizing, setIsColorizing] = useState(false);
     const [splitParts, setSplitParts] = useState(2);
     const [splitProgress, setSplitProgress] = useState<{ current: number; total: number } | null>(null);
     const [gelatoStoreProducts, setGelatoStoreProducts] = useState<any[]>([]);
@@ -9866,16 +9875,75 @@ export function KdpFactoryApp() {
         } catch { toast.error("Error conectando con la API"); } finally { setIsBuildingBackCover(false); }
     };
 
+    const colorizeCover = async () => {
+        if (!colorizeSourceUrl) { toast.error("Selecciona una imagen de origen"); return; }
+        setIsColorizing(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/ai/colorize`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ imageUrl: colorizeSourceUrl, prompt: colorizePrompt }),
+            });
+            if (!res.ok) { const d = await res.json().catch(() => ({})); toast.error((d as any).error ?? "Error colorizando"); return; }
+            const blob = await res.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            pendingCoverBlobRef.current = blob;
+            setGeneratedCoverUrl(blobUrl);
+            toast.success("¡Imagen coloreada!");
+        } catch { toast.error("Error conectando con la API"); }
+        finally { setIsColorizing(false); }
+    };
+
     const saveCoverToNiche = async (type: "front" | "back") => {
         if (!selectedCoverNicheId) { toast.error("Selecciona un nicho primero"); return; }
         const blob = type === "front" ? pendingCoverBlobRef.current : pendingBackCoverBlobRef.current;
         if (!blob) { toast.error("No hay imagen pendiente de guardar"); return; }
         try {
+            // For front covers with text layers, composite them onto the image before upload
+            const finalBlob = await (async () => {
+                if (type !== "front" || coverTextLayers.length === 0) return blob;
+                return new Promise<Blob>((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement("canvas");
+                        canvas.width = img.naturalWidth || 1600;
+                        canvas.height = img.naturalHeight || 2560;
+                        const ctx = canvas.getContext("2d")!;
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        for (const layer of coverTextLayers) {
+                            const px = (layer.x / 100) * canvas.width;
+                            const py = (layer.y / 100) * canvas.height;
+                            const fs = Math.round((layer.fontSize / 40) * (canvas.width / 1600) * 100);
+                            const displayText = layer.uppercase ? layer.text.toUpperCase() : layer.text;
+                            ctx.save();
+                            ctx.font = `${layer.bold ? "bold " : ""}${layer.italic ? "italic " : ""}${fs}px sans-serif`;
+                            ctx.fillStyle = layer.color;
+                            ctx.textAlign = layer.align as CanvasTextAlign;
+                            ctx.textBaseline = "middle";
+                            if (layer.shadow) { ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = 12; ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3; }
+                            if (layer.stroke) {
+                                ctx.strokeStyle = layer.strokeColor || "#000000";
+                                ctx.lineWidth = Math.max(1, fs * 0.08);
+                                ctx.lineJoin = "round";
+                                ctx.shadowColor = "transparent";
+                                ctx.strokeText(displayText, px, py);
+                                if (layer.shadow) { ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = 12; ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3; }
+                            }
+                            ctx.fillText(displayText, px, py);
+                            ctx.restore();
+                        }
+                        canvas.toBlob(b => b ? resolve(b) : reject(new Error("canvas toBlob failed")), "image/jpeg", 0.92);
+                    };
+                    img.onerror = reject;
+                    img.src = URL.createObjectURL(blob);
+                });
+            })();
+
             const dataUrl = await new Promise<string>((res, rej) => {
                 const reader = new FileReader();
                 reader.onload = () => res(reader.result as string);
                 reader.onerror = rej;
-                reader.readAsDataURL(blob);
+                reader.readAsDataURL(finalBlob);
             });
             const uploadRes = await fetch(`${API_BASE_URL}/cloudinary/upload`, {
                 method: "POST", headers: { "Content-Type": "application/json" },
@@ -9894,6 +9962,7 @@ export function KdpFactoryApp() {
                 setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, coverUrl: cloudUrl, coverCandidates: candidates, pipelineHasCover: true } : n));
                 setGeneratedCoverUrl(cloudUrl);
                 pendingCoverBlobRef.current = null;
+                setCoverTextLayers([]);
                 toast.success("Portada guardada");
             } else {
                 await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
@@ -10286,9 +10355,19 @@ export function KdpFactoryApp() {
                                                 title="Editar">
                                                 <Pencil size={10} />
                                             </button>
-                                            <button onClick={() => setConfirmDeleteCoverNicheId(n._id)}
+                                            <button onClick={() => {
+                                                setSelectedCoverNicheId(n._id);
+                                                setGeneratedCoverUrl(n.coverUrl ?? null);
+                                                setGeneratedBackCoverUrl(n.backCoverUrl ?? null);
+                                                const coverMap = NICHE_STYLE_TO_COVER[n.styleCategory] ?? NICHE_STYLE_TO_COVER.generic;
+                                                setCoverTitle(n.nickname?.trim() || n.name);
+                                                setCoverStyle(coverMap.style);
+                                                setCoverColorTheme(coverMap.colorTheme);
+                                                setShowCoverModal(true);
+                                                setCoverModalTab("front");
+                                            }}
                                                 className="h-6 w-6 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 text-rose-400 flex items-center justify-center transition-all"
-                                                title="Eliminar">
+                                                title="Gestionar portadas">
                                                 <Trash2 size={10} />
                                             </button>
                                         </div>
@@ -12437,9 +12516,13 @@ export function KdpFactoryApp() {
                             {/* Mode selector (front only) */}
                             {coverModalTab === "front" && (
                                 <div className="flex gap-1 p-1 bg-white/[0.04] rounded-xl border border-white/8">
-                                    {([["ai", "✦ IA", "Genera imagen con el contexto del nicho"], ["collage", "⊞ Collage", "Compone imágenes reales del catálogo"]] as const).map(([id, label, desc]) => (
-                                        <button key={id} onClick={() => setCoverMode(id)} title={desc}
-                                            className={`flex-1 h-8 rounded-lg text-sm font-black transition-all ${coverMode === id ? "bg-fuchsia-500/25 border border-fuchsia-500/35 text-fuchsia-300 shadow-[0_0_12px_rgba(192,38,211,0.2)]" : "text-neutral-500 hover:text-neutral-300"}`}>
+                                    {([
+                                        ["ai",       "✦ IA",        "Genera imagen con IA generativa"],
+                                        ["collage",  "⊞ Collage",   "Compone imágenes reales del catálogo"],
+                                        ["colorize", "🎨 Colorizar", "Colorea una imagen de líneas existente"],
+                                    ] as const).map(([id, label, desc]) => (
+                                        <button key={id} onClick={() => { setCoverMode(id); if (id !== "colorize") setColorizeSourceUrl(null); }} title={desc}
+                                            className={`flex-1 h-8 rounded-lg text-[11px] font-black transition-all ${coverMode === id ? "bg-fuchsia-500/25 border border-fuchsia-500/35 text-fuchsia-300 shadow-[0_0_12px_rgba(192,38,211,0.2)]" : "text-neutral-500 hover:text-neutral-300"}`}>
                                             {label}
                                         </button>
                                     ))}
@@ -12447,7 +12530,11 @@ export function KdpFactoryApp() {
                             )}
 
                             {/* Niche selector */}
-                            {niches.filter(n => n.status !== "archived").length > 0 && (
+                            {niches.filter(n => n.status !== "archived").length > 0 && (() => {
+                                const linkedNiche = niches.find(n => n._id === selectedCoverNicheId);
+                                const nicheImagePrompt = linkedNiche?.discoveryImagePrompt ?? (linkedNiche as any)?.generatedPrompt ?? "";
+                                return (
+                                <div className="space-y-1.5">
                                 <NicheSelect
                                     niches={niches.filter(n => n.status !== "archived")}
                                     selectedId={selectedCoverNicheId}
@@ -12468,7 +12555,14 @@ export function KdpFactoryApp() {
                                         setGeneratedBackCoverUrl(n.backCoverUrl ?? null);
                                     }}
                                 />
-                            )}
+                                {nicheImagePrompt && (
+                                    <button onClick={() => { setCoverStyle(nicheImagePrompt); toast.success("Prompt del nicho aplicado al estilo"); }}
+                                        className="flex items-center gap-1.5 text-[10px] font-black text-fuchsia-400/70 hover:text-fuchsia-300 transition-colors px-1">
+                                        <Sparkles size={9} /> Usar prompt del nicho como estilo visual
+                                    </button>
+                                )}
+                                </div>);
+                            })()}
 
                             {/* ── Shared fields (always visible) ── */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -12607,6 +12701,54 @@ export function KdpFactoryApp() {
                                 );
                             })()}
 
+                            {/* ── Colorize mode ── */}
+                            {coverMode === "colorize" && coverModalTab === "front" && (() => {
+                                const nicheImgUrls = selectedCoverNicheId
+                                    ? iaCatalogs.filter(c => c.nicheIds?.includes(selectedCoverNicheId) && c.status === "completed").flatMap((c: any) => c.images.map((img: any) => img.url))
+                                    : [];
+                                return (
+                                    <div className="space-y-3">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-fuchsia-400/60">Imagen de origen (líneas a colorear)</p>
+                                        {/* Pick from catalog */}
+                                        {nicheImgUrls.length > 0 && (
+                                            <div className="grid grid-cols-5 gap-1.5 max-h-36 overflow-y-auto">
+                                                {nicheImgUrls.map((url: string, i: number) => (
+                                                    <button key={i} onClick={() => setColorizeSourceUrl(url)}
+                                                        className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${colorizeSourceUrl === url ? "border-fuchsia-500 shadow-[0_0_8px_rgba(192,38,211,0.4)]" : "border-transparent hover:border-white/20"}`}>
+                                                        <img src={url} alt="" className="w-full h-full object-cover" />
+                                                        {colorizeSourceUrl === url && <div className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-fuchsia-500 flex items-center justify-center"><Check size={7} className="text-white" /></div>}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {/* Or upload local file */}
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => { const i = document.createElement("input"); i.type = "file"; i.accept = "image/*"; i.onchange = () => { const f = i.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => { setColorizeSourceUrl(r.result as string); }; r.readAsDataURL(f); }; i.click(); }}
+                                                className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-white/[0.04] border border-white/10 text-[11px] font-black text-neutral-400 hover:text-white hover:border-white/20 transition-all">
+                                                <Upload size={10} /> Subir imagen local
+                                            </button>
+                                            {colorizeSourceUrl && (
+                                                <button onClick={() => setColorizeSourceUrl(null)} className="h-8 w-8 flex items-center justify-center rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 transition-all">
+                                                    <X size={10} />
+                                                </button>
+                                            )}
+                                        </div>
+                                        {colorizeSourceUrl && (
+                                            <div className="flex gap-2 items-center rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/[0.04] p-2">
+                                                <img src={colorizeSourceUrl} alt="origen" className="w-10 h-10 rounded-lg object-cover border border-white/10 shrink-0" />
+                                                <p className="text-[10px] text-neutral-500 flex-1">Imagen seleccionada</p>
+                                            </div>
+                                        )}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Instrucciones de color</label>
+                                            <input type="text" value={colorizePrompt} onChange={e => setColorizePrompt(e.target.value)}
+                                                className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40"
+                                                placeholder="vibrant full color illustration, rich colors…" />
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             {/* ── Back cover extra fields ── */}
                             {coverModalTab === "back" && (
                                 <div className="space-y-3">
@@ -12633,10 +12775,15 @@ export function KdpFactoryApp() {
                                             className="w-full h-11 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-[0.98]">
                                             {isBuildingCover ? <><Loader2 size={14} className="animate-spin" /> Generando con IA…</> : <><ImageIcon size={14} /> Generar Portada con IA</>}
                                         </button>
-                                    ) : (
+                                    ) : coverMode === "collage" ? (
                                         <button onClick={() => void buildCollage()} disabled={isBuildingCollage || !selectedCoverNicheId}
                                             className="w-full h-11 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-[0.98]">
                                             {isBuildingCollage ? <><Loader2 size={14} className="animate-spin" /> Componiendo collage…</> : <><Library size={14} /> Crear Collage</>}
+                                        </button>
+                                    ) : (
+                                        <button onClick={() => void colorizeCover()} disabled={isColorizing || !colorizeSourceUrl}
+                                            className="w-full h-11 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-[0.98]">
+                                            {isColorizing ? <><Loader2 size={14} className="animate-spin" /> Colorizando…</> : <><Sparkles size={14} /> Colorizar con Kontext</>}
                                         </button>
                                     )
                                 ) : (
@@ -12646,6 +12793,149 @@ export function KdpFactoryApp() {
                                     </button>
                                 )}
                             </div>
+
+                            {/* ── Text overlay panel ── */}
+                            {coverModalTab === "front" && (() => {
+                                const t = coverTitle || "Título del libro";
+                                const s = coverSubtitle || "Subtitle";
+                                const a = coverAuthor || "Author Name";
+                                const mkId = () => Date.now().toString() + Math.random();
+                                const COVER_STYLE_PRESETS: { label: string; emoji: string; layers: Omit<TextLayer, "id">[] }[] = [
+                                    {
+                                        label: "Classic Gold", emoji: "🏆",
+                                        layers: [
+                                            { text: t, x: 50, y: 78, fontSize: 32, color: "#FFD700", bold: true, italic: false, shadow: true, stroke: false, strokeColor: "#000", uppercase: true, align: "center" },
+                                            { text: s, x: 50, y: 87, fontSize: 14, color: "#ffffff", bold: false, italic: true, shadow: true, stroke: false, strokeColor: "#000", uppercase: false, align: "center" },
+                                            { text: a, x: 50, y: 94, fontSize: 11, color: "#FFD700", bold: false, italic: false, shadow: false, stroke: false, strokeColor: "#000", uppercase: true, align: "center" },
+                                        ],
+                                    },
+                                    {
+                                        label: "Bold Outline", emoji: "⬛",
+                                        layers: [
+                                            { text: t, x: 50, y: 78, fontSize: 34, color: "#ffffff", bold: true, italic: false, shadow: false, stroke: true, strokeColor: "#000000", uppercase: true, align: "center" },
+                                            { text: s, x: 50, y: 87, fontSize: 15, color: "#ffffff", bold: false, italic: false, shadow: false, stroke: true, strokeColor: "#000000", uppercase: false, align: "center" },
+                                            { text: a, x: 50, y: 93, fontSize: 11, color: "#dddddd", bold: false, italic: false, shadow: false, stroke: true, strokeColor: "#000000", uppercase: false, align: "center" },
+                                        ],
+                                    },
+                                    {
+                                        label: "Neon Glow", emoji: "💜",
+                                        layers: [
+                                            { text: t, x: 50, y: 78, fontSize: 30, color: "#e879f9", bold: true, italic: false, shadow: true, stroke: false, strokeColor: "#7e22ce", uppercase: false, align: "center" },
+                                            { text: s, x: 50, y: 87, fontSize: 13, color: "#c4b5fd", bold: false, italic: true, shadow: true, stroke: false, strokeColor: "#000", uppercase: false, align: "center" },
+                                            { text: a, x: 50, y: 94, fontSize: 10, color: "#a78bfa", bold: false, italic: false, shadow: false, stroke: false, strokeColor: "#000", uppercase: true, align: "center" },
+                                        ],
+                                    },
+                                    {
+                                        label: "Minimal", emoji: "◻️",
+                                        layers: [
+                                            { text: t, x: 50, y: 80, fontSize: 28, color: "#ffffff", bold: false, italic: false, shadow: false, stroke: false, strokeColor: "#000", uppercase: false, align: "center" },
+                                            { text: a, x: 50, y: 93, fontSize: 10, color: "rgba(255,255,255,0.55)", bold: false, italic: false, shadow: false, stroke: false, strokeColor: "#000", uppercase: true, align: "center" },
+                                        ],
+                                    },
+                                    {
+                                        label: "Elegant", emoji: "✨",
+                                        layers: [
+                                            { text: t, x: 50, y: 76, fontSize: 26, color: "#fef3c7", bold: false, italic: false, shadow: true, stroke: false, strokeColor: "#000", uppercase: false, align: "center" },
+                                            { text: s, x: 50, y: 85, fontSize: 12, color: "#d97706", bold: false, italic: true, shadow: true, stroke: false, strokeColor: "#000", uppercase: false, align: "center" },
+                                            { text: "— " + a + " —", x: 50, y: 93, fontSize: 10, color: "#fef3c7", bold: false, italic: false, shadow: false, stroke: false, strokeColor: "#000", uppercase: true, align: "center" },
+                                        ],
+                                    },
+                                ];
+                                return (
+                                    <div className="space-y-3 border-t border-white/6 pt-3">
+                                        {/* Header */}
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5"><Type size={9} />Texto sobre la imagen</p>
+                                            {coverTextLayers.length > 0 && (
+                                                <button onClick={() => setCoverTextLayers([])} className="text-[9px] text-rose-500/60 hover:text-rose-400 transition-colors">Limpiar todo</button>
+                                            )}
+                                        </div>
+
+                                        {/* Cover style presets */}
+                                        <div className="space-y-1.5">
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-neutral-700">Estilos de portada</p>
+                                            <div className="grid grid-cols-3 gap-1">
+                                                {COVER_STYLE_PRESETS.map(preset => (
+                                                    <button key={preset.label}
+                                                        onClick={() => setCoverTextLayers(preset.layers.map(l => ({ ...l, id: mkId() })))}
+                                                        className="flex flex-col items-center gap-0.5 py-2 px-1 rounded-xl bg-white/[0.03] border border-white/8 hover:border-fuchsia-500/30 hover:bg-fuchsia-500/[0.06] transition-all group">
+                                                        <span className="text-base leading-none">{preset.emoji}</span>
+                                                        <span className="text-[9px] font-black text-neutral-600 group-hover:text-fuchsia-400 transition-colors leading-tight text-center">{preset.label}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Add individual layers */}
+                                        <div className="flex gap-1">
+                                            {([
+                                                { label: "+ Título", text: t, fontSize: 28, bold: true, color: "#ffffff", shadow: true, stroke: false, strokeColor: "#000", italic: false, uppercase: false, y: 82 },
+                                                { label: "+ Subtítulo", text: s, fontSize: 14, bold: false, color: "#e5e5e5", shadow: true, stroke: false, strokeColor: "#000", italic: true, uppercase: false, y: 88 },
+                                                { label: "+ Autor", text: a, fontSize: 11, bold: false, color: "#cccccc", shadow: false, stroke: false, strokeColor: "#000", italic: false, uppercase: true, y: 94 },
+                                            ]).map(p => (
+                                                <button key={p.label}
+                                                    onClick={() => setCoverTextLayers(prev => [...prev, { id: mkId(), text: p.text, x: 50, y: p.y, fontSize: p.fontSize, color: p.color, bold: p.bold, italic: p.italic, shadow: p.shadow, stroke: p.stroke, strokeColor: p.strokeColor, uppercase: p.uppercase, align: "center" }])}
+                                                    className="flex-1 h-6 rounded-lg bg-white/[0.04] border border-white/8 text-[9px] font-black text-neutral-500 hover:text-fuchsia-400 hover:border-fuchsia-500/30 transition-all">
+                                                    {p.label}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        {/* Per-layer controls */}
+                                        {coverTextLayers.length > 0 && (
+                                            <div className="space-y-2">
+                                                {coverTextLayers.map(layer => (
+                                                    <div key={layer.id} className="rounded-xl bg-white/[0.03] border border-white/6 overflow-hidden">
+                                                        {/* Text input row */}
+                                                        <div className="flex items-center gap-2 px-2.5 py-2 border-b border-white/4">
+                                                            <input value={layer.text} onChange={e => setCoverTextLayers(prev => prev.map(l => l.id === layer.id ? { ...l, text: e.target.value } : l))}
+                                                                className="flex-1 min-w-0 bg-transparent text-xs text-white placeholder:text-neutral-700 outline-none" />
+                                                            <button onClick={() => setCoverTextLayers(prev => prev.filter(l => l.id !== layer.id))} className="text-neutral-700 hover:text-rose-400 transition-colors shrink-0"><X size={10} /></button>
+                                                        </div>
+                                                        {/* Style row */}
+                                                        <div className="flex items-center gap-2 px-2.5 py-1.5 flex-wrap">
+                                                            {/* Color */}
+                                                            <input type="color" value={layer.color} onChange={e => setCoverTextLayers(prev => prev.map(l => l.id === layer.id ? { ...l, color: e.target.value } : l))}
+                                                                className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0 shrink-0" title="Color texto" />
+                                                            {/* Stroke color (only when stroke active) */}
+                                                            {layer.stroke && (
+                                                                <input type="color" value={layer.strokeColor || "#000000"} onChange={e => setCoverTextLayers(prev => prev.map(l => l.id === layer.id ? { ...l, strokeColor: e.target.value } : l))}
+                                                                    className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0 shrink-0" title="Color contorno" />
+                                                            )}
+                                                            {/* Size slider */}
+                                                            <input type="range" min={8} max={72} value={layer.fontSize} onChange={e => setCoverTextLayers(prev => prev.map(l => l.id === layer.id ? { ...l, fontSize: Number(e.target.value) } : l))}
+                                                                className="w-16 shrink-0 accent-fuchsia-500" />
+                                                            <span className="text-[9px] text-neutral-700 shrink-0 w-4 text-right">{layer.fontSize}</span>
+                                                            {/* Toggles */}
+                                                            {([
+                                                                { key: "bold", label: "B", title: "Negrita", style: "font-bold" },
+                                                                { key: "italic", label: "I", title: "Cursiva", style: "italic" },
+                                                                { key: "uppercase", label: "AA", title: "Mayúsculas", style: "" },
+                                                                { key: "shadow", label: "⌫", title: "Sombra", style: "" },
+                                                                { key: "stroke", label: "○", title: "Contorno", style: "" },
+                                                            ] as const).map(({ key, label, title, style }) => (
+                                                                <button key={key} title={title}
+                                                                    onClick={() => setCoverTextLayers(prev => prev.map(l => l.id === layer.id ? { ...l, [key]: !l[key] } : l))}
+                                                                    className={`w-6 h-6 rounded-lg text-[9px] ${style} border transition-all shrink-0 ${(layer[key] as boolean) ? "border-fuchsia-500/50 bg-fuchsia-500/20 text-fuchsia-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-white"}`}>
+                                                                    {label}
+                                                                </button>
+                                                            ))}
+                                                            {/* Alignment */}
+                                                            {(["left", "center", "right"] as const).map(al => (
+                                                                <button key={al} onClick={() => setCoverTextLayers(prev => prev.map(l => l.id === layer.id ? { ...l, align: al } : l))}
+                                                                    className={`w-6 h-6 rounded-lg text-[9px] border transition-all shrink-0 ${layer.align === al ? "border-fuchsia-500/50 bg-fuchsia-500/20 text-fuchsia-300" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-white"}`}>
+                                                                    {al === "left" ? "⫷" : al === "center" ? "≡" : "⫸"}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                <p className="text-[9px] text-neutral-700">Arrastra el texto sobre la previsualización · se incrusta al guardar</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
 
                             </div>{/* end left column */}
 
@@ -12659,9 +12949,20 @@ export function KdpFactoryApp() {
                                         ? `portada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`
                                         : `contraportada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`;
                                     return (<>
-                                        <div className={`w-full rounded-2xl overflow-hidden border border-white/10 shadow-[0_0_40px_rgba(192,38,211,0.1)] relative bg-white/[0.02]`} style={{ aspectRatio: "1600/2560" }}>
+                                        <div ref={previewContainerRef}
+                                            className={`w-full rounded-2xl overflow-hidden border border-white/10 shadow-[0_0_40px_rgba(192,38,211,0.1)] relative bg-white/[0.02] select-none`}
+                                            style={{ aspectRatio: "1600/2560" }}
+                                            onMouseMove={e => {
+                                                if (!draggingLayerRef.current || !previewContainerRef.current) return;
+                                                const rect = previewContainerRef.current.getBoundingClientRect();
+                                                const dx = ((e.clientX - draggingLayerRef.current.startX) / rect.width) * 100;
+                                                const dy = ((e.clientY - draggingLayerRef.current.startY) / rect.height) * 100;
+                                                setCoverTextLayers(prev => prev.map(l => l.id === draggingLayerRef.current!.id ? { ...l, x: Math.max(0, Math.min(100, draggingLayerRef.current!.origX + dx)), y: Math.max(0, Math.min(100, draggingLayerRef.current!.origY + dy)) } : l));
+                                            }}
+                                            onMouseUp={() => { draggingLayerRef.current = null; }}
+                                            onMouseLeave={() => { draggingLayerRef.current = null; }}>
                                             {url ? (
-                                                <img src={url} alt="Preview" className="w-full h-full object-cover" />
+                                                <img src={url} alt="Preview" className="w-full h-full object-cover pointer-events-none" />
                                             ) : isBuilding ? (
                                                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
                                                     <Loader2 size={20} className="text-fuchsia-500/60 animate-spin" />
@@ -12673,6 +12974,35 @@ export function KdpFactoryApp() {
                                                     <p className="text-[10px] text-neutral-700">1600×2560px</p>
                                                 </div>
                                             )}
+                                            {/* Draggable text overlays */}
+                                            {coverModalTab === "front" && coverTextLayers.map(layer => (
+                                                <div key={layer.id}
+                                                    style={{
+                                                        position: "absolute",
+                                                        left: `${layer.x}%`,
+                                                        top: `${layer.y}%`,
+                                                        transform: "translate(-50%, -50%)",
+                                                        fontSize: `${layer.fontSize * 0.4}px`,
+                                                        color: layer.color,
+                                                        fontWeight: layer.bold ? 700 : 400,
+                                                        fontStyle: layer.italic ? "italic" : "normal",
+                                                        textAlign: layer.align,
+                                                        textTransform: layer.uppercase ? "uppercase" : "none",
+                                                        textShadow: layer.shadow
+                                                            ? (layer.stroke ? `0 1px 4px rgba(0,0,0,0.8), -1px -1px 0 ${layer.strokeColor||"#000"}, 1px -1px 0 ${layer.strokeColor||"#000"}, -1px 1px 0 ${layer.strokeColor||"#000"}, 1px 1px 0 ${layer.strokeColor||"#000"}` : "0 1px 4px rgba(0,0,0,0.8)")
+                                                            : (layer.stroke ? `-1px -1px 0 ${layer.strokeColor||"#000"}, 1px -1px 0 ${layer.strokeColor||"#000"}, -1px 1px 0 ${layer.strokeColor||"#000"}, 1px 1px 0 ${layer.strokeColor||"#000"}` : undefined),
+                                                        cursor: "grab",
+                                                        userSelect: "none",
+                                                        whiteSpace: "nowrap",
+                                                        maxWidth: "92%",
+                                                        overflow: "hidden",
+                                                        textOverflow: "ellipsis",
+                                                        lineHeight: 1.1,
+                                                    }}
+                                                    onMouseDown={e => { e.preventDefault(); draggingLayerRef.current = { id: layer.id, startX: e.clientX, startY: e.clientY, origX: layer.x, origY: layer.y }; }}>
+                                                    {layer.uppercase ? layer.text.toUpperCase() : layer.text}
+                                                </div>
+                                            ))}
                                         </div>
                                         {url && (
                                             <div className="flex flex-col gap-1.5 w-full">
@@ -12690,9 +13020,9 @@ export function KdpFactoryApp() {
                                                 )}
                                                 <div className="flex gap-1.5">
                                                     <button onClick={() => coverModalTab === "front"
-                                                        ? (coverMode === "ai" ? void generateCover() : void buildCollage())
+                                                        ? (coverMode === "ai" ? void generateCover() : coverMode === "collage" ? void buildCollage() : void colorizeCover())
                                                         : void generateBackCover()}
-                                                        disabled={isBuildingCover || isBuildingCollage || isBuildingBackCover}
+                                                        disabled={isBuildingCover || isBuildingCollage || isBuildingBackCover || isColorizing}
                                                         className="flex-1 h-8 rounded-xl bg-white/5 border border-white/10 text-sm font-black text-neutral-500 hover:text-white hover:bg-white/10 transition-all disabled:opacity-40 flex items-center justify-center gap-1">
                                                         <RefreshCw size={10} /> Regen.
                                                     </button>
