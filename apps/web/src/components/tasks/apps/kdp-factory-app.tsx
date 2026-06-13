@@ -84,6 +84,11 @@ import {
     Mic,
     Link2,
     Unlink,
+    Palette,
+    EyeOff,
+    Sliders,
+    CornerUpLeft,
+    Maximize2,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -2599,10 +2604,40 @@ export function KdpFactoryApp() {
     const [showKdpTips, setShowKdpTips] = useState(false);
     const [guideTab, setGuideTab] = useState<"specs" | "pre" | "days7" | "post">("days7");
     // Text overlay for cover editor
-    type TextLayer = { id: string; text: string; x: number; y: number; fontSize: number; color: string; bold: boolean; italic: boolean; shadow: boolean; stroke: boolean; strokeColor: string; uppercase: boolean; align: "left" | "center" | "right" };
+    type TextLayer = {
+        id: string; text: string; x: number; y: number;
+        fontSize: number; color: string; fontFamily: string;
+        bold: boolean; italic: boolean; shadow: boolean;
+        stroke: boolean; strokeColor: string; uppercase: boolean;
+        align: "left" | "center" | "right";
+        letterSpacing: number; opacity: number;
+        visible: boolean;
+    };
+    const COVER_FONTS = [
+        { label: "Sans (default)", value: "sans-serif" },
+        { label: "Serif", value: "serif" },
+        { label: "Playfair Display", value: "'Playfair Display', serif" },
+        { label: "Oswald", value: "'Oswald', sans-serif" },
+        { label: "Bebas Neue", value: "'Bebas Neue', cursive" },
+        { label: "Cinzel", value: "'Cinzel', serif" },
+        { label: "Dancing Script", value: "'Dancing Script', cursive" },
+        { label: "Raleway", value: "'Raleway', sans-serif" },
+        { label: "Merriweather", value: "'Merriweather', serif" },
+        { label: "Lobster", value: "'Lobster', cursive" },
+        { label: "Monospace", value: "monospace" },
+    ];
+    const defaultLayer = (overrides: Partial<TextLayer> & Pick<TextLayer, "id" | "text">): TextLayer => ({
+        x: 50, y: 80, fontSize: 24, color: "#ffffff", fontFamily: "sans-serif",
+        bold: false, italic: false, shadow: true, stroke: false, strokeColor: "#000000",
+        uppercase: false, align: "center", letterSpacing: 0, opacity: 100, visible: true,
+        ...overrides,
+    });
     const [coverTextLayers, setCoverTextLayers] = useState<TextLayer[]>([]);
+    const [showCoverEditor, setShowCoverEditor] = useState(false);
+    const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
     const draggingLayerRef = useRef<{ id: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
     const previewContainerRef = useRef<HTMLDivElement | null>(null);
+    const editorPreviewRef = useRef<HTMLDivElement | null>(null);
     // Colorize mode
     const [colorizeSourceUrl, setColorizeSourceUrl] = useState<string | null>(null);
     const [colorizePrompt, setColorizePrompt] = useState("vibrant full color illustration, rich saturated colors, highly detailed");
@@ -3338,6 +3373,17 @@ export function KdpFactoryApp() {
     // paste goes directly to the vault (no need to click the card first)
     const addImageFileToVaultRef = useRef(addImageFileToVault);
     useEffect(() => { addImageFileToVaultRef.current = addImageFileToVault; });
+    // Load Google Fonts for cover editor
+    useEffect(() => {
+        if (!showCoverEditor) return;
+        const id = "kdp-cover-editor-fonts";
+        if (document.getElementById(id)) return;
+        const link = document.createElement("link");
+        link.id = id;
+        link.rel = "stylesheet";
+        link.href = "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Oswald:wght@400;700&family=Bebas+Neue&family=Cinzel:wght@400;700&family=Dancing+Script:wght@400;700&family=Raleway:wght@300;400;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Lobster&display=swap";
+        document.head.appendChild(link);
+    }, [showCoverEditor]);
     useEffect(() => {
         if (activeTab !== "creation") return;
         const handleGlobalPaste = (e: ClipboardEvent) => {
@@ -9911,25 +9957,41 @@ export function KdpFactoryApp() {
                         const ctx = canvas.getContext("2d")!;
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                         for (const layer of coverTextLayers) {
+                            if (!layer.visible) continue;
                             const px = (layer.x / 100) * canvas.width;
                             const py = (layer.y / 100) * canvas.height;
                             const fs = Math.round((layer.fontSize / 40) * (canvas.width / 1600) * 100);
                             const displayText = layer.uppercase ? layer.text.toUpperCase() : layer.text;
+                            const fontFamily = layer.fontFamily || "sans-serif";
                             ctx.save();
-                            ctx.font = `${layer.bold ? "bold " : ""}${layer.italic ? "italic " : ""}${fs}px sans-serif`;
+                            ctx.globalAlpha = (layer.opacity ?? 100) / 100;
+                            ctx.font = `${layer.italic ? "italic " : ""}${layer.bold ? "bold " : ""}${fs}px ${fontFamily}`;
                             ctx.fillStyle = layer.color;
                             ctx.textAlign = layer.align as CanvasTextAlign;
                             ctx.textBaseline = "middle";
-                            if (layer.shadow) { ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = 12; ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3; }
-                            if (layer.stroke) {
-                                ctx.strokeStyle = layer.strokeColor || "#000000";
-                                ctx.lineWidth = Math.max(1, fs * 0.08);
-                                ctx.lineJoin = "round";
-                                ctx.shadowColor = "transparent";
-                                ctx.strokeText(displayText, px, py);
+                            if ((layer.letterSpacing ?? 0) > 0) {
+                                // Canvas doesn't support letterSpacing natively — draw char by char
+                                const chars = displayText.split("");
+                                const totalW = ctx.measureText(displayText).width + (layer.letterSpacing * (chars.length - 1) * (fs / 16));
+                                let startX = layer.align === "center" ? px - totalW / 2 : layer.align === "right" ? px - totalW : px;
+                                for (const ch of chars) {
+                                    if (layer.shadow) { ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = 12; ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3; }
+                                    if (layer.stroke) { ctx.strokeStyle = layer.strokeColor || "#000"; ctx.lineWidth = Math.max(1, fs * 0.08); ctx.lineJoin = "round"; const tmpShadow = ctx.shadowColor; ctx.shadowColor = "transparent"; ctx.strokeText(ch, startX, py); ctx.shadowColor = tmpShadow; }
+                                    ctx.fillText(ch, startX, py);
+                                    startX += ctx.measureText(ch).width + (layer.letterSpacing * (fs / 16));
+                                }
+                            } else {
                                 if (layer.shadow) { ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = 12; ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3; }
+                                if (layer.stroke) {
+                                    ctx.strokeStyle = layer.strokeColor || "#000000";
+                                    ctx.lineWidth = Math.max(1, fs * 0.08);
+                                    ctx.lineJoin = "round";
+                                    const tmpShadow = ctx.shadowColor; ctx.shadowColor = "transparent";
+                                    ctx.strokeText(displayText, px, py);
+                                    ctx.shadowColor = tmpShadow;
+                                }
+                                ctx.fillText(displayText, px, py);
                             }
-                            ctx.fillText(displayText, px, py);
                             ctx.restore();
                         }
                         canvas.toBlob(b => b ? resolve(b) : reject(new Error("canvas toBlob failed")), "image/jpeg", 0.92);
@@ -12800,55 +12862,45 @@ export function KdpFactoryApp() {
                                 const s = coverSubtitle || "Subtitle";
                                 const a = coverAuthor || "Emilio Jimenez";
                                 const mkId = () => Date.now().toString() + Math.random();
-                                const COVER_STYLE_PRESETS: { label: string; emoji: string; layers: Omit<TextLayer, "id">[] }[] = [
-                                    {
-                                        label: "Classic Gold", emoji: "🏆",
-                                        layers: [
-                                            { text: t, x: 50, y: 78, fontSize: 32, color: "#FFD700", bold: true, italic: false, shadow: true, stroke: false, strokeColor: "#000", uppercase: true, align: "center" },
-                                            { text: s, x: 50, y: 87, fontSize: 14, color: "#ffffff", bold: false, italic: true, shadow: true, stroke: false, strokeColor: "#000", uppercase: false, align: "center" },
-                                            { text: a, x: 50, y: 94, fontSize: 11, color: "#FFD700", bold: false, italic: false, shadow: false, stroke: false, strokeColor: "#000", uppercase: true, align: "center" },
-                                        ],
-                                    },
-                                    {
-                                        label: "Bold Outline", emoji: "⬛",
-                                        layers: [
-                                            { text: t, x: 50, y: 78, fontSize: 34, color: "#ffffff", bold: true, italic: false, shadow: false, stroke: true, strokeColor: "#000000", uppercase: true, align: "center" },
-                                            { text: s, x: 50, y: 87, fontSize: 15, color: "#ffffff", bold: false, italic: false, shadow: false, stroke: true, strokeColor: "#000000", uppercase: false, align: "center" },
-                                            { text: a, x: 50, y: 93, fontSize: 11, color: "#dddddd", bold: false, italic: false, shadow: false, stroke: true, strokeColor: "#000000", uppercase: false, align: "center" },
-                                        ],
-                                    },
-                                    {
-                                        label: "Neon Glow", emoji: "💜",
-                                        layers: [
-                                            { text: t, x: 50, y: 78, fontSize: 30, color: "#e879f9", bold: true, italic: false, shadow: true, stroke: false, strokeColor: "#7e22ce", uppercase: false, align: "center" },
-                                            { text: s, x: 50, y: 87, fontSize: 13, color: "#c4b5fd", bold: false, italic: true, shadow: true, stroke: false, strokeColor: "#000", uppercase: false, align: "center" },
-                                            { text: a, x: 50, y: 94, fontSize: 10, color: "#a78bfa", bold: false, italic: false, shadow: false, stroke: false, strokeColor: "#000", uppercase: true, align: "center" },
-                                        ],
-                                    },
-                                    {
-                                        label: "Minimal", emoji: "◻️",
-                                        layers: [
-                                            { text: t, x: 50, y: 80, fontSize: 28, color: "#ffffff", bold: false, italic: false, shadow: false, stroke: false, strokeColor: "#000", uppercase: false, align: "center" },
-                                            { text: a, x: 50, y: 93, fontSize: 10, color: "rgba(255,255,255,0.55)", bold: false, italic: false, shadow: false, stroke: false, strokeColor: "#000", uppercase: true, align: "center" },
-                                        ],
-                                    },
-                                    {
-                                        label: "Elegant", emoji: "✨",
-                                        layers: [
-                                            { text: t, x: 50, y: 76, fontSize: 26, color: "#fef3c7", bold: false, italic: false, shadow: true, stroke: false, strokeColor: "#000", uppercase: false, align: "center" },
-                                            { text: s, x: 50, y: 85, fontSize: 12, color: "#d97706", bold: false, italic: true, shadow: true, stroke: false, strokeColor: "#000", uppercase: false, align: "center" },
-                                            { text: "— " + a + " —", x: 50, y: 93, fontSize: 10, color: "#fef3c7", bold: false, italic: false, shadow: false, stroke: false, strokeColor: "#000", uppercase: true, align: "center" },
-                                        ],
-                                    },
+                                const COVER_STYLE_PRESETS = [
+                                    { label: "Classic Gold", emoji: "🏆", layers: [
+                                        { text: t, y: 78, fontSize: 32, color: "#FFD700", bold: true, shadow: true, uppercase: true, fontFamily: "'Cinzel', serif" },
+                                        { text: s, y: 87, fontSize: 14, color: "#fff", italic: true, shadow: true, fontFamily: "'Cinzel', serif" },
+                                        { text: a, y: 94, fontSize: 11, color: "#FFD700", uppercase: true, letterSpacing: 2, fontFamily: "'Cinzel', serif" },
+                                    ]},
+                                    { label: "Bold Outline", emoji: "⬛", layers: [
+                                        { text: t, y: 78, fontSize: 34, color: "#fff", bold: true, stroke: true, strokeColor: "#000", uppercase: true, fontFamily: "'Oswald', sans-serif" },
+                                        { text: s, y: 87, fontSize: 15, color: "#fff", stroke: true, strokeColor: "#000", fontFamily: "'Oswald', sans-serif" },
+                                        { text: a, y: 93, fontSize: 11, color: "#ddd", stroke: true, strokeColor: "#000", fontFamily: "'Oswald', sans-serif" },
+                                    ]},
+                                    { label: "Neon Glow", emoji: "💜", layers: [
+                                        { text: t, y: 78, fontSize: 30, color: "#e879f9", bold: true, shadow: true, fontFamily: "'Raleway', sans-serif" },
+                                        { text: s, y: 87, fontSize: 13, color: "#c4b5fd", italic: true, shadow: true, fontFamily: "'Raleway', sans-serif" },
+                                        { text: a, y: 94, fontSize: 10, color: "#a78bfa", uppercase: true, letterSpacing: 3, fontFamily: "'Raleway', sans-serif" },
+                                    ]},
+                                    { label: "Elegant", emoji: "✨", layers: [
+                                        { text: t, y: 76, fontSize: 26, color: "#fef3c7", shadow: true, fontFamily: "'Playfair Display', serif" },
+                                        { text: s, y: 85, fontSize: 12, color: "#d97706", italic: true, shadow: true, fontFamily: "'Playfair Display', serif" },
+                                        { text: "— " + a + " —", y: 93, fontSize: 10, color: "#fef3c7", uppercase: true, letterSpacing: 2, fontFamily: "'Playfair Display', serif" },
+                                    ]},
+                                    { label: "Minimal", emoji: "◻️", layers: [
+                                        { text: t, y: 80, fontSize: 28, color: "#fff", fontFamily: "sans-serif" },
+                                        { text: a, y: 93, fontSize: 10, color: "rgba(255,255,255,0.55)", uppercase: true, letterSpacing: 3, fontFamily: "sans-serif" },
+                                    ]},
                                 ];
                                 return (
                                     <div className="space-y-3 border-t border-white/6 pt-3">
                                         {/* Header */}
                                         <div className="flex items-center justify-between">
                                             <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5"><Type size={9} />Texto sobre la imagen</p>
-                                            {coverTextLayers.length > 0 && (
-                                                <button onClick={() => setCoverTextLayers([])} className="text-[9px] text-rose-500/60 hover:text-rose-400 transition-colors">Limpiar todo</button>
-                                            )}
+                                            <div className="flex items-center gap-2">
+                                                {coverTextLayers.length > 0 && (
+                                                    <button onClick={() => setShowCoverEditor(true)} className="text-[9px] text-fuchsia-400/70 hover:text-fuchsia-300 transition-colors flex items-center gap-1"><Palette size={8} />Editor</button>
+                                                )}
+                                                {coverTextLayers.length > 0 && (
+                                                    <button onClick={() => setCoverTextLayers([])} className="text-[9px] text-rose-500/60 hover:text-rose-400 transition-colors">Limpiar</button>
+                                                )}
+                                            </div>
                                         </div>
 
                                         {/* Cover style presets */}
@@ -12857,7 +12909,7 @@ export function KdpFactoryApp() {
                                             <div className="grid grid-cols-3 gap-1">
                                                 {COVER_STYLE_PRESETS.map(preset => (
                                                     <button key={preset.label}
-                                                        onClick={() => setCoverTextLayers(preset.layers.map(l => ({ ...l, id: mkId() })))}
+                                                        onClick={() => setCoverTextLayers(preset.layers.map(l => defaultLayer({ id: mkId(), x: 50, ...l } as any)))}
                                                         className="flex flex-col items-center gap-0.5 py-2 px-1 rounded-xl bg-white/[0.03] border border-white/8 hover:border-fuchsia-500/30 hover:bg-fuchsia-500/[0.06] transition-all group">
                                                         <span className="text-base leading-none">{preset.emoji}</span>
                                                         <span className="text-[9px] font-black text-neutral-600 group-hover:text-fuchsia-400 transition-colors leading-tight text-center">{preset.label}</span>
@@ -12869,12 +12921,12 @@ export function KdpFactoryApp() {
                                         {/* Add individual layers */}
                                         <div className="flex gap-1">
                                             {([
-                                                { label: "+ Título", text: t, fontSize: 28, bold: true, color: "#ffffff", shadow: true, stroke: false, strokeColor: "#000", italic: false, uppercase: false, y: 82 },
-                                                { label: "+ Subtítulo", text: s, fontSize: 14, bold: false, color: "#e5e5e5", shadow: true, stroke: false, strokeColor: "#000", italic: true, uppercase: false, y: 88 },
-                                                { label: "+ Autor", text: a, fontSize: 11, bold: false, color: "#cccccc", shadow: false, stroke: false, strokeColor: "#000", italic: false, uppercase: true, y: 94 },
+                                                { label: "+ Título", text: t, fontSize: 28, bold: true, shadow: true, y: 82 },
+                                                { label: "+ Subtítulo", text: s, fontSize: 14, italic: true, shadow: true, y: 88 },
+                                                { label: "+ Autor", text: a, fontSize: 11, uppercase: true, letterSpacing: 2, y: 94 },
                                             ]).map(p => (
                                                 <button key={p.label}
-                                                    onClick={() => setCoverTextLayers(prev => [...prev, { id: mkId(), text: p.text, x: 50, y: p.y, fontSize: p.fontSize, color: p.color, bold: p.bold, italic: p.italic, shadow: p.shadow, stroke: p.stroke, strokeColor: p.strokeColor, uppercase: p.uppercase, align: "center" }])}
+                                                    onClick={() => setCoverTextLayers(prev => [...prev, defaultLayer({ id: mkId(), x: 50, ...p } as any)])}
                                                     className="flex-1 h-6 rounded-lg bg-white/[0.04] border border-white/8 text-[9px] font-black text-neutral-500 hover:text-fuchsia-400 hover:border-fuchsia-500/30 transition-all">
                                                     {p.label}
                                                 </button>
@@ -12974,8 +13026,8 @@ export function KdpFactoryApp() {
                                                     <p className="text-[10px] text-neutral-700">1600×2560px</p>
                                                 </div>
                                             )}
-                                            {/* Draggable text overlays */}
-                                            {coverModalTab === "front" && coverTextLayers.map(layer => (
+                                            {/* Draggable text overlays (mini preview) */}
+                                            {coverModalTab === "front" && coverTextLayers.filter(l => l.visible !== false).map(layer => (
                                                 <div key={layer.id}
                                                     style={{
                                                         position: "absolute",
@@ -12986,8 +13038,11 @@ export function KdpFactoryApp() {
                                                         color: layer.color,
                                                         fontWeight: layer.bold ? 700 : 400,
                                                         fontStyle: layer.italic ? "italic" : "normal",
+                                                        fontFamily: layer.fontFamily || "sans-serif",
                                                         textAlign: layer.align,
                                                         textTransform: layer.uppercase ? "uppercase" : "none",
+                                                        letterSpacing: `${(layer.letterSpacing ?? 0) * 0.4}px`,
+                                                        opacity: (layer.opacity ?? 100) / 100,
                                                         textShadow: layer.shadow
                                                             ? (layer.stroke ? `0 1px 4px rgba(0,0,0,0.8), -1px -1px 0 ${layer.strokeColor||"#000"}, 1px -1px 0 ${layer.strokeColor||"#000"}, -1px 1px 0 ${layer.strokeColor||"#000"}, 1px 1px 0 ${layer.strokeColor||"#000"}` : "0 1px 4px rgba(0,0,0,0.8)")
                                                             : (layer.stroke ? `-1px -1px 0 ${layer.strokeColor||"#000"}, 1px -1px 0 ${layer.strokeColor||"#000"}, -1px 1px 0 ${layer.strokeColor||"#000"}, 1px 1px 0 ${layer.strokeColor||"#000"}` : undefined),
@@ -13010,6 +13065,13 @@ export function KdpFactoryApp() {
                                                     className={`w-full h-9 rounded-xl bg-fuchsia-500/20 border border-fuchsia-500/35 text-fuchsia-300 text-sm font-black flex items-center justify-center gap-1.5 hover:bg-fuchsia-500/30 transition-all`}>
                                                     <Download size={12} /> Descargar
                                                 </a>
+                                                {/* Editor profesional */}
+                                                {coverModalTab === "front" && url && (
+                                                    <button onClick={() => setShowCoverEditor(true)}
+                                                        className="w-full h-9 rounded-xl bg-white/[0.06] border border-fuchsia-500/25 text-fuchsia-300 text-sm font-black flex items-center justify-center gap-1.5 hover:bg-fuchsia-500/15 hover:border-fuchsia-500/40 transition-all">
+                                                        <Palette size={12} /> Editor de portada
+                                                    </button>
+                                                )}
                                                 {/* Save button — only when pending (blob URL, not yet uploaded) */}
                                                 {selectedCoverNicheId && url?.startsWith("blob:") && (
                                                     <button
@@ -13168,6 +13230,366 @@ export function KdpFactoryApp() {
                     </div>
                 </div>
             )}
+
+            {/* ════════════════════════════════════════════════
+                Professional Cover Editor (full-screen)
+            ════════════════════════════════════════════════ */}
+            {showCoverEditor && createPortal((() => {
+                const coverUrl = generatedCoverUrl;
+                const sel = coverTextLayers.find(l => l.id === selectedLayerId);
+                const upd = (id: string, patch: Partial<TextLayer>) =>
+                    setCoverTextLayers(prev => prev.map(l => l.id === id ? { ...l, ...patch } : l));
+                const mkId = () => Date.now().toString() + Math.random();
+                const addLayer = (overrides: Partial<TextLayer> & { text: string }) =>
+                    setCoverTextLayers(prev => {
+                        const id = mkId();
+                        setSelectedLayerId(id);
+                        return [...prev, defaultLayer({ id, ...overrides })];
+                    });
+
+                const layerStyle = (layer: TextLayer): React.CSSProperties => ({
+                    position: "absolute",
+                    left: `${layer.x}%`,
+                    top: `${layer.y}%`,
+                    transform: "translate(-50%, -50%)",
+                    fontSize: `${layer.fontSize}px`,
+                    color: layer.color,
+                    fontWeight: layer.bold ? 700 : 400,
+                    fontStyle: layer.italic ? "italic" : "normal",
+                    fontFamily: layer.fontFamily || "sans-serif",
+                    textAlign: layer.align,
+                    textTransform: layer.uppercase ? "uppercase" : "none",
+                    letterSpacing: `${layer.letterSpacing ?? 0}px`,
+                    opacity: layer.visible === false ? 0 : (layer.opacity ?? 100) / 100,
+                    textShadow: layer.shadow
+                        ? (layer.stroke ? `0 2px 8px rgba(0,0,0,0.9), -1.5px -1.5px 0 ${layer.strokeColor||"#000"}, 1.5px -1.5px 0 ${layer.strokeColor||"#000"}, -1.5px 1.5px 0 ${layer.strokeColor||"#000"}, 1.5px 1.5px 0 ${layer.strokeColor||"#000"}` : "0 2px 8px rgba(0,0,0,0.9)")
+                        : (layer.stroke ? `-1.5px -1.5px 0 ${layer.strokeColor||"#000"}, 1.5px -1.5px 0 ${layer.strokeColor||"#000"}, -1.5px 1.5px 0 ${layer.strokeColor||"#000"}, 1.5px 1.5px 0 ${layer.strokeColor||"#000"}` : undefined),
+                    cursor: "grab",
+                    userSelect: "none",
+                    whiteSpace: "nowrap",
+                    lineHeight: 1.15,
+                    pointerEvents: "auto",
+                    outline: layer.id === selectedLayerId ? "2px dashed rgba(192,38,211,0.7)" : undefined,
+                    outlineOffset: "4px",
+                });
+
+                const EDITOR_FONTS = COVER_FONTS;
+
+                const EDITOR_PRESETS: { label: string; emoji: string; layers: Partial<TextLayer>[] }[] = [
+                    { label: "Classic Gold", emoji: "🏆", layers: [
+                        { text: coverTitle || "Título", y: 78, fontSize: 58, color: "#FFD700", bold: true, uppercase: true, shadow: true, fontFamily: "'Cinzel', serif" },
+                        { text: coverSubtitle || "Subtitle", y: 87, fontSize: 24, color: "#fff", italic: true, shadow: true, fontFamily: "'Cinzel', serif" },
+                        { text: coverAuthor || "Emilio Jimenez", y: 94, fontSize: 18, color: "#FFD700", uppercase: true, fontFamily: "'Cinzel', serif", letterSpacing: 3 },
+                    ]},
+                    { label: "Bold Outline", emoji: "⬛", layers: [
+                        { text: coverTitle || "Título", y: 78, fontSize: 62, color: "#fff", bold: true, uppercase: true, stroke: true, strokeColor: "#000", fontFamily: "'Oswald', sans-serif" },
+                        { text: coverSubtitle || "Subtitle", y: 87, fontSize: 26, color: "#fff", stroke: true, strokeColor: "#000", fontFamily: "'Oswald', sans-serif" },
+                        { text: coverAuthor || "Emilio Jimenez", y: 94, fontSize: 18, color: "#ddd", stroke: true, strokeColor: "#000", fontFamily: "'Oswald', sans-serif" },
+                    ]},
+                    { label: "Neon Glow", emoji: "💜", layers: [
+                        { text: coverTitle || "Título", y: 78, fontSize: 54, color: "#e879f9", bold: true, shadow: true, fontFamily: "'Raleway', sans-serif" },
+                        { text: coverSubtitle || "Subtitle", y: 87, fontSize: 22, color: "#c4b5fd", italic: true, shadow: true, fontFamily: "'Raleway', sans-serif" },
+                        { text: coverAuthor || "Emilio Jimenez", y: 94, fontSize: 16, color: "#a78bfa", uppercase: true, letterSpacing: 4, fontFamily: "'Raleway', sans-serif" },
+                    ]},
+                    { label: "Elegant", emoji: "✨", layers: [
+                        { text: coverTitle || "Título", y: 76, fontSize: 48, color: "#fef3c7", shadow: true, fontFamily: "'Playfair Display', serif" },
+                        { text: coverSubtitle || "Subtitle", y: 85, fontSize: 20, color: "#d97706", italic: true, shadow: true, fontFamily: "'Playfair Display', serif" },
+                        { text: "— " + (coverAuthor || "Emilio Jimenez") + " —", y: 93, fontSize: 15, color: "#fef3c7", uppercase: true, letterSpacing: 3, fontFamily: "'Playfair Display', serif" },
+                    ]},
+                    { label: "Bebas Pop", emoji: "🎨", layers: [
+                        { text: coverTitle || "Título", y: 80, fontSize: 72, color: "#fff", bold: false, uppercase: true, shadow: true, fontFamily: "'Bebas Neue', cursive" },
+                        { text: coverAuthor || "Emilio Jimenez", y: 93, fontSize: 20, color: "#fff", uppercase: true, letterSpacing: 6, fontFamily: "'Bebas Neue', cursive" },
+                    ]},
+                    { label: "Script", emoji: "🖋️", layers: [
+                        { text: coverTitle || "Título", y: 78, fontSize: 52, color: "#fff", shadow: true, fontFamily: "'Lobster', cursive" },
+                        { text: coverSubtitle || "Subtitle", y: 87, fontSize: 22, color: "#fde68a", italic: true, shadow: true, fontFamily: "'Dancing Script', cursive" },
+                        { text: coverAuthor || "Emilio Jimenez", y: 94, fontSize: 18, color: "#e5e5e5", fontFamily: "'Dancing Script', cursive" },
+                    ]},
+                ];
+
+                return (
+                    <div className="fixed inset-0 z-[700] bg-[#080808] flex flex-col" style={{ fontFamily: "sans-serif" }}>
+                        {/* ── Header ── */}
+                        <div className="h-14 shrink-0 flex items-center justify-between px-5 border-b border-white/8 bg-black/40">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-xl bg-fuchsia-500/20 border border-fuchsia-500/30 flex items-center justify-center">
+                                    <Palette size={14} className="text-fuchsia-400" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-black text-white leading-none">Editor de Portada</p>
+                                    <p className="text-[10px] text-neutral-600 leading-none mt-0.5">{coverTitle || "Sin título"} · 1600×2560px</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setCoverTextLayers([])}
+                                    className="h-8 px-3 rounded-xl border border-white/8 text-[11px] font-black text-neutral-600 hover:text-rose-400 hover:border-rose-500/30 transition-all">
+                                    Limpiar capas
+                                </button>
+                                <button onClick={() => setShowCoverEditor(false)}
+                                    className="h-8 px-4 rounded-xl border border-white/10 text-sm font-black text-neutral-400 hover:text-white hover:border-white/20 transition-all">
+                                    Cerrar
+                                </button>
+                                <button onClick={() => { setShowCoverEditor(false); toast.success("Capas aplicadas · guarda para incrustarlas"); }}
+                                    className="h-8 px-4 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-sm font-black flex items-center gap-1.5 transition-all shadow-[0_4px_16px_rgba(192,38,211,0.3)]">
+                                    <Check size={13} /> Aplicar
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* ── Body ── */}
+                        <div className="flex-1 flex min-h-0">
+                            {/* LEFT: Layer list + presets */}
+                            <div className="w-56 shrink-0 border-r border-white/6 flex flex-col bg-black/30 overflow-y-auto">
+                                {/* Presets */}
+                                <div className="p-3 border-b border-white/6 space-y-2">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-700">Estilos de portada</p>
+                                    <div className="grid grid-cols-2 gap-1">
+                                        {EDITOR_PRESETS.map(preset => (
+                                            <button key={preset.label}
+                                                onClick={() => {
+                                                    const newLayers = preset.layers.map((l, i) => defaultLayer({ id: mkId(), text: l.text || "", x: 50, ...l }));
+                                                    setCoverTextLayers(newLayers);
+                                                    setSelectedLayerId(newLayers[0]?.id ?? null);
+                                                }}
+                                                className="flex flex-col items-center gap-0.5 py-2 px-1 rounded-xl bg-white/[0.03] border border-white/8 hover:border-fuchsia-500/40 hover:bg-fuchsia-500/[0.07] transition-all group">
+                                                <span className="text-sm leading-none">{preset.emoji}</span>
+                                                <span className="text-[9px] font-black text-neutral-600 group-hover:text-fuchsia-400 transition-colors text-center leading-tight">{preset.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Add text */}
+                                <div className="p-3 border-b border-white/6 space-y-1">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-700">Añadir capa</p>
+                                    <div className="flex flex-col gap-1">
+                                        {([
+                                            { label: "+ Título", text: coverTitle || "Título del libro", fontSize: 52, bold: true, y: 80, fontFamily: "sans-serif" },
+                                            { label: "+ Subtítulo", text: coverSubtitle || "Subtítulo", fontSize: 24, italic: true, y: 87, fontFamily: "sans-serif" },
+                                            { label: "+ Autor", text: coverAuthor || "Emilio Jimenez", fontSize: 18, uppercase: true, letterSpacing: 3, y: 94, fontFamily: "sans-serif" },
+                                            { label: "+ Texto libre", text: "Texto libre", fontSize: 28, y: 50, fontFamily: "sans-serif" },
+                                        ]).map(p => (
+                                            <button key={p.label} onClick={() => addLayer({ ...p })}
+                                                className="h-7 rounded-lg bg-white/[0.04] border border-white/8 text-[10px] font-black text-neutral-500 hover:text-fuchsia-400 hover:border-fuchsia-500/30 transition-all text-left px-2.5">
+                                                {p.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Layer list */}
+                                <div className="flex-1 p-3 space-y-1 overflow-y-auto">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-700 mb-2">Capas ({coverTextLayers.length})</p>
+                                    {coverTextLayers.length === 0 && (
+                                        <p className="text-[10px] text-neutral-700 italic">Sin capas — añade texto o elige un estilo</p>
+                                    )}
+                                    {[...coverTextLayers].reverse().map(layer => (
+                                        <div key={layer.id}
+                                            onClick={() => setSelectedLayerId(layer.id)}
+                                            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all ${layer.id === selectedLayerId ? "bg-fuchsia-500/15 border border-fuchsia-500/30" : "bg-white/[0.02] border border-transparent hover:border-white/8"}`}>
+                                            <button onClick={e => { e.stopPropagation(); upd(layer.id, { visible: !(layer.visible !== false) }); }}
+                                                className="shrink-0 text-neutral-700 hover:text-white transition-colors">
+                                                {layer.visible === false ? <EyeOff size={10} /> : <Eye size={10} />}
+                                            </button>
+                                            <span className="flex-1 min-w-0 text-[10px] text-neutral-400 truncate"
+                                                style={{ fontFamily: layer.fontFamily || "sans-serif", fontStyle: layer.italic ? "italic" : undefined }}>
+                                                {layer.uppercase ? layer.text.toUpperCase() : layer.text}
+                                            </span>
+                                            <button onClick={e => { e.stopPropagation(); setCoverTextLayers(prev => prev.filter(l => l.id !== layer.id)); if (selectedLayerId === layer.id) setSelectedLayerId(null); }}
+                                                className="shrink-0 text-neutral-700 hover:text-rose-400 transition-colors">
+                                                <X size={9} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* CENTER: Canvas */}
+                            <div className="flex-1 flex items-center justify-center bg-[#0c0c0c] overflow-auto p-6"
+                                style={{ backgroundImage: "radial-gradient(circle at 50% 50%, rgba(192,38,211,0.03) 0%, transparent 70%)" }}>
+                                <div ref={editorPreviewRef}
+                                    className="relative select-none shadow-[0_0_80px_rgba(0,0,0,0.8)]"
+                                    style={{ aspectRatio: "1600/2560", height: "calc(100dvh - 8rem)", maxHeight: "80dvh", maxWidth: "100%", overflow: "hidden", borderRadius: "8px" }}
+                                    onMouseMove={e => {
+                                        if (!draggingLayerRef.current || !editorPreviewRef.current) return;
+                                        const rect = editorPreviewRef.current.getBoundingClientRect();
+                                        const dx = ((e.clientX - draggingLayerRef.current.startX) / rect.width) * 100;
+                                        const dy = ((e.clientY - draggingLayerRef.current.startY) / rect.height) * 100;
+                                        upd(draggingLayerRef.current.id, {
+                                            x: Math.max(0, Math.min(100, draggingLayerRef.current.origX + dx)),
+                                            y: Math.max(0, Math.min(100, draggingLayerRef.current.origY + dy)),
+                                        });
+                                    }}
+                                    onMouseUp={() => { draggingLayerRef.current = null; }}
+                                    onMouseLeave={() => { draggingLayerRef.current = null; }}
+                                    onClick={e => { if (e.target === editorPreviewRef.current || (e.target as HTMLElement).tagName === "IMG") setSelectedLayerId(null); }}>
+                                    {coverUrl
+                                        ? <img src={coverUrl} alt="portada" className="w-full h-full object-cover pointer-events-none" />
+                                        : <div className="w-full h-full bg-neutral-900 flex items-center justify-center"><p className="text-neutral-700 text-sm">Sin imagen base — genera una primero</p></div>
+                                    }
+                                    {coverTextLayers.filter(l => l.visible !== false).map(layer => (
+                                        <div key={layer.id}
+                                            style={layerStyle(layer)}
+                                            onMouseDown={e => { e.preventDefault(); e.stopPropagation(); setSelectedLayerId(layer.id); draggingLayerRef.current = { id: layer.id, startX: e.clientX, startY: e.clientY, origX: layer.x, origY: layer.y }; }}>
+                                            {layer.uppercase ? layer.text.toUpperCase() : layer.text}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* RIGHT: Controls */}
+                            <div className="w-72 shrink-0 border-l border-white/6 bg-black/30 overflow-y-auto flex flex-col">
+                                {sel ? (
+                                    <div className="p-4 space-y-4">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-neutral-700">Propiedades de capa</p>
+
+                                        {/* Text */}
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Texto</label>
+                                            <textarea value={sel.text} rows={2} onChange={e => upd(sel.id, { text: e.target.value })}
+                                                className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2 text-sm text-white resize-none outline-none focus:border-fuchsia-500/40" />
+                                        </div>
+
+                                        {/* Font family */}
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Fuente</label>
+                                            <select value={sel.fontFamily || "sans-serif"} onChange={e => upd(sel.id, { fontFamily: e.target.value })}
+                                                className="w-full h-9 bg-white/[0.04] border border-white/10 rounded-xl px-3 text-sm text-white outline-none focus:border-fuchsia-500/40 appearance-none"
+                                                style={{ fontFamily: sel.fontFamily || "sans-serif" }}>
+                                                {EDITOR_FONTS.map(f => (
+                                                    <option key={f.value} value={f.value} style={{ fontFamily: f.value, background: "#111" }}>{f.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        {/* Size + Color */}
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Tamaño</label>
+                                                <div className="flex items-center gap-1.5">
+                                                    <input type="number" min={8} max={200} value={sel.fontSize}
+                                                        onChange={e => upd(sel.id, { fontSize: Math.max(8, Math.min(200, Number(e.target.value))) })}
+                                                        className="w-16 h-9 bg-white/[0.04] border border-white/10 rounded-xl px-2 text-sm text-white outline-none focus:border-fuchsia-500/40 text-center" />
+                                                    <span className="text-[10px] text-neutral-600">px</span>
+                                                </div>
+                                                <input type="range" min={8} max={200} value={sel.fontSize} onChange={e => upd(sel.id, { fontSize: Number(e.target.value) })}
+                                                    className="w-full accent-fuchsia-500" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Color</label>
+                                                <div className="flex items-center gap-2">
+                                                    <input type="color" value={sel.color} onChange={e => upd(sel.id, { color: e.target.value })}
+                                                        className="w-9 h-9 rounded-lg cursor-pointer border border-white/10 bg-transparent p-0.5 shrink-0" />
+                                                    <input type="text" value={sel.color} onChange={e => upd(sel.id, { color: e.target.value })}
+                                                        className="flex-1 h-9 bg-white/[0.04] border border-white/10 rounded-xl px-2 text-[11px] text-white outline-none focus:border-fuchsia-500/40 font-mono" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Style toggles */}
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Estilo</label>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {([
+                                                    { key: "bold" as const, label: "B", title: "Negrita", extra: "font-bold" },
+                                                    { key: "italic" as const, label: "I", title: "Cursiva", extra: "italic" },
+                                                    { key: "uppercase" as const, label: "AA", title: "Mayúsculas", extra: "" },
+                                                    { key: "shadow" as const, label: "☁", title: "Sombra", extra: "" },
+                                                    { key: "stroke" as const, label: "○", title: "Contorno", extra: "" },
+                                                ]).map(({ key, label, title, extra }) => (
+                                                    <button key={key} title={title} onClick={() => upd(sel.id, { [key]: !sel[key] })}
+                                                        className={`h-8 px-3 rounded-xl text-sm ${extra} border transition-all ${sel[key] ? "border-fuchsia-500/50 bg-fuchsia-500/20 text-fuchsia-300" : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white"}`}>
+                                                        {label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Stroke color */}
+                                        {sel.stroke && (
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Color contorno</label>
+                                                <div className="flex items-center gap-2">
+                                                    <input type="color" value={sel.strokeColor || "#000000"} onChange={e => upd(sel.id, { strokeColor: e.target.value })}
+                                                        className="w-9 h-9 rounded-lg cursor-pointer border border-white/10 bg-transparent p-0.5 shrink-0" />
+                                                    <input type="text" value={sel.strokeColor || "#000000"} onChange={e => upd(sel.id, { strokeColor: e.target.value })}
+                                                        className="flex-1 h-9 bg-white/[0.04] border border-white/10 rounded-xl px-2 text-[11px] text-white outline-none focus:border-fuchsia-500/40 font-mono" />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Alignment */}
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Alineación</label>
+                                            <div className="flex gap-1.5">
+                                                {(["left", "center", "right"] as const).map(al => (
+                                                    <button key={al} onClick={() => upd(sel.id, { align: al })}
+                                                        className={`flex-1 h-8 rounded-xl border text-sm transition-all flex items-center justify-center ${sel.align === al ? "border-fuchsia-500/50 bg-fuchsia-500/20 text-fuchsia-300" : "border-white/10 bg-white/[0.03] text-neutral-500 hover:text-white"}`}>
+                                                        {al === "left" ? <AlignLeft size={13} /> : al === "center" ? <AlignCenter size={13} /> : <AlignRight size={13} />}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Letter spacing */}
+                                        <div className="space-y-1">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Espaciado letras</label>
+                                                <span className="text-[10px] text-neutral-700">{sel.letterSpacing ?? 0}px</span>
+                                            </div>
+                                            <input type="range" min={-5} max={30} value={sel.letterSpacing ?? 0} onChange={e => upd(sel.id, { letterSpacing: Number(e.target.value) })}
+                                                className="w-full accent-fuchsia-500" />
+                                        </div>
+
+                                        {/* Opacity */}
+                                        <div className="space-y-1">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Opacidad</label>
+                                                <span className="text-[10px] text-neutral-700">{sel.opacity ?? 100}%</span>
+                                            </div>
+                                            <input type="range" min={10} max={100} value={sel.opacity ?? 100} onChange={e => upd(sel.id, { opacity: Number(e.target.value) })}
+                                                className="w-full accent-fuchsia-500" />
+                                        </div>
+
+                                        {/* Position */}
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Posición</label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {(["x", "y"] as const).map(axis => (
+                                                    <div key={axis} className="space-y-0.5">
+                                                        <span className="text-[9px] text-neutral-700 uppercase">{axis === "x" ? "Horizontal" : "Vertical"}</span>
+                                                        <div className="flex items-center gap-1">
+                                                            <input type="number" min={0} max={100} value={Math.round(sel[axis])} onChange={e => upd(sel.id, { [axis]: Number(e.target.value) })}
+                                                                className="w-14 h-8 bg-white/[0.04] border border-white/10 rounded-lg px-2 text-sm text-white outline-none focus:border-fuchsia-500/40 text-center" />
+                                                            <span className="text-[9px] text-neutral-700">%</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Delete layer */}
+                                        <button onClick={() => { setCoverTextLayers(prev => prev.filter(l => l.id !== sel.id)); setSelectedLayerId(null); }}
+                                            className="w-full h-8 rounded-xl border border-rose-500/20 bg-rose-500/[0.06] text-rose-400 text-sm font-black flex items-center justify-center gap-1.5 hover:bg-rose-500/15 transition-all">
+                                            <Trash2 size={11} /> Eliminar capa
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center">
+                                        <div className="w-12 h-12 rounded-2xl bg-white/[0.03] border border-white/8 flex items-center justify-center">
+                                            <Type size={20} className="text-neutral-700" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-black text-neutral-600">Selecciona una capa</p>
+                                            <p className="text-[10px] text-neutral-700 mt-1">Haz clic en un texto de la previsualización o en la lista de capas</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })(), document.body)}
 
             {/* Book Editor Modal */}
             {bookEditorOpen && (
