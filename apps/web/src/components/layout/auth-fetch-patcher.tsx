@@ -21,11 +21,19 @@ export function AuthFetchPatcher() {
             if (url.startsWith(API_URL)) {
                 const token = getToken();
                 if (token) {
-                    const headers = new Headers(init?.headers);
+                    // Start from the Request object's own headers (if input is a Request),
+                    // then layer init.headers on top, so nothing is lost.
+                    const baseHeaders = input instanceof Request ? input.headers : undefined;
+                    const headers = new Headers(baseHeaders);
+                    if (init?.headers) {
+                        new Headers(init.headers).forEach((v, k) => headers.set(k, v));
+                    }
                     if (!headers.has("Authorization")) {
                         headers.set("Authorization", `Bearer ${token}`);
                     }
-                    return originalFetch(input, { ...init, headers });
+                    // Clone Request to avoid "body already used" when re-passing with new init
+                    const finalInput = input instanceof Request ? input.clone() : input;
+                    return originalFetch(finalInput, { ...init, headers });
                 }
             }
 

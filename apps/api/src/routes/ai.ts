@@ -1251,7 +1251,13 @@ Eres un especialista en SEO para Amazon KDP. Generas metadatos de alta conversi�
 [REGLAS DE CONTENIDO]
 1. TITULO: 30-55 chars. OBLIGATORIO: empieza siempre por la keyword de mayor volumen de búsqueda. Debe ser conciso, evocador y directo al nicho — NO una lista de keywords. Formato: "[Keyword Principal] [Modificador o Audiencia]". Ejemplos correctos: "Mystical Forest Coloring Book for Adults" / "Kawaii Cat Coloring Book". El título NUNCA puede superar la longitud del subtítulo.
 2. SUBTITULO: 80-120 chars. SIEMPRE más largo que el título. Keywords secundarias de alto volumen no repetidas del título. Expande el nicho con ángulo emocional, audiencia y estilo. NO mencionar número de páginas ni diseños. Ejemplos: "Enchanting Nature Scenes for Stress Relief, Mindfulness & Creative Relaxation" / "Adorable Illustrations for Cat Lovers, Teens & Kawaii Art Fans".
-3. DESCRIPTION: HTML optimizado para Amazon KDP. Estructura: (1) <p> hook emocional (qué problema resuelve / qué experiencia ofrece), (2) <ul> 4-5 <li> de beneficios concretos, (3) <p> llamada a la acción + para quién es ideal (regalo, uso personal). Total 450-650 chars de texto visible. Usa <strong> en 2-3 keywords clave. Nunca mencionar páginas.
+3. DESCRIPTION: HTML optimizado para Amazon KDP. Amazon permite hasta 4000 chars — úsalos bien. Estructura obligatoria:
+   (1) <p> Hook emocional potente (2-3 frases): capta el dolor/deseo del comprador y promete la transformación. Incluye la keyword principal con naturalidad.
+   (2) <p> Párrafo de contexto/historia (2-3 frases): por qué este libro es diferente, qué lo hace especial, ángulo emocional o de comunidad.
+   (3) <ul> 6-8 <li> de beneficios concretos y específicos: cada uno debe responder "¿qué gano yo?". Varía entre beneficios funcionales, emocionales y de ocasión (regalo, etc.).
+   (4) <p> Párrafo para quién es ideal (2-3 frases): audiencias específicas, ocasiones de regalo, casos de uso. Incluye keywords secundarias con naturalidad.
+   (5) <p> Llamada a la acción fuerte: urgencia o invitación directa a comprar. Cierra con una frase memorable.
+   Total texto visible: 1200-1800 chars. Usa <strong> en 4-6 keywords estratégicas repartidas por todo el texto. Nunca mencionar páginas.
 4. KEYWORDS: Exactamente 7 frases de cola larga, 2-5 palabras c/u. **LÍMITE ESTRICTO: máximo 49 caracteres por frase** (Amazon KDP rechaza silenciosamente frases ≥50 chars). Sin repetir palabras del título. Mezcla: temática específica + audiencia + ocasión de regalo + formato/uso.
 
 [INPUT DEL USUARIO]
@@ -1350,9 +1356,9 @@ Return ONLY: {"particulars": "...55-80 words..."}`;
             titles: `${langInstruction} Generate 8 compelling titles for a "${productType}" KDP/Etsy product about "${niche}". ${extras ? `Additional context: ${extras}` : ""}
 Return ONLY a JSON array of strings: ["Title 1", "Title 2", ...]`,
 
-            description: `${langInstruction} Write a persuasive Amazon KDP / Etsy product description for a "${productType}" about "${niche}". ${extras ? `Context: ${extras}` : ""}
-Include: hook sentence, 3 bullet points of benefits, call to action. Max 400 words.
-Return ONLY a JSON object: {"description": "...", "bullets": ["...", "...", "..."]}`,
+            description: `${langInstruction} Write a rich, SEO-optimized Amazon KDP / Etsy product description for a "${productType}" about "${niche}". ${extras ? `Context: ${extras}` : ""}
+Structure: (1) emotional hook paragraph, (2) context/story paragraph, (3) 6-8 bullet points of specific benefits, (4) ideal-audience paragraph, (5) strong call to action. Target 600-900 words total. Use HTML (<p>, <ul>, <li>, <strong>) for Amazon formatting.
+Return ONLY a JSON object: {"description": "...", "bullets": ["...", "...", "...", "...", "..."]}`,
 
             keywords: `${langInstruction} Generate the best 30 SEO keywords/tags for a "${productType}" about "${niche}" on Amazon KDP and Etsy. ${extras ? `Context: ${extras}` : ""}
 Include long-tail and short-tail. Return ONLY a JSON array of strings.`,
@@ -1362,7 +1368,7 @@ Return ONLY a JSON object with:
 {
   "title": "main title (max 200 chars)",
   "subtitle": "subtitle (max 100 chars)",
-  "description": "full description (max 500 words)",
+  "description": "full SEO-rich description 600-900 words, HTML formatted with <p><ul><li><strong>, covering: hook, story, 6-8 benefits, ideal audience, CTA",
   "bullets": ["benefit 1", "benefit 2", "benefit 3", "benefit 4", "benefit 5"],
   "keywords": ["kw1", "kw2", ...30 keywords],
   "categories": ["category1", "category2"],
@@ -1416,7 +1422,7 @@ Return ONLY a JSON object:
 
         // Explicit field schemas for Groq (no native schema support like Gemini)
         const groqSchemaHint: Record<string, string> = {
-            "kdp-physical-book": `\n\nRESPONSE FORMAT — return ONLY this JSON (no other text):\n{"title":"<30-55 char title>","subtitle":"<80-120 char subtitle>","description":"<HTML description 450-650 chars>","keywords":["kw1","kw2","kw3","kw4","kw5","kw6","kw7"]}`,
+            "kdp-physical-book": `\n\nRESPONSE FORMAT — return ONLY this JSON (no other text):\n{"title":"<30-55 char title>","subtitle":"<80-120 char subtitle>","description":"<HTML description with <p><ul><li><strong>, 1200-1800 chars visible text, 5 sections: hook, story, 6-8 benefits, audience, CTA>","keywords":["kw1","kw2","kw3","kw4","kw5","kw6","kw7"]}`,
             "image-prompt":      `\n\nRESPONSE FORMAT — return ONLY: {"prompt":"<image prompt 30-80 words>"}`,
             "niche-particulars": `\n\nRESPONSE FORMAT — return ONLY: {"particulars":"<15-30 words visual description>"}`,
             "printable-particulars": `\n\nRESPONSE FORMAT — return ONLY: {"particulars":"<15-30 words visual description>"}`,
@@ -1475,7 +1481,7 @@ Return ONLY a JSON object:
                         body: JSON.stringify({
                             model: "llama-3.3-70b-versatile",
                             messages: [{ role: "system", content: sysMsg }, { role: "user", content: prompt }],
-                            max_tokens: 1500, temperature: 0.4,
+                            max_tokens: 3000, temperature: 0.4,
                         }),
                         signal: AbortSignal.timeout(30_000),
                     });

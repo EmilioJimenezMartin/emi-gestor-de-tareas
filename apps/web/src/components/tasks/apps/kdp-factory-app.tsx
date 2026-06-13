@@ -554,7 +554,7 @@ export function KdpFactoryApp() {
     const [nicheFormPrompt, setNicheFormPrompt] = useState("");
     const [isSavingNiche, setIsSavingNiche] = useState(false);
     const [nicheDeleteId, setNicheDeleteId] = useState<string | null>(null);
-    const [lightboxUrl, setLightboxUrl] = useState<{ url: string; catalogId?: string; publicId?: string } | null>(null);
+    const [lightboxUrl, setLightboxUrl] = useState<{ url: string; catalogId?: string; publicId?: string; filename?: string } | null>(null);
     const [explodeNicheId, setExplodeNicheId] = useState<string | null>(null);
     const [nichePage, setNichePage] = useState(0);
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban">("kanban");
@@ -10228,7 +10228,8 @@ export function KdpFactoryApp() {
                                     {/* Covers row */}
                                     <div className="flex gap-1 p-1">
                                         {/* Front cover */}
-                                        <div className="relative flex-1 rounded-xl overflow-hidden bg-white/[0.02]" style={{ aspectRatio: "1600/2560" }}>
+                                        <div className="group/cover relative flex-1 rounded-xl overflow-hidden bg-white/[0.02] cursor-pointer" style={{ aspectRatio: "1600/2560" }}
+                                            onClick={() => n.coverUrl && setLightboxUrl({ url: n.coverUrl, filename: `portada-${slug}.jpg` })}>
                                             {n.coverUrl
                                                 ? <img src={n.coverUrl} alt="Portada" className="w-full h-full object-cover" />
                                                 : <div className="w-full h-full flex items-center justify-center"><ImageIcon size={16} className="text-white/10" /></div>
@@ -10239,27 +10240,37 @@ export function KdpFactoryApp() {
                                                     {n.coverCandidates!.length}
                                                 </div>
                                             )}
+                                            {/* Zoom overlay */}
+                                            {n.coverUrl && (
+                                                <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/cover:opacity-100 transition-opacity">
+                                                    <ZoomIn size={20} className="text-white drop-shadow" />
+                                                </div>
+                                            )}
                                             {/* Label + download */}
                                             <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent px-1.5 py-1.5 flex items-end justify-between opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <span className="text-[9px] font-black text-white/60 uppercase tracking-wide">Portada</span>
                                                 {n.coverUrl && (
-                                                    <a href={n.coverUrl} download={`portada-${slug}.jpg`} onClick={e => e.stopPropagation()}
+                                                    <button onClick={e => { e.stopPropagation(); void downloadFile(n.coverUrl!, `portada-${slug}.jpg`); }}
                                                         className="h-5 w-5 rounded bg-fuchsia-500/80 hover:bg-fuchsia-500 text-white flex items-center justify-center transition-all">
                                                         <Download size={9} />
-                                                    </a>
+                                                    </button>
                                                 )}
                                             </div>
                                         </div>
                                         {/* Back cover — same flex-1 so both covers share equal width */}
                                         {n.backCoverUrl && (
-                                            <div className="relative flex-1 rounded-xl overflow-hidden bg-white/[0.02]" style={{ aspectRatio: "1600/2560" }}>
+                                            <div className="group/backcover relative flex-1 rounded-xl overflow-hidden bg-white/[0.02] cursor-pointer" style={{ aspectRatio: "1600/2560" }}
+                                                onClick={() => setLightboxUrl({ url: n.backCoverUrl!, filename: `contraportada-${slug}.jpg` })}>
                                                 <img src={n.backCoverUrl} alt="Contraportada" className="w-full h-full object-cover" />
+                                                <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover/backcover:opacity-100 transition-opacity">
+                                                    <ZoomIn size={20} className="text-white drop-shadow" />
+                                                </div>
                                                 <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent px-1 py-1.5 flex items-end justify-between opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <span className="text-[8px] font-black text-white/60 uppercase tracking-wide leading-none">Contra</span>
-                                                    <a href={n.backCoverUrl} download={`contraportada-${slug}.jpg`} onClick={e => e.stopPropagation()}
+                                                    <button onClick={e => { e.stopPropagation(); void downloadFile(n.backCoverUrl!, `contraportada-${slug}.jpg`); }}
                                                         className="h-5 w-5 rounded bg-violet-500/80 hover:bg-violet-500 text-white flex items-center justify-center transition-all shrink-0">
                                                         <Download size={9} />
-                                                    </a>
+                                                    </button>
                                                 </div>
                                             </div>
                                         )}
@@ -13902,15 +13913,13 @@ export function KdpFactoryApp() {
                             className="max-w-full max-h-[90vh] rounded-2xl shadow-2xl object-contain border border-white/10"
                         />
                         <div className="absolute top-3 right-3 flex gap-2">
-                            <a
-                                href={lightboxUrl.url}
-                                download
-                                onClick={e => e.stopPropagation()}
+                            <button
+                                onClick={e => { e.stopPropagation(); void downloadFile(lightboxUrl.url, lightboxUrl.filename ?? "imagen.jpg"); }}
                                 className="p-2 rounded-xl bg-black/60 border border-white/10 text-neutral-400 hover:text-white hover:bg-black/80 transition-all"
                                 title="Descargar"
                             >
                                 <Download size={14} />
-                            </a>
+                            </button>
                             {lightboxUrl.publicId && (
                                 <button
                                     onClick={() => {
@@ -15110,7 +15119,13 @@ export function KdpFactoryApp() {
                                                     </div>
                                                 </div>
                                                 <div className="flex justify-center">
-                                                    <img src={detailNiche.coverUrl} alt="Portada" className="h-40 rounded-xl object-cover border border-fuchsia-500/20 shadow-lg" style={{ aspectRatio: "3/4" }} />
+                                                    <div className="group/detailcover relative cursor-pointer rounded-xl overflow-hidden"
+                                                        onClick={() => setLightboxUrl({ url: detailNiche.coverUrl!, filename: `portada-${(detailNiche.nickname?.trim() || detailNiche.name).toLowerCase().replace(/\s+/g, "-")}.jpg` })}>
+                                                        <img src={detailNiche.coverUrl} alt="Portada" className="h-40 object-cover border border-fuchsia-500/20 shadow-lg" style={{ aspectRatio: "3/4" }} />
+                                                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/detailcover:opacity-100 transition-opacity rounded-xl">
+                                                            <ZoomIn size={22} className="text-white drop-shadow" />
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         ) : (
@@ -15148,7 +15163,7 @@ export function KdpFactoryApp() {
                                                             typeLabel = collageLabels[idx] ?? `Collage ${idx + 1}`;
                                                         }
                                                         return (
-                                                            <div key={idx} className={`relative rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${isActive ? "border-fuchsia-500 shadow-[0_0_12px_rgba(217,70,239,0.3)]" : "border-transparent hover:border-white/20"}`}
+                                                            <div key={idx} className={`group/cand relative rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${isActive ? "border-fuchsia-500 shadow-[0_0_12px_rgba(217,70,239,0.3)]" : "border-transparent hover:border-white/20"}`}
                                                                 onClick={async () => {
                                                                     await fetch(`${API_BASE_URL}/niches/${detailNiche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ coverUrl: url }) });
                                                                     void fetchNiches();
@@ -15160,6 +15175,11 @@ export function KdpFactoryApp() {
                                                                         <Check size={10} className="text-white" />
                                                                     </div>
                                                                 )}
+                                                                <button
+                                                                    onClick={e => { e.stopPropagation(); setLightboxUrl({ url, filename: `portada-variante-${idx + 1}.jpg` }); }}
+                                                                    className="absolute top-1 left-1 w-5 h-5 rounded-lg bg-black/60 flex items-center justify-center opacity-0 group-hover/cand:opacity-100 transition-opacity hover:bg-black/80">
+                                                                    <ZoomIn size={9} className="text-white" />
+                                                                </button>
                                                                 <div className="absolute bottom-0 inset-x-0 bg-black/50 text-center text-[9px] font-black text-white/70 py-0.5">{typeLabel}</div>
                                                             </div>
                                                         );

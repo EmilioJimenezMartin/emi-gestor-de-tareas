@@ -53,6 +53,7 @@ const app = Fastify({ logger: true, bodyLimit: 52_428_800 }); // 50 MB para PDFs
 await app.register(cors, {
   origin: env.CORS_ORIGIN,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
 });
 
 // Security headers — desactiva contentSecurityPolicy para no romper SSE/socket.io
