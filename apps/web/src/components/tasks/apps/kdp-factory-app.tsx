@@ -2721,6 +2721,24 @@ export function KdpFactoryApp() {
         void downloadFile(url, `${filenameBase}.png`);
     };
 
+    // Descarga la portada con las capas de texto compuestas
+    const downloadCoverWithLayers = async (filename: string) => {
+        const url = generatedCoverUrl;
+        if (!url) return;
+        const activeLayers = coverTextLayers.filter(l => l.visible !== false);
+        if (activeLayers.length === 0) return downloadFile(url, filename);
+        try {
+            const res = await fetch(url);
+            const imgBlob = await res.blob();
+            const finalBlob = await compositeTextOnBlob(imgBlob, activeLayers);
+            const blobUrl = URL.createObjectURL(finalBlob);
+            const a = document.createElement("a");
+            a.href = blobUrl; a.download = filename;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+        } catch { toast.error("Error al descargar la portada"); }
+    };
+
     const setGeneratedImageFromFile = (file: File) => {
         if (!file.type.startsWith("image/")) {
             toast.error("Solo se aceptan imágenes");
@@ -9940,66 +9958,91 @@ export function KdpFactoryApp() {
         finally { setIsColorizing(false); }
     };
 
+    // ── Canvas text-layer compositor (word-wrap aware) ──────────────────────
+    const drawTextLayerOnCanvas = (ctx: CanvasRenderingContext2D, layer: TextLayer, cw: number, ch: number) => {
+        if (layer.visible === false) return;
+        const px = (layer.x / 100) * cw;
+        const py = (layer.y / 100) * ch;
+        const fs = Math.round((layer.fontSize / 40) * (cw / 1600) * 100);
+        const raw = layer.uppercase ? layer.text.toUpperCase() : layer.text;
+        const fontFamily = layer.fontFamily || "sans-serif";
+        const maxW = cw * 0.85;
+
+        ctx.save();
+        ctx.globalAlpha = (layer.opacity ?? 100) / 100;
+        ctx.font = `${layer.italic ? "italic " : ""}${layer.bold ? "bold " : ""}${fs}px ${fontFamily}`;
+        if ((layer.letterSpacing ?? 0) !== 0) (ctx as any).letterSpacing = `${layer.letterSpacing}px`;
+        ctx.fillStyle = layer.color;
+        ctx.textAlign = layer.align as CanvasTextAlign;
+        ctx.textBaseline = "middle";
+
+        // Word-wrap
+        const lines: string[] = [];
+        for (const para of raw.split("\n")) {
+            const words = para.split(" ");
+            let cur = "";
+            for (const w of words) {
+                const test = cur ? cur + " " + w : w;
+                if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = w; }
+                else cur = test;
+            }
+            if (cur) lines.push(cur);
+        }
+        if (lines.length === 0) lines.push("");
+
+        const lineH = fs * 1.3;
+        const startY = py - ((lines.length - 1) * lineH) / 2;
+
+        const drawLine = (text: string, y: number) => {
+            if (layer.shadow) { ctx.shadowColor = "rgba(0,0,0,0.88)"; ctx.shadowBlur = 14; ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3; }
+            if (layer.stroke) {
+                ctx.strokeStyle = layer.strokeColor || "#000";
+                ctx.lineWidth = Math.max(1, fs * 0.08);
+                ctx.lineJoin = "round";
+                const tmp = ctx.shadowColor; ctx.shadowColor = "transparent";
+                ctx.strokeText(text, px, y); ctx.shadowColor = tmp;
+            }
+            ctx.fillText(text, px, y);
+        };
+
+        for (let i = 0; i < lines.length; i++) drawLine(lines[i], startY + i * lineH);
+        ctx.restore();
+    };
+
+    const compositeTextOnBlob = (sourceBlob: Blob, layers: TextLayer[]): Promise<Blob> =>
+        new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement("canvas");
+                canvas.width = img.naturalWidth || 1600;
+                canvas.height = img.naturalHeight || 2560;
+                const ctx = canvas.getContext("2d")!;
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                const visible = layers.filter(l => l.visible !== false);
+                for (const layer of visible) drawTextLayerOnCanvas(ctx, layer, canvas.width, canvas.height);
+                canvas.toBlob(b => b ? resolve(b) : reject(new Error("toBlob failed")), "image/jpeg", 0.92);
+            };
+            img.onerror = reject;
+            img.src = URL.createObjectURL(sourceBlob);
+        });
+
     const saveCoverToNiche = async (type: "front" | "back") => {
         if (!selectedCoverNicheId) { toast.error("Selecciona un nicho primero"); return; }
-        const blob = type === "front" ? pendingCoverBlobRef.current : pendingBackCoverBlobRef.current;
-        if (!blob) { toast.error("No hay imagen pendiente de guardar"); return; }
+
+        // Get base blob — from pending ref or by fetching the current URL
+        let baseBlob: Blob | null = type === "front" ? pendingCoverBlobRef.current : pendingBackCoverBlobRef.current;
+        if (!baseBlob) {
+            const fallbackUrl = type === "front" ? generatedCoverUrl : generatedBackCoverUrl;
+            if (!fallbackUrl) { toast.error("No hay imagen para guardar"); return; }
+            try { const r = await fetch(fallbackUrl); baseBlob = await r.blob(); }
+            catch { toast.error("No se pudo obtener la imagen base"); return; }
+        }
+
         try {
-            // For front covers with text layers, composite them onto the image before upload
-            const finalBlob = await (async () => {
-                if (type !== "front" || coverTextLayers.length === 0) return blob;
-                return new Promise<Blob>((resolve, reject) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const canvas = document.createElement("canvas");
-                        canvas.width = img.naturalWidth || 1600;
-                        canvas.height = img.naturalHeight || 2560;
-                        const ctx = canvas.getContext("2d")!;
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        for (const layer of coverTextLayers) {
-                            if (!layer.visible) continue;
-                            const px = (layer.x / 100) * canvas.width;
-                            const py = (layer.y / 100) * canvas.height;
-                            const fs = Math.round((layer.fontSize / 40) * (canvas.width / 1600) * 100);
-                            const displayText = layer.uppercase ? layer.text.toUpperCase() : layer.text;
-                            const fontFamily = layer.fontFamily || "sans-serif";
-                            ctx.save();
-                            ctx.globalAlpha = (layer.opacity ?? 100) / 100;
-                            ctx.font = `${layer.italic ? "italic " : ""}${layer.bold ? "bold " : ""}${fs}px ${fontFamily}`;
-                            ctx.fillStyle = layer.color;
-                            ctx.textAlign = layer.align as CanvasTextAlign;
-                            ctx.textBaseline = "middle";
-                            if ((layer.letterSpacing ?? 0) > 0) {
-                                // Canvas doesn't support letterSpacing natively — draw char by char
-                                const chars = displayText.split("");
-                                const totalW = ctx.measureText(displayText).width + (layer.letterSpacing * (chars.length - 1) * (fs / 16));
-                                let startX = layer.align === "center" ? px - totalW / 2 : layer.align === "right" ? px - totalW : px;
-                                for (const ch of chars) {
-                                    if (layer.shadow) { ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = 12; ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3; }
-                                    if (layer.stroke) { ctx.strokeStyle = layer.strokeColor || "#000"; ctx.lineWidth = Math.max(1, fs * 0.08); ctx.lineJoin = "round"; const tmpShadow = ctx.shadowColor; ctx.shadowColor = "transparent"; ctx.strokeText(ch, startX, py); ctx.shadowColor = tmpShadow; }
-                                    ctx.fillText(ch, startX, py);
-                                    startX += ctx.measureText(ch).width + (layer.letterSpacing * (fs / 16));
-                                }
-                            } else {
-                                if (layer.shadow) { ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = 12; ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3; }
-                                if (layer.stroke) {
-                                    ctx.strokeStyle = layer.strokeColor || "#000000";
-                                    ctx.lineWidth = Math.max(1, fs * 0.08);
-                                    ctx.lineJoin = "round";
-                                    const tmpShadow = ctx.shadowColor; ctx.shadowColor = "transparent";
-                                    ctx.strokeText(displayText, px, py);
-                                    ctx.shadowColor = tmpShadow;
-                                }
-                                ctx.fillText(displayText, px, py);
-                            }
-                            ctx.restore();
-                        }
-                        canvas.toBlob(b => b ? resolve(b) : reject(new Error("canvas toBlob failed")), "image/jpeg", 0.92);
-                    };
-                    img.onerror = reject;
-                    img.src = URL.createObjectURL(blob);
-                });
-            })();
+            const activeLayers = type === "front" ? coverTextLayers.filter(l => l.visible !== false) : [];
+            const finalBlob = activeLayers.length > 0
+                ? await compositeTextOnBlob(baseBlob, activeLayers)
+                : baseBlob;
 
             const dataUrl = await new Promise<string>((res, rej) => {
                 const reader = new FileReader();
@@ -10014,6 +10057,7 @@ export function KdpFactoryApp() {
             if (!uploadRes.ok) { toast.error("Error subiendo a Cloudinary"); return; }
             const cloudUrl: string = (await uploadRes.json()).image?.url;
             if (!cloudUrl) { toast.error("URL no recibida"); return; }
+
             if (type === "front") {
                 const existing = niches.find(n => n._id === selectedCoverNicheId)?.coverCandidates ?? [];
                 const candidates = [...existing.filter(u => u !== cloudUrl), cloudUrl];
@@ -13048,11 +13092,11 @@ export function KdpFactoryApp() {
                                                             : (layer.stroke ? `-1px -1px 0 ${layer.strokeColor||"#000"}, 1px -1px 0 ${layer.strokeColor||"#000"}, -1px 1px 0 ${layer.strokeColor||"#000"}, 1px 1px 0 ${layer.strokeColor||"#000"}` : undefined),
                                                         cursor: "grab",
                                                         userSelect: "none",
-                                                        whiteSpace: "nowrap",
-                                                        maxWidth: "92%",
-                                                        overflow: "hidden",
-                                                        textOverflow: "ellipsis",
-                                                        lineHeight: 1.1,
+                                                        whiteSpace: "pre-wrap",
+                                                        wordBreak: "break-word",
+                                                        width: "85%",
+                                                        lineHeight: 1.3,
+                                                        zIndex: 10,
                                                     }}
                                                     onMouseDown={e => { e.preventDefault(); draggingLayerRef.current = { id: layer.id, startX: e.clientX, startY: e.clientY, origX: layer.x, origY: layer.y }; }}>
                                                     {layer.uppercase ? layer.text.toUpperCase() : layer.text}
@@ -13061,23 +13105,24 @@ export function KdpFactoryApp() {
                                         </div>
                                         {url && (
                                             <div className="flex flex-col gap-1.5 w-full">
-                                                <a href={url} download={dlName}
+                                                <button onClick={() => void (coverModalTab === "front" ? downloadCoverWithLayers(dlName) : downloadFile(url, dlName))}
                                                     className={`w-full h-9 rounded-xl bg-fuchsia-500/20 border border-fuchsia-500/35 text-fuchsia-300 text-sm font-black flex items-center justify-center gap-1.5 hover:bg-fuchsia-500/30 transition-all`}>
                                                     <Download size={12} /> Descargar
-                                                </a>
+                                                </button>
                                                 {/* Editor profesional */}
                                                 {coverModalTab === "front" && url && (
                                                     <button onClick={() => setShowCoverEditor(true)}
-                                                        className="w-full h-9 rounded-xl bg-white/[0.06] border border-fuchsia-500/25 text-fuchsia-300 text-sm font-black flex items-center justify-center gap-1.5 hover:bg-fuchsia-500/15 hover:border-fuchsia-500/40 transition-all">
-                                                        <Palette size={12} /> Editor de portada
+                                                        className="w-full h-11 rounded-2xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white font-black flex items-center justify-center gap-2 transition-all shadow-[0_4px_20px_rgba(192,38,211,0.4)] active:scale-[0.98] border border-fuchsia-400/20 whitespace-nowrap">
+                                                        <Palette size={14} />
+                                                        <span className="text-sm">Editor de portada</span>
                                                     </button>
                                                 )}
-                                                {/* Save button — only when pending (blob URL, not yet uploaded) */}
-                                                {selectedCoverNicheId && url?.startsWith("blob:") && (
+                                                {/* Save button */}
+                                                {selectedCoverNicheId && url && (
                                                     <button
                                                         onClick={() => void saveCoverToNiche(coverModalTab)}
                                                         className="w-full h-9 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-[0_4px_16px_rgba(192,38,211,0.3)] active:scale-[0.98]">
-                                                        <Save size={12} /> Guardar en nicho
+                                                        <Save size={12} /> {coverTextLayers.length > 0 ? "Guardar con texto" : "Guardar en nicho"}
                                                     </button>
                                                 )}
                                                 <div className="flex gap-1.5">
@@ -13266,8 +13311,10 @@ export function KdpFactoryApp() {
                         : (layer.stroke ? `-1.5px -1.5px 0 ${layer.strokeColor||"#000"}, 1.5px -1.5px 0 ${layer.strokeColor||"#000"}, -1.5px 1.5px 0 ${layer.strokeColor||"#000"}, 1.5px 1.5px 0 ${layer.strokeColor||"#000"}` : undefined),
                     cursor: "grab",
                     userSelect: "none",
-                    whiteSpace: "nowrap",
-                    lineHeight: 1.15,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    width: "85%",
+                    lineHeight: 1.3,
                     pointerEvents: "auto",
                     outline: layer.id === selectedLayerId ? "2px dashed rgba(192,38,211,0.7)" : undefined,
                     outlineOffset: "4px",
@@ -13329,7 +13376,13 @@ export function KdpFactoryApp() {
                                     className="h-8 px-4 rounded-xl border border-white/10 text-sm font-black text-neutral-400 hover:text-white hover:border-white/20 transition-all">
                                     Cerrar
                                 </button>
-                                <button onClick={() => { setShowCoverEditor(false); toast.success("Capas aplicadas · guarda para incrustarlas"); }}
+                                {selectedCoverNicheId && coverUrl && (
+                                    <button onClick={() => { setShowCoverEditor(false); void saveCoverToNiche("front"); }}
+                                        className="h-8 px-4 rounded-xl bg-white/[0.06] border border-emerald-500/30 text-emerald-300 text-sm font-black flex items-center gap-1.5 hover:bg-emerald-500/15 transition-all">
+                                        <Save size={13} /> Guardar
+                                    </button>
+                                )}
+                                <button onClick={() => { setShowCoverEditor(false); toast.success("Texto aplicado · pulsa \"Guardar con texto\" para incrustar"); }}
                                     className="h-8 px-4 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-sm font-black flex items-center gap-1.5 transition-all shadow-[0_4px_16px_rgba(192,38,211,0.3)]">
                                     <Check size={13} /> Aplicar
                                 </button>
