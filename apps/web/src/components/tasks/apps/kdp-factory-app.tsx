@@ -2577,7 +2577,7 @@ export function KdpFactoryApp() {
     const [coverModalTab, setCoverModalTab] = useState<"front" | "back">("front");
     const [coverMode, setCoverMode] = useState<"ai" | "collage" | "colorize">("ai");
     const [coverDescription, setCoverDescription] = useState("");
-    const [coverAuthor, setCoverAuthor] = useState("");
+    const [coverAuthor, setCoverAuthor] = useState("Emilio Jimenez");
     const [generatedBackCoverUrl, setGeneratedBackCoverUrl] = useState<string | null>(null);
     const [isBuildingBackCover, setIsBuildingBackCover] = useState(false);
     const [selectedCoverNicheId, setSelectedCoverNicheId] = useState<string | null>(null);
@@ -12798,7 +12798,7 @@ export function KdpFactoryApp() {
                             {coverModalTab === "front" && (() => {
                                 const t = coverTitle || "Título del libro";
                                 const s = coverSubtitle || "Subtitle";
-                                const a = coverAuthor || "Author Name";
+                                const a = coverAuthor || "Emilio Jimenez";
                                 const mkId = () => Date.now().toString() + Math.random();
                                 const COVER_STYLE_PRESETS: { label: string; emoji: string; layers: Omit<TextLayer, "id">[] }[] = [
                                     {
