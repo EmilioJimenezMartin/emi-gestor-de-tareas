@@ -237,6 +237,7 @@ async function runDiscovery(
         emitStage(io, "sample", String(niche._id), niche.name);
         io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🎨 Mejorando prompt de muestra con IA para "${niche.name}"…` });
         let sampleUrl: string;
+        let discoveryImagePromptForAction = "";
         try {
             const aiCore = await buildAiEnhancedSampleCore(
                 niche.name,
@@ -246,7 +247,7 @@ async function runDiscovery(
             );
             if (aiCore) {
                 sampleUrl = buildSampleUrl(niche.name, niche.styleCategory ?? "generic", niche.productType ?? "coloring-book", aiCore);
-                // Persist the enhanced prompt so catalog generation can build on it
+                discoveryImagePromptForAction = aiCore;
                 await Niche.findByIdAndUpdate(niche._id, { $set: { discoveryImagePrompt: aiCore } });
                 io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ Prompt mejorado por IA → pre-generando prompts de catálogo…` });
                 // Pre-generate catalog prompts in background (ready when Telegram approves)
@@ -278,128 +279,132 @@ async function runDiscovery(
         }
         await Niche.findByIdAndUpdate(niche._id, { $set: { sampleImageUrl: sampleUrl } });
 
-        // Generate sample image using the user-selected model
-        const discoveryAiModel = await getAutopilotImageModel();
-        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🎨 Generando imagen con ${discoveryAiModel.name}…` });
-
-        const pt = niche.productType ?? "coloring-book";
-        const imageGenPrompt = pt === "printable-poster"
-            ? buildPosterPrompt(niche.name, niche.styleCategory ?? "generic")
-            : buildColoringBookPrompt(niche.name, niche.styleCategory ?? "generic");
-
-        let imageBytes: Buffer | null = null;
-        let finalImageUrl = sampleUrl;
-
-        try {
-            const aiRes = await internalFetch(`${base}/ai/generate-image`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    prompt: imageGenPrompt,
-                    modelId: discoveryAiModel.modelId,
-                    provider: discoveryAiModel.provider,
-                    width: 1024,
-                    height: 1024,
-                }),
-                signal: AbortSignal.timeout(90_000),
-            });
-            if (aiRes.ok) {
-                const ct = aiRes.headers.get("content-type") ?? "";
-                if (ct.startsWith("image/")) {
-                    imageBytes = Buffer.from(await aiRes.arrayBuffer());
-                    io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ Imagen generada con ${discoveryAiModel.name}` });
-                }
-            } else {
-                console.warn(`[discovery] AI proxy ${aiRes.status} para ${discoveryAiModel.provider}`);
-            }
-        } catch (aiErr: any) {
-            console.warn(`[discovery] AI proxy error: ${aiErr?.message}`);
-        }
-
-        // Fallback: generateImage cascade (Segmind → HuggingFace)
-        if (!imageBytes) {
-            io?.emit("autopilot:log", { nicheId: String(niche._id), message: `⚠️ ${discoveryAiModel.name} falló — usando fallback…` });
-            try {
-                imageBytes = await generateImage(imageGenPrompt);
-            } catch (fbErr: any) {
-                console.warn(`[discovery] generateImage fallback error: ${fbErr?.message}`);
-            }
-        }
-
-        io?.emit("autopilot:log", { nicheId: String(niche._id), message: imageBytes ? `🖼️ Imagen lista para "${niche.name}"` : `⚠️ No se pudo descargar imagen, enviando URL` });
-
-        // Create pending action
+        // Create TelegramAction IMMEDIATELY — hasPendingAction() blocks re-processing on the next run
         const action = await TelegramAction.create({
             type: "niche-discovery",
             nicheId: String(niche._id),
             nicheName: niche.name,
             imageUrl: sampleUrl,
-            autoApproveAt: new Date(Date.now() + 48 * 60 * 60 * 1000), // 48h auto-discard
+            autoApproveAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
         });
 
-        const styleLabel: Record<string, string> = {
-            generic: "Estilo genérico", anime: "Anime", illustration: "Ilustración",
-            children: "Infantil", realistic: "Realista", watercolor: "Acuarela",
-            abstract: "Abstracto", "wall-art": "Wall Art", botanical: "Botánico",
-            affirmation: "Afirmación", geometric: "Geométrico", celestial: "Celestial", retro: "Retro",
-        };
-        const typeLabel = niche.productType === "printable-poster" ? "Póster imprimible" : "Libro de colorear";
-
-        const caption = [
-            `🔍 <b>Nuevo nicho encontrado</b>`,
-            ``,
-            `📚 <b>${niche.name}</b>`,
-            `🎨 ${styleLabel[niche.styleCategory ?? "generic"] ?? niche.styleCategory} · ${typeLabel}`,
-            niche.description ? `📝 ${niche.description}` : null,
-            ``,
-            `¿Qué hacemos con este nicho?`,
-            `<i>🚀 Continuar → lanza ${cfg.catalogsPerNiche} catálogos × ${cfg.imagesPerCatalog} imágenes</i>`,
-        ].filter(Boolean).join("\n");
-
-        const canDiscovery = await shouldNotify("autopilot.discovery");
-        let msgId: number | null = null;
-        if (canDiscovery) {
-            if (imageBytes) {
-                // Binary upload: more reliable, no URL-download race condition with Pollinations
-                const rows = [[
-                    { text: "🚀 Continuar", callback_data: `continuar:${String(action._id)}` },
-                    { text: "⏭️ Omitir", callback_data: `omitir:${String(action._id)}` },
-                    { text: "🗑️ Descartar", callback_data: `descartar:${String(action._id)}` },
-                ]];
-                msgId = await sendTelegramImageWithButtons(imageBytes, caption, rows);
-            }
-            if (!msgId) {
-                // Fallback: URL-based (or text-only if photo also fails)
-                msgId = await sendTelegramPhotoDiscovery({ imageUrl: finalImageUrl, caption, actionId: String(action._id) });
-            }
-        }
-
-        if (msgId) { action.messageId = msgId; await action.save(); }
-        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📩 Esperando tu decisión en Telegram para "${niche.name}"` });
         count++;
         stats.discovered++;
+        io?.emit("autopilot:log", { nicheId: String(niche._id), message: `📬 "${niche.name}" registrado — imagen generándose en segundo plano…` });
 
-        // Upload to Cloudinary after 12s (gives Pollinations time to render)
-        const nicheId = String(niche._id);
+        // Fire image generation + Telegram send in background (staggered so provider isn't flooded)
+        // Each niche starts its image generation 20s after the previous, independent of the main loop.
+        const _bgNiche = niche;
+        const _bgBase = base;
+        const _bgIo = io;
+        const _bgAction = action;
+        const _bgSampleUrl = sampleUrl;
+        const _bgCfg = cfg;
+        const _bgStagger = idx * 20_000;
         setTimeout(async () => {
             try {
-                const cldRes = await internalFetch(`${base}/cloudinary/upload-url`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ url: sampleUrl, nicheId }),
-                });
-                if (cldRes.ok) {
-                    const cldData = await (cldRes as any).json();
-                    const cloudUrl = cldData.image?.url;
-                    if (cloudUrl) {
-                        await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: cloudUrl } });
+                const bgPt = _bgNiche.productType ?? "coloring-book";
+                const bgImageGenPrompt = bgPt === "printable-poster"
+                    ? buildPosterPrompt(_bgNiche.name, _bgNiche.styleCategory ?? "generic")
+                    : buildColoringBookPrompt(_bgNiche.name, _bgNiche.styleCategory ?? "generic");
+
+                const bgDiscoveryAiModel = await getAutopilotImageModel();
+                _bgIo?.emit("autopilot:log", { nicheId: String(_bgNiche._id), message: `🎨 Generando imagen con ${bgDiscoveryAiModel.name}…` });
+
+                await Niche.findByIdAndUpdate(_bgNiche._id, { $set: { discoveryAiModel: bgDiscoveryAiModel } });
+
+                let bgImageBytes: Buffer | null = null;
+                let bgFinalImageUrl = _bgSampleUrl;
+
+                try {
+                    const aiRes = await internalFetch(`${_bgBase}/ai/generate-image`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            prompt: bgImageGenPrompt,
+                            modelId: bgDiscoveryAiModel.modelId,
+                            provider: bgDiscoveryAiModel.provider,
+                            width: 1024,
+                            height: 1024,
+                        }),
+                        signal: AbortSignal.timeout(90_000),
+                    });
+                    if (aiRes.ok && (aiRes.headers.get("content-type") ?? "").startsWith("image/")) {
+                        bgImageBytes = Buffer.from(await aiRes.arrayBuffer());
+                        _bgIo?.emit("autopilot:log", { nicheId: String(_bgNiche._id), message: `✓ Imagen generada con ${bgDiscoveryAiModel.name}` });
+                    } else {
+                        console.warn(`[discovery-bg] AI proxy ${aiRes.status} para ${bgDiscoveryAiModel.provider}`);
+                    }
+                } catch (aiErr: any) {
+                    console.warn(`[discovery-bg] AI proxy error: ${aiErr?.message}`);
+                }
+
+                if (!bgImageBytes) {
+                    _bgIo?.emit("autopilot:log", { nicheId: String(_bgNiche._id), message: `⚠️ ${bgDiscoveryAiModel.name} falló — usando fallback…` });
+                    try { bgImageBytes = await generateImage(bgImageGenPrompt); } catch { /* non-critical */ }
+                }
+
+                // Upload to Cloudinary
+                if (bgImageBytes) {
+                    try {
+                        const dataUrl = `data:image/jpeg;base64,${bgImageBytes.toString("base64")}`;
+                        const cldRes = await internalFetch(`${_bgBase}/cloudinary/upload`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ dataUrl, nicheId: String(_bgNiche._id) }),
+                        });
+                        if (cldRes.ok) {
+                            const cldData = await (cldRes as any).json();
+                            const cloudUrl = cldData.image?.url;
+                            if (cloudUrl) {
+                                bgFinalImageUrl = cloudUrl;
+                                await Niche.findByIdAndUpdate(_bgNiche._id, { $set: { sampleImageUrl: cloudUrl } });
+                            }
+                        }
+                    } catch { /* non-critical */ }
+                }
+
+                const bgStyleLabel: Record<string, string> = {
+                    generic: "Estilo genérico", anime: "Anime", illustration: "Ilustración",
+                    children: "Infantil", realistic: "Realista", watercolor: "Acuarela",
+                    abstract: "Abstracto", "wall-art": "Wall Art", botanical: "Botánico",
+                    affirmation: "Afirmación", geometric: "Geométrico", celestial: "Celestial", retro: "Retro",
+                };
+                const bgTypeLabel = _bgNiche.productType === "printable-poster" ? "Póster imprimible" : "Libro de colorear";
+                const bgCaption = [
+                    `🔍 <b>Nuevo nicho encontrado</b>`,
+                    ``,
+                    `📚 <b>${_bgNiche.name}</b>`,
+                    `🎨 ${bgStyleLabel[_bgNiche.styleCategory ?? "generic"] ?? _bgNiche.styleCategory} · ${bgTypeLabel}`,
+                    _bgNiche.description ? `📝 ${_bgNiche.description}` : null,
+                    ``,
+                    `¿Qué hacemos con este nicho?`,
+                    `<i>🚀 Continuar → lanza ${_bgCfg.catalogsPerNiche} catálogos × ${_bgCfg.imagesPerCatalog} imágenes</i>`,
+                ].filter(Boolean).join("\n");
+
+                const bgRows = [[
+                    { text: "🚀 Continuar", callback_data: `continuar:${String(_bgAction._id)}` },
+                    { text: "⏭️ Omitir",    callback_data: `omitir:${String(_bgAction._id)}` },
+                    { text: "🗑️ Descartar", callback_data: `descartar:${String(_bgAction._id)}` },
+                ]];
+
+                const canDiscovery = await shouldNotify("autopilot.discovery");
+                let bgMsgId: number | null = null;
+                if (canDiscovery) {
+                    if (bgImageBytes) {
+                        bgMsgId = await sendTelegramImageWithButtons(bgImageBytes, bgCaption, bgRows);
+                    }
+                    if (!bgMsgId) {
+                        bgMsgId = await sendTelegramPhotoDiscovery({ imageUrl: bgFinalImageUrl, caption: bgCaption, actionId: String(_bgAction._id) });
                     }
                 }
-            } catch { /* non-critical */ }
-        }, 12_000);
 
-        // Wait between niches so Pollinations doesn't receive parallel render requests
-        if (idx < candidates.length - 1) await delay(6_000);
+                if (bgMsgId) { _bgAction.messageId = bgMsgId; await _bgAction.save(); }
+                _bgIo?.emit("autopilot:log", { nicheId: String(_bgNiche._id), message: `📩 Esperando tu decisión en Telegram para "${_bgNiche.name}"` });
+            } catch (e: any) {
+                console.error(`[discovery-bg] Error para "${_bgNiche.name}":`, e.message);
+            }
+        }, _bgStagger);
     }
 
     return count;
@@ -1398,8 +1403,10 @@ export function defineAutoPilotJob(agenda: Agenda, io: any) {
             await sendTelegram(`🤖 <b>Auto-Pilot</b> — Ciclo iniciado`).catch(() => {});
         }
 
-        const discovered = await runDiscovery(cfg, base, io, tag, abort, stats, agenda);
-        const processed = abort.aborted ? 0 : await runPipeline(cfg, base, io, tag, abort, stats, agenda);
+        // Pipeline runs FIRST so active niches always advance regardless of discovery timing
+        const processed = await runPipeline(cfg, base, io, tag, abort, stats, agenda);
+        // Discovery runs after — image gen fires in background, doesn't block pipeline
+        const discovered = abort.aborted ? 0 : await runDiscovery(cfg, base, io, tag, abort, stats, agenda);
 
         const total = discovered + processed;
         console.log(`${tag} Done — ${discovered} discovered, ${processed} pipeline steps, aborted=${abort.aborted}`);
