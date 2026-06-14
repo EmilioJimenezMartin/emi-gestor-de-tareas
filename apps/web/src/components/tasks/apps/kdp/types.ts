@@ -81,6 +81,16 @@ export interface NicheFE {
     pipelineHasPdf?: boolean;
     pipelineHasListings?: boolean;
     pipelineHasCover?: boolean;
+    saturationScore?: number;
+    saturationLabel?: "low" | "medium" | "high";
+    saturationData?: {
+        topProducts: Array<{ title: string; reviews: number; bestseller: boolean; price: string }>;
+        avgReviews: number;
+        lowReviewCount: number;
+        totalAnalyzed: number;
+        opportunityScore: number;
+    };
+    saturationScannedAt?: string;
     createdAt: string;
     updatedAt?: string;
 }

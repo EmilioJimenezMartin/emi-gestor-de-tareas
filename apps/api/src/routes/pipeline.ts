@@ -198,4 +198,85 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps?: { agen
             return reply.status(500).send({ error: e.message });
         }
     });
+
+    // POST /niches/:id/saturation-scan — analyze Amazon saturation for a niche
+    app.post("/niches/:id/saturation-scan", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { id } = request.params as { id: string };
+            const niche = await Niche.findById(id);
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
+
+            const keyword = encodeURIComponent(`${niche.name} coloring book`);
+            const amazonUrl = `https://www.amazon.com/s?k=${keyword}&i=stripbooks`;
+            const jinaUrl = `https://r.jina.ai/${amazonUrl}`;
+
+            // Fetch via Jina Reader (clean text, no Playwright needed)
+            let pageText = "";
+            try {
+                const jinaRes = await fetch(jinaUrl, {
+                    headers: { "Accept": "text/plain", "X-Timeout": "20" },
+                    signal: AbortSignal.timeout(25_000),
+                });
+                if (jinaRes.ok) pageText = (await jinaRes.text()).slice(0, 50_000);
+            } catch { /* fallback handled below */ }
+
+            if (pageText.length < 300) {
+                return reply.status(502).send({ error: "No se pudo obtener datos de Amazon. Inténtalo de nuevo." });
+            }
+
+            // Analyze with AI using existing radar infrastructure
+            const { analyzePageForRadar } = await import("../lib/ai.js");
+            const systemPrompt = `Eres un experto en Amazon KDP. Analiza estos resultados de búsqueda de Amazon y extrae los productos de libros para colorear que aparecen. Para cada producto extrae título, número de reseñas (total_reseñas), si es bestseller y precio. Responde ÚNICAMENTE con JSON válido:\n{"nichos_detectados":[{"titulo_producto":"string","precio":"string","bestseller":true/false,"personas_carrito":0,"total_reseñas":number,"sub_nicho_estimado":"string"}]}`;
+
+            const raw = await analyzePageForRadar(pageText, systemPrompt, { mode: "amazon-niches" });
+            const products: any[] = Array.isArray(raw?.nichos_detectados) ? raw.nichos_detectados : [];
+
+            if (products.length === 0) {
+                return reply.status(422).send({ error: "No se detectaron productos. Amazon puede estar bloqueando el acceso." });
+            }
+
+            // Compute saturation metrics
+            const reviewCounts = products.map((p: any) =>
+                parseInt(String(p.total_reseñas ?? "0").replace(/[^\d]/g, "")) || 0
+            );
+            const avgReviews = reviewCounts.length > 0
+                ? Math.round(reviewCounts.reduce((a, b) => a + b, 0) / reviewCounts.length)
+                : 0;
+            const lowReviewCount = reviewCounts.filter(r => r < 50).length;
+            const totalAnalyzed = products.length;
+
+            // Opportunity: many products with low reviews = untapped market
+            const opportunityScore = Math.round(
+                Math.min(100, (lowReviewCount / Math.max(totalAnalyzed, 1)) * 100 * 1.2)
+            );
+
+            // Saturation label: based on avg reviews of top products
+            const saturationLabel: "low" | "medium" | "high" =
+                avgReviews < 100 ? "low" : avgReviews < 500 ? "medium" : "high";
+
+            // Inverted: saturationScore = how saturated (high = bad)
+            const saturationScore = Math.round(
+                Math.min(100, avgReviews > 1000 ? 90 : avgReviews > 500 ? 70 : avgReviews > 100 ? 45 : 20)
+            );
+
+            const topProducts = products.slice(0, 10).map((p: any) => ({
+                title: String(p.titulo_producto ?? "").slice(0, 80),
+                reviews: parseInt(String(p.total_reseñas ?? "0").replace(/[^\d]/g, "")) || 0,
+                bestseller: !!p.bestseller,
+                price: String(p.precio ?? ""),
+            }));
+
+            const saturationData = { topProducts, avgReviews, lowReviewCount, totalAnalyzed, opportunityScore };
+
+            await Niche.findByIdAndUpdate(id, {
+                $set: { saturationScore, saturationLabel, saturationData, saturationScannedAt: new Date() },
+            });
+
+            deps?.io?.emit("niches:updated");
+            return reply.send({ saturationScore, saturationLabel, saturationData });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
 }

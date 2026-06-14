@@ -70,6 +70,16 @@ export interface INiche extends Document {
     pipelineHasListings?: boolean;
     pipelineHasCover?: boolean;
     pipelineErrors?: number;
+    saturationScore?: number;
+    saturationLabel?: "low" | "medium" | "high";
+    saturationData?: {
+        topProducts: Array<{ title: string; reviews: number; bestseller: boolean; price: string }>;
+        avgReviews: number;
+        lowReviewCount: number;
+        totalAnalyzed: number;
+        opportunityScore: number;
+    };
+    saturationScannedAt?: Date;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -151,6 +161,10 @@ const NicheSchema = new Schema<INiche>(
         pipelineHasListings: { type: Boolean, default: false },
         pipelineHasCover: { type: Boolean, default: false },
         pipelineErrors: { type: Number, default: 0 },
+        saturationScore: { type: Number },
+        saturationLabel: { type: String, enum: ["low", "medium", "high"] },
+        saturationData: { type: Object },
+        saturationScannedAt: { type: Date },
     },
     { timestamps: true }
 );

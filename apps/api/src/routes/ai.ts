@@ -1212,7 +1212,7 @@ Responde SOLO con JSON válido (sin markdown): { "scores": [ { "index": number, 
 
     app.post("/ai/generate-text", async (request: any, reply) => {
         const { type, niche, productType, extras, language = "es", model: modelOverride } = request.body as {
-            type: "titles" | "description" | "keywords" | "full-listing" | "back-cover" | "series" | "kdp-physical-book" | "image-prompt" | "niche-particulars" | "printable-particulars";
+            type: "titles" | "description" | "keywords" | "full-listing" | "back-cover" | "series" | "kdp-physical-book" | "image-prompt" | "niche-particulars" | "printable-particulars" | "free";
             niche: string;
             productType?: string;
             extras?: string;
@@ -1386,7 +1386,8 @@ Return ONLY a JSON object:
   "series_name": "...",
   "concept": "brief description",
   "volumes": [{"title": "Vol 1 - ...", "theme": "...", "angle": "..."}, ...8 volumes]
-}`
+}`,
+            free: niche,
         };
 
         const prompt = prompts[type] || prompts["full-listing"];

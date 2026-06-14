@@ -565,31 +565,10 @@ export function KdpFactoryApp() {
     const [nichePage, setNichePage] = useState(0);
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban">("kanban");
     const [kanbanProductFilter, setKanbanProductFilter] = useState<"all" | "coloring-book" | "printable-poster" | "seamless-pattern">("all");
-    const [studioSubTab, setStudioSubTab] = useState<"niches" | "radar" | "series" | "calendar">(() => {
+    const [studioSubTab, setStudioSubTab] = useState<"niches" | "radar" | "calendar">(() => {
         const saved = typeof window !== "undefined" ? localStorage.getItem("kdp-studio-subtab") : null;
-        return (saved === "niches" || saved === "radar" || saved === "series" || saved === "calendar") ? saved : "niches";
+        return (saved === "niches" || saved === "radar" || saved === "calendar") ? saved : "niches";
     });
-
-    // ── Series Builder state ─────────────────────────────────────────────────
-    type BookSeries = { id: string; name: string; description: string; nicheIds: string[]; coverUrl?: string; createdAt: string };
-    const [series, setSeries] = useState<BookSeries[]>(() => {
-        try { return JSON.parse(localStorage.getItem("kdp-book-series") ?? "[]"); } catch { return []; }
-    });
-    const [seriesFormOpen, setSeriesFormOpen] = useState(false);
-    const [editingSeriesId, setEditingSeriesId] = useState<string | null>(null);
-    const [seriesName, setSeriesName] = useState("");
-    const [seriesDesc, setSeriesDesc] = useState("");
-    const [seriesNicheIds, setSeriesNicheIds] = useState<string[]>([]);
-    const saveSeries = (updated: BookSeries[]) => { setSeries(updated); localStorage.setItem("kdp-book-series", JSON.stringify(updated)); };
-    const openSeriesForm = (s?: BookSeries) => { setEditingSeriesId(s?.id ?? null); setSeriesName(s?.name ?? ""); setSeriesDesc(s?.description ?? ""); setSeriesNicheIds(s?.nicheIds ?? []); setSeriesFormOpen(true); };
-    const submitSeries = () => {
-        if (!seriesName.trim()) return;
-        const next = editingSeriesId
-            ? series.map(s => s.id === editingSeriesId ? { ...s, name: seriesName.trim(), description: seriesDesc.trim(), nicheIds: seriesNicheIds } : s)
-            : [...series, { id: Date.now().toString(), name: seriesName.trim(), description: seriesDesc.trim(), nicheIds: seriesNicheIds, createdAt: new Date().toISOString() }];
-        saveSeries(next); setSeriesFormOpen(false);
-    };
-    const deleteSeries = (id: string) => { if (window.confirm("¿Eliminar esta serie?")) saveSeries(series.filter(s => s.id !== id)); };
 
     // ── Publishing Calendar state ────────────────────────────────────────────
     type PublishEvent = { id: string; title: string; date: string; nicheId?: string; status: "planned" | "inprogress" | "published" | "idea"; color: string };
@@ -603,9 +582,17 @@ export function KdpFactoryApp() {
     const [eventDate, setEventDate] = useState("");
     const [eventStatus, setEventStatus] = useState<PublishEvent["status"]>("planned");
     const [eventNicheId, setEventNicheId] = useState("");
-    const [calAiSuggestions, setCalAiSuggestions] = useState<string[]>([]);
+    const [calAiSuggestions, setCalAiSuggestions] = useState<{ title: string; startDate: string; publishDate: string; event: string }[]>([]);
     const [calAiLoading, setCalAiLoading] = useState(false);
-    const savePubEvents = (updated: PublishEvent[]) => { setPubEvents(updated); localStorage.setItem("kdp-pub-calendar", JSON.stringify(updated)); };
+    const savePubEvents = (updated: PublishEvent[]) => {
+        setPubEvents(updated);
+        localStorage.setItem("kdp-pub-calendar", JSON.stringify(updated));
+        // Persist to MongoDB so the backend job can send Telegram reminders
+        fetch(`${API_BASE_URL}/settings`, {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify([{ key: "KDP_PUB_CALENDAR", value: JSON.stringify(updated) }]),
+        }).catch(() => {});
+    };
     const openEventForm = (e?: PublishEvent, defaultDate?: string) => {
         setEditingEventId(e?.id ?? null); setEventTitle(e?.title ?? ""); setEventDate(e?.date ?? defaultDate ?? ""); setEventStatus(e?.status ?? "planned"); setEventNicheId(e?.nicheId ?? ""); setPubEventFormOpen(true);
     };
@@ -625,6 +612,28 @@ export function KdpFactoryApp() {
     const [isCreatingManualCatalog, setIsCreatingManualCatalog] = useState(false);
     const [nicheGeneratingId, setNicheGeneratingId] = useState<string | null>(null);
     const [discoveryLoadingId, setDiscoveryLoadingId] = useState<string | null>(null);
+    const [saturationScanningId, setSaturationScanningId] = useState<string | null>(null);
+    const runSaturationScan = async (niche: NicheFE) => {
+        if (saturationScanningId) return;
+        setSaturationScanningId(niche._id);
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches/${niche._id}/saturation-scan`, { method: "POST" });
+            const data = await res.json() as any;
+            if (res.ok) {
+                setNiches(ns => ns.map(n => n._id === niche._id ? {
+                    ...n,
+                    saturationScore: data.saturationScore,
+                    saturationLabel: data.saturationLabel,
+                    saturationData: data.saturationData,
+                    saturationScannedAt: new Date().toISOString(),
+                } : n));
+                toast.success("Análisis de saturación completado");
+            } else {
+                toast.error(data.error ?? "Error al analizar saturación");
+            }
+        } catch { toast.error("Error de conexión"); }
+        finally { setSaturationScanningId(null); }
+    };
     const [pipelineRunningId, setPipelineRunningId] = useState<string | null>(null);
     const [pipelineQueueIds, setPipelineQueueIds] = useState<string[]>([]);
     const pipelineRunningRef = useRef<string | null>(null);
@@ -801,7 +810,7 @@ export function KdpFactoryApp() {
     const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "columns">(() =>
         (typeof window !== "undefined" && (localStorage.getItem("kdp-pipeline-view") as "list" | "columns")) || "list"
     );
-    const studioSubTabRef = useRef<"niches" | "radar" | "series" | "calendar">("niches");
+    const studioSubTabRef = useRef<"niches" | "radar" | "calendar">("niches");
     // Keep ref in sync so socket handlers read current tab without stale closure
     studioSubTabRef.current = studioSubTab;
     // --- Ventas / KDP Sales state ---
@@ -845,6 +854,8 @@ export function KdpFactoryApp() {
         { id: "kdp.error",             label: "KDP: error o datos faltantes", desc: "Error al publicar o cuando falta PDF/listing/credenciales",                   group: "KDP" },
         // ── Radar ─────────────────────────────────────────────────────────────
         { id: "radar.found",           label: "Radar: resumen de scraping",   desc: "Mensaje de resumen al completar una pasada del Radar",                        group: "Radar" },
+        // ── Calendario ────────────────────────────────────────────────────────
+        { id: "calendar.event",        label: "Recordatorio de calendario",   desc: "Aviso cada día a las 9h si tienes eventos o publicaciones ese día o el siguiente", group: "Calendario" },
         // ── Sistema / Digests ─────────────────────────────────────────────────
         { id: "seasonal.check",        label: "Check estacional",             desc: "Alerta de nichos con fechas estacionales próximas (semanal)",                 group: "Sistema" },
         { id: "weekly.digest",         label: "Digest semanal",               desc: "Resumen de nichos y catálogos generados la semana anterior (lunes 9h)",       group: "Sistema" },
@@ -3036,9 +3047,14 @@ export function KdpFactoryApp() {
             const pageHeight = sizeConfig.h;
             const margin = sizeConfig.margin;
 
-            // Compress an image via Canvas → JPEG. Fetches bytes first to avoid CORS issues.
-            const compressToJpeg = async (url: string, quality = 0.68): Promise<Uint8Array> => {
-                // Fetch bytes directly (works for any origin via fetch)
+            // Target 300 DPI based on physical page size (Lulu requires ≥200 DPI).
+            // pageWidth/pageHeight are in PDF points (72 pt = 1 inch).
+            const PRINT_DPI = 300;
+            const targetPxW = Math.round((pageWidth / 72) * PRINT_DPI);   // e.g. 2550 for 8.5"
+            const targetPxH = Math.round((pageHeight / 72) * PRINT_DPI);  // e.g. 3300 for 11"
+
+            // Process an image via Canvas → JPEG, upscaling to meet print DPI if needed.
+            const processForPrint = async (url: string, quality = 0.88): Promise<Uint8Array> => {
                 let rawBytes: Uint8Array;
                 try {
                     const res = await fetch(url);
@@ -3048,21 +3064,27 @@ export function KdpFactoryApp() {
                     const res = await fetch(objectUrl);
                     rawBytes = new Uint8Array(await res.arrayBuffer());
                 }
-                // Create a local blob URL — canvas loads this without CORS restrictions
                 const blobUrl = URL.createObjectURL(new Blob([rawBytes as BlobPart]));
                 return new Promise((resolve, reject) => {
                     const img = new Image();
                     img.onload = () => {
                         URL.revokeObjectURL(blobUrl);
-                        const MAX = 1400;
                         let { naturalWidth: w, naturalHeight: h } = img;
-                        if (w > MAX || h > MAX) {
-                            const r = Math.min(MAX / w, MAX / h);
+                        const scaleUp = Math.min(targetPxW / w, targetPxH / h);
+                        if (scaleUp > 1) {
+                            // Upscale to reach 300 DPI (AI images are typically 1024px → ~120 DPI)
+                            w = Math.round(w * scaleUp);
+                            h = Math.round(h * scaleUp);
+                        } else if (w > targetPxW * 1.5 || h > targetPxH * 1.5) {
+                            // Only downsample if significantly above 300 DPI to keep file size reasonable
+                            const r = Math.min(targetPxW / w, targetPxH / h);
                             w = Math.round(w * r); h = Math.round(h * r);
                         }
                         const canvas = document.createElement("canvas");
                         canvas.width = w; canvas.height = h;
                         const ctx = canvas.getContext("2d")!;
+                        ctx.imageSmoothingEnabled = true;
+                        ctx.imageSmoothingQuality = "high";
                         ctx.fillStyle = "#fff";
                         ctx.fillRect(0, 0, w, h);
                         ctx.drawImage(img, 0, 0, w, h);
@@ -3077,22 +3099,25 @@ export function KdpFactoryApp() {
             };
 
             const embedImage = async (url: string) => {
-                if (compressImages) {
-                    try {
-                        const jpegBytes = await compressToJpeg(url);
-                        return await pdf.embedJpg(jpegBytes);
-                    } catch { /* fall through to original method */ }
-                }
-                let bytes: Uint8Array;
+                // Always run through canvas to upscale to print DPI.
+                // compressImages reduces quality (0.75) to keep file size small.
+                const quality = compressImages ? 0.75 : 0.88;
                 try {
-                    const res = await fetch(url);
-                    bytes = new Uint8Array(await res.arrayBuffer());
+                    const jpegBytes = await processForPrint(url, quality);
+                    return await pdf.embedJpg(jpegBytes);
                 } catch {
-                    const objectUrl = await ensureObjectUrl(url);
-                    const res = await fetch(objectUrl);
-                    bytes = new Uint8Array(await res.arrayBuffer());
+                    // Fallback: embed original bytes as-is if canvas processing fails
+                    let bytes: Uint8Array;
+                    try {
+                        const res = await fetch(url);
+                        bytes = new Uint8Array(await res.arrayBuffer());
+                    } catch {
+                        const objectUrl = await ensureObjectUrl(url);
+                        const res = await fetch(objectUrl);
+                        bytes = new Uint8Array(await res.arrayBuffer());
+                    }
+                    try { return await pdf.embedPng(bytes); } catch { return await pdf.embedJpg(bytes); }
                 }
-                try { return await pdf.embedPng(bytes); } catch { return await pdf.embedJpg(bytes); }
             };
 
             const drawImageCentered = (page: any, embedded: any, zoom: number = 1) => {
@@ -3476,6 +3501,23 @@ export function KdpFactoryApp() {
 
     // Fetch catalogs on mount (socket connects when entering creation tab)
     useEffect(() => { void fetchCatalogs(); void fetchApRuns(); void fetchPipelineData(); void fetchRejectedImages(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Sync calendar events from MongoDB on mount (backend may have them from another session)
+    useEffect(() => {
+        fetch(`${API_BASE_URL}/settings/KDP_PUB_CALENDAR`)
+            .then(r => r.ok ? r.json() : null)
+            .then((d: any) => {
+                const raw = d?.value;
+                if (!raw) return;
+                try {
+                    const remote: PublishEvent[] = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
+                    if (Array.isArray(remote) && remote.length > 0) {
+                        setPubEvents(remote);
+                        localStorage.setItem("kdp-pub-calendar", JSON.stringify(remote));
+                    }
+                } catch { /* keep localStorage version */ }
+            }).catch(() => {});
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => { if (activeTab === "insights") void fetchTimeseries(timeseriesDays); }, [activeTab, timeseriesDays]); // eslint-disable-line react-hooks/exhaustive-deps
     useEffect(() => { if ((activeTab as string) === "ventas" && salesData.length === 0) void fetchSalesData(); }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -6772,17 +6814,45 @@ export function KdpFactoryApp() {
             setCalAiSuggestions([]);
             try {
                 const nicheNames = niches.slice(0, 5).map(n => n.name).join(", ");
-                const alertNames = urgent.slice(0, 3).map(a => `${a.name} (en ${a.weeksLeft} semanas)`).join(", ");
-                const prompt = `Eres un consultor KDP experto. El usuario tiene estos nichos: ${nicheNames || "libros para colorear para adultos"}. Las próximas fechas estacionales son: ${alertNames || "Halloween en 8 semanas"}. Dame 4-5 sugerencias concretas y accionables de lanzamientos de libros KDP para aprovechar estas fechas. Cada sugerencia en una línea, empezando con un emoji. Sé específico con el título del libro y la temática.`;
+                const alertNames = urgent.slice(0, 3).map(a => `${a.name} — ${a.target.toISOString().slice(0, 10)} (en ${a.weeksLeft} semanas)`).join("; ");
+                const todayStr = new Date().toISOString().slice(0, 10);
+                const promptText = `Eres un consultor KDP experto. Hoy es ${todayStr}. Nichos del usuario: ${nicheNames || "libros para colorear para adultos"}. Próximas fechas estacionales: ${alertNames || "Halloween 2026-10-31"}. Genera 4 sugerencias de libros KDP para estas fechas. Para cada una calcula: (1) startDate = fecha en que debe EMPEZAR a crear el libro (diseño+contenido), mínimo 6-8 semanas antes de la festividad; (2) publishDate = fecha en que debe SUBIR el libro a Amazon KDP, 2-3 semanas antes de la festividad. Devuelve SOLO este JSON (sin texto extra, sin comillas dobles dentro de los valores): {"suggestions":[{"title":"título del libro","startDate":"YYYY-MM-DD","publishDate":"YYYY-MM-DD","event":"nombre de la festividad"}]}`;
                 const res = await fetch(`${API_BASE_URL}/ai/generate-text`, {
                     method: "POST", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ type: "custom", prompt }),
+                    body: JSON.stringify({ type: "free", niche: promptText }),
                 });
                 if (res.ok) {
                     const d = await res.json() as any;
-                    const text = d.result?.text ?? d.text ?? "";
-                    const lines = text.split("\n").map((l: string) => l.trim()).filter((l: string) => l.length > 5);
-                    setCalAiSuggestions(lines);
+                    const raw = d.result ?? d.text ?? "";
+                    // Always work with a string; clean AI artifacts first
+                    const text = (typeof raw === "string" ? raw : JSON.stringify(raw))
+                        .replace(/\}\}/g, "}").replace(/,\s*\]/g, "]").replace(/,\s*\}/g, "}");
+
+                    // Step 1: JSON.parse
+                    try {
+                        const jsonStart = text.indexOf("{"); const jsonEnd = text.lastIndexOf("}");
+                        if (jsonStart !== -1 && jsonEnd > jsonStart) {
+                            const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+                            if (Array.isArray(parsed?.suggestions) && parsed.suggestions.length > 0) {
+                                setCalAiSuggestions(parsed.suggestions.map((s: any) => ({
+                                    title: s.title ?? "", startDate: s.startDate ?? "", publishDate: s.publishDate ?? s.date ?? "", event: s.event ?? "",
+                                })));
+                                return;
+                            }
+                        }
+                    } catch { /* fall through */ }
+
+                    // Step 2: regex extraction
+                    const objRegex = /"title"\s*:\s*"([^"]+)"[^}]*?"startDate"\s*:\s*"([^"]+)"[^}]*?"publishDate"\s*:\s*"([^"]+)"[^}]*?"event"\s*:\s*"([^"]+)"/g;
+                    const suggestions: { title: string; startDate: string; publishDate: string; event: string }[] = [];
+                    let m: RegExpExecArray | null;
+                    while ((m = objRegex.exec(text)) !== null) {
+                        suggestions.push({ title: m[1], startDate: m[2], publishDate: m[3], event: m[4] });
+                    }
+                    if (suggestions.length > 0) { setCalAiSuggestions(suggestions); return; }
+
+                    // Step 3: last resort — show error message
+                    setCalAiSuggestions([{ title: "Error al procesar respuesta. Inténtalo de nuevo.", startDate: "", publishDate: "", event: "" }]);
                 }
             } catch { /* ignore */ } finally { setCalAiLoading(false); }
         };
@@ -6874,12 +6944,44 @@ export function KdpFactoryApp() {
                                     const day = i + 1;
                                     const dateStr = `${calMonth}-${String(day).padStart(2, "0")}`;
                                     const dayEvents = pubEvents.filter(e => e.date === dateStr);
-                                    const isToday = dateStr === `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+                                    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+                                    const isToday = dateStr === todayStr;
+                                    // seasonal events that fall on this day
+                                    const seasonalOnDay = alerts.filter(a => {
+                                        const d = a.target;
+                                        return d.getFullYear() === calYear && d.getMonth() + 1 === calMonthNum && d.getDate() === day;
+                                    });
+                                    // AI suggestions that fall on this day (start or publish)
+                                    const aiStartOnDay = calAiSuggestions.filter(s => s.startDate === dateStr);
+                                    const aiPublishOnDay = calAiSuggestions.filter(s => s.publishDate === dateStr);
+                                    const hasAnything = dayEvents.length > 0 || seasonalOnDay.length > 0 || aiStartOnDay.length > 0 || aiPublishOnDay.length > 0;
                                     return (
                                         <div key={day} onClick={() => openEventForm(undefined, dateStr)}
-                                            className={`min-h-[60px] rounded-xl p-1.5 cursor-pointer transition-all border group ${isToday ? "border-indigo-500/50 bg-indigo-500/10" : "border-white/5 hover:border-white/15 hover:bg-white/[0.04]"}`}>
+                                            className={`min-h-[60px] rounded-xl p-1.5 cursor-pointer transition-all border group ${isToday ? "border-indigo-500/50 bg-indigo-500/10" : hasAnything ? "border-white/10" : "border-white/5 hover:border-white/15 hover:bg-white/[0.04]"}`}>
                                             <div className={`text-[11px] font-bold mb-1 w-5 h-5 rounded-full flex items-center justify-center ${isToday ? "bg-indigo-500 text-white" : "text-neutral-500 group-hover:text-neutral-300"}`}>{day}</div>
                                             <div className="space-y-0.5">
+                                                {/* Seasonal markers */}
+                                                {seasonalOnDay.map(a => (
+                                                    <div key={a.name} title={a.name}
+                                                        className="w-full px-1 py-0.5 rounded text-[9px] font-bold leading-tight truncate bg-orange-500/20 text-orange-300 border border-orange-500/30">
+                                                        {a.emoji} {a.name}
+                                                    </div>
+                                                ))}
+                                                {/* AI suggestion — start date */}
+                                                {aiStartOnDay.map((s, idx) => (
+                                                    <div key={`start-${idx}`} title={`🛠 Empezar: ${s.title}`}
+                                                        className="w-full px-1 py-0.5 rounded text-[9px] font-semibold leading-tight truncate bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                                        🛠 {s.title}
+                                                    </div>
+                                                ))}
+                                                {/* AI suggestion — publish date */}
+                                                {aiPublishOnDay.map((s, idx) => (
+                                                    <div key={`pub-${idx}`} title={`🚀 Publicar: ${s.title}`}
+                                                        className="w-full px-1 py-0.5 rounded text-[9px] font-semibold leading-tight truncate bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30">
+                                                        🚀 {s.title}
+                                                    </div>
+                                                ))}
+                                                {/* Manual events */}
                                                 {dayEvents.map(ev => (
                                                     <div key={ev.id} onClick={e => { e.stopPropagation(); openEventForm(ev); }}
                                                         className={`w-full px-1 py-0.5 rounded text-[9px] font-semibold leading-tight truncate text-white ${statusColors[ev.status]}`}>
@@ -6894,6 +6996,18 @@ export function KdpFactoryApp() {
 
                             {/* Legend */}
                             <div className="flex items-center gap-4 pt-2 border-t border-white/5 flex-wrap">
+                                <div className="flex items-center gap-1.5">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-orange-500/60" />
+                                    <span className="text-[10px] text-neutral-500">Fecha estacional</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-amber-500/60" />
+                                    <span className="text-[10px] text-neutral-500">🛠 Inicio</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-fuchsia-500/60" />
+                                    <span className="text-[10px] text-neutral-500">🚀 Publicar</span>
+                                </div>
                                 {Object.entries(statusLabels).map(([s, l]) => (
                                     <div key={s} className="flex items-center gap-1.5">
                                         <div className={`w-2.5 h-2.5 rounded-full ${statusColors[s]}`} />
@@ -6943,7 +7057,34 @@ export function KdpFactoryApp() {
                                     </div>
                                 )}
                                 {calAiSuggestions.map((s, i) => (
-                                    <div key={i} className="text-[11px] text-neutral-300 leading-relaxed py-2 border-b border-white/5 last:border-0">{s}</div>
+                                    <div key={i} className="py-2.5 border-b border-white/5 last:border-0 space-y-2">
+                                        <p className="text-[11px] text-neutral-200 font-semibold leading-snug">{s.title}</p>
+                                        {s.event && <p className="text-[10px] text-orange-400 font-bold">Para: {s.event}</p>}
+                                        <div className="flex flex-col gap-1">
+                                            {s.startDate && (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full whitespace-nowrap">
+                                                        🛠 Inicio: {s.startDate}
+                                                    </span>
+                                                    <button onClick={() => { setEventTitle(`[Inicio] ${s.title}`); setEventDate(s.startDate); setEventStatus("idea"); setEventNicheId(""); setPubEventFormOpen(true); setEditingEventId(null); }}
+                                                        className="text-[10px] text-neutral-500 hover:text-neutral-300 font-semibold transition-colors">
+                                                        + Agendar
+                                                    </button>
+                                                </div>
+                                            )}
+                                            {s.publishDate && (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-fuchsia-400 font-bold bg-fuchsia-500/10 border border-fuchsia-500/20 px-2 py-0.5 rounded-full whitespace-nowrap">
+                                                        🚀 Publicar: {s.publishDate}
+                                                    </span>
+                                                    <button onClick={() => { setEventTitle(s.title); setEventDate(s.publishDate); setEventStatus("planned"); setEventNicheId(""); setPubEventFormOpen(true); setEditingEventId(null); }}
+                                                        className="text-[10px] text-neutral-500 hover:text-neutral-300 font-semibold transition-colors">
+                                                        + Agendar
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                 ))}
                             </div>
                         </div>
@@ -10866,13 +11007,12 @@ export function KdpFactoryApp() {
     };
 
     const renderStudio = () => {
-        const STUDIO_TABS: KdpTabDef<"niches" | "radar" | "series" | "calendar">[] = [
+        const STUDIO_TABS: KdpTabDef<"niches" | "radar" | "calendar">[] = [
             { id: "niches",   label: "Nichos",     icon: <Target size={13} />,       color: "text-sky-400",    activeBg: "bg-sky-500/10 border-sky-500/25 text-sky-300"         },
             { id: "radar",    label: "Radar",      icon: <Search size={13} />,       color: "text-amber-400",  activeBg: "bg-amber-500/10 border-amber-500/25 text-amber-300"   },
-            { id: "series",   label: "Series",     icon: <Layers size={13} />,       color: "text-purple-400", activeBg: "bg-purple-500/10 border-purple-500/25 text-purple-300" },
             { id: "calendar", label: "Calendario", icon: <CalendarDays size={13} />, color: "text-indigo-400", activeBg: "bg-indigo-500/10 border-indigo-500/25 text-indigo-300" },
         ];
-        const switchStudioTab = (t: "niches" | "radar" | "series" | "calendar") => {
+        const switchStudioTab = (t: "niches" | "radar" | "calendar") => {
             setStudioSubTab(t);
             localStorage.setItem("kdp-studio-subtab", t);
         };
@@ -11423,6 +11563,20 @@ export function KdpFactoryApp() {
                                                                     Market
                                                                 </button>
                                                             )}
+                                                            {niche.saturationLabel ? (
+                                                                <button onClick={() => void runSaturationScan(niche)} disabled={saturationScanningId === niche._id}
+                                                                    title={`Saturación Amazon · ${niche.saturationData?.avgReviews ?? "?"} reviews promedio · ${niche.saturationData?.opportunityScore ?? "?"}% oportunidad · click para re-escanear`}
+                                                                    className={`shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border transition-all ${niche.saturationLabel === "low" ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25" : niche.saturationLabel === "medium" ? "bg-amber-500/15 border-amber-500/30 text-amber-400 hover:bg-amber-500/25" : "bg-rose-500/15 border-rose-500/30 text-rose-400 hover:bg-rose-500/25"}`}>
+                                                                    {saturationScanningId === niche._id ? <span className="w-2 h-2 rounded-full border border-current border-t-transparent animate-spin inline-block" /> : <span>{niche.saturationLabel === "low" ? "🟢" : niche.saturationLabel === "medium" ? "🟡" : "🔴"}</span>}
+                                                                    {niche.saturationLabel === "low" ? "Baja" : niche.saturationLabel === "medium" ? "Media" : "Alta"}
+                                                                </button>
+                                                            ) : (
+                                                                <button onClick={() => void runSaturationScan(niche)} disabled={saturationScanningId === niche._id} title="Analizar saturación en Amazon (~20s)"
+                                                                    className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border border-white/10 text-neutral-600 hover:border-violet-500/30 hover:text-violet-400 hover:bg-violet-500/10 transition-all">
+                                                                    {saturationScanningId === niche._id ? <span className="w-2 h-2 rounded-full border border-current border-t-transparent animate-spin inline-block" /> : <span>🔍</span>}
+                                                                    Saturación
+                                                                </button>
+                                                            )}
                                                         </div>
                                                         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                                                             <span className="text-xs font-black uppercase tracking-wide text-sky-400/80 bg-sky-500/10 border border-sky-500/20 px-2 py-0.5 rounded-full">
@@ -11476,6 +11630,49 @@ export function KdpFactoryApp() {
 
                                                 {/* ─ Market scan (datos reales Amazon) ─ */}
                                                 {niche.marketScan && <MarketScanPanel scan={niche.marketScan} />}
+
+                                                {/* ─ Saturation detector ─ */}
+                                                {niche.saturationData && (
+                                                    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-2">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className={`text-sm font-black ${niche.saturationLabel === "low" ? "text-emerald-400" : niche.saturationLabel === "medium" ? "text-amber-400" : "text-rose-400"}`}>
+                                                                {niche.saturationLabel === "low" ? "🟢 Saturación baja" : niche.saturationLabel === "medium" ? "🟡 Saturación media" : "🔴 Saturación alta"}
+                                                            </span>
+                                                            <div className="text-right">
+                                                                <p className="text-[10px] text-neutral-600">Oportunidad</p>
+                                                                <p className={`text-lg font-black tabular-nums ${niche.saturationData.opportunityScore >= 60 ? "text-emerald-400" : niche.saturationData.opportunityScore >= 30 ? "text-amber-400" : "text-rose-400"}`}>
+                                                                    {niche.saturationData.opportunityScore}%
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex gap-3 text-center">
+                                                            <div className="flex-1 rounded-lg bg-white/[0.03] p-2 border border-white/[0.05]">
+                                                                <p className="text-[10px] text-neutral-600 uppercase font-black">Avg Reviews</p>
+                                                                <p className="text-base font-black text-white tabular-nums">{niche.saturationData.avgReviews}</p>
+                                                            </div>
+                                                            <div className="flex-1 rounded-lg bg-white/[0.03] p-2 border border-white/[0.05]">
+                                                                <p className="text-[10px] text-neutral-600 uppercase font-black">&lt;50 Reviews</p>
+                                                                <p className="text-base font-black text-emerald-400 tabular-nums">{niche.saturationData.lowReviewCount}/{niche.saturationData.totalAnalyzed}</p>
+                                                            </div>
+                                                        </div>
+                                                        {niche.saturationData.topProducts.length > 0 && (
+                                                            <div className="space-y-1">
+                                                                <p className="text-[10px] text-neutral-600 uppercase font-black tracking-wide">Top productos Amazon</p>
+                                                                {niche.saturationData.topProducts.slice(0, 5).map((p, i) => (
+                                                                    <div key={i} className="flex items-center gap-2 text-xs">
+                                                                        <span className="text-neutral-700 w-4 shrink-0 font-black">{i + 1}.</span>
+                                                                        <span className="flex-1 text-neutral-400 truncate">{p.title}</span>
+                                                                        <span className={`shrink-0 font-black tabular-nums ${p.reviews < 50 ? "text-emerald-400" : p.reviews < 200 ? "text-amber-400" : "text-rose-400"}`}>{p.reviews.toLocaleString()}</span>
+                                                                        {p.bestseller && <span className="shrink-0 text-[9px] font-black text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 px-1 rounded">BS</span>}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        {niche.saturationScannedAt && (
+                                                            <p className="text-[10px] text-neutral-700">Escaneado {new Date(niche.saturationScannedAt).toLocaleDateString("es-ES")}</p>
+                                                        )}
+                                                    </div>
+                                                )}
 
                                                 {/* ─ Ciclo de vida (gestión manual: pre-publicado → publicado → fin de vida) ─ */}
                                                 {(niche.lifecycleStage || niche.phase === "published" || (niche.pipelineHasPdf && niche.pipelineHasListings) || !!niche.asin?.trim()) && (
@@ -12001,143 +12198,6 @@ export function KdpFactoryApp() {
                         <RadarInsightsPanel apiUrl={API_BASE_URL} />
                     </div>
                 </div>
-            </div>}
-
-            {/* ══ SERIES BUILDER ══ */}
-            {studioSubTab === "series" && <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
-                    <div className="h-px w-full bg-gradient-to-r from-purple-500/80 via-fuchsia-400/40 to-transparent" />
-                    <div className="p-6 space-y-6">
-                        {/* Header */}
-                        <div className="flex items-start justify-between gap-4">
-                            <SectionHeader
-                                icon={<Layers size={20} />}
-                                title={<><span className="text-white">Series </span><span className="bg-gradient-to-r from-purple-300 to-fuchsia-400 bg-clip-text text-transparent">Builder</span></>}
-                                subtitle="Agrupa nichos en colecciones con branding compartido"
-                                color="violet"
-                                size="lg"
-                            />
-                            <button onClick={() => openSeriesForm()}
-                                className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-2xl bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white text-xs font-bold hover:from-purple-500 hover:to-fuchsia-500 transition-all shadow-lg shadow-purple-900/40">
-                                <Plus size={13} /> Nueva serie
-                            </button>
-                        </div>
-
-                        {/* Series list */}
-                        {series.length === 0 ? (
-                            <div className="py-16 flex flex-col items-center gap-4 text-center">
-                                <div className="w-14 h-14 rounded-2xl bg-purple-500/10 flex items-center justify-center">
-                                    <Layers size={24} className="text-purple-400/60" />
-                                </div>
-                                <div>
-                                    <p className="text-neutral-400 font-semibold text-sm">Sin series todavía</p>
-                                    <p className="text-neutral-600 text-xs mt-1">Crea una serie para agrupar nichos con branding compartido</p>
-                                </div>
-                                <button onClick={() => openSeriesForm()}
-                                    className="px-4 py-2 rounded-xl bg-purple-600/20 border border-purple-500/30 text-purple-300 text-xs font-semibold hover:bg-purple-600/30 transition-all">
-                                    Crear primera serie
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {series.map(s => {
-                                    const linkedNiches = niches.filter(n => s.nicheIds.includes(n._id));
-                                    const coverUrl = (linkedNiches.find(n => (n as any).coverImageUrl) as any)?.coverImageUrl as string | undefined;
-                                    return (
-                                        <div key={s.id} className="group relative rounded-2xl border border-white/8 bg-white/[0.03] hover:bg-white/[0.05] transition-all overflow-hidden">
-                                            {/* Cover strip */}
-                                            <div className="h-2 w-full bg-gradient-to-r from-purple-600 to-fuchsia-500" />
-                                            <div className="p-4 space-y-3">
-                                                <div className="flex items-start justify-between gap-2">
-                                                    <div>
-                                                        <p className="text-sm font-bold text-white leading-tight">{s.name}</p>
-                                                        {s.description && <p className="text-xs text-neutral-500 mt-1 line-clamp-2">{s.description}</p>}
-                                                    </div>
-                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                                                        <button onClick={() => openSeriesForm(s)} className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all">
-                                                            <Pencil size={11} className="text-neutral-400" />
-                                                        </button>
-                                                        <button onClick={() => deleteSeries(s.id)} className="w-7 h-7 rounded-lg bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center transition-all">
-                                                            <Trash2 size={11} className="text-red-400" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                {/* Niches */}
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    {linkedNiches.length === 0
-                                                        ? <span className="text-[10px] text-neutral-600 italic">Sin nichos vinculados</span>
-                                                        : linkedNiches.map(n => (
-                                                            <span key={n._id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/15 border border-purple-500/20 text-purple-300 text-[10px] font-medium">
-                                                                <BookOpen size={9} />{n.name}
-                                                            </span>
-                                                        ))
-                                                    }
-                                                </div>
-                                                {/* Stats */}
-                                                <div className="flex items-center gap-3 pt-1 border-t border-white/5">
-                                                    <span className="text-[10px] text-neutral-600">{linkedNiches.length} nicho{linkedNiches.length !== 1 ? "s" : ""}</span>
-                                                    <span className="text-[10px] text-neutral-600">{linkedNiches.reduce((acc, n) => acc + ((n as any).catalogCount ?? 0), 0)} catálogos</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Series Form Modal */}
-                {seriesFormOpen && <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                    <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-neutral-950 shadow-2xl overflow-hidden">
-                        <div className="h-px w-full bg-gradient-to-r from-purple-500 via-fuchsia-400 to-transparent" />
-                        <div className="p-6 space-y-5">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-bold text-white">{editingSeriesId ? "Editar serie" : "Nueva serie"}</h3>
-                                <button onClick={() => setSeriesFormOpen(false)} className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all">
-                                    <X size={14} className="text-neutral-400" />
-                                </button>
-                            </div>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-1.5 block">Nombre de la serie *</label>
-                                    <input value={seriesName} onChange={e => setSeriesName(e.target.value)}
-                                        placeholder="Ej: Mandalas para la paz interior"
-                                        className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-purple-500/50" />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-1.5 block">Descripción</label>
-                                    <textarea value={seriesDesc} onChange={e => setSeriesDesc(e.target.value)} rows={2}
-                                        placeholder="Breve descripción del concepto o branding de la serie"
-                                        className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-purple-500/50 resize-none" />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-neutral-400 font-semibold uppercase tracking-wider mb-1.5 block">Nichos vinculados</label>
-                                    <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
-                                        {niches.length === 0
-                                            ? <p className="text-xs text-neutral-600 italic">No hay nichos disponibles</p>
-                                            : niches.map(n => (
-                                                <label key={n._id} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] cursor-pointer transition-all">
-                                                    <input type="checkbox" checked={seriesNicheIds.includes(n._id)} onChange={ev => {
-                                                        setSeriesNicheIds(prev => ev.target.checked ? [...prev, n._id] : prev.filter(id => id !== n._id));
-                                                    }} className="accent-purple-500 w-3.5 h-3.5" />
-                                                    <span className="text-xs text-neutral-300 font-medium">{n.name}</span>
-                                                    <span className="ml-auto text-[10px] text-neutral-600">{n.productType ?? "coloring-book"}</span>
-                                                </label>
-                                            ))
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="flex gap-3 pt-2">
-                                <button onClick={() => setSeriesFormOpen(false)} className="flex-1 py-2.5 rounded-2xl bg-white/5 border border-white/10 text-sm text-neutral-400 hover:bg-white/10 transition-all font-semibold">Cancelar</button>
-                                <button onClick={submitSeries} disabled={!seriesName.trim()} className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white text-sm font-bold disabled:opacity-40 hover:from-purple-500 hover:to-fuchsia-500 transition-all shadow-lg shadow-purple-900/40">
-                                    {editingSeriesId ? "Guardar cambios" : "Crear serie"}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>}
             </div>}
 
             {/* ══ PUBLISHING CALENDAR (sub-tab) ══ */}
