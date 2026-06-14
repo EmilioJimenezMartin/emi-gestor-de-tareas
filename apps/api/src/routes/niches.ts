@@ -2,7 +2,8 @@ import { FastifyInstance } from "fastify";
 import { Niche } from "../models/niche.js";
 import { sendTelegramImageWithButtons, sendTelegram } from "../lib/telegram.js";
 import { TelegramAction } from "../models/telegram-action.js";
-import { generateImage } from "../lib/image-gen.js";
+import { getAutopilotImageModel } from "../lib/image-gen.js";
+import { buildColoringBookPrompt } from "./autopilot.js";
 
 const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
 function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
@@ -1072,10 +1073,17 @@ Tu misión: analizar la fórmula de éxito del libro y proponer 5 CLONES de nich
 
 Un clon NO es una copia. Es aplicar la misma fórmula de éxito (demografía, estilo visual, complejidad, formato) a una temática diferente.
 
+REGLAS CRÍTICAS para el campo "title":
+- Escribe un título CONCRETO y REAL, listo para publicar en Amazon KDP (en inglés)
+- NUNCA uses placeholders, variables ni corchetes como {número}, [tema], [X], {X}
+- Usa números reales: "50 Designs", "101 Pages", "100 Unique Illustrations"
+- Ejemplo correcto: "Exotic Travel Coloring Book: 50 Stunning Destinations for Adults"
+- Ejemplo INCORRECTO: "Travel Coloring Book: {número} illustrations of {tema}"
+
 IMPORTANTE: Responde ÚNICA Y EXCLUSIVAMENTE con JSON puro, sin markdown, sin comentarios, sin texto adicional.
 
 Estructura exacta:
-{"source":{"title":"string","bsr":"string","price":"string","reviews":"string","pages":"string","formula":"string"},"clones":[{"nicheName":"string","titleTemplate":"string","audience":"string","coverBrief":"string","keywords":["kw1","kw2","kw3","kw4","kw5"],"whyItWorks":"string","competition":"low"}]}`;
+{"source":{"title":"string","bsr":"string","price":"string","reviews":"string","pages":"string","formula":"string"},"clones":[{"nicheName":"string","title":"string","audience":"string","coverBrief":"string","keywords":["kw1","kw2","kw3","kw4","kw5"],"whyItWorks":"string","competition":"low"}]}`;
 
             const raw = await generateTextWithLLM(SYSTEM, `PÁGINA DEL BESTSELLER:\n${pageText}`);
             const cleaned = raw
@@ -1105,45 +1113,62 @@ Estructura exacta:
 
         const { generateTextWithLLM } = await import("../lib/ai.js");
 
-        try {
-            // 1 · AI mejora el prompt de imagen y genera el pitch
-            const [imagePrompt, pitch] = await Promise.all([
-                generateTextWithLLM(
-                    `Eres un experto en prompts de image generation para portadas de libros KDP de colorear. Escribe UN prompt en inglés (máx 25 palabras) para generar la portada ideal. OBLIGATORIO: el prompt debe describir una portada de libro de colorear — líneas negras limpias sobre fondo blanco, estilo ilustración minimalista. Solo el prompt, nada más.`,
-                    `Nicho: ${clone.nicheName}\nTítulo: ${clone.titleTemplate}\nPortada: ${clone.coverBrief}\nAudiencia: ${clone.audience}`
-                ),
-                generateTextWithLLM(
-                    `Eres un copywriter de nichos KDP. Escribe un mensaje de Telegram corto (3-4 líneas, sin emojis extra) sobre este nicho para que el autor decida si publicarlo. Directo, con datos concretos.`,
-                    `Nicho: ${clone.nicheName}\nTítulo: ${clone.titleTemplate}\nAudiencia: ${clone.audience}\nPor qué funciona: ${clone.whyItWorks}\nCompetencia: ${clone.competition}\nKeywords: ${(clone.keywords ?? []).join(", ")}`
-                ),
-            ]);
+        const title = (clone as any).title || clone.titleTemplate || clone.nicheName;
+        const kws = (clone.keywords ?? []).join(", ");
 
-            // 2 · Generar imagen de portada
+        try {
+            // 1 · AI genera prompt de imagen (solo eso, nada más)
+            const imagePrompt = await generateTextWithLLM(
+                `You are an expert at writing image generation prompts for KDP coloring book covers. Write ONE prompt in English (max 20 words). The prompt must describe a coloring book scene — black line art, white background, detailed illustration. Output ONLY the prompt, no explanation, no JSON.`,
+                `Niche: ${clone.nicheName}\nKeywords: ${kws}\nAudience: ${clone.audience}`
+            );
+
+            // 2 · Construir el prompt con la MISMA fórmula que usa el job de catálogos
+            //     buildColoringBookPrompt produce "masterful coloring book page, crisp black ink..."
+            //     El catalog.ts lo detecta con alreadyHasFormula=true y no lo vuelve a wrappear
+            const baseScene = imagePrompt.trim().replace(/['"]/g, "");
+            const fullPrompt = buildColoringBookPrompt(baseScene, "generic");
+
+            // Usar EXACTAMENTE el mismo modelo Y proxy que usa el catalog job
+            const aiModel = await getAutopilotImageModel();
+
             let imageBytes: Buffer | null = null;
             try {
-                const fullPrompt = `${imagePrompt.trim()}, coloring book style, black line art, clean outlines, white background, KDP book cover`;
-                imageBytes = await generateImage(fullPrompt, { width: 768, height: 1024 });
-            } catch { /* si falla, seguimos sin imagen */ }
+                const port = process.env.PORT || 3001;
+                const res = await fetch(`http://localhost:${port}/ai/generate-image`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", ...(process.env.SERVER_API_KEY ? { Authorization: `Bearer ${process.env.SERVER_API_KEY}` } : {}) },
+                    body: JSON.stringify({ prompt: fullPrompt, modelId: aiModel.modelId, provider: aiModel.provider, width: 768, height: 1024 }),
+                    signal: AbortSignal.timeout(90_000),
+                });
+                if (res.ok && (res.headers.get("content-type") ?? "").startsWith("image/")) {
+                    imageBytes = Buffer.from(await res.arrayBuffer());
+                }
+            } catch { /* continúa sin imagen */ }
 
-            // 3 · Crear TelegramAction para rastrear la decisión
+            // 3 · Guardar fullPrompt — el catalog job lo usará como está (alreadyHasFormula=true)
             const action = await TelegramAction.create({
                 type: "clone-decision",
                 nicheName: clone.nicheName,
-                imagePrompt: imagePrompt.trim(),
-                cloneData: { ...clone, sourceTitle, sourceUrl },
+                imagePrompt: fullPrompt,
+                aiModel,
+                cloneData: { ...clone, title, sourceTitle, sourceUrl },
                 autoApproveAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
             });
 
             const compEmoji = clone.competition === "low" ? "🟢" : clone.competition === "medium" ? "🟡" : "🔴";
+            const compLabel = clone.competition === "low" ? "Baja" : clone.competition === "medium" ? "Media" : "Alta";
             const caption = [
                 `🎯 <b>Clone Engine — Nicho candidato</b>`,
                 ``,
                 `📚 <b>${clone.nicheName}</b>`,
-                `<i>${clone.titleTemplate}</i>`,
+                `<i>${title}</i>`,
                 ``,
-                pitch.trim(),
+                `👥 ${clone.audience}`,
+                `💡 ${clone.whyItWorks}`,
+                `🔑 ${kws}`,
                 ``,
-                `${compEmoji} Competencia: <b>${clone.competition === "low" ? "Baja" : clone.competition === "medium" ? "Media" : "Alta"}</b>`,
+                `${compEmoji} Competencia: <b>${compLabel}</b>`,
                 ...(sourceTitle ? [`📖 Basado en: <i>${sourceTitle.slice(0, 70)}</i>`] : []),
             ].join("\n");
 

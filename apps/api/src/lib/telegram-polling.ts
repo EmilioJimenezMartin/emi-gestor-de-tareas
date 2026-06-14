@@ -650,11 +650,11 @@ async function processUpdate(update: any): Promise<void> {
             if (action === "continuar") {
                 try {
                     const cd = tAction.cloneData as any ?? {};
-                    const { Niche } = await import("../models/niche.js");
-                    const existing = await Niche.findOne({ name: tAction.nicheName }).lean();
-                    if (existing) {
-                        resultText = `✅ "${tAction.nicheName}" ya existía en tus nichos`;
-                    } else {
+                    const cfg = await getAutoPilotConfig();
+
+                    // 1 · Crear o reutilizar el nicho
+                    let niche = await Niche.findOne({ name: tAction.nicheName }).lean();
+                    if (!niche) {
                         const noteLines = [
                             `Clone Engine (aprobado vía Telegram)`,
                             ``,
@@ -665,18 +665,81 @@ async function processUpdate(update: any): Promise<void> {
                         if (cd.sourceTitle) noteLines.push(``, `Basado en: ${cd.sourceTitle}`);
                         if (cd.sourceUrl) noteLines.push(`URL: ${cd.sourceUrl}`);
                         if (tAction.imagePrompt) noteLines.push(``, `Prompt portada: ${tAction.imagePrompt}`);
-                        await Niche.create({
+                        niche = await Niche.create({
                             name: tAction.nicheName,
-                            description: cd.titleTemplate ?? "",
+                            description: cd.title ?? cd.titleTemplate ?? "",
                             tags: cd.keywords ?? [],
                             competition: cd.competition ?? "unknown",
                             notes: noteLines.join("\n"),
+                            autoPilotEnabled: true,
+                            status: "active",
+                            phase: "catalog",
                         });
-                        _io?.emit("niches:updated");
-                        resultText = `✅ Nicho "${tAction.nicheName}" creado`;
+                    } else {
+                        await Niche.findByIdAndUpdate((niche as any)._id, {
+                            $set: { autoPilotEnabled: true, status: "active", phase: "catalog" },
+                        });
                     }
+
+                    _io?.emit("niches:updated");
+                    await sendTelegram(
+                        `🚀 <b>Pipeline lanzado — Clone Engine</b>\n` +
+                        `📚 <b>${tAction.nicheName}</b>\n\n` +
+                        `Creando <b>${cfg.catalogsPerNiche} catálogos</b> × <b>${cfg.imagesPerCatalog} imágenes</b>…`
+                    );
+
+                    // 2 · Crear catálogos — mismo prompt Y mismo modelo que generó la imagen de Telegram
+                    const nicheId = String((niche as any)._id);
+                    const imagePrompt = tAction.imagePrompt || tAction.nicheName;
+                    // Reutilizar el modelo guardado en el action (el mismo que generó la preview de Telegram)
+                    const aiModel = (tAction as any).aiModel ?? await getAutopilotImageModel();
+
+                    setImmediate(async () => {
+                        try {
+                            const port = process.env.PORT || 3001;
+                            const base = `http://localhost:${port}`;
+                            let created = 0;
+                            for (let i = 0; i < cfg.catalogsPerNiche; i++) {
+                                try {
+                                    const res = await internalFetch(`${base}/catalogs`, {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({
+                                            name: `${tAction.nicheName} — v${i + 1}`,
+                                            prompt: imagePrompt,
+                                            totalImages: cfg.imagesPerCatalog,
+                                            aiModel,
+                                            nicheIds: [nicheId],
+                                            productType: "coloring-book",
+                                        }),
+                                    });
+                                    if (res.ok) created++;
+                                } catch { /* continue */ }
+                                await new Promise(r => setTimeout(r, 300));
+                            }
+                            _io?.emit("niches:updated");
+                            _io?.emit("catalogs:updated");
+                            if (created > 0) {
+                                await sendTelegram(`🏭 <b>${tAction.nicheName}</b>\n🖼️ ${created} catálogos en generación · ${created * cfg.imagesPerCatalog} imágenes totales`).catch(() => {});
+                                try {
+                                    if (_agenda) {
+                                        await _agenda.now("autopilot-run", {});
+                                        await _agenda.schedule("in 3 minutes", "autopilot-run", {});
+                                    } else {
+                                        await internalFetch(`${base}/autopilot/run`, { method: "POST" });
+                                    }
+                                } catch { /* non-critical */ }
+                            } else {
+                                await sendTelegram(`⚠️ <b>Fallo al crear catálogos para "${tAction.nicheName}"</b>\nEl nicho fue creado — lanza catálogos manualmente desde la app`).catch(() => {});
+                            }
+                        } catch (e) {
+                            console.error("[telegram-poll] Error launching catalogs for clone:", e);
+                        }
+                    });
+
+                    resultText = `✅ Lanzado — ${cfg.catalogsPerNiche} catálogos en producción`;
                 } catch (e: any) {
-                    resultText = `❌ Error creando nicho: ${e.message}`;
+                    resultText = `❌ Error: ${e.message}`;
                 }
             } else {
                 resultText = `🗑️ "${tAction.nicheName}" descartado`;

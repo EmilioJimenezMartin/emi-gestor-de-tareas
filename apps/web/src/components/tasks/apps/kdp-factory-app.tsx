@@ -577,7 +577,7 @@ export function KdpFactoryApp() {
     });
 
     // ── Clone Engine state ───────────────────────────────────────────────────
-    type CloneResult = { nicheName: string; titleTemplate: string; audience: string; coverBrief: string; keywords: string[]; whyItWorks: string; competition: "low" | "medium" | "high" };
+    type CloneResult = { nicheName: string; title: string; titleTemplate?: string; audience: string; coverBrief: string; keywords: string[]; whyItWorks: string; competition: "low" | "medium" | "high" };
     type CloneSource = { title: string; bsr: string; price: string; reviews: string; pages: string; formula: string };
     type CloneHistoryEntry = { input: string; source: CloneSource; clones: CloneResult[]; date: string };
     const [cloneInput, setCloneInput] = useState("");
@@ -12625,7 +12625,7 @@ export function KdpFactoryApp() {
                 const isNicheSaved = (name: string) => nicheNameMap.has(name.toLowerCase());
                 const savedNicheId = (name: string) => nicheNameMap.get(name.toLowerCase()) ?? null;
 
-                const buildNotes = (clone: CloneResult, src?: CloneSource | null, srcUrl?: string) => {
+                const buildNotes = (clone: CloneResult, src?: CloneSource | null, srcUrl?: string): string => {
                     const lines = [
                         `Clone Engine`,
                         ``,
@@ -12649,7 +12649,7 @@ export function KdpFactoryApp() {
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
                                 name: clone.nicheName,
-                                description: clone.titleTemplate,
+                                description: clone.title || clone.titleTemplate || "",
                                 tags: clone.keywords,
                                 competition: clone.competition,
                                 notes: buildNotes(clone, src, srcUrl),
@@ -12707,7 +12707,7 @@ export function KdpFactoryApp() {
                                     <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${compColor(clone.competition)}`}>{compLabel(clone.competition)}</span>
                                     {saved && <span className="text-[9px] font-black px-2 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 flex items-center gap-1"><CheckCircle2 size={9} /> En tus nichos</span>}
                                 </div>
-                                <p className="text-xs text-neutral-500 mt-1 font-mono leading-relaxed">{clone.titleTemplate}</p>
+                                <p className="text-xs text-neutral-500 mt-1 font-mono leading-relaxed">{clone.title || clone.titleTemplate}</p>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                                 <button
