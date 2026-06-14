@@ -92,6 +92,7 @@ import {
     CalendarDays,
     Printer,
     GitBranch,
+    RotateCcw,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -506,6 +507,8 @@ export function KdpFactoryApp() {
     const [isCreatingCatalog, setIsCreatingCatalog] = useState(false);
     const [deletingCatalogId, setDeletingCatalogId] = useState<string | null>(null);
     const [confirmDeleteCatalogId, setConfirmDeleteCatalogId] = useState<string | null>(null);
+    const [catalogMultiSelectMode, setCatalogMultiSelectMode] = useState(false);
+    const [catalogMultiSelected, setCatalogMultiSelected] = useState<Set<string>>(new Set());
     const [confirmStopCatalogId, setConfirmStopCatalogId] = useState<string | null>(null);
     const [skippingImageCatalogId, setSkippingImageCatalogId] = useState<string | null>(null);
     const [forceCompletingCatalogId, setForceCompletingCatalogId] = useState<string | null>(null);
@@ -566,7 +569,7 @@ export function KdpFactoryApp() {
     const [lightboxUrl, setLightboxUrl] = useState<{ url: string; catalogId?: string; publicId?: string; filename?: string } | null>(null);
     const [explodeNicheId, setExplodeNicheId] = useState<string | null>(null);
     const [nichePage, setNichePage] = useState(0);
-    const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban">("kanban");
+    const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban" | "table">("kanban");
     const [kanbanProductFilter, setKanbanProductFilter] = useState<"all" | "coloring-book" | "printable-poster" | "seamless-pattern">("all");
     const [studioSubTab, setStudioSubTab] = useState<"niches" | "radar" | "calendar">(() => {
         const saved = typeof window !== "undefined" ? localStorage.getItem("kdp-studio-subtab") : null;
@@ -9511,6 +9514,13 @@ export function KdpFactoryApp() {
                                     <button onClick={() => void fetchCatalogs()} disabled={isLoadingCatalogs} className="p-2 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-sky-400 hover:border-sky-500/30 transition-all disabled:opacity-40">
                                         {isLoadingCatalogs ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                                     </button>
+                                    <button
+                                        onClick={() => { setCatalogMultiSelectMode(v => !v); setCatalogMultiSelected(new Set()); }}
+                                        className={`flex items-center gap-1.5 h-8 px-3 rounded-xl border text-sm font-black uppercase tracking-widest transition-all ${catalogMultiSelectMode ? "bg-violet-500/15 border-violet-500/30 text-violet-400 hover:bg-violet-500/20" : "bg-white/5 border-white/10 text-neutral-500 hover:text-white"}`}
+                                    >
+                                        {catalogMultiSelectMode ? <X size={11} /> : <CheckCheck size={11} />}
+                                        {catalogMultiSelectMode ? "Cancelar" : "Seleccionar"}
+                                    </button>
                                 </div>
 
                                 {/* ── Catalog filter bar ── */}
@@ -9723,30 +9733,39 @@ export function KdpFactoryApp() {
                                 {activeCatalogs.length > 0 && (
                                     <div className="space-y-3">
                                         {activeCatalogs.map(c => (
-                                            <CatalogCard
-                                                key={c._id}
-                                                catalog={c}
-                                                tick={imageElapsedTick}
-                                                niches={niches}
-                                                allCatalogs={iaCatalogs}
-                                                draggingId={draggingId}
-                                                isDragOver={dragOverId === c._id}
-                                                isDragging={draggingId === c._id}
-                                                isNichePickerOpen={catalogNichePickerId === c._id}
-                                                isBulkMode={bulkDeleteCatalogId === c._id}
-                                                bulkSelection={bulkDeleteCatalogId === c._id ? bulkDeleteSelection : stableEmptySet}
-                                                isVaultSelectMode={isVaultSelectMode}
-                                                selectedUrls={selectedImageUrls}
-                                                favorites={favorites}
-                                                upscalingId={upscalingPublicId}
-                                                isRetrying={retryingCatalogId === c._id}
-                                                isRelaunching={relaunchingCatalogId === c._id}
-                                                isDeleting={deletingCatalogId === c._id}
-                                                isForceCompleting={forceCompletingCatalogId === c._id}
-                                                isSkippingImage={skippingImageCatalogId === c._id}
-                                                isDirectPdf={directPdfCatalogId === c._id}
-                                                isBulkDeleting={isBulkDeleting}
-                                            />
+                                            <div key={c._id} className="relative">
+                                                {catalogMultiSelectMode && (
+                                                    <div className="absolute top-3 right-3 z-10"
+                                                        onClick={e => { e.stopPropagation(); setCatalogMultiSelected(prev => { const next = new Set(prev); next.has(c._id) ? next.delete(c._id) : next.add(c._id); return next; }); }}>
+                                                        <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center cursor-pointer transition-all ${catalogMultiSelected.has(c._id) ? "bg-violet-500 border-violet-400 shadow-[0_0_8px_rgba(139,92,246,0.4)]" : "bg-black/60 border-white/30 backdrop-blur-sm hover:border-violet-400"}`}>
+                                                            {catalogMultiSelected.has(c._id) && <Check size={10} className="text-white" strokeWidth={3} />}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                <CatalogCard
+                                                    catalog={c}
+                                                    tick={imageElapsedTick}
+                                                    niches={niches}
+                                                    allCatalogs={iaCatalogs}
+                                                    draggingId={draggingId}
+                                                    isDragOver={dragOverId === c._id}
+                                                    isDragging={draggingId === c._id}
+                                                    isNichePickerOpen={catalogNichePickerId === c._id}
+                                                    isBulkMode={bulkDeleteCatalogId === c._id}
+                                                    bulkSelection={bulkDeleteCatalogId === c._id ? bulkDeleteSelection : stableEmptySet}
+                                                    isVaultSelectMode={isVaultSelectMode}
+                                                    selectedUrls={selectedImageUrls}
+                                                    favorites={favorites}
+                                                    upscalingId={upscalingPublicId}
+                                                    isRetrying={retryingCatalogId === c._id}
+                                                    isRelaunching={relaunchingCatalogId === c._id}
+                                                    isDeleting={deletingCatalogId === c._id}
+                                                    isForceCompleting={forceCompletingCatalogId === c._id}
+                                                    isSkippingImage={skippingImageCatalogId === c._id}
+                                                    isDirectPdf={directPdfCatalogId === c._id}
+                                                    isBulkDeleting={isBulkDeleting}
+                                                />
+                                            </div>
                                         ))}
                                     </div>
                                 )}
@@ -9767,33 +9786,93 @@ export function KdpFactoryApp() {
                                         {!collapsedCompleted && (
                                             <div className="space-y-3">
                                                 {doneCatalogs.map(c => (
-                                                    <CatalogCard
-                                                        key={c._id}
-                                                        catalog={c}
-                                                        tick={imageElapsedTick}
-                                                        niches={niches}
-                                                        allCatalogs={iaCatalogs}
-                                                        draggingId={draggingId}
-                                                        isDragOver={dragOverId === c._id}
-                                                        isDragging={draggingId === c._id}
-                                                        isNichePickerOpen={catalogNichePickerId === c._id}
-                                                        isBulkMode={bulkDeleteCatalogId === c._id}
-                                                        bulkSelection={bulkDeleteCatalogId === c._id ? bulkDeleteSelection : stableEmptySet}
-                                                        isVaultSelectMode={isVaultSelectMode}
-                                                        selectedUrls={selectedImageUrls}
-                                                        favorites={favorites}
-                                                        upscalingId={upscalingPublicId}
-                                                        isRetrying={retryingCatalogId === c._id}
-                                                        isRelaunching={relaunchingCatalogId === c._id}
-                                                        isDeleting={deletingCatalogId === c._id}
-                                                        isForceCompleting={forceCompletingCatalogId === c._id}
-                                                        isSkippingImage={skippingImageCatalogId === c._id}
-                                                        isDirectPdf={directPdfCatalogId === c._id}
-                                                        isBulkDeleting={isBulkDeleting}
-                                                    />
+                                                    <div key={c._id} className="relative">
+                                                        {catalogMultiSelectMode && (
+                                                            <div className="absolute top-3 right-3 z-10"
+                                                                onClick={e => { e.stopPropagation(); setCatalogMultiSelected(prev => { const next = new Set(prev); next.has(c._id) ? next.delete(c._id) : next.add(c._id); return next; }); }}>
+                                                                <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center cursor-pointer transition-all ${catalogMultiSelected.has(c._id) ? "bg-violet-500 border-violet-400 shadow-[0_0_8px_rgba(139,92,246,0.4)]" : "bg-black/60 border-white/30 backdrop-blur-sm hover:border-violet-400"}`}>
+                                                                    {catalogMultiSelected.has(c._id) && <Check size={10} className="text-white" strokeWidth={3} />}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        <CatalogCard
+                                                            catalog={c}
+                                                            tick={imageElapsedTick}
+                                                            niches={niches}
+                                                            allCatalogs={iaCatalogs}
+                                                            draggingId={draggingId}
+                                                            isDragOver={dragOverId === c._id}
+                                                            isDragging={draggingId === c._id}
+                                                            isNichePickerOpen={catalogNichePickerId === c._id}
+                                                            isBulkMode={bulkDeleteCatalogId === c._id}
+                                                            bulkSelection={bulkDeleteCatalogId === c._id ? bulkDeleteSelection : stableEmptySet}
+                                                            isVaultSelectMode={isVaultSelectMode}
+                                                            selectedUrls={selectedImageUrls}
+                                                            favorites={favorites}
+                                                            upscalingId={upscalingPublicId}
+                                                            isRetrying={retryingCatalogId === c._id}
+                                                            isRelaunching={relaunchingCatalogId === c._id}
+                                                            isDeleting={deletingCatalogId === c._id}
+                                                            isForceCompleting={forceCompletingCatalogId === c._id}
+                                                            isSkippingImage={skippingImageCatalogId === c._id}
+                                                            isDirectPdf={directPdfCatalogId === c._id}
+                                                            isBulkDeleting={isBulkDeleting}
+                                                        />
+                                                    </div>
                                                 ))}
                                             </div>
                                         )}
+                                    </div>
+                                )}
+                                {/* ── Catalog bulk action bar ── */}
+                                {catalogMultiSelectMode && catalogMultiSelected.size > 0 && (
+                                    <div className="sticky bottom-4 z-20 flex items-center gap-3 px-4 py-3 rounded-2xl bg-neutral-950/90 border border-violet-500/30 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] shadow-violet-500/10">
+                                        <span className="text-sm font-black text-violet-300">{catalogMultiSelected.size} catálogo{catalogMultiSelected.size !== 1 ? "s" : ""}</span>
+                                        <div className="flex items-center gap-2 ml-auto">
+                                            <button
+                                                onClick={async () => {
+                                                    for (const id of catalogMultiSelected) {
+                                                        await fetch(`${API_BASE_URL}/catalogs/${id}/stop`, { method: "POST" }).catch(() => {});
+                                                    }
+                                                    setCatalogMultiSelected(new Set());
+                                                    void fetchCatalogs();
+                                                }}
+                                                className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm font-black uppercase tracking-widest hover:bg-amber-500/20 transition-all"
+                                            >
+                                                <StopCircle size={11} /> Parar
+                                            </button>
+                                            <button
+                                                onClick={async () => {
+                                                    for (const id of catalogMultiSelected) {
+                                                        await fetch(`${API_BASE_URL}/catalogs/${id}/relaunch`, { method: "POST" }).catch(() => {});
+                                                    }
+                                                    setCatalogMultiSelected(new Set());
+                                                    void fetchCatalogs();
+                                                }}
+                                                className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-sm font-black uppercase tracking-widest hover:bg-sky-500/20 transition-all"
+                                            >
+                                                <RotateCcw size={11} /> Relanzar
+                                            </button>
+                                            <button
+                                                onClick={async () => {
+                                                    for (const id of catalogMultiSelected) {
+                                                        await fetch(`${API_BASE_URL}/catalogs/${id}`, { method: "DELETE" }).catch(() => {});
+                                                        setIaCatalogs(prev => prev.filter(c => c._id !== id));
+                                                    }
+                                                    setCatalogMultiSelected(new Set());
+                                                    setCatalogMultiSelectMode(false);
+                                                }}
+                                                className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm font-black uppercase tracking-widest hover:bg-rose-500/20 transition-all"
+                                            >
+                                                <Trash2 size={11} /> Eliminar
+                                            </button>
+                                            <button
+                                                onClick={() => { setCatalogMultiSelected(new Set()); setCatalogMultiSelectMode(false); }}
+                                                className="h-8 w-8 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-white transition-all flex items-center justify-center"
+                                            >
+                                                <X size={12} />
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -11074,6 +11153,18 @@ export function KdpFactoryApp() {
                                     className={`w-8 h-7 rounded-lg flex items-center justify-center transition-all ${nicheViewMode === "kanban" ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
                                     <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="0" y="0" width="3.5" height="13" rx="1" fill="currentColor"/><rect x="4.75" y="0" width="3.5" height="13" rx="1" fill="currentColor"/><rect x="9.5" y="0" width="3.5" height="13" rx="1" fill="currentColor"/></svg>
                                 </button>
+                                <button onClick={() => setNicheViewMode("table")} title="Vista tabla"
+                                    className={`w-8 h-7 rounded-lg flex items-center justify-center transition-all ${nicheViewMode === "table" ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                                        <rect x="0" y="0" width="13" height="2.5" rx="1" fill="currentColor"/>
+                                        <rect x="0" y="3.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.5"/>
+                                        <rect x="7.5" y="3.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.5"/>
+                                        <rect x="0" y="6.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.35"/>
+                                        <rect x="7.5" y="6.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.35"/>
+                                        <rect x="0" y="9.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.2"/>
+                                        <rect x="7.5" y="9.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.2"/>
+                                    </svg>
+                                </button>
                             </div>
                             <button onClick={() => setVoiceModalMode("image")} title="Generar imagen con voz"
                                 className="flex items-center gap-1.5 h-10 px-3 rounded-2xl bg-white/5 border border-white/10 text-neutral-500 hover:text-amber-300 hover:bg-amber-500/15 hover:border-amber-500/30 transition-all">
@@ -11474,7 +11565,7 @@ export function KdpFactoryApp() {
                     })()}
 
                     {/* ── Empty state (list mode only) ── */}
-                    {!isLoadingNiches && nicheViewMode === "list" && niches.filter(nicheMatchesFilters).length === 0 && (
+                    {!isLoadingNiches && (nicheViewMode === "list" || nicheViewMode === "table") && niches.filter(nicheMatchesFilters).length === 0 && (
                         <div className="flex flex-col items-center gap-4 py-16 opacity-40">
                             <div className="w-16 h-16 rounded-3xl bg-white/5 border border-white/8 flex items-center justify-center">
                                 <Target size={28} strokeWidth={1.2} className="text-neutral-600" />
@@ -11766,6 +11857,21 @@ export function KdpFactoryApp() {
                                                         )}
                                                     </div>
                                                 )}
+
+                                                {/* ─ Pipeline progress bar ─ */}
+                                                {(() => {
+                                                    const pipelinePhases = ["niche","catalog","libro","seo","cover","published"] as const;
+                                                    const np = niche.phase === "pdf" ? "seo" : (niche.phase ?? "niche");
+                                                    const currentIdx = pipelinePhases.indexOf(np as typeof pipelinePhases[number]);
+                                                    const segColors = ["bg-sky-500","bg-blue-500","bg-indigo-500","bg-violet-500","bg-fuchsia-500","bg-emerald-500"];
+                                                    return (
+                                                        <div className="flex items-center gap-px h-1 rounded-full overflow-hidden">
+                                                            {pipelinePhases.map((p, i) => (
+                                                                <div key={p} className={`flex-1 h-full rounded-full transition-all duration-300 ${i < currentIdx ? segColors[i] : i === currentIdx ? `${segColors[i]} opacity-80` : "bg-white/[0.04]"}`} />
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                })()}
 
                                                 {/* ─ Phase pipeline ─ */}
                                                 {(() => {
@@ -12121,6 +12227,88 @@ export function KdpFactoryApp() {
                             </div>
                         )}
                         </>
+                        );
+                    })()}
+
+                    {/* ── Table view ── */}
+                    {!isLoadingNiches && nicheViewMode === "table" && (() => {
+                        const tableNiches = niches
+                            .filter(n => funnelFilter === "all" || nicheFunnelStage(n) === funnelFilter)
+                            .filter(nicheMatchesFilters)
+                            .slice()
+                            .sort((a, b) => {
+                                if (nicheSortBy === "score") return nicheScore(b) - nicheScore(a);
+                                if (nicheSortBy === "date") return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
+                                if (nicheSortBy === "name") return a.name.localeCompare(b.name, "es");
+                                if (nicheSortBy === "catalogs") { const ac = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).length; const bc = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).length; return bc - ac; }
+                                return 0;
+                            });
+                        if (tableNiches.length === 0) return null;
+                        const phaseColors: Record<string, string> = { niche: "text-sky-400 bg-sky-500/10 border-sky-500/20", catalog: "text-blue-400 bg-blue-500/10 border-blue-500/20", libro: "text-indigo-400 bg-indigo-500/10 border-indigo-500/20", seo: "text-violet-400 bg-violet-500/10 border-violet-500/20", cover: "text-fuchsia-400 bg-fuchsia-500/10 border-fuchsia-500/20", published: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" };
+                        const phaseLabels: Record<string, string> = { niche: "Nicho", catalog: "Catálogos", libro: "Libro", seo: "SEO", cover: "Portada", published: "Publicado" };
+                        return (
+                            <div className="rounded-2xl border border-white/[0.08] overflow-hidden">
+                                <table className="w-full">
+                                    <thead>
+                                        <tr className="border-b border-white/[0.06] bg-white/[0.02]">
+                                            <th className="text-left px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-neutral-600">Nicho</th>
+                                            <th className="text-left px-3 py-2.5 text-[10px] font-black uppercase tracking-widest text-neutral-600">Fase</th>
+                                            <th className="text-center px-3 py-2.5 text-[10px] font-black uppercase tracking-widest text-neutral-600">Score</th>
+                                            <th className="text-center px-3 py-2.5 text-[10px] font-black uppercase tracking-widest text-neutral-600">Cats</th>
+                                            <th className="text-center px-3 py-2.5 text-[10px] font-black uppercase tracking-widest text-neutral-600">Imgs</th>
+                                            <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-widest text-neutral-600 text-right">Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {tableNiches.map((niche, idx) => {
+                                            const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
+                                            const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
+                                            const cardPhase = nicheComputedPhases.get(niche._id) ?? "niche";
+                                            const thumb = niche.coverUrl || niche.sampleImageUrl || linkedCats.find(c => c.images.length > 0)?.images[0]?.url;
+                                            return (
+                                                <tr key={niche._id}
+                                                    className={`border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors cursor-pointer ${idx % 2 === 0 ? "" : "bg-white/[0.008]"}`}
+                                                    onClick={() => { setNicheDetailId(niche._id); setNicheDetailTab("images"); }}>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex items-center gap-2.5 min-w-0">
+                                                            {thumb
+                                                                ? <img src={thumb} alt="" className="w-9 h-9 rounded-xl object-cover border border-white/10 shrink-0" loading="lazy" />
+                                                                : <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/8 shrink-0" />}
+                                                            <div className="min-w-0">
+                                                                <p className="text-sm font-black text-white truncate max-w-[180px] sm:max-w-[260px]">{nd(niche)}</p>
+                                                                <p className="text-[10px] text-neutral-600 truncate">{NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType}</p>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-3 py-3">
+                                                        <span className={`inline-flex items-center px-2 h-5 rounded-full border text-[9px] font-black uppercase tracking-wider ${phaseColors[cardPhase] ?? phaseColors.niche}`}>
+                                                            {phaseLabels[cardPhase] ?? cardPhase}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-3 py-3 text-center">
+                                                        {niche.score != null
+                                                            ? <span className={`text-sm font-black tabular-nums ${niche.score >= 70 ? "text-emerald-400" : niche.score >= 40 ? "text-amber-400" : "text-rose-400"}`}>{niche.score}</span>
+                                                            : <span className="text-neutral-700 text-sm">—</span>}
+                                                    </td>
+                                                    <td className="px-3 py-3 text-center">
+                                                        <span className={`text-sm font-black tabular-nums ${linkedCats.length > 0 ? "text-sky-400" : "text-neutral-700"}`}>{linkedCats.length}</span>
+                                                    </td>
+                                                    <td className="px-3 py-3 text-center">
+                                                        <span className={`text-sm font-black tabular-nums ${linkedImgs > 0 ? "text-blue-400" : "text-neutral-700"}`}>{linkedImgs}</span>
+                                                    </td>
+                                                    <td className="px-3 py-3">
+                                                        <div className="flex items-center gap-0.5 justify-end" onClick={e => e.stopPropagation()}>
+                                                            <button onClick={() => openNicheForm(niche)} className="p-1.5 rounded-lg text-neutral-700 hover:text-white hover:bg-white/8 transition-all" title="Editar"><Pencil size={12} /></button>
+                                                            <button onClick={() => setNicheDeleteId(niche._id)} className="p-1.5 rounded-lg text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all" title="Eliminar"><Trash2 size={12} /></button>
+                                                            <button onClick={() => { setNicheDetailId(niche._id); setNicheDetailTab("images"); }} className="p-1.5 rounded-lg text-neutral-700 hover:text-sky-400 hover:bg-sky-500/10 transition-all" title="Ver detalle"><Eye size={12} /></button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
                         );
                     })()}
 

@@ -92,28 +92,30 @@ export async function getHFKey(): Promise<string> {
     return key;
 }
 
-export const OPPORTUNITY_SYSTEM_PROMPT = `Eres un detector de OPORTUNIDADES para productos KDP con bajo riesgo y alta demanda. Tu misión es identificar nichos donde hay señales de demanda real pero POCA competencia establecida.
+export const OPPORTUNITY_SYSTEM_PROMPT = `Eres un detector de OPORTUNIDADES KDP con scoring invertido. Tu misión: encontrar nichos donde hay DEMANDA REAL pero POCA competencia establecida. El producto que más reseñas tiene es el que MENOS te interesa.
 
-CRITERIO CENTRAL — el ratio demanda/competencia:
-- personas_carrito alto + total_reseñas bajo = OPORTUNIDAD MÁXIMA (nicho en auge sin competencia consolidada)
-- Productos SIN Bestseller pero con urgencia de carrito = oportunidad virgen
-- Sub-nichos muy específicos con baja saturación aparente
+══ REGLA MAESTRA — scoring invertido ══
+Demanda = personas_carrito (cuanto más alto mejor)
+Competencia = total_reseñas (cuanto más bajo MEJOR)
+Oportunidad = demanda alta + competencia baja
+
+PRIORIDAD ABSOLUTA:
+1. Carrito > 0 + reseñas = 0 → NICHO VIRGEN (máxima prioridad)
+2. Carrito > 5 + reseñas < 50 → OPORTUNIDAD CRÍTICA
+3. Carrito > 5 + reseñas < 200 → BUENA OPORTUNIDAD
+4. Carrito > 0 + reseñas 200-500 → OPORTUNIDAD MODERADA
+5. reseñas > 1000 → SATURADO (no incluir a menos que carrito sea > 20)
 
 Para CADA producto en la página:
-1. Extrae el título limpio completo
-2. bestseller: true SOLO si tiene la etiqueta Y tiene pocas reseñas (<200) — un Bestseller reciente con pocas reseñas es señal de tendencia emergente, NO de saturación
-3. personas_carrito: número de personas en carrito (señal de demanda inmediata — el dato más importante)
-4. total_reseñas: número total de reseñas (indicador de saturación/competencia — bajo = oportunidad)
-5. precio tal como aparece
-6. sub_nicho_estimado: micro-nicho con ángulo diferencial claro (nueva audiencia, nuevo estilo, nueva temática)
-7. url_producto si está disponible
+1. titulo_producto: título limpio y completo
+2. bestseller: true SOLO si tiene etiqueta Y reseñas < 200 (bestseller reciente = tendencia emergente)
+3. personas_carrito: número de personas en carrito (dato MÁS importante — demanda inmediata)
+4. total_reseñas: número total de reseñas (indicador de saturación — BAJO = oportunidad)
+5. precio: tal como aparece
+6. sub_nicho_estimado: el micro-nicho diferencial específico (nueva audiencia, nuevo estilo, nueva temática). Debe ser concreto: NO "animales kawaii" → SÍ "Axolotl Kawaii Coloring Adults"
+7. url_producto: si está disponible
 
-SEÑALES DE OPORTUNIDAD MÁXIMA:
-- Carrito > 5 con reseñas < 100 → OPORTUNIDAD CRÍTICA
-- Carrito > 0 con reseñas = 0 → NICHO VIRGEN
-- Bestseller con pocas reseñas (<200) → TENDENCIA EMERGENTE
-
-Extrae TODOS los productos. Prioriza los que tienen alta demanda y baja competencia sobre los ya saturados.`;
+IMPORTANTE: Extrae TODOS los productos pero en el sub_nicho_estimado, identifica siempre el ángulo diferencial. Los productos con reseñas > 2000 son señal de nicho saturado — inclúyelos solo si sus variaciones cercanas pueden tener baja competencia.`;
 
 export const MOVERS_SYSTEM_PROMPT = `Eres un analista de libros en movimiento en Amazon Movers & Shakers. Estás viendo la lista de los libros de colorear que más están subiendo en ranking en las últimas 24 horas — señales de demanda en tiempo real.
 
@@ -212,35 +214,44 @@ Para cada HUECO detectado:
 
 Genera MÍNIMO 12 sugerencias concretas. Ordénalas de mayor a menor probabilidad de éxito.`;
 
-export const TRENDS_SYSTEM_PROMPT = `Eres un estratega experto en micro-nichos para productos KDP (libros de colorear, activity books, pósters, patrones seamless) usando Google Trends como detector de curvas de adopción antes de que el mercado se sature.
+export const TRENDS_SYSTEM_PROMPT = `Eres un cazador de MICRO-NICHOS EMERGENTES para KDP. Tu única misión es encontrar nichos que están subiendo AHORA y que TODAVÍA no están saturados en Amazon KDP.
 
-Recibirás datos de Google Trends: rising queries, top queries, trending searches, o comparativas. Tu misión es convertir esas señales en micro-nichos accionables.
+Recibirás datos de Google Trends. Estas son tus reglas ABSOLUTAS:
 
-Reglas de extracción y valoración:
+══ INCLUIR SOLO ══
+- Queries con etiqueta "Breakout" → MÁXIMA PRIORIDAD
+- Queries marcadas como "En aumento" / "Rising" con crecimiento > 100%
+- Tendencias que empezaron a subir en los últimos 3-6 meses
+- Nichos muy específicos (3+ palabras clave) con audiencia identificable
 
-1. TÍTULO: Aplica la técnica "Raíz + Modificador" para convertir el trend en un producto concreto.
-   - Raíz = el tema en tendencia (ej: "urban gardening", "Nordic style", "stave church")
-   - Modificador = formato KDP (ej: "coloring book adults", "activity book seniors", "for stress relief", "mindfulness printable")
-   - Resultado: "Urban Gardening Coloring Book for Adults" (NO "urban gardening" a secas)
+══ EXCLUIR SIEMPRE ══
+- Queries "Top" / "Principales" sin señal de crecimiento — ya están saturadas
+- Términos genéricos de 1-2 palabras como "coloring book", "printable", "mandala" a secas
+- Cualquier nicho que suene a "ya lo tiene todo el mundo en Amazon"
+- Tendencias estacionales obvias ya explotadas (Christmas coloring, Halloween coloring)
 
-2. BESTSELLER = true si:
-   - La query tiene etiqueta "Breakout" o crecimiento >500%
-   - Es una query RISING (no simplemente TOP)
-   - Es un trend estacional con pico predecible (ej: "Christmas coloring" en septiembre)
+══ FORMATO OBLIGATORIO por nicho detectado ══
 
-3. PERSONAS_CARRITO = índice de interés relativo de Google Trends (0-100). Si hay porcentaje de crecimiento ("+900%"), pon 90. Si es "Breakout", pon 100. Si no hay dato, pon 0.
+1. TÍTULO: técnica "Raíz emergente + Modificador KDP"
+   - Raíz = el término en tendencia específico (no genérico)
+   - Modificador = formato KDP que lo haría vendible ("Coloring Book for Adults", "Activity Book Kids", "Stress Relief Printable")
+   - Ejemplo CORRECTO: "Solarpunk Fantasy Coloring Book for Adults"
+   - Ejemplo INCORRECTO: "Fantasy Coloring" (demasiado genérico)
 
-4. TOTAL_RESEÑAS = estimación de saturación inversa: si el micro-nicho parece muy específico (potencialmente <1000 resultados en Amazon), pon 0. Si parece saturado, pon 9999.
+2. BESTSELLER = true SOLO si tiene etiqueta Breakout o crecimiento > 500%
 
-5. SUB_NICHO_ESTIMADO: El micro-nicho final aplicando root+modifier. Debe ser accionable, específico y memorable (3-6 palabras). Ej: "Gothic Architecture Adult Coloring", "Nordic Pattern Mindfulness Book", "Senior Memory Activity Garden".
+3. PERSONAS_CARRITO = porcentaje de crecimiento / 10 (si es "+900%" → 90; si es Breakout → 100; sin dato → 5)
 
-6. PRECIO: "N/A" (es datos de trends, no marketplace).
+4. TOTAL_RESEÑAS = estimación de saturación en Amazon KDP:
+   - 0 = nicho específico que probablemente tiene < 100 libros en Amazon (IDEAL)
+   - 100 = nicho ya conocido con cientos de libros
+   - 9999 = nicho saturado, no lo incluyas
 
-7. URL_PRODUCTO: Si la query tiene una URL de tendencia asociada, inclúyela. Si no, omite.
+5. SUB_NICHO_ESTIMADO: el micro-nicho en 3-5 palabras. Debe ser concreto y específico.
 
-REGLA DE ORO: NO incluyas terms genéricos sin modificador de producto (ej: "coloring book", "printable", "yoga" a secas). Solo micro-nichos específicos con aplicación directa KDP.
+6. PRECIO: "N/A"
 
-Detecta TODOS los rising/breakout terms visibles. Prioriza los marcados como "En aumento" o "Breakout" sobre los "Principales".`;
+REGLA DE ORO: Si dudas entre incluir un nicho popular o uno específico emergente, elige siempre el emergente. La saturación es el enemigo. Detecta mínimo 8 nichos, máximo 20.`;
 
 
 export async function registerRadarRoutes(

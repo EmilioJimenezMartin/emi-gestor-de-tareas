@@ -95,7 +95,6 @@ export const CatalogCard = React.memo(function CatalogCard({
     favorites, upscalingId, isRetrying, isRelaunching, isDeleting, isForceCompleting, isSkippingImage, isDirectPdf, isBulkDeleting,
 }: CatalogCardProps) {
     const actions = React.useContext(KdpCardCtx)!;
-
     const progress = catalog.totalImages > 0 ? (catalog.images.length / catalog.totalImages) * 100 : 0;
     const isActive = catalog.status === "running" || catalog.status === "pending" || catalog.status === "queued";
     const queuedList = allCatalogs.filter(c => c.status === "queued");
