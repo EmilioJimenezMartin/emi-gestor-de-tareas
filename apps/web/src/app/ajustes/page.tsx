@@ -158,6 +158,12 @@ export default function AjustesPage() {
     const [stableHordeApiKey, setStableHordeApiKey] = useState("");
     const [showStableHordeKey, setShowStableHordeKey] = useState(false);
 
+    // Lulu Direct
+    const [luluClientKey, setLuluClientKey] = useState("");
+    const [luluClientSecret, setLuluClientSecret] = useState("");
+    const [showLuluSecret, setShowLuluSecret] = useState(false);
+    const [luluStatus, setLuluStatus] = useState<"ok" | "error" | null>(null);
+
     // Gumroad
     const [gumroadEnabled, setGumroadEnabled] = useState(false);
     const [gumroadToken, setGumroadToken] = useState("");
@@ -222,6 +228,8 @@ export default function AjustesPage() {
                 if (map.has("TENSORART_PRIVATE_KEY")) setTensorartPrivateKey(map.get("TENSORART_PRIVATE_KEY")!);
                 if (map.has("TOGETHER_API_KEY")) setTogetherApiKey(map.get("TOGETHER_API_KEY"));
                 if (map.has("STABLE_HORDE_API_KEY")) setStableHordeApiKey(map.get("STABLE_HORDE_API_KEY"));
+                if (map.has("LULU_CLIENT_KEY")) setLuluClientKey(map.get("LULU_CLIENT_KEY"));
+                if (map.has("LULU_CLIENT_SECRET")) setLuluClientSecret(map.get("LULU_CLIENT_SECRET"));
 
             } catch (err) {
                 console.error(err);
@@ -383,6 +391,8 @@ export default function AjustesPage() {
                 { key: "TENSORART_PRIVATE_KEY", value: tensorartPrivateKey },
                 { key: "TOGETHER_API_KEY", value: togetherApiKey },
                 { key: "STABLE_HORDE_API_KEY", value: stableHordeApiKey },
+                { key: "LULU_CLIENT_KEY", value: luluClientKey },
+                { key: "LULU_CLIENT_SECRET", value: luluClientSecret },
             ];
             // Never send empty-string values — protects API keys from being wiped
             // when the page loaded while the API was temporarily down
@@ -1976,6 +1986,89 @@ export default function AjustesPage() {
                                 </p>
                             </div>
 
+                        </div>
+                    </Card>
+                </section>
+
+                {/* Lulu Direct */}
+                <section className="space-y-2 pt-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Lulu Direct</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-violet-500/10 text-violet-400 border-violet-500/20">PRINT-ON-DEMAND</Badge>
+                    </div>
+                    <Card variant="outline" className="relative overflow-hidden border-white/5 bg-white/[0.01]">
+                        <div className="p-6 sm:p-8 space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center text-white shadow-lg shadow-violet-500/20 text-xl font-black">L</div>
+                                <div>
+                                    <h3 className="font-black text-lg text-white">Lulu Direct · Print &amp; Ship</h3>
+                                    <p className="text-[10px] text-neutral-500 font-black uppercase tracking-widest">Impresión física de libros · Envío directo al cliente</p>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-violet-500/10 bg-violet-500/[0.03] p-4 space-y-2">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-violet-400/80">Cómo obtener tus credenciales</p>
+                                <ol className="text-[10px] text-neutral-500 space-y-1 list-decimal list-inside leading-relaxed">
+                                    <li>Ve a <span className="text-violet-400 font-mono">developers.lulu.com</span> y crea una cuenta</li>
+                                    <li>En el panel ve a <span className="text-neutral-300">Applications</span> → <span className="text-neutral-300">Create Application</span></li>
+                                    <li>Copia el <span className="text-white font-bold">Client Key</span> y el <span className="text-white font-bold">Client Secret</span></li>
+                                </ol>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">LULU_CLIENT_KEY</label>
+                                    <input
+                                        type="text"
+                                        value={luluClientKey}
+                                        onChange={(e) => setLuluClientKey(e.target.value)}
+                                        className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 text-xs font-mono text-white outline-none focus:border-violet-500/40 transition-all"
+                                        placeholder="client key..."
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-neutral-600 uppercase tracking-widest ml-1">LULU_CLIENT_SECRET</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showLuluSecret ? "text" : "password"}
+                                            value={luluClientSecret}
+                                            onChange={(e) => setLuluClientSecret(e.target.value)}
+                                            className="w-full h-11 bg-black/40 border border-white/10 rounded-xl px-4 pr-10 text-xs font-mono text-white outline-none focus:border-violet-500/40 transition-all"
+                                            placeholder="••••••••••••"
+                                        />
+                                        <button type="button" onClick={() => setShowLuluSecret(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                            {showLuluSecret ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {luluStatus && (
+                                <div className={`flex items-center gap-2 text-xs font-black ${luluStatus === "ok" ? "text-emerald-400" : "text-rose-400"}`}>
+                                    {luluStatus === "ok" ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
+                                    {luluStatus === "ok" ? "Conexión verificada con Lulu" : "Error de conexión — revisa las credenciales"}
+                                </div>
+                            )}
+
+                            <div className="flex items-center gap-3 flex-wrap border-t border-white/5 pt-4">
+                                <Button onClick={handleSave} disabled={isSaving} variant="primary" className="font-black uppercase tracking-widest text-[10px] h-10 px-8 shadow-lg shadow-primary/20 italic">
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Guardar"}
+                                </Button>
+                                <button
+                                    onClick={async () => {
+                                        await handleSave();
+                                        setLuluStatus(null);
+                                        try {
+                                            const res = await fetch(`${apiUrl}/lulu/ping`);
+                                            setLuluStatus(res.ok ? "ok" : "error");
+                                        } catch { setLuluStatus("error"); }
+                                    }}
+                                    disabled={isSaving}
+                                    className="flex items-center gap-1.5 h-10 px-4 rounded-xl bg-violet-500/10 border border-violet-500/20 text-xs font-black text-violet-400 hover:bg-violet-500/20 transition-all disabled:opacity-40"
+                                >
+                                    <RefreshCw size={12} /> Verificar conexión
+                                </button>
+                            </div>
                         </div>
                     </Card>
                 </section>

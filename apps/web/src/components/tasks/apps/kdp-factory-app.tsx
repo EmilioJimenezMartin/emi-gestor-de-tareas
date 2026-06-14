@@ -90,6 +90,7 @@ import {
     CornerUpLeft,
     Maximize2,
     CalendarDays,
+    Printer,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -393,6 +394,7 @@ import { RadarInsightCard } from "./kdp/RadarInsightCard";
 import { CohortsPanel } from "./kdp/CohortsPanel";
 
 import { PipelineRuleRow } from "./kdp/PipelineRuleRow";
+import LuluPanel from "./kdp/LuluPanel";
 
 export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
