@@ -166,7 +166,18 @@ export const CatalogCard = React.memo(function CatalogCard({
                             {isDraggable && <GripVertical size={12} className="text-neutral-700 shrink-0" />}
                             <h4 className="font-black text-white text-lg leading-tight truncate">{catalog.name}</h4>
                         </div>
-                        <p className="text-sm text-neutral-500 line-clamp-1 leading-relaxed pl-0.5 italic">{catalog.prompt}</p>
+                        <div className="flex items-center gap-1.5 group/prompt">
+                            <p className="text-sm text-neutral-500 line-clamp-1 leading-relaxed pl-0.5 italic min-w-0">{catalog.prompt}</p>
+                            {catalog.prompt && (
+                                <button
+                                    onClick={() => { void navigator.clipboard.writeText(catalog.prompt); toast.success("Prompt copiado"); }}
+                                    title="Copiar prompt completo"
+                                    className="shrink-0 opacity-0 group-hover/prompt:opacity-100 transition-opacity p-1 rounded-lg text-neutral-600 hover:text-white hover:bg-white/10"
+                                >
+                                    <Copy size={11} />
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                         {actions.statusBadge(catalog.status)}

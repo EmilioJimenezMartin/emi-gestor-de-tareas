@@ -790,7 +790,8 @@ export function KdpFactoryApp() {
     const [configSection, setConfigSection] = useState<"autopilot" | "notificaciones" | "integraciones">("autopilot");
     // Niche detail modal
     const [nicheDetailId, setNicheDetailId] = useState<string | null>(null);
-    const [nicheDetailTab, setNicheDetailTab] = useState<"images" | "catalogs" | "seo" | "book" | "actions">("images");
+    const [nicheDetailTab, setNicheDetailTab] = useState<"images" | "catalogs" | "seo" | "book">("images");
+    const [expandedPublicacionNiches, setExpandedPublicacionNiches] = useState<Set<string>>(new Set());
     const [discoveryPromptEditing, setDiscoveryPromptEditing] = useState(false);
     const [discoveryPromptDraft, setDiscoveryPromptDraft] = useState("");
     const [imagePromptSuggestion, setImagePromptSuggestion] = useState<string | null>(null);
@@ -3852,30 +3853,6 @@ export function KdpFactoryApp() {
         }
     }, [generatedImage]);
 
-    // Pre-fill edit + publish state when opening Acciones tab in niche detail modal
-    useEffect(() => {
-        if (nicheDetailTab === "actions" && nicheDetailId) {
-            const niche = niches.find(n => n._id === nicheDetailId);
-            if (niche) {
-                setNicheEditTarget(niche);
-                setNicheFormName(niche.name);
-                setNicheFormDesc(niche.description);
-                setNicheFormTags(niche.tags.join(", "));
-                setNicheFormStatus(niche.status);
-                setNicheFormComp(niche.competition);
-                setNicheFormDemand(niche.demand);
-                setNicheFormProductType(niche.productType ?? "coloring-book");
-                setNicheFormStyles(niche.styleCategories?.length ? niche.styleCategories : [niche.styleCategory ?? "generic"]);
-                setNicheFormNotes(niche.notes);
-                setNicheFormEtsyUrl(niche.etsyUrl ?? "");
-                setNicheFormPrompt(niche.discoveryImagePrompt ?? niche.generatedPrompt ?? "");
-                setPublishPanelAsin(niche.asin ?? "");
-                setPublishPanelEtsy(niche.etsyUrl ?? "");
-                setPublishPanelGumroad(niche.gumroadUrl ?? "");
-                setPublishPanelDate(niche.publishedAt ? niche.publishedAt.slice(0, 10) : "");
-            }
-        }
-    }, [nicheDetailTab, nicheDetailId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleGenerateImage = async (retryCount = 0) => {
         if (!imagePrompt.trim()) return;
@@ -11690,20 +11667,49 @@ export function KdpFactoryApp() {
                                                     </div>
                                                 )}
 
-                                                {/* ─ Ciclo de vida (gestión manual: pre-publicado → publicado → fin de vida) ─ */}
-                                                {(niche.lifecycleStage || niche.phase === "published" || (niche.pipelineHasPdf && niche.pipelineHasListings) || !!niche.asin?.trim()) && (
-                                                    <LifecyclePanel niche={niche} onUpdate={(patch) => updateNicheLifecycle(niche._id, patch)} />
-                                                )}
-
-                                                {/* ─ Autopilot (nichos en fase publicado) ─ */}
-                                                {niche.lifecycleStage === "published" && (
-                                                    <AutopilotPanel niche={niche} onUpdate={(patch) => updateNicheInState(niche._id, patch)} />
-                                                )}
-
-                                                {/* ─ Launch Playbook (nichos publicados o con listing aplicado) ─ */}
-                                                {!niche.lifecycleStage && (niche.phase === "published" || !!niche.asin?.trim() || niche.listings?.some(l => l.appliedAt)) && (
-                                                    <LaunchPlaybookPanel appliedAt={niche.publishedAt ?? [...(niche.listings ?? [])].reverse().find(l => l.appliedAt)?.appliedAt} />
-                                                )}
+                                                {/* ─ Ciclo de vida + Autopilot + Launch Playbook — sección colapsable ─ */}
+                                                {(niche.lifecycleStage || niche.phase === "published" || (niche.pipelineHasPdf && niche.pipelineHasListings) || !!niche.asin?.trim() || niche.listings?.some(l => l.appliedAt)) && (() => {
+                                                    const isOpen = expandedPublicacionNiches.has(niche._id);
+                                                    const stageLabel: Record<string, string> = { "pre-published": "Pre-publicado", published: "Publicado", "end-of-life": "Fin de vida" };
+                                                    const stageDot: Record<string, string> = { "pre-published": "bg-amber-400", published: "bg-emerald-400", "end-of-life": "bg-neutral-600" };
+                                                    return (
+                                                        <div className="rounded-xl border border-white/[0.07] overflow-hidden">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setExpandedPublicacionNiches(prev => {
+                                                                    const next = new Set(prev);
+                                                                    isOpen ? next.delete(niche._id) : next.add(niche._id);
+                                                                    return next;
+                                                                })}
+                                                                className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-white/[0.03] transition-colors"
+                                                            >
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Publicación</span>
+                                                                    {niche.lifecycleStage && (
+                                                                        <span className="flex items-center gap-1 text-[9px] font-black uppercase">
+                                                                            <span className={`w-1.5 h-1.5 rounded-full ${stageDot[niche.lifecycleStage] ?? "bg-neutral-600"}`} />
+                                                                            <span className="text-neutral-400">{stageLabel[niche.lifecycleStage] ?? niche.lifecycleStage}</span>
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <ChevronDown size={12} className={`text-neutral-600 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                                                            </button>
+                                                            {isOpen && (
+                                                                <div className="px-3 pb-3 space-y-3 border-t border-white/[0.05]">
+                                                                    {(niche.lifecycleStage || niche.phase === "published" || (niche.pipelineHasPdf && niche.pipelineHasListings) || !!niche.asin?.trim()) && (
+                                                                        <LifecyclePanel niche={niche} onUpdate={(patch) => updateNicheLifecycle(niche._id, patch)} />
+                                                                    )}
+                                                                    {niche.lifecycleStage === "published" && (
+                                                                        <AutopilotPanel niche={niche} onUpdate={(patch) => updateNicheInState(niche._id, patch)} />
+                                                                    )}
+                                                                    {!niche.lifecycleStage && (niche.phase === "published" || !!niche.asin?.trim() || niche.listings?.some(l => l.appliedAt)) && (
+                                                                        <LaunchPlaybookPanel appliedAt={niche.publishedAt ?? [...(niche.listings ?? [])].reverse().find(l => l.appliedAt)?.appliedAt} />
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
 
                                                 {/* ─ Competition & demand bars ─ */}
                                                 {(niche.competition !== "unknown" || niche.demand !== "unknown") && (
@@ -12035,7 +12041,7 @@ export function KdpFactoryApp() {
                                                             </button>
                                                         )}
                                                         <button onClick={() => { setNicheDetailId(niche._id); setNicheDetailTab("images"); }}
-                                                            title="Ver todo el nicho"
+                                                            title="Ver detalle del nicho"
                                                             className="flex items-center gap-1 px-2.5 h-7 rounded-lg border border-white/10 bg-white/[0.03] text-sm font-black text-neutral-500 hover:text-white hover:border-white/20 transition-all">
                                                             <Eye size={9} /> Ver
                                                         </button>
@@ -16463,7 +16469,6 @@ export function KdpFactoryApp() {
                     { id: "catalogs" as const, label: "Catálogos", icon: <Grid3x3 size={11} />, count: linkedCats.length },
                     { id: "book" as const, label: "Libro KDP", icon: <Library size={11} />, count: pipelineDraft ? 1 : 0 },
                     { id: "seo" as const, label: "SEO / Listing", icon: <FileText size={11} />, count: detailNiche.listings?.length ?? 0 },
-                    { id: "actions" as const, label: "Acciones", icon: <Settings size={11} />, count: 0 },
                 ];
                 return createPortal(
                     <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto" onClick={e => { if (e.target === e.currentTarget) setNicheDetailId(null); }}>
@@ -16963,174 +16968,6 @@ export function KdpFactoryApp() {
                                                 </div>
                                             </div>
                                         )}
-                                    </div>
-                                )}
-                                {nicheDetailTab === "actions" && (
-                                    <div className="space-y-6">
-                                        {/* Edit niche */}
-                                        <div className="space-y-3">
-                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Editar nicho</p>
-                                            <div className="space-y-2">
-                                                <input value={nicheFormName} onChange={e => setNicheFormName(e.target.value)} placeholder="Nombre del nicho"
-                                                    className="w-full h-9 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
-                                                <textarea value={nicheFormDesc} onChange={e => setNicheFormDesc(e.target.value)} rows={2} placeholder="Descripción breve…"
-                                                    className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50 resize-none" />
-                                                <input value={nicheFormTags} onChange={e => setNicheFormTags(e.target.value)} placeholder="Tags separados por comas"
-                                                    className="w-full h-9 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
-                                                                <textarea value={nicheFormNotes} onChange={e => setNicheFormNotes(e.target.value)} rows={2} placeholder="Notas internas…"
-                                                    className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50 resize-none" />
-                                                <button onClick={() => void saveNiche()} disabled={isSavingNiche || !nicheFormName.trim()}
-                                                    className="h-9 px-5 rounded-xl bg-violet-500/20 border border-violet-500/30 text-sm font-black text-violet-300 hover:bg-violet-500/30 transition-all flex items-center gap-2 disabled:opacity-40">
-                                                    {isSavingNiche ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} Guardar cambios
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* Publish panel */}
-                                        <div className="space-y-3 pt-4 border-t border-white/6">
-                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Publicación</p>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div className="space-y-1">
-                                                    <label className="text-sm text-neutral-600 uppercase tracking-wider">ASIN</label>
-                                                    <input value={publishPanelAsin} onChange={e => setPublishPanelAsin(e.target.value)} placeholder="B0XXXXXXXX"
-                                                        className="w-full h-8 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <label className="text-sm text-neutral-600 uppercase tracking-wider">Fecha publicación</label>
-                                                    <input type="date" value={publishPanelDate} onChange={e => setPublishPanelDate(e.target.value)}
-                                                        className="w-full h-8 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white focus:outline-none focus:border-violet-500/50" />
-                                                </div>
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-sm text-neutral-600 uppercase tracking-wider">Etsy URL</label>
-                                                <input value={publishPanelEtsy} onChange={e => setPublishPanelEtsy(e.target.value)} placeholder="https://etsy.com/listing/..."
-                                                    className="w-full h-8 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-sm text-neutral-600 uppercase tracking-wider">Gumroad URL</label>
-                                                <input value={publishPanelGumroad} onChange={e => setPublishPanelGumroad(e.target.value)} placeholder="https://gumroad.com/..."
-                                                    className="w-full h-8 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
-                                            </div>
-                                            <button onClick={() => void savePublishPanel(detailNiche._id)} disabled={isSavingPublish}
-                                                className="h-9 px-5 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sm font-black text-sky-300 hover:bg-sky-500/25 transition-all flex items-center gap-2 disabled:opacity-40">
-                                                {isSavingPublish ? <Loader2 size={10} className="animate-spin" /> : <Save size={10} />} Guardar publicación
-                                            </button>
-                                        </div>
-
-                                        {/* Publish CTAs */}
-                                        <div className="space-y-3 pt-4 border-t border-white/6">
-                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Subir a plataforma</p>
-                                            {/* KDP CTA */}
-                                            {(() => {
-                                                const kStatus = kdpPublishStatus[detailNiche._id] ?? "idle";
-                                                const kErr = kdpPublishError[detailNiche._id];
-                                                const hasPdf = !!detailNiche.bookPdfUrl;
-                                                const hasListing = !!(detailNiche.listings?.[0]?.title);
-                                                const isRunning = ["queued", "login", "uploading-pdf"].includes(kStatus);
-                                                const statusLabel: Record<string, string> = {
-                                                    queued: "En cola…",
-                                                    login: "Iniciando sesión en KDP…",
-                                                    "uploading-pdf": "Subiendo PDF…",
-                                                    "setting-price": "Configurando precio…",
-                                                    done: "✓ Borrador guardado en KDP",
-                                                    error: "Error — reintentar",
-                                                };
-                                                return (
-                                                    <div className="space-y-1.5">
-                                                        <button
-                                                            onClick={() => void triggerKdpPublish(detailNiche._id)}
-                                                            disabled={isRunning || !hasPdf || !hasListing}
-                                                            className={`w-full h-10 px-4 rounded-xl border text-sm font-black flex items-center justify-center gap-2 transition-all disabled:opacity-40 ${kStatus === "done" ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : kStatus === "error" ? "border-rose-500/40 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20" : "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"}`}>
-                                                            {isRunning ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                                                            {isRunning ? (statusLabel[kStatus] ?? "Procesando…") : kStatus === "done" ? statusLabel.done : "Subir a Amazon KDP"}
-                                                        </button>
-                                                        {kErr && <p className="text-xs text-rose-400 px-1">{kErr}</p>}
-                                                        {!hasPdf && <p className="text-xs text-neutral-600 px-1">Falta el PDF del libro</p>}
-                                                        {hasPdf && !hasListing && <p className="text-xs text-neutral-600 px-1">Falta el listing SEO</p>}
-                                                    </div>
-                                                );
-                                            })()}
-                                            {/* Gelato CTA */}
-                                            {(() => {
-                                                const hasPdf = !!detailNiche.bookPdfUrl;
-                                                return (
-                                                    <div className="space-y-1.5">
-                                                        <button
-                                                            onClick={() => {
-                                                                if (hasPdf) {
-                                                                    const link = document.createElement("a");
-                                                                    link.href = detailNiche.bookPdfUrl!;
-                                                                    link.download = `${detailNiche.name.replace(/\s+/g, "-").toLowerCase()}.pdf`;
-                                                                    link.target = "_blank";
-                                                                    link.click();
-                                                                }
-                                                                window.open("https://gelato.com/dashboard", "_blank");
-                                                            }}
-                                                            disabled={!hasPdf}
-                                                            className="w-full h-10 px-4 rounded-xl border border-orange-500/40 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 text-sm font-black flex items-center justify-center gap-2 transition-all disabled:opacity-40">
-                                                            <ExternalLink size={12} /> {hasPdf ? "Descargar PDF + Abrir Gelato" : "Subir a Gelato"}
-                                                        </button>
-                                                        {!hasPdf && <p className="text-xs text-neutral-600 px-1">Falta el PDF del libro</p>}
-                                                    </div>
-                                                );
-                                            })()}
-                                        </div>
-
-                                        {/* Royalties */}
-                                        <div className="space-y-3 pt-4 border-t border-white/6">
-                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Royalties</p>
-                                            <div className="flex gap-2 items-end">
-                                                <div className="space-y-1 flex-1">
-                                                    <label className="text-sm text-neutral-600 uppercase tracking-wider">Mes</label>
-                                                    <input type="month" value={royaltiesMonth} onChange={e => setRoyaltiesMonth(e.target.value)}
-                                                        className="w-full h-8 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white focus:outline-none focus:border-violet-500/50" />
-                                                </div>
-                                                <div className="space-y-1 w-20">
-                                                    <label className="text-sm text-neutral-600 uppercase tracking-wider">Ventas</label>
-                                                    <input type="number" value={royaltiesSales} onChange={e => setRoyaltiesSales(e.target.value)} min="0" placeholder="0"
-                                                        className="w-full h-8 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
-                                                </div>
-                                                <div className="space-y-1 w-24">
-                                                    <label className="text-sm text-neutral-600 uppercase tracking-wider">Ingresos €</label>
-                                                    <input type="number" value={royaltiesRevenue} onChange={e => setRoyaltiesRevenue(e.target.value)} min="0" step="0.01" placeholder="0.00"
-                                                        className="w-full h-8 rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/50" />
-                                                </div>
-                                                <button onClick={() => void addRoyaltyEntry(detailNiche._id)} disabled={isSavingRoyalties}
-                                                    className="h-8 w-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25 transition-all flex items-center justify-center shrink-0 disabled:opacity-40">
-                                                    {isSavingRoyalties ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
-                                                </button>
-                                            </div>
-                                            {(detailNiche.royalties?.length ?? 0) > 0 && (
-                                                <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                                                    {[...(detailNiche.royalties ?? [])].reverse().map((r, i) => (
-                                                        <div key={i} className="flex items-center justify-between px-3 py-2 rounded-xl border border-white/6 bg-white/[0.02]">
-                                                            <span className="text-sm font-black text-neutral-400">{r.month}</span>
-                                                            <div className="flex items-center gap-3">
-                                                                <span className="text-sm text-neutral-600">{r.sales} uds</span>
-                                                                <span className="text-sm font-black text-emerald-400">{r.revenue.toFixed(2)} €</span>
-                                                                <button onClick={() => void deleteRoyaltyEntry(detailNiche._id, r.month)} className="p-1 rounded-lg text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all"><X size={9} /></button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                    <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-white/[0.04] mt-1">
-                                                        <span className="text-sm font-black text-neutral-500 uppercase tracking-widest">Total</span>
-                                                        <div className="flex items-center gap-3">
-                                                            <span className="text-sm text-neutral-600">{(detailNiche.royalties ?? []).reduce((s, r) => s + r.sales, 0)} uds</span>
-                                                            <span className="text-sm font-black text-emerald-300">{(detailNiche.royalties ?? []).reduce((s, r) => s + r.revenue, 0).toFixed(2)} €</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Danger zone */}
-                                        <div className="space-y-2 pt-4 border-t border-rose-500/10">
-                                            <p className="text-sm font-black uppercase tracking-widest text-rose-900">Zona peligrosa</p>
-                                            <button onClick={() => { setNicheDeleteId(detailNiche._id); setNicheDetailId(null); }}
-                                                className="h-9 px-5 rounded-xl border border-rose-500/20 bg-rose-500/5 text-sm font-black text-rose-500 hover:bg-rose-500/15 transition-all flex items-center gap-2">
-                                                <Trash2 size={10} /> Eliminar nicho
-                                            </button>
-                                        </div>
                                     </div>
                                 )}
                             </div>

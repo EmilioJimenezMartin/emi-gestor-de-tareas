@@ -165,20 +165,24 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
 
         if (productType === "coloring-book") {
             // Expected: mostly white background with dark outlines (black OR dark grey)
-            let whitePixels = 0;        // R,G,B all > 220
-            let darkLinePixels = 0;     // max(R,G,B) < 100 — pure black AND dark-grey outlines
-            let darkInnerPixels = 0;    // dark pixels OUTSIDE the edge bands (true content)
-            let colorPixels = 0;        // high saturation non-dark pixel — sign of full-color art
-            let grayFillPixels = 0;     // gris medio sin saturación — RELLENO
-            let blankSuspect = 0;       // near-white (> 240 brightness)
+            let whitePixels = 0;
+            let darkLinePixels = 0;  // max(R,G,B) < 100
+            let colorPixels = 0;
+            let grayFillPixels = 0;
+            let blankSuspect = 0;    // brightness > 240
 
-            // Detección de elementos cortados: densidad de píxeles oscuros en cada borde.
-            // Banda del 2% del lado correspondiente (mín. 4px).
+            // Banda del 2% para detección de elementos cortados (mín. 4px)
             const bandX = Math.max(4, Math.round(width * 0.02));
             const bandY = Math.max(4, Math.round(height * 0.02));
             const edgeDark = { top: 0, bottom: 0, left: 0, right: 0 };
             const edgeTotal = { top: 0, bottom: 0, left: 0, right: 0 };
-            let innerPixelCount = 0;
+
+            // Banda del 10% para detección de "borde sin contenido":
+            // cualquier borde AI de < 100px queda dentro de esta zona.
+            const deepBandX = Math.max(8, Math.round(width * 0.10));
+            const deepBandY = Math.max(8, Math.round(height * 0.10));
+            let deepInnerDark = 0;
+            let deepInnerTotal = 0;
 
             const step = channels > 3 ? 4 : 3;
             for (let i = 0; i < raw.length; i += step) {
@@ -198,65 +202,67 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
 
                 const px = (i / step) % width;
                 const py = Math.floor((i / step) / width);
-                const onEdge = py < bandY || py >= height - bandY || px < bandX || px >= width - bandX;
 
+                // Bandas 2% para corte de borde
                 if (py < bandY) { edgeTotal.top++; if (isDark) edgeDark.top++; }
                 else if (py >= height - bandY) { edgeTotal.bottom++; if (isDark) edgeDark.bottom++; }
                 if (px < bandX) { edgeTotal.left++; if (isDark) edgeDark.left++; }
                 else if (px >= width - bandX) { edgeTotal.right++; if (isDark) edgeDark.right++; }
 
-                if (!onEdge) {
-                    innerPixelCount++;
-                    if (isDark) darkInnerPixels++;
+                // Zona central (dentro del 10% desde cada borde) — contenido real
+                if (px >= deepBandX && px < width - deepBandX &&
+                    py >= deepBandY && py < height - deepBandY) {
+                    deepInnerTotal++;
+                    if (isDark) deepInnerDark++;
                 }
             }
 
             const whitePct = whitePixels / pixelCount;
             const darkLinePct = darkLinePixels / pixelCount;
-            const darkInnerPct = innerPixelCount > 0 ? darkInnerPixels / innerPixelCount : 0;
+            const deepInnerDarkPct = deepInnerTotal > 0 ? deepInnerDark / deepInnerTotal : 0;
             const colorPct = colorPixels / pixelCount;
             const grayFillPct = grayFillPixels / pixelCount;
             const blankPct = blankSuspect / pixelCount;
 
-            // Blank image: >98% near-white → failed generation
+            // Imagen completamente en blanco
             if (blankPct > 0.98) {
                 return { ok: false, score: 0, reason: `Imagen en blanco (${(blankPct * 100).toFixed(0)}% píxeles blancos)` };
             }
 
-            // Essentially no dark lines → completely wrong style
+            // Sin líneas en absoluto
             if (darkLinePct < 0.003) {
                 return { ok: false, score: 10, reason: `Sin líneas (${(darkLinePct * 100).toFixed(2)}%) — no es libro de colorear` };
             }
 
-            // Too many vivid color pixels → full-color illustration, not line art
+            // Zona central vacía — borde decorativo / cuadrado en blanco disfrazado
+            // Un coloring book real siempre tiene al menos 0.5% de tinta dentro del 80% central.
+            if (deepInnerDarkPct < 0.005) {
+                return {
+                    ok: false, score: 0, darkLinePct,
+                    reason: `Zona central vacía (${(deepInnerDarkPct * 100).toFixed(2)}% tinta en zona interior 80%) — generación fallida`,
+                };
+            }
+
+            // Imagen a color
             if (colorPct > 0.30) {
                 return { ok: false, score: 20, reason: `Imagen a color (${(colorPct * 100).toFixed(0)}% píxeles coloreados) — se esperaba línea B&W` };
             }
 
-            // Rellenos grises → regenerar
+            // Rellenos grises
             if (grayFillPct > 0.08) {
-                return { ok: false, score: 25, reason: `Rellenos grises (${(grayFillPct * 100).toFixed(0)}% gris medio) — áreas sombreadas en vez de contorno vacío` };
+                return { ok: false, score: 25, reason: `Rellenos grises (${(grayFillPct * 100).toFixed(0)}% gris medio) — áreas sombreadas` };
             }
 
-            // Masas negras sólidas → no se puede colorear
+            // Masas negras sólidas
             if (darkLinePct > 0.28) {
                 return { ok: false, score: 25, reason: `Rellenos negros (${(darkLinePct * 100).toFixed(0)}% píxeles oscuros) — siluetas o masas de tinta` };
             }
 
-            // Elemento cortado por el marco o imagen vacía con solo borde
+            // Elemento cortado por el borde
             const edgePcts = (["top", "bottom", "left", "right"] as const)
                 .map(e => ({ edge: e, pct: edgeTotal[e] > 0 ? edgeDark[e] / edgeTotal[e] : 0 }));
             const hotEdges = edgePcts.filter(e => e.pct > 0.30);
-            const isOrnamentalFrame = hotEdges.length === 4;
-
-            if (isOrnamentalFrame && darkInnerPct < 0.005) {
-                // Solo borde, interior vacío — cuadrado en blanco disfrazado de marco decorativo
-                return {
-                    ok: false, score: 0, darkLinePct,
-                    reason: `Interior vacío con borde (${(darkInnerPct * 100).toFixed(2)}% tinta interior) — generación fallida`,
-                };
-            }
-
+            const isOrnamentalFrame = hotEdges.length === 4; // marco que toca los 4 bordes → válido
             if (hotEdges.length > 0 && !isOrnamentalFrame) {
                 const worst = hotEdges.sort((a, b) => b.pct - a.pct)[0];
                 return {
@@ -616,15 +622,31 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 }
             }
 
+            // HF Real-ESRGAN upscale (4x) — run before binarization so it works on
+            // the full-color AI output and produces sharper lines after thresholding.
+            // Falls back silently to the original buffer if HF is unavailable.
+            try {
+                const { upscaleWithHF } = await import("../lib/upscale.js");
+                console.log(`${tag} Real-ESRGAN upscale...`);
+                const upscaled = await upscaleWithHF(imageBuffer);
+                if (upscaled) {
+                    imageBuffer = upscaled;
+                    console.log(`${tag} Upscaled OK: ${(upscaled.length / 1024).toFixed(0)} KB`);
+                } else {
+                    console.log(`${tag} Upscale skipped — using original`);
+                }
+            } catch (e: any) {
+                console.warn(`${tag} Upscale error (using original): ${e.message}`);
+            }
+
             // Binarize coloring books — eliminate all grey tones, shadows, textures.
-            // Suavizado de línea para impresión: upscale 2× (lanczos) → blur sutil →
-            // threshold. El blur a doble resolución redondea el aliasing del trazo y el
-            // threshold lo vuelve a hacer nítido — líneas lisas en el PDF impreso.
+            // After Real-ESRGAN the image may already be 4096px, so skip the 2× lanczos
+            // step (scale=1) and go straight to blur+threshold.
             if (productType === "coloring-book") {
                 try {
                     const meta = await sharp(imageBuffer).metadata();
                     const w = meta.width ?? 0;
-                    // Solo upscale si la imagen es razonablemente pequeña (evitar buffers gigantes)
+                    // Only lanczos-upscale if Real-ESRGAN didn't already enlarge it
                     const scale = w > 0 && w <= 1600 ? 2 : 1;
                     let pipeline = sharp(imageBuffer)
                         .flatten({ background: { r: 255, g: 255, b: 255 } })
