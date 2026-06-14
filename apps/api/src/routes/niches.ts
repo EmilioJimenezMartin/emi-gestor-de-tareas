@@ -940,4 +940,91 @@ Return JSON: [{"situation": "<2-4 word label in Spanish>", "prompt": "<the scene
             return reply.status(500).send({ error: e.message });
         }
     });
+
+    // POST /niches/:id/fork — clone a niche and recreate all its catalogs with a new model
+    app.post("/niches/:id/fork", async (request: any, reply) => {
+        if (!ensureMongo(reply)) return;
+        try {
+            const { model, imagesPerCatalog } = request.body ?? {};
+            if (!model?.provider || !model?.modelId) {
+                return reply.status(400).send({ error: "Falta el modelo (model.provider + model.modelId)" });
+            }
+            const imgsPer = imagesPerCatalog ? Math.min(Math.max(1, Number(imagesPerCatalog)), 20) : null;
+
+            const source = await Niche.findById(request.params.id).lean() as any;
+            if (!source) return reply.status(404).send({ error: "Nicho no encontrado" });
+
+            // Determine version suffix — count existing forks by checking names
+            const baseName = source.name.replace(/ v\d+$/, "").trim();
+            const existingForks = await Niche.countDocuments({ name: new RegExp(`^${baseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} v\\d+$`) });
+            const versionNumber = existingForks + 2; // v2, v3, …
+            const newName = `${baseName} v${versionNumber}`;
+
+            // Find all catalogs linked to source niche
+            const sourceCatalogs = await Catalog.find({ nicheIds: String(source._id) }).lean() as any[];
+
+            // Create the new niche (copy of source, empty pipeline state)
+            const newNiche = await Niche.create({
+                name: newName,
+                nickname: source.nickname ?? "",
+                description: source.description ?? "",
+                tags: source.tags ?? [],
+                status: "active",
+                competition: source.competition,
+                demand: source.demand,
+                productType: source.productType ?? "coloring-book",
+                styleCategory: source.styleCategory ?? "generic",
+                styleCategories: source.styleCategories ?? [],
+                notes: source.notes ?? "",
+                generatedPrompt: source.generatedPrompt ?? "",
+                discoveryImagePrompt: source.discoveryImagePrompt ?? "",
+                catalogIds: [],
+                phase: "catalog",
+                pipelineHasCatalogs: false,
+                pipelineHasListings: false,
+                pipelineHasPdf: false,
+            });
+
+            // Create one catalog per source catalog — same prompt, new model, empty images
+            const hasActive = await Catalog.exists({ status: { $in: ["queued", "pending", "running"] } });
+            const newCatalogIds: string[] = [];
+
+            for (let i = 0; i < sourceCatalogs.length; i++) {
+                const src = sourceCatalogs[i];
+                const initialStatus = (i === 0 && !hasActive) ? "pending" : "queued";
+                const newCatalog = await Catalog.create({
+                    name: src.name.replace(source.name, newName),
+                    prompt: src.prompt,
+                    promptParts: src.promptParts,
+                    productType: src.productType ?? "coloring-book",
+                    creativity: src.creativity ?? 50,
+                    negativePrompt: src.negativePrompt ?? "",
+                    aiModel: model,
+                    width: src.width ?? 1024,
+                    height: src.height ?? 1024,
+                    totalImages: imgsPer ?? src.totalImages ?? 5,
+                    images: [],
+                    status: initialStatus,
+                    queueOrder: Date.now() + i,
+                    nicheIds: [String(newNiche._id)],
+                });
+                newCatalogIds.push(String(newCatalog._id));
+
+                if (initialStatus === "pending") {
+                    const agenda = getAgenda();
+                    await agenda.now("generate-catalog-image", { catalogId: String(newCatalog._id) });
+                }
+            }
+
+            // Link catalogs to new niche
+            await Niche.findByIdAndUpdate(newNiche._id, {
+                $set: { catalogIds: newCatalogIds, pipelineHasCatalogs: newCatalogIds.length > 0 },
+            });
+
+            const result = await Niche.findById(newNiche._id).lean();
+            return reply.status(201).send({ niche: result, catalogCount: newCatalogIds.length });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
 }

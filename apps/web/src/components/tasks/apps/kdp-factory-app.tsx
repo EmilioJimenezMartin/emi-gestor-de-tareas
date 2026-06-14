@@ -91,6 +91,7 @@ import {
     Maximize2,
     CalendarDays,
     Printer,
+    GitBranch,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -788,6 +789,11 @@ export function KdpFactoryApp() {
     const [pipelineConfig, setPipelineConfig] = useState({ catalogs: 5, imagesPerCatalog: 5 });
     const [showPipelineConfigId, setShowPipelineConfigId] = useState<string | null>(null);
     const [configSection, setConfigSection] = useState<"autopilot" | "notificaciones" | "integraciones">("autopilot");
+    // Niche fork modal
+    const [nicheForkId, setNicheForkId] = useState<string | null>(null);
+    const [forkModelId, setForkModelId] = useState(selectedModel);
+    const [forkImagesPerCatalog, setForkImagesPerCatalog] = useState(5);
+    const [isForkingNiche, setIsForkingNiche] = useState(false);
     // Niche detail modal
     const [nicheDetailId, setNicheDetailId] = useState<string | null>(null);
     const [nicheDetailTab, setNicheDetailTab] = useState<"images" | "catalogs" | "seo" | "book">("images");
@@ -1454,6 +1460,32 @@ export function KdpFactoryApp() {
             toast.success("Nicho eliminado");
         } catch {
             toast.error("Error al eliminar nicho");
+        }
+    };
+
+    const forkNiche = async () => {
+        if (!nicheForkId) return;
+        const model = AI_MODELS.find(m => m.id === forkModelId);
+        if (!model) { toast.error("Selecciona un modelo"); return; }
+        setIsForkingNiche(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/niches/${nicheForkId}/fork`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    model: { id: model.id, name: model.name, provider: model.provider, modelId: model.modelId },
+                    imagesPerCatalog: forkImagesPerCatalog,
+                }),
+            });
+            if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Error al clonar"); }
+            const { niche: newNiche, catalogCount } = await res.json();
+            setNiches(prev => [{ ...newNiche, _id: newNiche._id } as NicheFE, ...prev]);
+            setNicheForkId(null);
+            toast.success(`Nueva versión creada · ${catalogCount} catálogo${catalogCount !== 1 ? "s" : ""} en cola`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al clonar nicho");
+        } finally {
+            setIsForkingNiche(false);
         }
     };
 
@@ -12040,6 +12072,16 @@ export function KdpFactoryApp() {
                                                                 <span className="bg-amber-500/20 rounded-full px-1 text-sm">{niche.listings!.length}</span>
                                                             </button>
                                                         )}
+                                                        <button onClick={() => {
+                                                                const firstCat = iaCatalogs.find((c: IACatalogFE) => niche.catalogIds?.includes(c._id));
+                                                                setForkImagesPerCatalog(firstCat?.totalImages ?? 5);
+                                                                setNicheForkId(niche._id);
+                                                                setForkModelId(selectedModel);
+                                                            }}
+                                                            title="Crear nueva versión con otro modelo"
+                                                            className="flex items-center gap-1 px-2.5 h-7 rounded-lg border border-violet-500/20 bg-violet-500/8 text-sm font-black text-violet-500 hover:bg-violet-500/15 transition-all">
+                                                            <GitBranch size={9} /> Fork
+                                                        </button>
                                                         <button onClick={() => { setNicheDetailId(niche._id); setNicheDetailTab("images"); }}
                                                             title="Ver detalle del nicho"
                                                             className="flex items-center gap-1 px-2.5 h-7 rounded-lg border border-white/10 bg-white/[0.03] text-sm font-black text-neutral-500 hover:text-white hover:border-white/20 transition-all">
@@ -15592,6 +15634,89 @@ export function KdpFactoryApp() {
                         }}
                     />
                 ) : null;
+            })()}
+
+            {/* Niche Fork Modal */}
+            {nicheForkId && (() => {
+                const srcNiche = niches.find(n => n._id === nicheForkId);
+                const forkModel = AI_MODELS.find(m => m.id === forkModelId);
+                const srcCatalogCount = srcNiche?.catalogIds?.length ?? 0;
+                const providerGroups = AI_MODELS.reduce<Record<string, typeof AI_MODELS>>((acc, m) => {
+                    (acc[m.provider] ??= []).push(m); return acc;
+                }, {});
+                const statusDot: Record<string, string> = { ok: "bg-emerald-400", limited: "bg-amber-400", paid: "bg-orange-400", blocked: "bg-red-400" };
+                return (
+                    <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true">
+                        <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#0d0d0d] shadow-2xl flex flex-col max-h-[90vh]">
+                            {/* Header */}
+                            <div className="px-6 pt-6 pb-4 border-b border-white/8 space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <GitBranch size={14} className="text-violet-400" />
+                                    <p className="text-sm font-black text-white uppercase tracking-widest">Nueva versión</p>
+                                </div>
+                                <p className="text-sm text-neutral-500 leading-snug">
+                                    {srcNiche ? `"${srcNiche.name}"` : ""} · {srcCatalogCount} catálogo{srcCatalogCount !== 1 ? "s" : ""} se clonarán con el mismo prompt
+                                </p>
+                            </div>
+                            {/* Images per catalog */}
+                            <div className="px-6 py-3 border-b border-white/8">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 mb-2">Imágenes por catálogo</p>
+                                <div className="flex items-center gap-3">
+                                    <button onClick={() => setForkImagesPerCatalog(v => Math.max(1, v - 1))}
+                                        className="w-8 h-8 rounded-xl border border-white/10 bg-white/[0.03] text-neutral-400 hover:text-white hover:border-white/20 transition-all flex items-center justify-center text-lg font-black">−</button>
+                                    <span className="text-xl font-black text-white w-8 text-center">{forkImagesPerCatalog}</span>
+                                    <button onClick={() => setForkImagesPerCatalog(v => Math.min(20, v + 1))}
+                                        className="w-8 h-8 rounded-xl border border-white/10 bg-white/[0.03] text-neutral-400 hover:text-white hover:border-white/20 transition-all flex items-center justify-center text-lg font-black">+</button>
+                                    <div className="flex gap-1 ml-2">
+                                        {[3, 5, 8, 10].map(n => (
+                                            <button key={n} onClick={() => setForkImagesPerCatalog(n)}
+                                                className={`h-7 w-8 rounded-lg text-sm font-black transition-all ${forkImagesPerCatalog === n ? "bg-violet-500/20 border border-violet-500/40 text-violet-300" : "bg-white/[0.03] border border-white/8 text-neutral-600 hover:text-neutral-400"}`}>
+                                                {n}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Model list */}
+                            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                                {Object.entries(providerGroups).map(([provider, models]) => (
+                                    <div key={provider} className="space-y-1">
+                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-700 px-1">{provider}</p>
+                                        {models.map(m => (
+                                            <button key={m.id} type="button"
+                                                onClick={() => setForkModelId(m.id)}
+                                                className={`w-full px-3 py-2.5 rounded-xl border flex items-center gap-3 text-left transition-all ${forkModelId === m.id ? "border-violet-500/40 bg-violet-500/10" : "border-white/6 bg-white/[0.02] hover:bg-white/[0.05]"}`}>
+                                                <div className={`w-2 h-2 rounded-full shrink-0 ${statusDot[m.status] ?? "bg-neutral-500"}`} />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-bold text-white leading-tight">{m.name}</p>
+                                                    <p className="text-sm text-neutral-600 leading-tight mt-0.5 truncate">{m.type}</p>
+                                                </div>
+                                                {forkModelId === m.id && <Check size={13} className="text-violet-400 shrink-0" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                ))}
+                            </div>
+                            {/* Footer */}
+                            <div className="px-6 pb-6 pt-4 border-t border-white/8 space-y-3">
+                                {forkModel && (
+                                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-500/8 border border-violet-500/20">
+                                        <div className={`w-2 h-2 rounded-full shrink-0 ${statusDot[forkModel.status] ?? "bg-neutral-500"}`} />
+                                        <p className="text-sm font-black text-violet-300 truncate">{forkModel.name}</p>
+                                    </div>
+                                )}
+                                <div className="flex gap-3">
+                                    <button onClick={() => setNicheForkId(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
+                                    <button onClick={() => void forkNiche()} disabled={isForkingNiche || !forkModelId}
+                                        className="flex-1 h-11 rounded-2xl bg-violet-500 text-white text-sm font-black hover:bg-violet-400 transition-all flex items-center justify-center gap-2 disabled:opacity-40">
+                                        {isForkingNiche ? <><Loader2 size={12} className="animate-spin" /> Creando…</> : <><GitBranch size={12} /> Crear versión</>}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
             })()}
 
             {/* Niche Delete Confirm */}
