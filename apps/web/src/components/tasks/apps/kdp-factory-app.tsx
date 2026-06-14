@@ -12827,9 +12827,12 @@ export function KdpFactoryApp() {
                                         const shortInput = entry.input.length > 55 ? `…${entry.input.slice(-52)}` : entry.input;
                                         return (
                                             <div key={idx}>
-                                                <button
+                                                <div
+                                                    role="button"
+                                                    tabIndex={0}
                                                     onClick={() => setExpandedHistoryIdx(isOpen ? null : idx)}
-                                                    className="w-full px-5 py-3 flex items-center gap-3 hover:bg-white/[0.02] transition-colors text-left"
+                                                    onKeyDown={e => e.key === "Enter" && setExpandedHistoryIdx(isOpen ? null : idx)}
+                                                    className="w-full px-5 py-3 flex items-center gap-3 hover:bg-white/[0.02] transition-colors cursor-pointer"
                                                 >
                                                     <ChevronDown size={13} className={`text-neutral-600 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
                                                     <div className="flex-1 min-w-0">
@@ -12846,7 +12849,7 @@ export function KdpFactoryApp() {
                                                     >
                                                         <X size={12} />
                                                     </button>
-                                                </button>
+                                                </div>
                                                 {isOpen && (
                                                     <div className="px-5 pb-4 space-y-3">
                                                         <div className="rounded-2xl border border-rose-500/15 bg-rose-500/[0.03] p-3 space-y-1.5">
