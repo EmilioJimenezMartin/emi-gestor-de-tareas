@@ -2,7 +2,7 @@
 import React from "react";
 import {
     Loader2, GripVertical, Copy, FileText, Download, RefreshCw, Target, StopCircle,
-    Trash2, SkipForward, CheckCheck, X, Check, Heart, ArrowUpRight, RotateCcw,
+    Trash2, SkipForward, CheckCheck, X, Check, Heart, ArrowUpRight, RotateCcw, BookMarked,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +36,7 @@ export interface KdpCardActions {
     setDragOverId: (id: string | null) => void;
     handleQueueReorder: (fromId: string, toId: string) => Promise<void>;
     onReuseConfig: (catalog: IACatalogFE) => void;
+    onSavePrompt: (catalog: IACatalogFE) => void;
     onOpenEditor: (catalog: IACatalogFE) => void;
     onDownloadPdf: (catalog: IACatalogFE) => void;
     onExportDataset: (catalog: IACatalogFE) => void;
@@ -228,6 +229,15 @@ export const CatalogCard = React.memo(function CatalogCard({
                         >
                             <Copy size={11} /> Reusar
                         </button>
+                        {catalog.prompt && (
+                            <button
+                                onClick={() => actions.onSavePrompt(catalog)}
+                                title="Guardar prompt en biblioteca"
+                                className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-all border border-emerald-500/20 text-sm font-black uppercase tracking-widest"
+                            >
+                                <BookMarked size={11} /> Guardar prompt
+                            </button>
+                        )}
                         {catalog.images.length > 0 && (
                             <>
                                 <button

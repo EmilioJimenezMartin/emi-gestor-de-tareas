@@ -8097,11 +8097,25 @@ export function KdpFactoryApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    const onSaveCatalogPrompt = useCallback((catalog: IACatalogFE) => {
+        if (!catalog.prompt) return;
+        setPromptTheme(catalog.prompt);
+        setPromptSpecs(""); setPromptDetails(""); setPromptParticulars("");
+        const linkedNiche = niches.find(n => (catalog.nicheIds ?? []).includes(n._id));
+        setSavePromptName(catalog.name ?? linkedNiche?.name ?? "Prompt catálogo");
+        setSavePromptCategory(
+            catalog.productType === "coloring-book" ? "Coloring Book" :
+            catalog.productType === "printable-poster" ? "Arte Digital" : "General"
+        );
+        setShowSavePromptDialog(true);
+    }, [niches]);
+
     const cardActions = useMemo<KdpCardActions>(() => ({
         setDraggingId,
         setDragOverId,
         handleQueueReorder,
         onReuseConfig,
+        onSavePrompt: onSaveCatalogPrompt,
         onOpenEditor,
         onDownloadPdf: (catalog) => void downloadCatalogPdfDirect(catalog),
         onExportDataset: (catalog) => exportCatalogDataset(catalog),
@@ -8133,7 +8147,7 @@ export function KdpFactoryApp() {
             return <Badge variant="neutral" className={`text-sm font-black uppercase ${cls}`}>{label}</Badge>;
         },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }), [onReuseConfig, onOpenEditor, onToggleNiche, handleQueueReorder, retryFailedSlots, relaunchCatalog, skipCatalogImage, forceCompleteCatalog, downloadCatalogPdfDirect, exportCatalogDataset, bulkDeleteSelectedImages, toggleImageSelect, openCatalogImagePreview, toggleFavorite, upscaleImage]);
+    }), [onReuseConfig, onSaveCatalogPrompt, onOpenEditor, onToggleNiche, handleQueueReorder, retryFailedSlots, relaunchCatalog, skipCatalogImage, forceCompleteCatalog, downloadCatalogPdfDirect, exportCatalogDataset, bulkDeleteSelectedImages, toggleImageSelect, openCatalogImagePreview, toggleFavorite, upscaleImage]);
 
     const renderAIStudio = () => {
         const currentModel = AI_MODELS.find(m => m.id === selectedModel);

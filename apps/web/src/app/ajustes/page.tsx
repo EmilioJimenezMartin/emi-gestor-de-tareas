@@ -39,6 +39,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { createApiSocket } from "@/lib/socket";
 import { toast } from "sonner";
+import { refreshToken, getTokenExpiry } from "@/lib/auth-client";
 import { KdpTabBar } from "@/components/ui/kdp-tab-bar";
 import { speakBrowser } from "@/hooks/useSpeech";
 import { LlmTelemetryPanel } from "@/components/settings/LlmTelemetryPanel";
@@ -55,6 +56,7 @@ export default function AjustesPage() {
     const [logFilter, setLogFilter] = useState<"all" | "warn" | "error">("all");
     const [logSearch, setLogSearch] = useState("");
     const [pollinationsBlocked, setPollinationsBlocked] = useState(false);
+    const [sessionRefreshing, setSessionRefreshing] = useState(false);
 
     const [defaultProvider, setDefaultProvider] = useState("google");
     const [defaultModel, setDefaultModel] = useState("gemini-2.5-flash");
@@ -2535,6 +2537,50 @@ export default function AjustesPage() {
                                 Probar voz
                             </button>
                         </div>
+                    </div>
+                </section>
+
+                {/* ── Sesión ─────────────────────────────────────────────────── */}
+                <section className="space-y-4">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Sesión</h2>
+                        <Badge variant="neutral" className="text-[8px] font-black uppercase bg-violet-500/10 text-violet-400 border-violet-500/20">JWT · 24H</Badge>
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-6 space-y-4">
+                        <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-indigo-500/20 border border-violet-500/20 flex items-center justify-center">
+                                <Lock size={16} className="text-violet-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-black text-white">Token de acceso</p>
+                                <p className="text-[11px] text-neutral-500 mt-0.5 font-mono truncate">
+                                    {(() => {
+                                        const exp = getTokenExpiry();
+                                        if (!exp) return "Sin sesión activa";
+                                        const hours = Math.max(0, Math.floor((exp - Date.now()) / 3600000));
+                                        const mins = Math.max(0, Math.floor(((exp - Date.now()) % 3600000) / 60000));
+                                        return `Expira en ${hours}h ${mins}m`;
+                                    })()}
+                                </p>
+                            </div>
+                            <button
+                                onClick={async () => {
+                                    setSessionRefreshing(true);
+                                    const ok = await refreshToken();
+                                    setSessionRefreshing(false);
+                                    if (ok) toast.success("Sesión renovada — nueva duración 24h");
+                                    else toast.error("No se pudo renovar. Vuelve a iniciar sesión.");
+                                }}
+                                disabled={sessionRefreshing}
+                                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 text-xs font-black hover:bg-violet-500/20 transition-all disabled:opacity-50"
+                            >
+                                <RefreshCw size={12} className={sessionRefreshing ? "animate-spin" : ""} />
+                                Renovar sesión
+                            </button>
+                        </div>
+                        <p className="text-[11px] text-neutral-600 leading-relaxed">
+                            El token se renueva automáticamente cuando quedan menos de 3 horas. Usa el botón si quieres forzar la renovación ahora.
+                        </p>
                     </div>
                 </section>
                 </div>}

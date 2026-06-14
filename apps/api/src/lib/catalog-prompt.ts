@@ -59,13 +59,15 @@ const STYLE_VARIATION_HINTS: Record<string, string[]> = {
     ],
 };
 
+// Hints designed to be safe for coloring book format: isolated focal subject,
+// no complex backgrounds, no conflicting lighting instructions.
 export const DEFAULT_VARIATION_HINTS = [
-    "detailed center composition, rich ornamental fill, symmetrical balance",
-    "wide establishing scene, layered foreground and midground elements",
-    "close-up portrait or focal object filling the frame",
-    "dynamic action moment, diagonal energy, motion implied",
-    "intimate small scene, cozy setting, intricate background details",
-    "decorative pattern spread, repeating motif with central focal point",
+    "centered isolated subject filling the page, clean white space around, no background elements",
+    "close-up portrait of the main subject, highly detailed face and features, no scene context",
+    "full-body or full-form view, subject posed elegantly, pure white background",
+    "decorative ornamental arrangement of the subject, symmetrical layout, mandala-like framing",
+    "two or three instances of the subject grouped together, playful arrangement, no background",
+    "subject shown mid-action, flowing lines suggesting movement, isolated on white",
 ];
 
 /** Hint de variación composicional para un slot dado — cada imagen del catálogo sale distinta. */

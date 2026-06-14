@@ -165,11 +165,12 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
 
         if (productType === "coloring-book") {
             // Expected: mostly white background with dark outlines (black OR dark grey)
-            let whitePixels = 0;     // R,G,B all > 220
-            let darkLinePixels = 0;  // max(R,G,B) < 100 — pure black AND dark-grey outlines
-            let colorPixels = 0;     // high saturation non-dark pixel — sign of full-color art
-            let grayFillPixels = 0;  // gris medio sin saturación — RELLENO (árboles, tejados, sombras)
-            let blankSuspect = 0;    // near-white (> 240 brightness)
+            let whitePixels = 0;        // R,G,B all > 220
+            let darkLinePixels = 0;     // max(R,G,B) < 100 — pure black AND dark-grey outlines
+            let darkInnerPixels = 0;    // dark pixels OUTSIDE the edge bands (true content)
+            let colorPixels = 0;        // high saturation non-dark pixel — sign of full-color art
+            let grayFillPixels = 0;     // gris medio sin saturación — RELLENO
+            let blankSuspect = 0;       // near-white (> 240 brightness)
 
             // Detección de elementos cortados: densidad de píxeles oscuros en cada borde.
             // Banda del 2% del lado correspondiente (mín. 4px).
@@ -177,6 +178,7 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
             const bandY = Math.max(4, Math.round(height * 0.02));
             const edgeDark = { top: 0, bottom: 0, left: 0, right: 0 };
             const edgeTotal = { top: 0, bottom: 0, left: 0, right: 0 };
+            let innerPixelCount = 0;
 
             const step = channels > 3 ? 4 : 3;
             for (let i = 0; i < raw.length; i += step) {
@@ -188,25 +190,30 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
                 const isDark = maxC < 100;
 
                 if (r > 220 && g > 220 && b > 220) whitePixels++;
-                else if (isDark) darkLinePixels++;                          // dark grey or black
+                else if (isDark) darkLinePixels++;
                 else if (saturation > 0.3 && brightness < 210) colorPixels++;
-                // Gris medio plano (100-215 de brillo, casi sin color): es relleno, no línea.
-                // La binarización posterior lo convierte en negro sólido o lo borra — ambos mal.
                 else if (saturation < 0.18 && brightness >= 100 && brightness <= 215) grayFillPixels++;
 
                 if (brightness > 240) blankSuspect++;
 
-                // Posición del píxel para las bandas de borde
                 const px = (i / step) % width;
                 const py = Math.floor((i / step) / width);
+                const onEdge = py < bandY || py >= height - bandY || px < bandX || px >= width - bandX;
+
                 if (py < bandY) { edgeTotal.top++; if (isDark) edgeDark.top++; }
                 else if (py >= height - bandY) { edgeTotal.bottom++; if (isDark) edgeDark.bottom++; }
                 if (px < bandX) { edgeTotal.left++; if (isDark) edgeDark.left++; }
                 else if (px >= width - bandX) { edgeTotal.right++; if (isDark) edgeDark.right++; }
+
+                if (!onEdge) {
+                    innerPixelCount++;
+                    if (isDark) darkInnerPixels++;
+                }
             }
 
             const whitePct = whitePixels / pixelCount;
             const darkLinePct = darkLinePixels / pixelCount;
+            const darkInnerPct = innerPixelCount > 0 ? darkInnerPixels / innerPixelCount : 0;
             const colorPct = colorPixels / pixelCount;
             const grayFillPct = grayFillPixels / pixelCount;
             const blankPct = blankSuspect / pixelCount;
@@ -216,7 +223,7 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
                 return { ok: false, score: 0, reason: `Imagen en blanco (${(blankPct * 100).toFixed(0)}% píxeles blancos)` };
             }
 
-            // Essentially no dark lines → completely wrong style (very permissive to allow light line art)
+            // Essentially no dark lines → completely wrong style
             if (darkLinePct < 0.003) {
                 return { ok: false, score: 10, reason: `Sin líneas (${(darkLinePct * 100).toFixed(2)}%) — no es libro de colorear` };
             }
@@ -226,24 +233,30 @@ async function analyzeImageQuality(buffer: Buffer, productType: string): Promise
                 return { ok: false, score: 20, reason: `Imagen a color (${(colorPct * 100).toFixed(0)}% píxeles coloreados) — se esperaba línea B&W` };
             }
 
-            // Rellenos grises (árboles/tejados/pelo sombreados) → regenerar con otra seed.
-            // Umbral 8%: tolera anti-aliasing de líneas, caza áreas rellenas de verdad.
+            // Rellenos grises → regenerar
             if (grayFillPct > 0.08) {
                 return { ok: false, score: 25, reason: `Rellenos grises (${(grayFillPct * 100).toFixed(0)}% gris medio) — áreas sombreadas en vez de contorno vacío` };
             }
 
-            // Masas negras sólidas (silueta/relleno tinta) → no se puede colorear
+            // Masas negras sólidas → no se puede colorear
             if (darkLinePct > 0.28) {
                 return { ok: false, score: 25, reason: `Rellenos negros (${(darkLinePct * 100).toFixed(0)}% píxeles oscuros) — siluetas o masas de tinta` };
             }
 
-            // Elemento cortado por el marco: un borde con >30% de tinta indica figura
-            // truncada (mandala a la mitad, cabeza cortada…). Los marcos ornamentales
-            // legítimos tocan los 4 bordes por igual — eso NO se penaliza.
+            // Elemento cortado por el marco o imagen vacía con solo borde
             const edgePcts = (["top", "bottom", "left", "right"] as const)
                 .map(e => ({ edge: e, pct: edgeTotal[e] > 0 ? edgeDark[e] / edgeTotal[e] : 0 }));
             const hotEdges = edgePcts.filter(e => e.pct > 0.30);
-            const isOrnamentalFrame = hotEdges.length === 4; // marco decorativo completo — válido
+            const isOrnamentalFrame = hotEdges.length === 4;
+
+            if (isOrnamentalFrame && darkInnerPct < 0.005) {
+                // Solo borde, interior vacío — cuadrado en blanco disfrazado de marco decorativo
+                return {
+                    ok: false, score: 0, darkLinePct,
+                    reason: `Interior vacío con borde (${(darkInnerPct * 100).toFixed(2)}% tinta interior) — generación fallida`,
+                };
+            }
+
             if (hotEdges.length > 0 && !isOrnamentalFrame) {
                 const worst = hotEdges.sort((a, b) => b.pct - a.pct)[0];
                 return {
@@ -422,13 +435,13 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             }
 
             // ── Micro-variación automática entre catálogos del mismo nicho ──
-            // Si el nicho ya tiene otro catálogo, la IA reformula ligeramente el prompt
-            // (sinónimos, mismo sujeto) UNA vez por catálogo para que las tiradas no
-            // salgan clónicas. Fail-safe total: si el LLM falla o tarda, prompt intacto.
+            // Aplica sinónimos suaves al prompt del slot 1 para que catalogs hermanos
+            // no generen imágenes clónicas. NO se persiste en catalog.prompt para evitar
+            // que el LLM introduzca drift que dañe los slots posteriores.
             if (!catalog.promptParts?.theme && !overridePrompt && !catalog.autoVariedPrompt
                 && (catalog.nicheIds?.length ?? 0) > 0
                 && !finalPrompt.includes("coloring book page")) {
-                catalog.autoVariedPrompt = true; // marcar SIEMPRE — un intento por catálogo
+                catalog.autoVariedPrompt = true;
                 try {
                     const siblings = await Catalog.countDocuments({
                         _id: { $ne: catalog._id },
@@ -440,15 +453,16 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                             setTimeout(() => reject(new Error("vary timeout 12s")), 12_000));
                         const varied = await Promise.race([varyTextWithLLM(finalPrompt, 30), timeout]);
                         if (varied && varied !== finalPrompt && varied.length > 10) {
+                            // Solo afecta este slot — NO se guarda en catalog.prompt
+                            // para que los slots 2+ usen siempre el prompt base limpio
                             finalPrompt = varied;
-                            catalog.prompt = varied; // persistir: todos los slots usan la misma variación
-                            console.log(`${tag} Variación auto (catálogo nº${siblings + 1} del nicho): "${varied.slice(0, 70)}…"`);
+                            console.log(`${tag} Variación auto slot 1 (${siblings} hermanos): "${varied.slice(0, 70)}…"`);
                         }
                     }
                 } catch (e: any) {
                     console.warn(`${tag} Variación auto falló (prompt intacto): ${e?.message ?? e}`);
                 }
-                await catalog.save().catch(() => {});
+                await catalog.save().catch(() => {}); // persiste solo autoVariedPrompt=true
             }
 
             // Apply product-type modifiers and build negative prompt

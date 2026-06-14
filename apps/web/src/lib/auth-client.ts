@@ -13,16 +13,33 @@ export function clearToken() {
     localStorage.removeItem(TOKEN_KEY);
 }
 
+export function getTokenExpiry(): number | null {
+    const token = getToken();
+    if (!token) return null;
+    try {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        return payload.exp * 1000;
+    } catch { return null; }
+}
+
 export function isAuthenticated(): boolean {
+    const expiry = getTokenExpiry();
+    return expiry !== null && expiry > Date.now();
+}
+
+export async function refreshToken(): Promise<boolean> {
     const token = getToken();
     if (!token) return false;
     try {
-        // Decode JWT payload (no verify — just check exp client-side)
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        return payload.exp * 1000 > Date.now();
-    } catch {
-        return false;
-    }
+        const res = await fetch(`${API_URL}/auth/refresh`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return false;
+        const { token: newToken } = await res.json() as { token: string };
+        setToken(newToken);
+        return true;
+    } catch { return false; }
 }
 
 export function authHeaders(): Record<string, string> {

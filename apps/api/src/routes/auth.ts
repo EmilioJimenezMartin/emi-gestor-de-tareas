@@ -192,4 +192,16 @@ export async function registerAuthRoutes(app: FastifyInstance) {
         if (!payload || payload.sub.endsWith(":pending2fa")) return reply.code(401).send({ error: "Token inválido" });
         return reply.send({ email: payload.sub, twoFactorEnabled: await isTotpEnabled() });
     });
+
+    // POST /auth/refresh — extend session: validates current JWT and returns a fresh 24h one
+    app.post("/auth/refresh", async (req, reply) => {
+        const auth = req.headers.authorization;
+        if (!auth?.startsWith("Bearer ")) return reply.code(401).send({ error: "No autenticado" });
+        const payload = verifyJWT(auth.slice(7));
+        if (!payload || payload.sub.endsWith(":pending2fa") || payload.sub !== AUTHORIZED_EMAIL) {
+            return reply.code(401).send({ error: "Token inválido o expirado — inicia sesión de nuevo" });
+        }
+        const token = generateJWT(payload.sub);
+        return reply.send({ token });
+    });
 }
