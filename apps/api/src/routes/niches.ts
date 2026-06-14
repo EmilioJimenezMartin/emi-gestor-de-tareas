@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { Niche } from "../models/niche.js";
+import { sendTelegramApproval } from "../lib/telegram.js";
 
 const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
 function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
@@ -1025,6 +1026,111 @@ Return JSON: [{"situation": "<2-4 word label in Spanish>", "prompt": "<the scene
             return reply.status(201).send({ niche: result, catalogCount: newCatalogIds.length });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // ── POST /niches/clone-bestseller ─────────────────────────────────────────
+    // Dado un ASIN o URL de Amazon, analiza el bestseller y genera 5 clones de nicho
+    app.post("/niches/clone-bestseller", async (request: any, reply) => {
+        const { asin, url: rawUrl } = request.body || {};
+
+        let cleanAsin: string | null = null;
+        let originalDomain = "www.amazon.com";
+        if (asin?.trim()) {
+            cleanAsin = asin.trim().toUpperCase();
+        } else if (rawUrl?.trim()) {
+            const domainMatch = rawUrl.match(/https?:\/\/(www\.amazon\.[a-z.]+)\//i);
+            if (domainMatch) originalDomain = domainMatch[1];
+            const m = rawUrl.match(/\/dp\/([A-Z0-9]{10})/i) ?? rawUrl.match(/([A-Z0-9]{10})/i);
+            cleanAsin = m?.[1]?.toUpperCase() ?? null;
+        }
+        if (!cleanAsin) return reply.status(400).send({ error: "Proporciona un ASIN o URL de Amazon válidos" });
+
+        // Try original domain first, fall back to amazon.com
+        const amazonUrl = `https://${originalDomain}/dp/${cleanAsin}`;
+
+        try {
+            let pageText = "";
+            for (const url of [amazonUrl, `https://www.amazon.com/dp/${cleanAsin}`]) {
+                const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
+                    headers: { "X-Return-Format": "text", "User-Agent": "Mozilla/5.0" },
+                    signal: AbortSignal.timeout(30_000),
+                });
+                if (jinaRes.ok) {
+                    const text = (await jinaRes.text()).slice(0, 50_000);
+                    if (text.length >= 300) { pageText = text; break; }
+                }
+            }
+            if (!pageText) return reply.status(502).send({ error: "Amazon bloqueó la petición. Inténtalo de nuevo en unos segundos." });
+
+            const { generateTextWithLLM } = await import("../lib/ai.js");
+
+            const SYSTEM = `Eres un estratega de productos KDP. Se te mostrará la página de un bestseller de Amazon (libro de colorear, activity book, journal o similar).
+Tu misión: analizar la fórmula de éxito del libro y proponer 5 CLONES de nicho — libros adyacentes que usen la misma fórmula pero en un nicho distinto.
+
+Un clon NO es una copia. Es aplicar la misma fórmula de éxito (demografía, estilo visual, complejidad, formato) a una temática diferente.
+
+IMPORTANTE: Responde ÚNICA Y EXCLUSIVAMENTE con JSON puro, sin markdown, sin comentarios, sin texto adicional.
+
+Estructura exacta:
+{"source":{"title":"string","bsr":"string","price":"string","reviews":"string","pages":"string","formula":"string"},"clones":[{"nicheName":"string","titleTemplate":"string","audience":"string","coverBrief":"string","keywords":["kw1","kw2","kw3","kw4","kw5"],"whyItWorks":"string","competition":"low"}]}`;
+
+            const raw = await generateTextWithLLM(SYSTEM, `PÁGINA DEL BESTSELLER:\n${pageText}`);
+            const cleaned = raw
+                .replace(/```[a-z]*\n?/gi, "")
+                .replace(/\/\/[^\n]*/g, "")
+                .replace(/,\s*([}\]])/g, "$1")
+                .trim();
+            const match = cleaned.match(/\{[\s\S]*\}/);
+            if (!match) return reply.status(500).send({ error: "La IA no devolvió JSON válido" });
+            const parsed = JSON.parse(match[0]);
+            return reply.send(parsed);
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message ?? "Error analizando el bestseller" });
+        }
+    });
+
+    // ── POST /niches/clone-telegram ────────────────────────────────────────────
+    // Envía un clon de nicho a Telegram con botones de decisión
+    app.post("/niches/clone-telegram", async (request: any, reply) => {
+        const { clone, sourceTitle, sourceUrl } = request.body as {
+            clone: { nicheName: string; titleTemplate: string; audience: string; coverBrief: string; keywords: string[]; whyItWorks: string; competition: string };
+            sourceTitle?: string;
+            sourceUrl?: string;
+        };
+
+        if (!clone?.nicheName) return reply.status(400).send({ error: "Datos del clon inválidos" });
+
+        const { generateTextWithLLM } = await import("../lib/ai.js");
+
+        const compEmoji = clone.competition === "low" ? "🟢" : clone.competition === "medium" ? "🟡" : "🔴";
+        const actionId = `clone-nicho:${encodeURIComponent(clone.nicheName)}:${encodeURIComponent(clone.titleTemplate || "")}:${encodeURIComponent((clone.keywords ?? []).slice(0, 3).join(","))}`;
+
+        try {
+            const pitch = await generateTextWithLLM(
+                `Eres un copywriter de nichos KDP. Escribe un mensaje de Telegram corto y convincente (máx 5 líneas) sobre un nicho para que el autor decida si lo publica. Sé directo, usa datos concretos, sin emojis extra.`,
+                `Nicho: ${clone.nicheName}\nTítulo: ${clone.titleTemplate}\nAudiencia: ${clone.audience}\nPortada: ${clone.coverBrief}\nPor qué funciona: ${clone.whyItWorks}\nCompetencia: ${clone.competition}\nKeywords: ${clone.keywords?.join(", ")}`
+            );
+
+            const text = [
+                `🎯 <b>NUEVO NICHO — Clone Engine</b>`,
+                ``,
+                `📚 <b>${clone.nicheName}</b>`,
+                `<i>${clone.titleTemplate}</i>`,
+                ``,
+                pitch.trim(),
+                ``,
+                `${compEmoji} Competencia: <b>${clone.competition === "low" ? "Baja" : clone.competition === "medium" ? "Media" : "Alta"}</b>`,
+                `👥 ${clone.audience}`,
+                ...(sourceTitle ? [`📖 Basado en: <i>${sourceTitle.slice(0, 80)}</i>`] : []),
+                ...(sourceUrl ? [`🔗 ${sourceUrl}`.slice(0, 100)] : []),
+            ].join("\n");
+
+            const msgId = await sendTelegramApproval({ text, actionId });
+            if (msgId === null) return reply.status(503).send({ error: "Telegram no configurado o no disponible" });
+            return reply.send({ ok: true, messageId: msgId });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message ?? "Error enviando a Telegram" });
         }
     });
 }

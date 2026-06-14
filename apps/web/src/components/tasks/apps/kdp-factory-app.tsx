@@ -571,10 +571,31 @@ export function KdpFactoryApp() {
     const [nichePage, setNichePage] = useState(0);
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban" | "table">("kanban");
     const [kanbanProductFilter, setKanbanProductFilter] = useState<"all" | "coloring-book" | "printable-poster" | "seamless-pattern">("all");
-    const [studioSubTab, setStudioSubTab] = useState<"niches" | "radar" | "calendar">(() => {
+    const [studioSubTab, setStudioSubTab] = useState<"niches" | "radar" | "calendar" | "clone">(() => {
         const saved = typeof window !== "undefined" ? localStorage.getItem("kdp-studio-subtab") : null;
-        return (saved === "niches" || saved === "radar" || saved === "calendar") ? saved : "niches";
+        return (saved === "niches" || saved === "radar" || saved === "calendar" || saved === "clone") ? saved as "niches" | "radar" | "calendar" | "clone" : "niches";
     });
+
+    // ── Clone Engine state ───────────────────────────────────────────────────
+    type CloneResult = { nicheName: string; titleTemplate: string; audience: string; coverBrief: string; keywords: string[]; whyItWorks: string; competition: "low" | "medium" | "high" };
+    type CloneSource = { title: string; bsr: string; price: string; reviews: string; pages: string; formula: string };
+    type CloneHistoryEntry = { input: string; source: CloneSource; clones: CloneResult[]; date: string };
+    const [cloneInput, setCloneInput] = useState("");
+    const [cloneResults, setCloneResults] = useState<CloneResult[]>([]);
+    const [cloneSource, setCloneSource] = useState<CloneSource | null>(null);
+    const [isCloning, setIsCloning] = useState(false);
+    const [cloneSaved, setCloneSaved] = useState<Set<number>>(new Set());
+    const [cloneHistory, setCloneHistory] = useState<CloneHistoryEntry[]>(() => {
+        try { return JSON.parse(typeof window !== "undefined" ? (localStorage.getItem("kdp-clone-history") ?? "[]") : "[]"); } catch { return []; }
+    });
+    const [expandedHistoryIdx, setExpandedHistoryIdx] = useState<number | null>(null);
+    const [cloneTgSending, setCloneTgSending] = useState<Set<string>>(new Set());
+    const [cloneTgSent, setCloneTgSent] = useState<Set<string>>(new Set());
+
+    // ── Time Machine state ───────────────────────────────────────────────────
+    type TimePrediction = { nicheName: string; season: string; peakWeek: string; optimalPublishDate: string; weeksUntilPublish: number; urgency: "critical" | "soon" | "ok" | "evergreen"; tip: string };
+    const [timeMachineData, setTimeMachineData] = useState<TimePrediction[]>([]);
+    const [isLoadingTimeMachine, setIsLoadingTimeMachine] = useState(false);
 
     // ── Publishing Calendar state ────────────────────────────────────────────
     type PublishEvent = { id: string; title: string; date: string; nicheId?: string; status: "planned" | "inprogress" | "published" | "idea"; color: string };
@@ -822,7 +843,7 @@ export function KdpFactoryApp() {
     const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "columns">(() =>
         (typeof window !== "undefined" && (localStorage.getItem("kdp-pipeline-view") as "list" | "columns")) || "list"
     );
-    const studioSubTabRef = useRef<"niches" | "radar" | "calendar">("niches");
+    const studioSubTabRef = useRef<"niches" | "radar" | "calendar" | "clone">("niches");
     // Keep ref in sync so socket handlers read current tab without stale closure
     studioSubTabRef.current = studioSubTab;
     // --- Ventas / KDP Sales state ---
@@ -7193,6 +7214,99 @@ export function KdpFactoryApp() {
                         </div>
                     </div>
                 </div>}
+
+            {/* ══ TIME MACHINE — sección dentro del calendario ══ */}
+            {(() => {
+                const runTimeMachine = async () => {
+                    setIsLoadingTimeMachine(true);
+                    setTimeMachineData([]);
+                    try {
+                        const nicheNames = niches.map(n => n.name).slice(0, 20);
+                        const res = await fetch(`${API_BASE_URL}/trends/timemachine`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ nicheNames }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error ?? "Error");
+                        setTimeMachineData(data.predictions ?? []);
+                    } catch (e: any) {
+                        toast.error(e.message ?? "Error en Time Machine");
+                    } finally {
+                        setIsLoadingTimeMachine(false);
+                    }
+                };
+
+                const urgencyStyle: Record<string, { bar: string; badge: string; label: string }> = {
+                    critical:  { bar: "bg-rose-500",    badge: "bg-rose-500/15 border-rose-500/30 text-rose-400",       label: "URGENTE"  },
+                    soon:      { bar: "bg-amber-500",   badge: "bg-amber-500/15 border-amber-500/30 text-amber-400",    label: "PRONTO"   },
+                    ok:        { bar: "bg-sky-500",     badge: "bg-sky-500/15 border-sky-500/30 text-sky-400",          label: "EN PLAZO" },
+                    evergreen: { bar: "bg-emerald-500", badge: "bg-emerald-500/15 border-emerald-500/30 text-emerald-400", label: "EVERGREEN" },
+                };
+
+                return (
+                    <div className="mt-6 rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                        <div className="h-px w-full bg-gradient-to-r from-violet-500/80 via-purple-400/40 to-transparent" />
+                        <div className="p-6 space-y-5">
+                            <div className="flex items-start justify-between gap-4">
+                                <SectionHeader
+                                    icon={<Clock size={18} />}
+                                    title={<><span className="text-white">Time </span><span className="bg-gradient-to-r from-violet-300 to-purple-400 bg-clip-text text-transparent">Machine</span></>}
+                                    subtitle="Calcula la semana exacta en que publicar cada nicho para coger el pico de búsqueda"
+                                    color="violet"
+                                    size="sm"
+                                />
+                                <button
+                                    onClick={() => void runTimeMachine()}
+                                    disabled={isLoadingTimeMachine}
+                                    className="shrink-0 h-9 px-4 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-500 text-black text-[10px] font-black uppercase tracking-widest hover:opacity-90 transition-all disabled:opacity-40 flex items-center gap-2"
+                                >
+                                    {isLoadingTimeMachine ? <Loader2 size={12} className="animate-spin" /> : <Clock size={12} />}
+                                    {isLoadingTimeMachine ? "Calculando..." : `Analizar ${niches.length} nichos`}
+                                </button>
+                            </div>
+
+                            {!isLoadingTimeMachine && timeMachineData.length === 0 && (
+                                <div className="flex items-center justify-center py-8 rounded-2xl border border-dashed border-white/[0.06] text-neutral-700 text-[10px]">
+                                    Pulsa el botón para calcular cuándo publicar cada nicho
+                                </div>
+                            )}
+
+                            {timeMachineData.length > 0 && (
+                                <div className="space-y-2">
+                                    {timeMachineData.map((pred, idx) => {
+                                        const s = urgencyStyle[pred.urgency] ?? urgencyStyle.ok;
+                                        const isPast = pred.weeksUntilPublish < 0;
+                                        const weeksAbs = Math.abs(pred.weeksUntilPublish);
+                                        return (
+                                            <div key={idx} className="rounded-2xl border border-white/8 bg-white/[0.02] overflow-hidden">
+                                                <div className={`h-0.5 ${s.bar}`} />
+                                                <div className="px-4 py-3 flex items-center gap-4">
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <p className="text-[11px] font-black text-white">{pred.nicheName}</p>
+                                                            <span className={`text-[8px] font-black px-2 py-0.5 rounded-full border ${s.badge}`}>{s.label}</span>
+                                                            <span className="text-[8px] text-neutral-600">{pred.season}</span>
+                                                        </div>
+                                                        <p className="text-[9px] text-neutral-500 italic mt-0.5">{pred.tip}</p>
+                                                    </div>
+                                                    <div className="shrink-0 text-right">
+                                                        <p className={`text-[11px] font-black ${isPast ? "text-rose-400" : "text-white"}`}>
+                                                            {isPast ? `Ventana pasada (hace ${weeksAbs}s)` : `Publicar en ${weeksAbs} semanas`}
+                                                        </p>
+                                                        <p className="text-[9px] text-neutral-600">{pred.optimalPublishDate} · pico {pred.peakWeek}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    <p className="text-[9px] text-neutral-700 text-center pt-1">Amazon necesita 6-8 semanas para indexar y rankear un libro nuevo</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            })()}
             </div>
         );
     };
@@ -11111,12 +11225,13 @@ export function KdpFactoryApp() {
     };
 
     const renderStudio = () => {
-        const STUDIO_TABS: KdpTabDef<"niches" | "radar" | "calendar">[] = [
-            { id: "niches",   label: "Nichos",     icon: <Target size={13} />,       color: "text-sky-400",    activeBg: "bg-sky-500/10 border-sky-500/25 text-sky-300"         },
-            { id: "radar",    label: "Radar",      icon: <Search size={13} />,       color: "text-amber-400",  activeBg: "bg-amber-500/10 border-amber-500/25 text-amber-300"   },
-            { id: "calendar", label: "Calendario", icon: <CalendarDays size={13} />, color: "text-indigo-400", activeBg: "bg-indigo-500/10 border-indigo-500/25 text-indigo-300" },
+        const STUDIO_TABS: KdpTabDef<"niches" | "radar" | "calendar" | "clone">[] = [
+            { id: "niches",   label: "Nichos",       icon: <Target size={13} />,       color: "text-sky-400",    activeBg: "bg-sky-500/10 border-sky-500/25 text-sky-300"          },
+            { id: "radar",    label: "Radar",        icon: <Search size={13} />,       color: "text-amber-400",  activeBg: "bg-amber-500/10 border-amber-500/25 text-amber-300"    },
+            { id: "calendar", label: "Calendario",   icon: <CalendarDays size={13} />, color: "text-indigo-400", activeBg: "bg-indigo-500/10 border-indigo-500/25 text-indigo-300" },
+            { id: "clone",    label: "Clone Engine", icon: <Copy size={13} />,         color: "text-rose-400",   activeBg: "bg-rose-500/10 border-rose-500/25 text-rose-300"       },
         ];
-        const switchStudioTab = (t: "niches" | "radar" | "calendar") => {
+        const switchStudioTab = (t: "niches" | "radar" | "calendar" | "clone") => {
             setStudioSubTab(t);
             localStorage.setItem("kdp-studio-subtab", t);
         };
@@ -12455,6 +12570,315 @@ export function KdpFactoryApp() {
             {/* ══ PUBLISHING CALENDAR (sub-tab) ══ */}
             {studioSubTab === "calendar" && renderCalendar()}
 
+            {/* ══ CLONE ENGINE ══ */}
+            {studioSubTab === "clone" && (() => {
+                const normalize = (s: string) => s.trim().toLowerCase().replace(/\/ref=.*/i, "").replace(/\/$/, "");
+
+                const runClone = async () => {
+                    const input = cloneInput.trim();
+                    if (!input) return;
+
+                    // Duplicate detection
+                    const already = cloneHistory.find(h => normalize(h.input) === normalize(input));
+                    if (already) {
+                        toast("Ya analizaste esta URL — cargando resultado guardado", { icon: "ℹ️" });
+                        setCloneSource(already.source);
+                        setCloneResults(already.clones);
+                        setCloneSaved(new Set());
+                        return;
+                    }
+
+                    setIsCloning(true);
+                    setCloneResults([]);
+                    setCloneSource(null);
+                    setCloneSaved(new Set());
+                    try {
+                        const res = await fetch(`${API_BASE_URL}/niches/clone-bestseller`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(
+                                input.startsWith("http") ? { url: input } : { asin: input }
+                            ),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error ?? "Error");
+                        const src: CloneSource = data.source ?? { title: input, bsr: "", price: "", reviews: "", pages: "", formula: "" };
+                        const clones: CloneResult[] = data.clones ?? [];
+                        setCloneSource(src);
+                        setCloneResults(clones);
+                        // Persist to history
+                        const entry: CloneHistoryEntry = { input, source: src, clones, date: new Date().toISOString() };
+                        setCloneHistory(prev => {
+                            const next = [entry, ...prev].slice(0, 20);
+                            try { localStorage.setItem("kdp-clone-history", JSON.stringify(next)); } catch {}
+                            return next;
+                        });
+                    } catch (e: any) {
+                        toast.error(e.message ?? "Error analizando bestseller");
+                    } finally {
+                        setIsCloning(false);
+                    }
+                };
+
+                const saveClone = async (idx: number, clone: CloneResult) => {
+                    try {
+                        const res = await fetch(`${API_BASE_URL}/niches`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                name: clone.nicheName,
+                                description: clone.titleTemplate,
+                                tags: clone.keywords,
+                                competition: clone.competition,
+                                notes: `Clone Engine · ${clone.whyItWorks}\nAudiencia: ${clone.audience}\nCover: ${clone.coverBrief}`,
+                            }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error ?? "Error");
+                        setCloneSaved(prev => new Set([...prev, idx]));
+                        toast.success(data.duplicate ? "Nicho ya existía — reutilizado" : `"${clone.nicheName}" añadido a tus nichos`);
+                    } catch (e: any) {
+                        toast.error(e.message ?? "Error guardando");
+                    }
+                };
+
+                const loadHistoryEntry = (entry: CloneHistoryEntry, idx: number) => {
+                    setCloneInput(entry.input);
+                    setCloneSource(entry.source);
+                    setCloneResults(entry.clones);
+                    setCloneSaved(new Set());
+                    setExpandedHistoryIdx(idx === expandedHistoryIdx ? null : idx);
+                };
+
+                const deleteHistoryEntry = (idx: number) => {
+                    setCloneHistory(prev => {
+                        const next = prev.filter((_, i) => i !== idx);
+                        try { localStorage.setItem("kdp-clone-history", JSON.stringify(next)); } catch {}
+                        return next;
+                    });
+                    if (expandedHistoryIdx === idx) setExpandedHistoryIdx(null);
+                };
+
+                const compColor = (c: string) => c === "low" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : c === "medium" ? "text-amber-400 bg-amber-500/10 border-amber-500/20" : "text-rose-400 bg-rose-500/10 border-rose-500/20";
+                const compLabel = (c: string) => c === "low" ? "Baja competencia" : c === "medium" ? "Media" : "Alta";
+
+                const sendToTelegram = async (cardKey: string, clone: CloneResult, srcTitle?: string, srcUrl?: string) => {
+                    setCloneTgSending(prev => new Set([...prev, cardKey]));
+                    try {
+                        const res = await fetch(`${API_BASE_URL}/niches/clone-telegram`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ clone, sourceTitle: srcTitle, sourceUrl: srcUrl }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error ?? "Error");
+                        setCloneTgSent(prev => new Set([...prev, cardKey]));
+                        toast.success("Enviado a Telegram ✓");
+                    } catch (e: any) {
+                        toast.error(e.message ?? "Error enviando a Telegram");
+                    } finally {
+                        setCloneTgSending(prev => { const s = new Set(prev); s.delete(cardKey); return s; });
+                    }
+                };
+
+                const CloneCard = ({ clone, cardKey, saved, tgSent, tgSending, onSave, onTelegram }: { clone: CloneResult; cardKey: string; saved: boolean; tgSent: boolean; tgSending: boolean; onSave: () => void; onTelegram: () => void }) => (
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 space-y-3 hover:border-rose-500/20 transition-all">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="text-base font-black text-white">{clone.nicheName}</p>
+                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${compColor(clone.competition)}`}>{compLabel(clone.competition)}</span>
+                                </div>
+                                <p className="text-xs text-neutral-500 mt-1 font-mono leading-relaxed">{clone.titleTemplate}</p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                    onClick={onTelegram}
+                                    disabled={tgSent || tgSending}
+                                    title="Enviar a Telegram para decidir"
+                                    className={`h-8 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${tgSent ? "bg-sky-500/15 border border-sky-500/30 text-sky-400" : "bg-white/[0.04] border border-white/10 text-neutral-500 hover:border-sky-500/30 hover:text-sky-400"}`}
+                                >
+                                    {tgSending ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                                    {tgSent ? "Enviado" : "Telegram"}
+                                </button>
+                                <button
+                                    onClick={onSave}
+                                    disabled={saved}
+                                    className={`h-8 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${saved ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-400" : "bg-rose-500/15 border border-rose-500/30 text-rose-300 hover:bg-rose-500/25"}`}
+                                >
+                                    {saved ? <><CheckCircle2 size={11} /> Guardado</> : <>+ Nicho</>}
+                                </button>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                            <div className="space-y-1">
+                                <p className="text-[9px] text-neutral-600 uppercase tracking-widest font-black">Audiencia</p>
+                                <p className="text-neutral-300 leading-relaxed">{clone.audience}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-[9px] text-neutral-600 uppercase tracking-widest font-black">Cover</p>
+                                <p className="text-neutral-300 leading-relaxed">{clone.coverBrief}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-[9px] text-neutral-600 uppercase tracking-widest font-black">Por qué funciona</p>
+                                <p className="text-emerald-400/80 leading-relaxed">{clone.whyItWorks}</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-1 flex-wrap">
+                            {clone.keywords.map(kw => (
+                                <span key={kw} className="text-[9px] px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/8 text-neutral-400 font-mono">{kw}</span>
+                            ))}
+                        </div>
+                    </div>
+                );
+
+                return (
+                    <div className="space-y-4">
+                        {/* ── Main card ── */}
+                        <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                            <div className="h-px w-full bg-gradient-to-r from-rose-500/80 via-pink-400/40 to-transparent" />
+                            <div className="p-6 space-y-6">
+                                <SectionHeader
+                                    icon={<Copy size={20} />}
+                                    title={<><span className="text-white">Clone </span><span className="bg-gradient-to-r from-rose-300 to-pink-400 bg-clip-text text-transparent">Engine</span></>}
+                                    subtitle="Pega la URL o ASIN de un bestseller de Amazon y genera 5 nichos adyacentes con la misma fórmula de éxito"
+                                    color="rose"
+                                    size="lg"
+                                />
+
+                                {/* Input */}
+                                <div className="space-y-2">
+                                    <div className="flex gap-2">
+                                        <input
+                                            value={cloneInput}
+                                            onChange={e => setCloneInput(e.target.value)}
+                                            onKeyDown={e => e.key === "Enter" && void runClone()}
+                                            placeholder="https://www.amazon.es/…/dp/B0XXXXXXXX o solo el ASIN"
+                                            className="flex-1 h-11 bg-white/[0.04] border border-white/10 rounded-2xl px-4 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-rose-500/40 transition-all font-mono"
+                                        />
+                                        <button
+                                            onClick={() => void runClone()}
+                                            disabled={isCloning || !cloneInput.trim()}
+                                            className="h-11 px-5 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 text-black text-[10px] font-black uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-40 flex items-center gap-2 shrink-0"
+                                        >
+                                            {isCloning ? <Loader2 size={13} className="animate-spin" /> : <Copy size={13} />}
+                                            {isCloning ? "Analizando..." : "Analizar"}
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] text-neutral-700">Funciona con amazon.es, amazon.com, amazon.co.uk — o pega directamente el ASIN (B0…)</p>
+                                </div>
+
+                                {/* Source info */}
+                                {cloneSource && (
+                                    <div className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.04] p-4 space-y-2">
+                                        <p className="text-[9px] font-black uppercase tracking-widest text-rose-400">Bestseller analizado</p>
+                                        <p className="text-sm font-black text-white leading-snug">{cloneSource.title}</p>
+                                        <div className="flex gap-4 flex-wrap">
+                                            {[
+                                                { label: "BSR", val: cloneSource.bsr },
+                                                { label: "Precio", val: cloneSource.price },
+                                                { label: "Reseñas", val: cloneSource.reviews },
+                                                { label: "Páginas", val: cloneSource.pages },
+                                            ].filter(x => x.val).map(({ label, val }) => (
+                                                <div key={label} className="text-xs">
+                                                    <span className="text-neutral-600 uppercase tracking-widest text-[9px]">{label}: </span>
+                                                    <span className="text-neutral-200 font-black">{val}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <p className="text-xs text-neutral-400 border-l-2 border-rose-500/30 pl-3 leading-relaxed">{cloneSource.formula}</p>
+                                    </div>
+                                )}
+
+                                {/* Empty state */}
+                                {!isCloning && cloneResults.length === 0 && !cloneSource && (
+                                    <div className="flex flex-col items-center justify-center py-10 rounded-2xl border border-dashed border-white/[0.06] bg-white/[0.01] gap-4">
+                                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-rose-500/8 border border-rose-500/15">
+                                            <Copy size={20} className="text-rose-400/30" />
+                                        </div>
+                                        <p className="text-sm text-neutral-700 text-center max-w-xs">Pega la URL de un bestseller de Amazon para generar 5 nichos clonados</p>
+                                    </div>
+                                )}
+
+                                {/* Clone cards */}
+                                {cloneResults.length > 0 && (
+                                    <div className="space-y-3">
+                                        <p className="text-xs font-black uppercase tracking-widest text-neutral-500">{cloneResults.length} clones · misma fórmula, nicho distinto</p>
+                                        {cloneResults.map((clone, idx) => (
+                                            <CloneCard key={idx} clone={clone} cardKey={`cur-${idx}`} saved={cloneSaved.has(idx)} tgSent={cloneTgSent.has(`cur-${idx}`)} tgSending={cloneTgSending.has(`cur-${idx}`)} onSave={() => void saveClone(idx, clone)} onTelegram={() => void sendToTelegram(`cur-${idx}`, clone, cloneSource?.title, cloneInput)} />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* ── History ── */}
+                        {cloneHistory.length > 0 && (
+                            <div className="rounded-3xl border border-white/8 bg-white/[0.015] overflow-hidden">
+                                <div className="px-5 py-3 flex items-center justify-between border-b border-white/[0.06]">
+                                    <p className="text-xs font-black uppercase tracking-widest text-neutral-500">Historial · {cloneHistory.length} análisis</p>
+                                    <button onClick={() => { setCloneHistory([]); try { localStorage.removeItem("kdp-clone-history"); } catch {} }} className="text-[9px] text-neutral-700 hover:text-rose-400 transition-colors">Borrar todo</button>
+                                </div>
+                                <div className="divide-y divide-white/[0.04]">
+                                    {cloneHistory.map((entry, idx) => {
+                                        const isOpen = expandedHistoryIdx === idx;
+                                        const d = new Date(entry.date);
+                                        const dateStr = d.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
+                                        const shortInput = entry.input.length > 55 ? `…${entry.input.slice(-52)}` : entry.input;
+                                        return (
+                                            <div key={idx}>
+                                                <button
+                                                    onClick={() => setExpandedHistoryIdx(isOpen ? null : idx)}
+                                                    className="w-full px-5 py-3 flex items-center gap-3 hover:bg-white/[0.02] transition-colors text-left"
+                                                >
+                                                    <ChevronDown size={13} className={`text-neutral-600 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm text-neutral-300 font-semibold truncate">{entry.source.title || shortInput}</p>
+                                                        <p className="text-[9px] text-neutral-700 font-mono truncate">{shortInput}</p>
+                                                    </div>
+                                                    <div className="shrink-0 text-right">
+                                                        <p className="text-[9px] text-neutral-600">{dateStr}</p>
+                                                        <p className="text-[9px] text-neutral-700">{entry.clones.length} clones</p>
+                                                    </div>
+                                                    <button
+                                                        onClick={e => { e.stopPropagation(); deleteHistoryEntry(idx); }}
+                                                        className="shrink-0 p-1 rounded-lg hover:bg-rose-500/10 text-neutral-700 hover:text-rose-400 transition-all"
+                                                    >
+                                                        <X size={12} />
+                                                    </button>
+                                                </button>
+                                                {isOpen && (
+                                                    <div className="px-5 pb-4 space-y-3">
+                                                        <div className="rounded-2xl border border-rose-500/15 bg-rose-500/[0.03] p-3 space-y-1.5">
+                                                            <p className="text-xs font-black text-white">{entry.source.title}</p>
+                                                            <div className="flex gap-4 flex-wrap">
+                                                                {[
+                                                                    { label: "BSR", val: entry.source.bsr },
+                                                                    { label: "Precio", val: entry.source.price },
+                                                                    { label: "Reseñas", val: entry.source.reviews },
+                                                                ].filter(x => x.val).map(({ label, val }) => (
+                                                                    <div key={label} className="text-xs">
+                                                                        <span className="text-neutral-600 text-[9px] uppercase">{label}: </span>
+                                                                        <span className="text-neutral-300 font-black">{val}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                            {entry.source.formula && <p className="text-xs text-neutral-500 border-l-2 border-rose-500/20 pl-2 leading-relaxed">{entry.source.formula}</p>}
+                                                        </div>
+                                                        {entry.clones.map((clone, ci) => (
+                                                            <CloneCard key={ci} clone={clone} cardKey={`hist-${idx}-${ci}`} saved={false} tgSent={cloneTgSent.has(`hist-${idx}-${ci}`)} tgSending={cloneTgSending.has(`hist-${idx}-${ci}`)} onSave={() => void saveClone(ci, clone)} onTelegram={() => void sendToTelegram(`hist-${idx}-${ci}`, clone, entry.source.title, entry.input)} />
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
 
         </div>
         );

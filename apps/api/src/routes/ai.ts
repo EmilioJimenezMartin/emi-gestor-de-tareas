@@ -1707,6 +1707,61 @@ Generate exactly 15 diverse, actionable trends. Focus on currently profitable an
         }
     });
 
+    // ── TRENDS TIME MACHINE — predice semanas óptimas de publicación ──────────
+    app.post("/trends/timemachine", async (request: any, reply) => {
+        const { nicheNames = [] } = request.body as { nicheNames?: string[] };
+
+        const { generateTextWithLLM } = await import("../lib/ai.js");
+        const today = new Date();
+        const todayStr = today.toISOString().split("T")[0];
+
+        const SYSTEM = `Eres un experto en temporalidad de mercado para publicaciones KDP (libros de colorear, activity books, journals, printables). Tienes conocimiento profundo de cuándo busca la gente cada tipo de producto en Amazon y Etsy.
+
+Tu misión: dado un listado de nichos KDP, predice la fecha ÓPTIMA para publicar cada uno para coger el pico de búsqueda.
+
+Reglas:
+- Usa patrones históricos reales: Halloween pico = semana del 1 Oct, Navidad pico = semana del 1 Dic, Valentine pico = semana del 28 Ene, etc.
+- Para nichos evergreen (mandalas, animales, naturaleza), recomienda la semana de menor competencia (inicio de año o verano)
+- Para nichos estacionales, recomienda publicar EXACTAMENTE 6-10 semanas antes del pico (tiempo para que Amazon indexe y rankee)
+- Si el nicho ya pasó su pico este año, proyecta al año siguiente
+- "urgency": "critical" si hay menos de 3 semanas hasta la ventana ideal, "soon" si 4-8 semanas, "ok" si 9-20 semanas, "evergreen" si es todo el año
+
+Hoy es ${todayStr}.
+
+IMPORTANTE: Responde ÚNICA Y EXCLUSIVAMENTE con JSON puro sin ningún markdown, sin bloques de código, sin comentarios, sin texto adicional. El JSON debe ser válido y parseable directamente.
+
+Estructura exacta:
+{"predictions":[{"nicheName":"string","season":"string","peakWeek":"YYYY-MM-DD","optimalPublishDate":"YYYY-MM-DD","weeksUntilPublish":0,"urgency":"critical","tip":"string"}]}`;
+
+        const nicheList = nicheNames.length > 0
+            ? nicheNames.map((n, i) => `${i + 1}. ${n}`).join("\n")
+            : "Sin nichos específicos — genera recomendaciones para los 8 tipos de nichos KDP más vendidos";
+
+        try {
+            const raw = await generateTextWithLLM(SYSTEM, `NICHOS A ANALIZAR:\n${nicheList}`);
+            // Strip markdown fences, JS comments, and trailing commas before parsing
+            const cleaned = raw
+                .replace(/```[a-z]*\n?/gi, "")
+                .replace(/\/\/[^\n]*/g, "")
+                .replace(/\/\*[\s\S]*?\*\//g, "")
+                .replace(/,\s*([}\]])/g, "$1")
+                .trim();
+            const match = cleaned.match(/\{[\s\S]*\}/);
+            if (!match) return reply.status(500).send({ error: "La IA no devolvió JSON válido" });
+            const parsed = JSON.parse(match[0]);
+
+            // Sort by urgency: critical first, then soon, ok, evergreen
+            const order: Record<string, number> = { critical: 0, soon: 1, ok: 2, evergreen: 3 };
+            if (Array.isArray(parsed.predictions)) {
+                parsed.predictions.sort((a: any, b: any) => (order[a.urgency] ?? 4) - (order[b.urgency] ?? 4));
+            }
+
+            return reply.send(parsed);
+        } catch (e: any) {
+            return reply.status(500).send({ error: e?.message ?? "Error generando predicciones" });
+        }
+    });
+
     // ── AI UPSCALE (super-resolution via HuggingFace) ────────────────────────
     app.post("/ai/upscale", { bodyLimit: 30 * 1024 * 1024 }, async (request: any, reply) => {
         const { dataUrl } = request.body || {};
