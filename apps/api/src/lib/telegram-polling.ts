@@ -643,6 +643,44 @@ async function processUpdate(update: any): Promise<void> {
             tAction.resolvedAt = new Date();
             await tAction.save();
             resultText = await handleNicheDiscovery(tAction, action as "continuar" | "omitir" | "descartar");
+        } else if (tAction.type === "clone-decision" && ["continuar", "descartar"].includes(action)) {
+            tAction.status = action as "continuar" | "descartar";
+            tAction.resolvedAt = new Date();
+            await tAction.save();
+            if (action === "continuar") {
+                try {
+                    const cd = tAction.cloneData as any ?? {};
+                    const { Niche } = await import("../models/niche.js");
+                    const existing = await Niche.findOne({ name: tAction.nicheName }).lean();
+                    if (existing) {
+                        resultText = `✅ "${tAction.nicheName}" ya existía en tus nichos`;
+                    } else {
+                        const noteLines = [
+                            `Clone Engine (aprobado vía Telegram)`,
+                            ``,
+                            `— Por qué funciona: ${cd.whyItWorks ?? ""}`,
+                            `— Audiencia: ${cd.audience ?? ""}`,
+                            `— Cover: ${cd.coverBrief ?? ""}`,
+                        ];
+                        if (cd.sourceTitle) noteLines.push(``, `Basado en: ${cd.sourceTitle}`);
+                        if (cd.sourceUrl) noteLines.push(`URL: ${cd.sourceUrl}`);
+                        if (tAction.imagePrompt) noteLines.push(``, `Prompt portada: ${tAction.imagePrompt}`);
+                        await Niche.create({
+                            name: tAction.nicheName,
+                            description: cd.titleTemplate ?? "",
+                            tags: cd.keywords ?? [],
+                            competition: cd.competition ?? "unknown",
+                            notes: noteLines.join("\n"),
+                        });
+                        _io?.emit("niches:updated");
+                        resultText = `✅ Nicho "${tAction.nicheName}" creado`;
+                    }
+                } catch (e: any) {
+                    resultText = `❌ Error creando nicho: ${e.message}`;
+                }
+            } else {
+                resultText = `🗑️ "${tAction.nicheName}" descartado`;
+            }
         } else if (tAction.type === "phase-approve" && ["approve", "reject"].includes(action)) {
             tAction.status = action === "approve" ? "approved" : "rejected";
             tAction.resolvedAt = new Date();
@@ -659,7 +697,7 @@ async function processUpdate(update: any): Promise<void> {
         if (tAction.messageId) {
             await editTelegramMessage(
                 tAction.messageId,
-                `${tAction.type === "niche-discovery" ? "🔍" : "📦"} <b>${tAction.nicheName}</b>\n\n${resultText}`
+                `${tAction.type === "niche-discovery" ? "🔍" : tAction.type === "clone-decision" ? "🎯" : "📦"} <b>${tAction.nicheName}</b>\n\n${resultText}`
             );
         }
         return;

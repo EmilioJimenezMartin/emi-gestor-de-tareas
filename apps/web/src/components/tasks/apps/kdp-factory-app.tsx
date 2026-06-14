@@ -12620,7 +12620,29 @@ export function KdpFactoryApp() {
                     }
                 };
 
-                const saveClone = async (idx: number, clone: CloneResult) => {
+                // Map niche name → _id for all niches in DB (case-insensitive)
+                const nicheNameMap = new Map(niches.map(n => [n.name.toLowerCase(), n._id]));
+                const isNicheSaved = (name: string) => nicheNameMap.has(name.toLowerCase());
+                const savedNicheId = (name: string) => nicheNameMap.get(name.toLowerCase()) ?? null;
+
+                const buildNotes = (clone: CloneResult, src?: CloneSource | null, srcUrl?: string) => {
+                    const lines = [
+                        `Clone Engine`,
+                        ``,
+                        `— Por qué funciona: ${clone.whyItWorks}`,
+                        `— Audiencia: ${clone.audience}`,
+                        `— Cover: ${clone.coverBrief}`,
+                    ];
+                    if (src?.title) lines.push(``, `Basado en: ${src.title}`);
+                    if (src?.formula) lines.push(`Fórmula: ${src.formula}`);
+                    if (src?.bsr) lines.push(`BSR: ${src.bsr}`);
+                    if (src?.price) lines.push(`Precio: ${src.price}`);
+                    if (src?.reviews) lines.push(`Reseñas: ${src.reviews}`);
+                    if (srcUrl) lines.push(`URL: ${srcUrl}`);
+                    return lines.join("\n");
+                };
+
+                const saveClone = async (clone: CloneResult, src?: CloneSource | null, srcUrl?: string) => {
                     try {
                         const res = await fetch(`${API_BASE_URL}/niches`, {
                             method: "POST",
@@ -12630,24 +12652,16 @@ export function KdpFactoryApp() {
                                 description: clone.titleTemplate,
                                 tags: clone.keywords,
                                 competition: clone.competition,
-                                notes: `Clone Engine · ${clone.whyItWorks}\nAudiencia: ${clone.audience}\nCover: ${clone.coverBrief}`,
+                                notes: buildNotes(clone, src, srcUrl),
                             }),
                         });
                         const data = await res.json();
                         if (!res.ok) throw new Error(data.error ?? "Error");
-                        setCloneSaved(prev => new Set([...prev, idx]));
-                        toast.success(data.duplicate ? "Nicho ya existía — reutilizado" : `"${clone.nicheName}" añadido a tus nichos`);
+                        toast.success(data.duplicate ? "Nicho ya existía" : `"${clone.nicheName}" añadido a tus nichos`);
+                        void fetchNiches();
                     } catch (e: any) {
                         toast.error(e.message ?? "Error guardando");
                     }
-                };
-
-                const loadHistoryEntry = (entry: CloneHistoryEntry, idx: number) => {
-                    setCloneInput(entry.input);
-                    setCloneSource(entry.source);
-                    setCloneResults(entry.clones);
-                    setCloneSaved(new Set());
-                    setExpandedHistoryIdx(idx === expandedHistoryIdx ? null : idx);
                 };
 
                 const deleteHistoryEntry = (idx: number) => {
@@ -12660,10 +12674,11 @@ export function KdpFactoryApp() {
                 };
 
                 const compColor = (c: string) => c === "low" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : c === "medium" ? "text-amber-400 bg-amber-500/10 border-amber-500/20" : "text-rose-400 bg-rose-500/10 border-rose-500/20";
-                const compLabel = (c: string) => c === "low" ? "Baja competencia" : c === "medium" ? "Media" : "Alta";
+                const compLabel = (c: string) => c === "low" ? "Baja" : c === "medium" ? "Media" : "Alta";
 
                 const sendToTelegram = async (cardKey: string, clone: CloneResult, srcTitle?: string, srcUrl?: string) => {
                     setCloneTgSending(prev => new Set([...prev, cardKey]));
+                    setCloneTgSent(prev => { const s = new Set(prev); s.delete(cardKey); return s; });
                     try {
                         const res = await fetch(`${API_BASE_URL}/niches/clone-telegram`, {
                             method: "POST",
@@ -12681,33 +12696,47 @@ export function KdpFactoryApp() {
                     }
                 };
 
-                const CloneCard = ({ clone, cardKey, saved, tgSent, tgSending, onSave, onTelegram }: { clone: CloneResult; cardKey: string; saved: boolean; tgSent: boolean; tgSending: boolean; onSave: () => void; onTelegram: () => void }) => (
-                    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 space-y-3 hover:border-rose-500/20 transition-all">
+                const CloneCard = ({ clone, cardKey, tgSent, tgSending, onSave, onDelete, onTelegram }: { clone: CloneResult; cardKey: string; tgSent: boolean; tgSending: boolean; onSave: () => void; onDelete: (() => void) | null; onTelegram: () => void }) => {
+                    const saved = isNicheSaved(clone.nicheName);
+                    return (
+                    <div className={`rounded-2xl border bg-white/[0.02] p-4 space-y-3 transition-all ${saved ? "border-emerald-500/25 bg-emerald-500/[0.02]" : "border-white/8 hover:border-rose-500/20"}`}>
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <p className="text-base font-black text-white">{clone.nicheName}</p>
                                     <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${compColor(clone.competition)}`}>{compLabel(clone.competition)}</span>
+                                    {saved && <span className="text-[9px] font-black px-2 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 flex items-center gap-1"><CheckCircle2 size={9} /> En tus nichos</span>}
                                 </div>
                                 <p className="text-xs text-neutral-500 mt-1 font-mono leading-relaxed">{clone.titleTemplate}</p>
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                                 <button
                                     onClick={onTelegram}
-                                    disabled={tgSent || tgSending}
+                                    disabled={tgSending}
                                     title="Enviar a Telegram para decidir"
-                                    className={`h-8 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${tgSent ? "bg-sky-500/15 border border-sky-500/30 text-sky-400" : "bg-white/[0.04] border border-white/10 text-neutral-500 hover:border-sky-500/30 hover:text-sky-400"}`}
+                                    className={`h-8 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${tgSent ? "bg-sky-500/15 border border-sky-500/30 text-sky-400 hover:bg-sky-500/25" : "bg-white/[0.04] border border-white/10 text-neutral-500 hover:border-sky-500/30 hover:text-sky-400"}`}
                                 >
                                     {tgSending ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
-                                    {tgSent ? "Enviado" : "Telegram"}
+                                    {tgSent ? "Re-enviar" : "Telegram"}
                                 </button>
-                                <button
-                                    onClick={onSave}
-                                    disabled={saved}
-                                    className={`h-8 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${saved ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-400" : "bg-rose-500/15 border border-rose-500/30 text-rose-300 hover:bg-rose-500/25"}`}
-                                >
-                                    {saved ? <><CheckCircle2 size={11} /> Guardado</> : <>+ Nicho</>}
-                                </button>
+                                {saved ? (
+                                    onDelete && (
+                                        <button
+                                            onClick={onDelete}
+                                            title="Eliminar nicho"
+                                            className="h-8 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20"
+                                        >
+                                            <Trash2 size={11} /> Borrar
+                                        </button>
+                                    )
+                                ) : (
+                                    <button
+                                        onClick={onSave}
+                                        className="h-8 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 bg-rose-500/15 border border-rose-500/30 text-rose-300 hover:bg-rose-500/25"
+                                    >
+                                        + Nicho
+                                    </button>
+                                )}
                             </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
@@ -12730,7 +12759,8 @@ export function KdpFactoryApp() {
                             ))}
                         </div>
                     </div>
-                );
+                    );
+                };
 
                 return (
                     <div className="space-y-4">
@@ -12805,7 +12835,7 @@ export function KdpFactoryApp() {
                                     <div className="space-y-3">
                                         <p className="text-xs font-black uppercase tracking-widest text-neutral-500">{cloneResults.length} clones · misma fórmula, nicho distinto</p>
                                         {cloneResults.map((clone, idx) => (
-                                            <CloneCard key={idx} clone={clone} cardKey={`cur-${idx}`} saved={cloneSaved.has(idx)} tgSent={cloneTgSent.has(`cur-${idx}`)} tgSending={cloneTgSending.has(`cur-${idx}`)} onSave={() => void saveClone(idx, clone)} onTelegram={() => void sendToTelegram(`cur-${idx}`, clone, cloneSource?.title, cloneInput)} />
+                                            <CloneCard key={idx} clone={clone} cardKey={`cur-${idx}`} tgSent={cloneTgSent.has(`cur-${idx}`)} tgSending={cloneTgSending.has(`cur-${idx}`)} onSave={() => void saveClone(clone, cloneSource, cloneInput)} onDelete={savedNicheId(clone.nicheName) ? () => void deleteNiche(savedNicheId(clone.nicheName)!) : null} onTelegram={() => void sendToTelegram(`cur-${idx}`, clone, cloneSource?.title, cloneInput)} />
                                         ))}
                                     </div>
                                 )}
@@ -12869,7 +12899,7 @@ export function KdpFactoryApp() {
                                                             {entry.source.formula && <p className="text-xs text-neutral-500 border-l-2 border-rose-500/20 pl-2 leading-relaxed">{entry.source.formula}</p>}
                                                         </div>
                                                         {entry.clones.map((clone, ci) => (
-                                                            <CloneCard key={ci} clone={clone} cardKey={`hist-${idx}-${ci}`} saved={false} tgSent={cloneTgSent.has(`hist-${idx}-${ci}`)} tgSending={cloneTgSending.has(`hist-${idx}-${ci}`)} onSave={() => void saveClone(ci, clone)} onTelegram={() => void sendToTelegram(`hist-${idx}-${ci}`, clone, entry.source.title, entry.input)} />
+                                                            <CloneCard key={ci} clone={clone} cardKey={`hist-${idx}-${ci}`} tgSent={cloneTgSent.has(`hist-${idx}-${ci}`)} tgSending={cloneTgSending.has(`hist-${idx}-${ci}`)} onSave={() => void saveClone(clone, entry.source, entry.input)} onDelete={savedNicheId(clone.nicheName) ? () => void deleteNiche(savedNicheId(clone.nicheName)!) : null} onTelegram={() => void sendToTelegram(`hist-${idx}-${ci}`, clone, entry.source.title, entry.input)} />
                                                         ))}
                                                     </div>
                                                 )}

@@ -1,6 +1,8 @@
 import { FastifyInstance } from "fastify";
 import { Niche } from "../models/niche.js";
-import { sendTelegramApproval } from "../lib/telegram.js";
+import { sendTelegramImageWithButtons, sendTelegram } from "../lib/telegram.js";
+import { TelegramAction } from "../models/telegram-action.js";
+import { generateImage } from "../lib/image-gen.js";
 
 const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
 function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
@@ -1091,7 +1093,7 @@ Estructura exacta:
     });
 
     // ── POST /niches/clone-telegram ────────────────────────────────────────────
-    // Envía un clon de nicho a Telegram con botones de decisión
+    // AI cover prompt → generate image → TelegramAction → send with buttons
     app.post("/niches/clone-telegram", async (request: any, reply) => {
         const { clone, sourceTitle, sourceUrl } = request.body as {
             clone: { nicheName: string; titleTemplate: string; audience: string; coverBrief: string; keywords: string[]; whyItWorks: string; competition: string };
@@ -1103,17 +1105,38 @@ Estructura exacta:
 
         const { generateTextWithLLM } = await import("../lib/ai.js");
 
-        const compEmoji = clone.competition === "low" ? "🟢" : clone.competition === "medium" ? "🟡" : "🔴";
-        const actionId = `clone-nicho:${encodeURIComponent(clone.nicheName)}:${encodeURIComponent(clone.titleTemplate || "")}:${encodeURIComponent((clone.keywords ?? []).slice(0, 3).join(","))}`;
-
         try {
-            const pitch = await generateTextWithLLM(
-                `Eres un copywriter de nichos KDP. Escribe un mensaje de Telegram corto y convincente (máx 5 líneas) sobre un nicho para que el autor decida si lo publica. Sé directo, usa datos concretos, sin emojis extra.`,
-                `Nicho: ${clone.nicheName}\nTítulo: ${clone.titleTemplate}\nAudiencia: ${clone.audience}\nPortada: ${clone.coverBrief}\nPor qué funciona: ${clone.whyItWorks}\nCompetencia: ${clone.competition}\nKeywords: ${clone.keywords?.join(", ")}`
-            );
+            // 1 · AI mejora el prompt de imagen y genera el pitch
+            const [imagePrompt, pitch] = await Promise.all([
+                generateTextWithLLM(
+                    `Eres un experto en prompts de image generation para portadas de libros KDP de colorear. Escribe UN prompt en inglés (máx 25 palabras) para generar la portada ideal. OBLIGATORIO: el prompt debe describir una portada de libro de colorear — líneas negras limpias sobre fondo blanco, estilo ilustración minimalista. Solo el prompt, nada más.`,
+                    `Nicho: ${clone.nicheName}\nTítulo: ${clone.titleTemplate}\nPortada: ${clone.coverBrief}\nAudiencia: ${clone.audience}`
+                ),
+                generateTextWithLLM(
+                    `Eres un copywriter de nichos KDP. Escribe un mensaje de Telegram corto (3-4 líneas, sin emojis extra) sobre este nicho para que el autor decida si publicarlo. Directo, con datos concretos.`,
+                    `Nicho: ${clone.nicheName}\nTítulo: ${clone.titleTemplate}\nAudiencia: ${clone.audience}\nPor qué funciona: ${clone.whyItWorks}\nCompetencia: ${clone.competition}\nKeywords: ${(clone.keywords ?? []).join(", ")}`
+                ),
+            ]);
 
-            const text = [
-                `🎯 <b>NUEVO NICHO — Clone Engine</b>`,
+            // 2 · Generar imagen de portada
+            let imageBytes: Buffer | null = null;
+            try {
+                const fullPrompt = `${imagePrompt.trim()}, coloring book style, black line art, clean outlines, white background, KDP book cover`;
+                imageBytes = await generateImage(fullPrompt, { width: 768, height: 1024 });
+            } catch { /* si falla, seguimos sin imagen */ }
+
+            // 3 · Crear TelegramAction para rastrear la decisión
+            const action = await TelegramAction.create({
+                type: "clone-decision",
+                nicheName: clone.nicheName,
+                imagePrompt: imagePrompt.trim(),
+                cloneData: { ...clone, sourceTitle, sourceUrl },
+                autoApproveAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+            });
+
+            const compEmoji = clone.competition === "low" ? "🟢" : clone.competition === "medium" ? "🟡" : "🔴";
+            const caption = [
+                `🎯 <b>Clone Engine — Nicho candidato</b>`,
                 ``,
                 `📚 <b>${clone.nicheName}</b>`,
                 `<i>${clone.titleTemplate}</i>`,
@@ -1121,13 +1144,29 @@ Estructura exacta:
                 pitch.trim(),
                 ``,
                 `${compEmoji} Competencia: <b>${clone.competition === "low" ? "Baja" : clone.competition === "medium" ? "Media" : "Alta"}</b>`,
-                `👥 ${clone.audience}`,
-                ...(sourceTitle ? [`📖 Basado en: <i>${sourceTitle.slice(0, 80)}</i>`] : []),
-                ...(sourceUrl ? [`🔗 ${sourceUrl}`.slice(0, 100)] : []),
+                ...(sourceTitle ? [`📖 Basado en: <i>${sourceTitle.slice(0, 70)}</i>`] : []),
             ].join("\n");
 
-            const msgId = await sendTelegramApproval({ text, actionId });
-            if (msgId === null) return reply.status(503).send({ error: "Telegram no configurado o no disponible" });
+            const rows = [[
+                { text: "✅ Crear nicho", callback_data: `continuar:${String(action._id)}` },
+                { text: "🗑️ Descartar",  callback_data: `descartar:${String(action._id)}` },
+            ]];
+
+            let msgId: number | null = null;
+            if (imageBytes) {
+                msgId = await sendTelegramImageWithButtons(imageBytes, caption, rows);
+            }
+            if (!msgId) {
+                // Fallback: texto con botones si la imagen falla
+                const { sendTelegramButtons } = await import("../lib/telegram.js");
+                msgId = await sendTelegramButtons(caption, rows);
+            }
+
+            if (msgId === null) return reply.status(503).send({ error: "Telegram no responde — comprueba BOT_TOKEN y CHAT_ID en ajustes" });
+
+            action.messageId = msgId;
+            await action.save();
+
             return reply.send({ ok: true, messageId: msgId });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message ?? "Error enviando a Telegram" });

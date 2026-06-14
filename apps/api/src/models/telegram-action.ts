@@ -1,7 +1,7 @@
 import mongoose, { Schema, model } from "mongoose";
 
 export interface ITelegramAction {
-    type: "niche-discovery" | "phase-approve" | "img-test";
+    type: "niche-discovery" | "phase-approve" | "img-test" | "clone-decision";
     nicheId: string;
     nicheName: string;
     targetPhase?: string;
@@ -10,6 +10,7 @@ export interface ITelegramAction {
     imageUrl?: string;
     imagePrompt?: string;
     aiModel?: { id: string; name: string; provider: string; modelId: string };
+    cloneData?: Record<string, unknown>;
     autoApproveAt: Date;
     createdAt: Date;
     resolvedAt?: Date;
@@ -25,6 +26,7 @@ const schema = new Schema<ITelegramAction>({
     imageUrl: String,
     imagePrompt: String,
     aiModel: { type: Schema.Types.Mixed },
+    cloneData: { type: Schema.Types.Mixed },
     autoApproveAt: { type: Date, required: true },
     createdAt: { type: Date, default: Date.now },
     resolvedAt: Date,
