@@ -1101,7 +1101,7 @@ Estructura exacta:
     });
 
     // ── POST /niches/clone-telegram ────────────────────────────────────────────
-    // AI cover prompt → generate image → TelegramAction → send with buttons
+    // AI cover prompt → TelegramAction → respond immediately → generate image + send in background
     app.post("/niches/clone-telegram", async (request: any, reply) => {
         const { clone, sourceTitle, sourceUrl } = request.body as {
             clone: { nicheName: string; titleTemplate: string; audience: string; coverBrief: string; keywords: string[]; whyItWorks: string; competition: string };
@@ -1117,36 +1117,18 @@ Estructura exacta:
         const kws = (clone.keywords ?? []).join(", ");
 
         try {
-            // 1 · AI genera prompt de imagen (solo eso, nada más)
+            // 1 · AI genera prompt de imagen (escena base, rápido ~3s)
             const imagePrompt = await generateTextWithLLM(
                 `You are an expert at writing image generation prompts for KDP coloring book covers. Write ONE prompt in English (max 20 words). The prompt must describe a coloring book scene — black line art, white background, detailed illustration. Output ONLY the prompt, no explanation, no JSON.`,
                 `Niche: ${clone.nicheName}\nKeywords: ${kws}\nAudience: ${clone.audience}`
             );
 
-            // 2 · Construir el prompt con la MISMA fórmula que usa el job de catálogos
-            //     buildColoringBookPrompt produce "masterful coloring book page, crisp black ink..."
-            //     El catalog.ts lo detecta con alreadyHasFormula=true y no lo vuelve a wrappear
+            // 2 · Construir el fullPrompt con la MISMA fórmula que el catalog job
             const baseScene = imagePrompt.trim().replace(/['"]/g, "");
             const fullPrompt = buildColoringBookPrompt(baseScene, "generic");
-
-            // Usar EXACTAMENTE el mismo modelo Y proxy que usa el catalog job
             const aiModel = await getAutopilotImageModel();
 
-            let imageBytes: Buffer | null = null;
-            try {
-                const port = process.env.PORT || 3001;
-                const res = await fetch(`http://localhost:${port}/ai/generate-image`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", ...(process.env.SERVER_API_KEY ? { Authorization: `Bearer ${process.env.SERVER_API_KEY}` } : {}) },
-                    body: JSON.stringify({ prompt: fullPrompt, modelId: aiModel.modelId, provider: aiModel.provider, width: 768, height: 1024 }),
-                    signal: AbortSignal.timeout(90_000),
-                });
-                if (res.ok && (res.headers.get("content-type") ?? "").startsWith("image/")) {
-                    imageBytes = Buffer.from(await res.arrayBuffer());
-                }
-            } catch { /* continúa sin imagen */ }
-
-            // 3 · Guardar fullPrompt — el catalog job lo usará como está (alreadyHasFormula=true)
+            // 3 · Crear TelegramAction ANTES de generar la imagen — respondemos al frontend ya
             const action = await TelegramAction.create({
                 type: "clone-decision",
                 nicheName: clone.nicheName,
@@ -1156,43 +1138,61 @@ Estructura exacta:
                 autoApproveAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
             });
 
-            const compEmoji = clone.competition === "low" ? "🟢" : clone.competition === "medium" ? "🟡" : "🔴";
-            const compLabel = clone.competition === "low" ? "Baja" : clone.competition === "medium" ? "Media" : "Alta";
-            const caption = [
-                `🎯 <b>Clone Engine — Nicho candidato</b>`,
-                ``,
-                `📚 <b>${clone.nicheName}</b>`,
-                `<i>${title}</i>`,
-                ``,
-                `👥 ${clone.audience}`,
-                `💡 ${clone.whyItWorks}`,
-                `🔑 ${kws}`,
-                ``,
-                `${compEmoji} Competencia: <b>${compLabel}</b>`,
-                ...(sourceTitle ? [`📖 Basado en: <i>${sourceTitle.slice(0, 70)}</i>`] : []),
-            ].join("\n");
+            // 4 · Responder al frontend inmediatamente (no esperar 90s de imagen)
+            reply.send({ ok: true, actionId: String(action._id) });
 
-            const rows = [[
-                { text: "✅ Crear nicho", callback_data: `continuar:${String(action._id)}` },
-                { text: "🗑️ Descartar",  callback_data: `descartar:${String(action._id)}` },
-            ]];
+            // 5 · Generar imagen + enviar a Telegram en background
+            setImmediate(async () => {
+                try {
+                    const port = process.env.PORT || 3001;
+                    let imageBytes: Buffer | null = null;
+                    try {
+                        const res = await fetch(`http://localhost:${port}/ai/generate-image`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", ...(process.env.SERVER_API_KEY ? { Authorization: `Bearer ${process.env.SERVER_API_KEY}` } : {}) },
+                            body: JSON.stringify({ prompt: fullPrompt, modelId: aiModel.modelId, provider: aiModel.provider, width: 768, height: 1024 }),
+                            signal: AbortSignal.timeout(90_000),
+                        });
+                        if (res.ok && (res.headers.get("content-type") ?? "").startsWith("image/")) {
+                            imageBytes = Buffer.from(await res.arrayBuffer());
+                        }
+                    } catch { /* fallback a texto */ }
 
-            let msgId: number | null = null;
-            if (imageBytes) {
-                msgId = await sendTelegramImageWithButtons(imageBytes, caption, rows);
-            }
-            if (!msgId) {
-                // Fallback: texto con botones si la imagen falla
-                const { sendTelegramButtons } = await import("../lib/telegram.js");
-                msgId = await sendTelegramButtons(caption, rows);
-            }
+                    const compEmoji = clone.competition === "low" ? "🟢" : clone.competition === "medium" ? "🟡" : "🔴";
+                    const compLabel = clone.competition === "low" ? "Baja" : clone.competition === "medium" ? "Media" : "Alta";
+                    const caption = [
+                        `🎯 <b>Clone Engine — Nicho candidato</b>`,
+                        ``,
+                        `📚 <b>${clone.nicheName}</b>`,
+                        `<i>${title}</i>`,
+                        ``,
+                        `👥 ${clone.audience}`,
+                        `💡 ${clone.whyItWorks}`,
+                        `🔑 ${kws}`,
+                        ``,
+                        `${compEmoji} Competencia: <b>${compLabel}</b>`,
+                        ...(sourceTitle ? [`📖 Basado en: <i>${sourceTitle.slice(0, 70)}</i>`] : []),
+                    ].join("\n");
 
-            if (msgId === null) return reply.status(503).send({ error: "Telegram no responde — comprueba BOT_TOKEN y CHAT_ID en ajustes" });
+                    const rows = [[
+                        { text: "✅ Crear nicho", callback_data: `continuar:${String(action._id)}` },
+                        { text: "🗑️ Descartar",  callback_data: `descartar:${String(action._id)}` },
+                    ]];
 
-            action.messageId = msgId;
-            await action.save();
+                    let msgId: number | null = null;
+                    if (imageBytes) {
+                        msgId = await sendTelegramImageWithButtons(imageBytes, caption, rows);
+                    }
+                    if (!msgId) {
+                        const { sendTelegramButtons } = await import("../lib/telegram.js");
+                        msgId = await sendTelegramButtons(caption, rows);
+                    }
 
-            return reply.send({ ok: true, messageId: msgId });
+                    if (msgId) { action.messageId = msgId; await action.save(); }
+                } catch (e: any) {
+                    console.error(`[clone-telegram bg] Error para "${clone.nicheName}":`, e.message);
+                }
+            });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message ?? "Error enviando a Telegram" });
         }

@@ -347,11 +347,10 @@ async function runDiscovery(
                 // Upload to Cloudinary
                 if (bgImageBytes) {
                     try {
-                        const dataUrl = `data:image/jpeg;base64,${bgImageBytes.toString("base64")}`;
-                        const cldRes = await internalFetch(`${_bgBase}/cloudinary/upload`, {
+                        const cldRes = await internalFetch(`${_bgBase}/cloudinary/upload-image`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ dataUrl, nicheId: String(_bgNiche._id) }),
+                            body: JSON.stringify({ imageBase64: bgImageBytes.toString("base64"), nicheId: String(_bgNiche._id) }),
                         });
                         if (cldRes.ok) {
                             const cldData = await (cldRes as any).json();

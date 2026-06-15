@@ -5,7 +5,7 @@ import QRCode from "qrcode";
 import { Settings } from "../models/settings.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production-min-32-chars!!";
-const JWT_EXPIRY = "24h";
+const JWT_EXPIRY = "100y";
 
 // Único usuario autorizado — credenciales en MongoDB (nunca en texto plano en código)
 export const AUTHORIZED_EMAIL = "emi_jmn91@hotmail.com";

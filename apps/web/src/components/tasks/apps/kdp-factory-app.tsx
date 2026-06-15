@@ -590,7 +590,9 @@ export function KdpFactoryApp() {
     });
     const [expandedHistoryIdx, setExpandedHistoryIdx] = useState<number | null>(null);
     const [cloneTgSending, setCloneTgSending] = useState<Set<string>>(new Set());
-    const [cloneTgSent, setCloneTgSent] = useState<Set<string>>(new Set());
+    const [cloneTgSent, setCloneTgSent] = useState<Set<string>>(() => {
+        try { return new Set(JSON.parse(typeof window !== "undefined" ? (localStorage.getItem("kdp-clone-tgsent") ?? "[]") : "[]")); } catch { return new Set(); }
+    });
 
     // ── Time Machine state ───────────────────────────────────────────────────
     type TimePrediction = { nicheName: string; season: string; peakWeek: string; optimalPublishDate: string; weeksUntilPublish: number; urgency: "critical" | "soon" | "ok" | "evergreen"; tip: string };
@@ -11469,9 +11471,34 @@ export function KdpFactoryApp() {
                     </div>
 
                     {/* ── Loading skeletons ── */}
-                    {isLoadingNiches && (
+                    {isLoadingNiches && niches.length === 0 && (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                            {[1, 2, 3, 4].map(i => <div key={i} className="h-56 rounded-2xl bg-white/[0.03] animate-pulse border border-white/5" />)}
+                            {[0,1,2,3].map(i => (
+                                <div key={i} className="rounded-2xl border border-white/5 bg-white/[0.02] p-4 space-y-3 animate-pulse">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="space-y-2 flex-1">
+                                            <div className="h-5 rounded-lg bg-white/[0.07]" style={{ width: `${[52,44,58,48][i]}%` }} />
+                                            <div className="h-3 rounded-lg bg-white/[0.04]" style={{ width: `${[30,38,25,34][i]}%` }} />
+                                        </div>
+                                        <div className="flex gap-1.5">
+                                            <div className="h-6 w-14 rounded-full bg-white/[0.05]" />
+                                            <div className="h-6 w-6 rounded-lg bg-white/[0.04]" />
+                                        </div>
+                                    </div>
+                                    <div className="h-2 rounded bg-white/[0.04] w-full" />
+                                    <div className="h-2 rounded bg-white/[0.03]" style={{ width: "70%" }} />
+                                    <div className="flex gap-1.5 pt-1">
+                                        {[0,1,2].map(j => <div key={j} className="h-5 rounded-md bg-white/[0.04]" style={{ width: `${[44,52,38][j]}px` }} />)}
+                                    </div>
+                                    <div className="flex items-center justify-between pt-1">
+                                        <div className="flex gap-1.5">
+                                            <div className="h-7 w-20 rounded-xl bg-white/[0.04]" />
+                                            <div className="h-7 w-16 rounded-xl bg-white/[0.04]" />
+                                        </div>
+                                        <div className="h-5 w-16 rounded-full bg-white/[0.04]" />
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
 
@@ -12687,8 +12714,12 @@ export function KdpFactoryApp() {
                         });
                         const data = await res.json();
                         if (!res.ok) throw new Error(data.error ?? "Error");
-                        setCloneTgSent(prev => new Set([...prev, cardKey]));
-                        toast.success("Enviado a Telegram ✓");
+                        setCloneTgSent(prev => {
+                            const s = new Set([...prev, cardKey]);
+                            try { localStorage.setItem("kdp-clone-tgsent", JSON.stringify([...s])); } catch {}
+                            return s;
+                        });
+                        toast.success("En camino a Telegram — imagen generándose en background ✓");
                     } catch (e: any) {
                         toast.error(e.message ?? "Error enviando a Telegram");
                     } finally {
@@ -12817,6 +12848,47 @@ export function KdpFactoryApp() {
                                             ))}
                                         </div>
                                         <p className="text-xs text-neutral-400 border-l-2 border-rose-500/30 pl-3 leading-relaxed">{cloneSource.formula}</p>
+                                    </div>
+                                )}
+
+                                {/* Skeleton while analyzing */}
+                                {isCloning && (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2 pb-1">
+                                            <Loader2 size={11} className="animate-spin text-rose-400" />
+                                            <p className="text-xs font-black uppercase tracking-widest text-rose-400/70">Analizando bestseller…</p>
+                                        </div>
+                                        {[0,1,2,3,4].map(i => (
+                                            <div key={i} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 space-y-3 animate-pulse">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="flex-1 space-y-2">
+                                                        <div className="flex gap-2 items-center">
+                                                            <div className="h-5 rounded-lg bg-white/[0.07]" style={{ width: `${[42,55,38,60,48][i]}%` }} />
+                                                            <div className="h-4 w-10 rounded-full bg-white/[0.04]" />
+                                                        </div>
+                                                        <div className="h-3 rounded-lg bg-white/[0.04]" style={{ width: `${[70,60,75,65,72][i]}%` }} />
+                                                    </div>
+                                                    <div className="flex gap-1.5 shrink-0">
+                                                        <div className="h-8 w-20 rounded-xl bg-white/[0.04]" />
+                                                        <div className="h-8 w-16 rounded-xl bg-white/[0.04]" />
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    {[0,1,2].map(j => (
+                                                        <div key={j} className="space-y-1.5">
+                                                            <div className="h-2 w-14 rounded bg-white/[0.04]" />
+                                                            <div className="h-3 rounded bg-white/[0.04]" style={{ width: `${[80,90,75][j]}%` }} />
+                                                            <div className="h-3 rounded bg-white/[0.03]" style={{ width: `${[60,70,55][j]}%` }} />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <div className="flex gap-1 flex-wrap">
+                                                    {Array.from({ length: 4 + i % 2 }).map((_, k) => (
+                                                        <div key={k} className="h-5 rounded-md bg-white/[0.04]" style={{ width: `${[48,56,44,52,60][k % 5]}px` }} />
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
 
