@@ -8,6 +8,7 @@ import { activateNextQueued } from "./catalog-queue.js";
 import { withImageSlot } from "./ai-semaphore.js";
 import { generateImage, getAutopilotImageModel } from "./image-gen.js";
 import { generateCatalogPrompt } from "./catalog-prompt.js";
+import { generateTextWithLLM } from "./ai.js";
 
 const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
 function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
@@ -39,6 +40,7 @@ const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { cmd: "/pipeline",                    desc: "Estado detallado con progreso de imágenes" },
     { cmd: "/run",                         desc: "Lanza Auto-Pilot ahora" },
     { cmd: "/avanzar <code>id</code> [fase]", desc: "Avanza nicho a siguiente fase o a fase concreta. Fases: catalog libro seo cover published" },
+    { cmd: "/freno",                        desc: "🚨 Freno de emergencia — para TODO y desactiva el Auto-Pilot en todos los nichos" },
     { cmd: "/parar",                       desc: "Detiene todo el pipeline" },
     { cmd: "/parar <code>id</code>",       desc: "Detiene solo ese nicho" },
     { cmd: "/cola",                        desc: "Cola de generación de catálogos" },
@@ -53,6 +55,8 @@ const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { cmd: "/kdpotp <code>XXXXXX</code>",     desc: "Envía código OTP si KDP solicita verificación 2FA" },
     { section: "❓ Ayuda" },
     { cmd: "/ayuda",                       desc: "Este mensaje de ayuda" },
+    { section: "🧠 Asistente IA" },
+    { cmd: "<i>texto libre</i>",            desc: "Escribe cualquier pregunta en lenguaje natural — la IA responde con datos reales del sistema. Ej: «¿Cuántas imágenes se generaron hoy?» · «¿Qué nichos están en SEO?»" },
 ];
 
 function formatElapsed(date: Date | string | undefined): string {
@@ -283,8 +287,7 @@ async function handleNicheDiscovery(
             }
         }
 
-        // Soft-delete so radar can't re-discover the same niche
-        await Niche.findByIdAndUpdate(tAction.nicheId, { $set: { status: "discarded" } });
+        await Niche.findByIdAndDelete(tAction.nicheId);
         _io?.emit("niches:updated");
         _io?.emit("telegram:notification", { message: `🗑️ Nicho eliminado desde Telegram · ${tAction.nicheName}`, type: "info" });
         await sendTelegram(`🗑️ <b>Nicho eliminado</b>\n<b>${tAction.nicheName}</b> — borrado definitivamente`);
@@ -1450,6 +1453,56 @@ async function processUpdate(update: any): Promise<void> {
             return;
         }
 
+        if (text === "/freno") {
+            try {
+                await Settings.findOneAndUpdate(
+                    { key: "AUTOPILOT_ABORT" },
+                    { key: "AUTOPILOT_ABORT", value: "1" },
+                    { upsert: true }
+                );
+                await Settings.findOneAndUpdate(
+                    { key: "EMERGENCY_STOP" },
+                    { key: "EMERGENCY_STOP", value: "1" },
+                    { upsert: true }
+                );
+
+                let cancelledJobs = 0;
+                if (_agenda) {
+                    try {
+                        const r1 = (await _agenda.cancel({ name: "generate-catalog-image" })) ?? 0;
+                        const r2 = (await _agenda.cancel({ name: "autopilot-run" })) ?? 0;
+                        cancelledJobs = r1 + r2;
+                    } catch { /* non-critical */ }
+                }
+
+                const { Catalog } = await import("../models/catalog.js");
+                const { modifiedCount: catsCancelled } = await Catalog.updateMany(
+                    { status: { $in: ["running", "pending", "queued"] } },
+                    { $set: { status: "cancelled" } }
+                );
+                const { modifiedCount: nichesDisabled } = await Niche.updateMany(
+                    { status: "active", autoPilotEnabled: true },
+                    { $set: { autoPilotEnabled: false } }
+                );
+
+                _io?.emit("autopilot:error", { message: "🚨 FRENO DE EMERGENCIA — Todo detenido" });
+                _io?.emit("catalogs:updated");
+                _io?.emit("niches:updated");
+
+                await sendTelegram(
+                    `🚨 <b>FRENO DE EMERGENCIA ACTIVADO</b>\n\n` +
+                    `📦 ${catsCancelled} catálogo${catsCancelled !== 1 ? "s" : ""} cancelado${catsCancelled !== 1 ? "s" : ""}\n` +
+                    `🗂️ ${cancelledJobs} job${cancelledJobs !== 1 ? "s" : ""} de Agenda eliminado${cancelledJobs !== 1 ? "s" : ""}\n` +
+                    `🔒 ${nichesDisabled} nicho${nichesDisabled !== 1 ? "s" : ""} desactivado${nichesDisabled !== 1 ? "s" : ""}\n\n` +
+                    `Todo el pipeline está parado.\n` +
+                    `Para reanudar: <code>/run</code>`
+                );
+            } catch (e: any) {
+                await sendTelegram(`❌ Error en freno de emergencia: ${e.message}`);
+            }
+            return;
+        }
+
         if (text === "/parar" || text.startsWith("/parar ")) {
             const idArg = text.startsWith("/parar ") ? normalized.slice(7).trim() : "";
             try {
@@ -2031,6 +2084,92 @@ async function processUpdate(update: any): Promise<void> {
                 ].filter(Boolean).join("\n");
                 await sendTelegram(lines);
             }
+            return;
+        }
+
+        // ── Conversational LLM fallback ──────────────────────────────────────────
+        // Unknown /command → tell user. Plain text → pass to LLM with live DB context.
+        if (text.startsWith("/")) {
+            await sendTelegram(`❓ Comando desconocido: <code>${raw.split(" ")[0]}</code>\nUsa <code>/ayuda</code> para ver los comandos disponibles.`);
+            return;
+        }
+
+        // Plain text message → LLM with live context
+        try {
+            await sendTelegram("🤔 <i>Pensando…</i>");
+            const { Catalog } = await import("../models/catalog.js");
+            const since24h = new Date(Date.now() - 24 * 3600_000);
+            const [activeNiches, foundCount, activeCount, publishedCount, archivedCount, runningCats, imageAgg24h, imageAggTotal, emergencyStop] = await Promise.all([
+                Niche.find({ status: "active" }).select("name phase autoPilotEnabled").limit(12).lean(),
+                Niche.countDocuments({ status: "found" }),
+                Niche.countDocuments({ status: "active" }),
+                Niche.countDocuments({ phase: "published" }),
+                Niche.countDocuments({ status: "archived" }),
+                Catalog.find({ status: { $in: ["running", "pending"] } }).select("name totalImages images skippedImages").limit(8).lean(),
+                Catalog.aggregate([
+                    { $match: { updatedAt: { $gte: since24h } } },
+                    { $project: { imgCount: { $size: { $ifNull: ["$images", []] } }, done: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } } },
+                    { $group: { _id: null, images: { $sum: "$imgCount" }, catalogs: { $sum: "$done" } } },
+                ]),
+                Catalog.aggregate([
+                    { $project: { imgCount: { $size: { $ifNull: ["$images", []] } } } },
+                    { $group: { _id: null, images: { $sum: "$imgCount" }, total: { $sum: 1 } } },
+                ]),
+                Settings.findOne({ key: "EMERGENCY_STOP" }).lean(),
+            ]);
+
+            const stats24h = (imageAgg24h as any[])[0] ?? { images: 0, catalogs: 0 };
+            const statsTotal = (imageAggTotal as any[])[0] ?? { images: 0, total: 0 };
+            const emergencyActive = (emergencyStop as any)?.value === "1";
+
+            const phaseLabel: Record<string, string> = {
+                niche: "inicio", catalog: "catálogos", libro: "PDF", seo: "SEO", cover: "portada", published: "publicado",
+            };
+            const nicheLines = (activeNiches as any[]).map(n =>
+                `  • "${n.name}" — fase: ${phaseLabel[n.phase] ?? n.phase}, autopilot: ${n.autoPilotEnabled ? "ON" : "OFF"}`
+            ).join("\n") || "  (ninguno)";
+            const catLines = (runningCats as any[]).map((c: any) =>
+                `  • "${c.name}": ${c.images?.length ?? 0}/${c.totalImages} imágenes`
+            ).join("\n") || "  (ninguno)";
+
+            // Pre-computed plain-language facts — LLM must quote these verbatim
+            const facts = [
+                `Nichos activos en pipeline ahora mismo: ${activeCount}`,
+                `Nichos en cola de discovery (pendientes de procesar): ${foundCount}`,
+                `Nichos publicados en Amazon: ${publishedCount}`,
+                `Nichos archivados (pausados): ${archivedCount}`,
+                `Total nichos en la base de datos (activos + cola + archivados): ${activeCount + foundCount + archivedCount}`,
+                `Imágenes generadas en las últimas 24 horas: ${stats24h.images}`,
+                `Catálogos completados en las últimas 24 horas: ${stats24h.catalogs}`,
+                `Total histórico de imágenes generadas: ${statsTotal.images}`,
+                `Total histórico de catálogos: ${statsTotal.total}`,
+                `Freno de emergencia: ${emergencyActive ? "ACTIVO" : "desactivado"}`,
+            ].join("\n");
+
+            const systemPrompt = `Eres el asistente del sistema EMI Gestor de Tareas (KDP autopublicación).
+
+HECHOS EXACTOS DEL SISTEMA (${new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" })}):
+${facts}
+
+Nichos activos en detalle:
+${nicheLines}
+
+Catálogos generando ahora:
+${catLines}
+
+REGLAS — no negociables:
+1. Cita ÚNICAMENTE los números de los HECHOS EXACTOS de arriba. Nunca sumes, restes ni combines cifras por tu cuenta.
+2. Si el usuario pregunta "cuántos nichos tienes", la respuesta correcta es el número de "Nichos activos en pipeline" (${activeCount}), no el total.
+3. Si el dato pedido no aparece en los HECHOS EXACTOS, di: "No tengo ese dato."
+4. Responde en español, conciso. HTML Telegram (<b>, <i>, <code>).
+5. Si piden ejecutar algo, indica el comando. NO lo ejecutes.
+6. NO uses JSON. Solo texto natural.`;
+
+            const response = await generateTextWithLLM(systemPrompt, raw);
+            await sendTelegram(response.slice(0, 4000));
+        } catch (e: any) {
+            console.warn("[telegram-poll llm-fallback] Error:", e.message);
+            await sendTelegram(`❓ No entendí eso. Usa <code>/ayuda</code> para ver los comandos disponibles.`);
         }
     }
 

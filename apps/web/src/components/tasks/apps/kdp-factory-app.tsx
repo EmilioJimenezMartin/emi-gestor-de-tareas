@@ -12907,7 +12907,7 @@ export function KdpFactoryApp() {
                                     <div className="space-y-3">
                                         <p className="text-xs font-black uppercase tracking-widest text-neutral-500">{cloneResults.length} clones · misma fórmula, nicho distinto</p>
                                         {cloneResults.map((clone, idx) => (
-                                            <CloneCard key={idx} clone={clone} cardKey={`cur-${idx}`} tgSent={cloneTgSent.has(`cur-${idx}`)} tgSending={cloneTgSending.has(`cur-${idx}`)} onSave={() => void saveClone(clone, cloneSource, cloneInput)} onDelete={savedNicheId(clone.nicheName) ? () => void deleteNiche(savedNicheId(clone.nicheName)!) : null} onTelegram={() => void sendToTelegram(`cur-${idx}`, clone, cloneSource?.title, cloneInput)} />
+                                            <CloneCard key={idx} clone={clone} cardKey={`cur-${idx}`} tgSent={cloneTgSent.has(`cur-${idx}`)} tgSending={cloneTgSending.has(`cur-${idx}`)} onSave={() => void saveClone(clone, cloneSource, cloneInput)} onDelete={savedNicheId(clone.nicheName) ? () => setNicheDeleteId(savedNicheId(clone.nicheName)!) : null} onTelegram={() => void sendToTelegram(`cur-${idx}`, clone, cloneSource?.title, cloneInput)} />
                                         ))}
                                     </div>
                                 )}
@@ -12971,7 +12971,7 @@ export function KdpFactoryApp() {
                                                             {entry.source.formula && <p className="text-xs text-neutral-500 border-l-2 border-rose-500/20 pl-2 leading-relaxed">{entry.source.formula}</p>}
                                                         </div>
                                                         {entry.clones.map((clone, ci) => (
-                                                            <CloneCard key={ci} clone={clone} cardKey={`hist-${idx}-${ci}`} tgSent={cloneTgSent.has(`hist-${idx}-${ci}`)} tgSending={cloneTgSending.has(`hist-${idx}-${ci}`)} onSave={() => void saveClone(clone, entry.source, entry.input)} onDelete={savedNicheId(clone.nicheName) ? () => void deleteNiche(savedNicheId(clone.nicheName)!) : null} onTelegram={() => void sendToTelegram(`hist-${idx}-${ci}`, clone, entry.source.title, entry.input)} />
+                                                            <CloneCard key={ci} clone={clone} cardKey={`hist-${idx}-${ci}`} tgSent={cloneTgSent.has(`hist-${idx}-${ci}`)} tgSending={cloneTgSending.has(`hist-${idx}-${ci}`)} onSave={() => void saveClone(clone, entry.source, entry.input)} onDelete={savedNicheId(clone.nicheName) ? () => setNicheDeleteId(savedNicheId(clone.nicheName)!) : null} onTelegram={() => void sendToTelegram(`hist-${idx}-${ci}`, clone, entry.source.title, entry.input)} />
                                                         ))}
                                                     </div>
                                                 )}

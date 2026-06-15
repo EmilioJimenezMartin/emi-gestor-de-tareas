@@ -223,12 +223,52 @@ export async function registerNicheRoutes(app: FastifyInstance) {
         try {
             const { id } = request.params as { id: string };
             const niche = await Niche.findById(id).lean() as any;
+            if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
 
-            // Soft-delete so radar can't re-discover the same niche
-            await Niche.findByIdAndUpdate(id, { $set: { status: "discarded" } });
+            // 1. Delete all associated catalogs + their Cloudinary images
+            const catalogs = await Catalog.find({ nicheIds: id }).lean();
+            if (catalogs.length > 0) {
+                try {
+                    const { getCloudinaryConfig, initCloudinary } = await import("./cloudinary.js");
+                    const config = await getCloudinaryConfig();
+                    if (config) {
+                        const cld = await initCloudinary(config);
+                        const publicIds = catalogs.flatMap((c: any) => (c.images ?? []).map((img: any) => img.publicId)).filter(Boolean);
+                        if (publicIds.length > 0) {
+                            await cld.api.delete_resources(publicIds, { type: "upload" }).catch(() => {});
+                        }
+                    }
+                } catch { /* non-critical — delete DB records regardless */ }
+                await Catalog.deleteMany({ nicheIds: id });
+            }
 
-            // Clean radar result arrays so the entry doesn't reappear in the radar table
-            if (niche?.sourceTitulo) {
+            // 2. Delete niche's own Cloudinary sample/cover images
+            if (niche.sampleImageUrl || niche.coverUrl) {
+                try {
+                    const { getCloudinaryConfig, initCloudinary } = await import("./cloudinary.js");
+                    const config = await getCloudinaryConfig();
+                    if (config) {
+                        const cld = await initCloudinary(config);
+                        // Extract publicId from URL (last path segment without extension)
+                        const extractId = (url: string) => {
+                            const parts = url.split("/upload/");
+                            if (parts.length < 2) return null;
+                            return parts[1].replace(/\.[^.]+$/, "").replace(/^v\d+\//, "");
+                        };
+                        const ids = [niche.sampleImageUrl, niche.coverUrl].filter(Boolean).map(extractId).filter(Boolean) as string[];
+                        if (ids.length > 0) await cld.api.delete_resources(ids, { type: "upload" }).catch(() => {});
+                    }
+                } catch { /* non-critical */ }
+            }
+
+            // 3. Delete associated TelegramActions
+            await TelegramAction.deleteMany({ nicheId: id }).catch(() => {});
+
+            // 4. Hard-delete the niche
+            await Niche.findByIdAndDelete(id);
+
+            // 5. Clean radar result arrays
+            if (niche.sourceTitulo) {
                 for (const key of RADAR_KEYS) {
                     try {
                         const row = await Settings.findOne({ key }).lean() as any;
