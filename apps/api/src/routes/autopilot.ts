@@ -8,6 +8,7 @@ import { sendTelegram, sendTelegramPhotoDiscovery, sendTelegramImageWithButtons,
 import { generateImage, getAutopilotImageModel } from "../lib/image-gen.js";
 import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
 import { generateTextWithLLM } from "../lib/ai.js";
+import { getEvolutionSeed } from "../lib/prompt-evolution.js";
 import { withLlmSlot } from "../lib/ai-semaphore.js";
 
 const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
@@ -347,10 +348,12 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             if (!particulars) {
                 try {
                     const aiType = productType === "printable-poster" ? "printable-particulars" : "niche-particulars";
+                    const evolutionSeed = await getEvolutionSeed(productType).catch(() => "");
+                    const quickExtras = [style, evolutionSeed].filter(Boolean).join("; ");
                     const aiRes = await internalFetch(`${base}/ai/generate-text`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ type: aiType, niche: nicheName, productType, extras: style }),
+                        body: JSON.stringify({ type: aiType, niche: nicheName, productType, extras: quickExtras }),
                         signal: AbortSignal.timeout(25_000),
                     });
                     if (aiRes.ok) {
@@ -437,11 +440,13 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                 const nicheForAI = sourceTitulo && sourceTitulo !== nicheName
                     ? `${nicheName} (market reference: "${sourceTitulo}")`
                     : nicheName;
+                const evolutionSeed = await getEvolutionSeed(productType).catch(() => "");
+                const discoverExtras = [style, evolutionSeed].filter(Boolean).join("; ");
                 try {
                     const aiRes = await internalFetch(`${base2}/ai/generate-text`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ type: aiType, niche: nicheForAI, productType, extras: style }),
+                        body: JSON.stringify({ type: aiType, niche: nicheForAI, productType, extras: discoverExtras }),
                         signal: AbortSignal.timeout(25_000),
                     });
                     if (aiRes.ok) {

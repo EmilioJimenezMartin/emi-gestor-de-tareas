@@ -1317,7 +1317,8 @@ Return ONLY a JSON object: {"particulars": "...55-80 words of vivid hyper-specif
                 const styleInstruction = styleGuide[styleMatch] ?? "Describe a balanced coloring page scene with a clear focal subject and supporting decorative elements. Medium complexity — satisfying to color for all ages.";
 
                 const variationHint = extras?.split("composition variation:")?.[1]?.split(";")?.[0]?.trim() ?? "";
-                const visualRef = extras?.split("visual reference:")?.[1]?.trim() ?? "";
+                const visualRef = extras?.split("visual reference:")?.[1]?.split("; winning")?.[0]?.trim() ?? "";
+                const evolutionRaw = extras?.split("winning examples:")?.[1]?.trim() ?? "";
 
                 return `You are a world-class art director specializing in KDP coloring book illustration prompts. Write ONE highly specific scene description that an AI image generator will use to create a coloring page.
 
@@ -1325,6 +1326,7 @@ Niche: "${niche}"
 Style: ${styleMatch}
 ${variationHint ? `Composition focus: ${variationHint}` : ""}
 ${visualRef ? `Visual reference (adapt, don't copy): ${visualRef}` : ""}
+${evolutionRaw ? `\nPROVEN PATTERNS — these descriptions produced high-quality images for similar niches. Do NOT copy them. Study their level of specificity, concrete naming, and compositional clarity, then apply that same quality to a DIFFERENT scene for this niche:\n${evolutionRaw}` : ""}
 
 STYLE GUIDANCE: ${styleInstruction}
 

@@ -9,6 +9,7 @@ import { withImageSlot } from "./ai-semaphore.js";
 import { generateImage, getAutopilotImageModel } from "./image-gen.js";
 import { generateCatalogPrompt } from "./catalog-prompt.js";
 import { generateTextWithLLM } from "./ai.js";
+import { getEvolutionSeed } from "./prompt-evolution.js";
 
 const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
 function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
@@ -387,7 +388,8 @@ async function processUpdate(update: any): Promise<void> {
                 // Always generate a fresh AI prompt
                 const productType = (niche as any).productType ?? "coloring-book";
                 const style = (niche as any).styleCategory ?? "generic";
-                const catalogPrompt = await generateCatalogPrompt(base, (niche as any).name, productType, style)
+                const evolutionSeed = await getEvolutionSeed(productType).catch(() => "");
+                const catalogPrompt = await generateCatalogPrompt(base, (niche as any).name, productType, style, undefined, 0, evolutionSeed)
                     ?? (niche as any).generatedPrompt
                     ?? (niche as any).name;
 
@@ -1234,7 +1236,8 @@ async function processUpdate(update: any): Promise<void> {
                 if (!catalogPrompt) {
                     const productType = (niche as any).productType ?? "coloring-book";
                     const style = (niche as any).styleCategory ?? "generic";
-                    catalogPrompt = await generateCatalogPrompt(base, (niche as any).name, productType, style)
+                    const evolutionSeed2 = await getEvolutionSeed(productType).catch(() => "");
+                    catalogPrompt = await generateCatalogPrompt(base, (niche as any).name, productType, style, undefined, 0, evolutionSeed2)
                         ?? (niche as any).generatedPrompt
                         ?? (niche as any).name;
                 }

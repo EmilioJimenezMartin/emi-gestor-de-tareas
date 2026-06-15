@@ -100,6 +100,7 @@ export async function generateCatalogPrompt(
     style: string,
     discoveryPrompt?: string,
     slotIndex = 0,
+    evolutionSeed?: string,
 ): Promise<string | null> {
     const aiType = productType === "printable-poster" ? "printable-particulars" : "niche-particulars";
 
@@ -111,6 +112,7 @@ export async function generateCatalogPrompt(
         style,
         `composition variation: ${hint}`,
         discoveryPrompt ? `visual reference: ${discoveryPrompt.slice(0, 120)}` : "",
+        evolutionSeed || "",
     ].filter(Boolean).join("; ");
 
     try {

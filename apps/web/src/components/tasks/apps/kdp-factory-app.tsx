@@ -733,6 +733,7 @@ export function KdpFactoryApp() {
     const [qualityCheckEnabled, setQualityCheckEnabled] = useState(true);
     const [qualityVaultTelegramEnabled, setQualityVaultTelegramEnabled] = useState(false);
     const [weeklyDigestEnabled, setWeeklyDigestEnabled] = useState(true);
+    const [promptEvolutionEnabled, setPromptEvolutionEnabled] = useState(true);
     // Orphan image linking
     const [orphanLinkCatalogId, setOrphanLinkCatalogId] = useState<string | null>(null);
     const [orphanLinkCatalogNiche, setOrphanLinkCatalogNiche] = useState<string>("");
@@ -3391,6 +3392,7 @@ export function KdpFactoryApp() {
                 if (settingsMap.has("QUALITY_CHECK_ENABLED")) setQualityCheckEnabled(settingsMap.get("QUALITY_CHECK_ENABLED") !== "0" && settingsMap.get("QUALITY_CHECK_ENABLED") !== "false");
                 if (settingsMap.has("QUALITY_VAULT_TELEGRAM_NOTIFY")) setQualityVaultTelegramEnabled(settingsMap.get("QUALITY_VAULT_TELEGRAM_NOTIFY") === "1" || settingsMap.get("QUALITY_VAULT_TELEGRAM_NOTIFY") === "true");
                 if (settingsMap.has("TELEGRAM_WEEKLY_DIGEST")) setWeeklyDigestEnabled(settingsMap.get("TELEGRAM_WEEKLY_DIGEST") !== "false");
+                if (settingsMap.has("PROMPT_EVOLUTION_ENABLED")) setPromptEvolutionEnabled(settingsMap.get("PROMPT_EVOLUTION_ENABLED") !== "0" && settingsMap.get("PROMPT_EVOLUTION_ENABLED") !== "false");
 
                 // Autopilot schedule — restore cron UI state
                 const savedCron = settingsMap.get("AUTOPILOT_CRON") ?? "";
@@ -8057,6 +8059,27 @@ export function KdpFactoryApp() {
                             className={`relative shrink-0 w-11 h-6 rounded-full transition-all duration-200 ${qualityCheckEnabled ? "bg-amber-500" : "bg-white/10"}`}
                         >
                             <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${qualityCheckEnabled ? "left-[22px]" : "left-0.5"}`} />
+                        </button>
+                    </div>
+                    <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-white/8 bg-white/[0.02]">
+                        <div>
+                            <p className="text-xs font-black text-white">Prompt Evolution Engine</p>
+                            <p className="text-[10px] text-neutral-500 mt-0.5">{promptEvolutionEnabled ? "Usa los mejores prompts históricos como referencia al generar nuevos" : "Desactivado — cada prompt se genera desde cero sin histórico"}</p>
+                        </div>
+                        <button
+                            onClick={async () => {
+                                const next = !promptEvolutionEnabled;
+                                setPromptEvolutionEnabled(next);
+                                await fetch(`${API_BASE_URL}/settings`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify([{ key: "PROMPT_EVOLUTION_ENABLED", value: next ? "1" : "0" }]),
+                                });
+                                toast.success(next ? "Prompt Evolution activado" : "Prompt Evolution desactivado");
+                            }}
+                            className={`relative shrink-0 w-11 h-6 rounded-full transition-all duration-200 ${promptEvolutionEnabled ? "bg-violet-500" : "bg-white/10"}`}
+                        >
+                            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${promptEvolutionEnabled ? "left-[22px]" : "left-0.5"}`} />
                         </button>
                     </div>
                     <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-white/8 bg-white/[0.02]">

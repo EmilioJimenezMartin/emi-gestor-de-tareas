@@ -7,6 +7,7 @@ import { sendTelegram, sendTelegramPhoto, sendTelegramPhotoDiscovery, sendTelegr
 import { withImageSlot, withLlmSlot } from "../lib/ai-semaphore.js";
 import { buildCollage, buildHalfColored, pickCatalogImages, type CollageLayout } from "../lib/cover-collage.js";
 import { generateCatalogPrompt } from "../lib/catalog-prompt.js";
+import { getEvolutionSeed } from "../lib/prompt-evolution.js";
 import { pollinationsFetch } from "../lib/pollinations-circuit.js";
 import { generateImage, getAutopilotImageModel } from "../lib/image-gen.js";
 import { buildColoringBookPrompt, buildPosterPrompt, buildSeamlessPatternPrompt } from "../routes/autopilot.js";
@@ -258,10 +259,11 @@ async function runDiscovery(
                 const _fallback = niche.generatedPrompt || niche.name;
                 void (async () => {
                     try {
+                        const evolutionSeed = await getEvolutionSeed(_productType).catch(() => "");
                         const prompts: string[] = [];
                         for (let i = 0; i < cfg.catalogsPerNiche; i++) {
                             const p = await withLlmSlot(`pre-catalog-prompt-${i}:${_nicheId}`, () =>
-                                generateCatalogPrompt(base, _nicheName, _productType, _style, aiCore, i)
+                                generateCatalogPrompt(base, _nicheName, _productType, _style, aiCore, i, evolutionSeed)
                             );
                             prompts.push((p as string | null) || _fallback);
                         }

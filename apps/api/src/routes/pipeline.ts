@@ -8,6 +8,7 @@ import { getMongoStatus } from "../lib/mongo.js";
 import { getAutopilotImageModel } from "../lib/image-gen.js";
 import { getAgenda } from "../lib/agenda.js";
 import { TelegramAction } from "../models/telegram-action.js";
+import { getEvolutionStats } from "../lib/prompt-evolution.js";
 
 const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
 function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
@@ -127,7 +128,8 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps?: { agen
                 .limit(parseInt(limit) || 30)
                 .lean();
 
-            return reply.send({ metrics });
+            const evolutionStats = await getEvolutionStats(productType || "coloring-book").catch(() => ({ count: 0, avgScore: 0 }));
+            return reply.send({ metrics, evolutionStats });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
         }
