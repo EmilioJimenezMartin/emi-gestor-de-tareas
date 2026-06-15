@@ -57,6 +57,8 @@ export default function AjustesPage() {
     const [logSearch, setLogSearch] = useState("");
     const [pollinationsBlocked, setPollinationsBlocked] = useState(false);
     const [sessionRefreshing, setSessionRefreshing] = useState(false);
+    const [purgingMetrics, setPurgingMetrics] = useState(false);
+    const [purgingExtracted, setPurgingExtracted] = useState(false);
 
     const [defaultProvider, setDefaultProvider] = useState("google");
     const [defaultModel, setDefaultModel] = useState("gemini-2.5-flash");
@@ -2535,6 +2537,61 @@ export default function AjustesPage() {
                             >
                                 {voiceTesting ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
                                 Probar voz
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                {/* ── Datos de Sistema ────────────────────────────────────────── */}
+                <section className="space-y-4">
+                    <div className="flex flex-col gap-1">
+                        <h2 className="text-2xl font-bold text-white tracking-tight italic">Datos de Sistema</h2>
+                        <p className="text-sm text-neutral-500">Limpia datos operacionales acumulados que no afectan al pipeline.</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-6 space-y-4">
+                        <div className="flex items-center justify-between gap-4">
+                            <div>
+                                <p className="text-sm font-bold text-white">Métricas de prompts</p>
+                                <p className="text-xs text-neutral-500 mt-0.5">Estadísticas de rendimiento por prompt e imagen generada.</p>
+                            </div>
+                            <button
+                                onClick={async () => {
+                                    setPurgingMetrics(true);
+                                    try {
+                                        const res = await fetch(`${apiUrl}/pipeline/prompt-metrics`, { method: "DELETE" });
+                                        const data = await res.json();
+                                        toast.success(`Borradas ${data.deleted ?? 0} métricas`);
+                                    } catch { toast.error("Error al limpiar"); }
+                                    setPurgingMetrics(false);
+                                }}
+                                disabled={purgingMetrics}
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-black hover:bg-rose-500/20 transition-all disabled:opacity-50 shrink-0"
+                            >
+                                {purgingMetrics ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                                Limpiar
+                            </button>
+                        </div>
+                        <div className="h-px bg-white/5" />
+                        <div className="flex items-center justify-between gap-4">
+                            <div>
+                                <p className="text-sm font-bold text-white">Datos extraídos</p>
+                                <p className="text-xs text-neutral-500 mt-0.5">Resultados del motor extractor (webs, APIs, scraping).</p>
+                            </div>
+                            <button
+                                onClick={async () => {
+                                    setPurgingExtracted(true);
+                                    try {
+                                        const res = await fetch(`${apiUrl}/extractor/data`, { method: "DELETE" });
+                                        const data = await res.json();
+                                        toast.success(`Borrados ${data.deleted ?? 0} registros`);
+                                    } catch { toast.error("Error al limpiar"); }
+                                    setPurgingExtracted(false);
+                                }}
+                                disabled={purgingExtracted}
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-black hover:bg-rose-500/20 transition-all disabled:opacity-50 shrink-0"
+                            >
+                                {purgingExtracted ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                                Limpiar
                             </button>
                         </div>
                     </div>

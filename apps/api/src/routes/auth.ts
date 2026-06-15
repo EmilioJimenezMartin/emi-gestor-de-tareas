@@ -16,6 +16,9 @@ async function logEvent(event: string, ip: string, ua: string, email?: string) {
     try {
         if (getMongoStatus() === "connected") {
             await AuthLog.create({ event, email, ip, ua: ua?.slice(0, 200) });
+            // Auto-prune: keep last 200 auth log entries
+            const old = await AuthLog.find({}).sort({ createdAt: -1 }).skip(200).select("_id").lean();
+            if (old.length > 0) await AuthLog.deleteMany({ _id: { $in: old.map(r => r._id) } }).catch(() => {});
         }
     } catch { /* no bloquear el flujo */ }
 }

@@ -264,6 +264,13 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             // 3. Delete associated TelegramActions
             await TelegramAction.deleteMany({ nicheId: id }).catch(() => {});
 
+            // 3b. Delete SeoSnapshots + BookDrafts
+            try {
+                const { SeoSnapshot } = await import("../models/seo-snapshot.js");
+                await SeoSnapshot.deleteMany({ nicheId: id });
+            } catch { /* non-critical */ }
+            await BookDraft.deleteMany({ nicheId: id }).catch(() => {});
+
             // 4. Hard-delete the niche
             await Niche.findByIdAndDelete(id);
 

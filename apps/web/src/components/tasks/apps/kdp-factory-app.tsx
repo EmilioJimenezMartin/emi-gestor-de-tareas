@@ -12563,6 +12563,37 @@ export function KdpFactoryApp() {
             </div>
             )}
 
+            {/* ══ NICHOS ARCHIVADOS ══ */}
+            {(() => {
+                const archivedNiches = niches.filter(n => n.status === "archived");
+                if (archivedNiches.length === 0) return null;
+                return (
+                    <details className="group rounded-2xl border border-white/6 bg-white/[0.015] overflow-hidden">
+                        <summary className="flex items-center justify-between px-4 py-3 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden hover:bg-white/[0.03] transition-colors">
+                            <div className="flex items-center gap-2 text-neutral-500">
+                                <Archive size={13} />
+                                <span className="text-xs font-black uppercase tracking-widest">Archivados</span>
+                                <span className="text-[10px] bg-white/8 rounded-full px-2 py-0.5 font-black">{archivedNiches.length}</span>
+                            </div>
+                            <ChevronDown size={13} className="text-neutral-600 transition-transform group-open:rotate-180" />
+                        </summary>
+                        <div className="px-4 pb-4 space-y-1.5 border-t border-white/6 pt-3">
+                            {archivedNiches.map(n => (
+                                <div key={n._id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-white/[0.02] border border-white/5">
+                                    <span className="text-xs text-neutral-500 truncate">{n.name}</span>
+                                    <button
+                                        onClick={() => setNicheDeleteId(n._id)}
+                                        className="p-1.5 rounded-lg text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all shrink-0"
+                                        title="Eliminar">
+                                        <Trash2 size={12} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </details>
+                );
+            })()}
+
             </>}
 
             {/* ══ RADAR DE NICHOS — ETSY ══ */}

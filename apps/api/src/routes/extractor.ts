@@ -190,6 +190,9 @@ export async function registerExtractorRoutes(
                 { ...data, id },
                 { upsert: true, returnDocument: 'after' }
             );
+            // Auto-prune: keep last 500 ExtractedData records
+            const oldDocs = await ExtractedData.find({}).sort({ "temporal.created_at": -1 }).skip(500).select("_id").lean();
+            if (oldDocs.length > 0) await ExtractedData.deleteMany({ _id: { $in: oldDocs.map((r: any) => r._id) } }).catch(() => {});
             return reply.send({ success: true, data: doc });
         } catch (error: any) {
             app.log.error(error);
@@ -206,6 +209,16 @@ export async function registerExtractorRoutes(
         } catch (error: any) {
             app.log.error(error);
             return reply.status(500).send({ error: "Failed to delete data" });
+        }
+    });
+
+    // DELETE /extractor/data — purge all extracted data
+    app.delete("/extractor/data", async (_request, reply) => {
+        try {
+            const { deletedCount } = await ExtractedData.deleteMany({});
+            return reply.send({ success: true, deleted: deletedCount });
+        } catch (error: any) {
+            return reply.status(500).send({ error: "Failed to purge data" });
         }
     });
 }

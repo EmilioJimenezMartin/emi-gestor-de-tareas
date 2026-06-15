@@ -392,10 +392,7 @@ export async function registerEtsyRoutes(app: FastifyInstance) {
             await etsyFetch<any>(`/application/shops/${shopId}/listings/${req.params.listingId}`, {
                 method: "DELETE",
             });
-            await EtsyListing.findOneAndUpdate(
-                { etsyListingId: req.params.listingId },
-                { $set: { status: "inactive" } }
-            );
+            await EtsyListing.findOneAndDelete({ etsyListingId: req.params.listingId });
             return reply.send({ success: true });
         } catch (err: any) {
             return reply.status(500).send({ error: err.message });

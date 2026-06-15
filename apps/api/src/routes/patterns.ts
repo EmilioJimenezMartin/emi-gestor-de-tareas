@@ -130,6 +130,10 @@ export async function registerPatternRoutes(app: FastifyInstance) {
                 logs: [],
             });
 
+            // Auto-prune: keep last 10 pattern gen jobs
+            const oldJobs = await PatternGenJob.find({}).sort({ createdAt: -1 }).skip(10).select("_id").lean();
+            if (oldJobs.length > 0) await PatternGenJob.deleteMany({ _id: { $in: oldJobs.map(r => r._id) } }).catch(() => {});
+
             await agenda.now(PATTERN_GEN_JOB_NAME, { jobId });
             return reply.status(202).send({ jobId });
         } catch (err: any) {

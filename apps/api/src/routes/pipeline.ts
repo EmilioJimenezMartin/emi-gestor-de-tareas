@@ -133,6 +133,16 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps?: { agen
         }
     });
 
+    // DELETE /pipeline/prompt-metrics — purge all prompt metrics
+    app.delete("/pipeline/prompt-metrics", async (_request, reply) => {
+        try {
+            const { deletedCount } = await PromptMetric.deleteMany({});
+            return reply.send({ ok: true, deleted: deletedCount });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
     // POST /niches/:id/pipeline/run — trigger server-side pipeline for a specific niche
     app.post("/niches/:id/pipeline/run", async (request: any, reply) => {
         if (!ensureMongo(reply)) return;

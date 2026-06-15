@@ -287,6 +287,10 @@ export async function registerRadarRoutes(
             return reply.status(503).send({ error: `No se pudo crear el job (¿MongoDB conectado?): ${e?.message}` });
         }
 
+        // Auto-prune: keep last 20 RadarJobs
+        const oldRadarJobs = await RadarJob.find({}).sort({ createdAt: -1 }).skip(20).select("_id").lean();
+        if (oldRadarJobs.length > 0) await RadarJob.deleteMany({ _id: { $in: oldRadarJobs.map(r => r._id) } }).catch(() => {});
+
         deps.io?.emit("radar:log", { timestamp: new Date(), level: "info", message: `[INIT] Análisis encolado · modo: ${mode} · URL: ${url}` });
 
         try {
@@ -577,6 +581,29 @@ Responde SOLO con JSON válido (sin markdown): { "similar": [ { "niche": string,
             const { RadarInsight } = await import("../models/radar-insight.js");
             const insights = await RadarInsight.find({}).sort({ createdAt: -1 }).limit(20).lean();
             return reply.send({ insights });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // ── DELETE /radar/insights/:id — elimina un insight concreto ─────────────
+    app.delete("/radar/insights/:id", async (request: any, reply) => {
+        try {
+            const { RadarInsight } = await import("../models/radar-insight.js");
+            const deleted = await RadarInsight.findByIdAndDelete(request.params.id);
+            if (!deleted) return reply.status(404).send({ error: "Insight no encontrado" });
+            return reply.send({ ok: true });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message });
+        }
+    });
+
+    // ── DELETE /radar/insights — elimina todos los insights ──────────────────
+    app.delete("/radar/insights", async (_request, reply) => {
+        try {
+            const { RadarInsight } = await import("../models/radar-insight.js");
+            const { deletedCount } = await RadarInsight.deleteMany({});
+            return reply.send({ ok: true, deleted: deletedCount });
         } catch (e: any) {
             return reply.status(500).send({ error: e.message });
         }

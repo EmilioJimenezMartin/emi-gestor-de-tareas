@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Sparkles, Loader2, BarChart2, TrendingUp, Target, Zap, ChevronDown, ChevronUp, Clock, Rocket, CheckCircle } from "lucide-react";
+import { Sparkles, Loader2, BarChart2, TrendingUp, Target, Zap, ChevronDown, ChevronUp, Clock, Rocket, CheckCircle, Trash2 } from "lucide-react";
 import { KdpVerticalBarChart } from "@/components/ui/kdp-vertical-bar-chart";
 import { toast } from "sonner";
 
@@ -83,6 +83,24 @@ export function RadarInsightsPanel({ apiUrl }: Props) {
         } catch { /* ignore */ }
         setHistoryLoaded(true);
     }, [apiUrl, current]);
+
+    const deleteInsight = async (id: string) => {
+        try {
+            await fetch(`${apiUrl}/radar/insights/${id}`, { method: "DELETE" });
+            setHistory(prev => prev.filter(h => h._id !== id));
+            if (current?._id === id) setCurrent(null);
+            toast.success("Insight eliminado");
+        } catch { toast.error("Error al eliminar"); }
+    };
+
+    const clearAllInsights = async () => {
+        try {
+            await fetch(`${apiUrl}/radar/insights`, { method: "DELETE" });
+            setHistory([]);
+            setCurrent(null);
+            toast.success("Historial borrado");
+        } catch { toast.error("Error al borrar"); }
+    };
 
     useEffect(() => { loadHistory(); }, [apiUrl]); // eslint-disable-line
 
@@ -253,6 +271,13 @@ export function RadarInsightsPanel({ apiUrl }: Props) {
                                 {current.filters.dateRange}
                             </span>
                         )}
+                        <button
+                            onClick={() => void deleteInsight(current._id)}
+                            title="Eliminar este análisis"
+                            className="ml-auto p-1 rounded-lg text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all"
+                        >
+                            <Trash2 size={12} />
+                        </button>
                     </div>
 
                     {/* Summary card */}
@@ -393,36 +418,55 @@ export function RadarInsightsPanel({ apiUrl }: Props) {
             {/* History */}
             {historyLoaded && history.length > 1 && (
                 <div className="rounded-2xl border border-white/10 bg-white/[0.015] overflow-hidden">
-                    <button
-                        onClick={() => setShowHistory(h => !h)}
-                        className="w-full flex items-center justify-between gap-2 p-3 text-[9px] font-black uppercase tracking-widest text-neutral-500 hover:text-neutral-300 transition-colors"
-                    >
-                        <div className="flex items-center gap-2">
-                            <Clock size={10} />
-                            Historial de análisis ({history.length})
-                        </div>
-                        {showHistory ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                    </button>
+                    <div className="flex items-center">
+                        <button
+                            onClick={() => setShowHistory(h => !h)}
+                            className="flex-1 flex items-center justify-between gap-2 p-3 text-[9px] font-black uppercase tracking-widest text-neutral-500 hover:text-neutral-300 transition-colors"
+                        >
+                            <div className="flex items-center gap-2">
+                                <Clock size={10} />
+                                Historial de análisis ({history.length})
+                            </div>
+                            {showHistory ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                        </button>
+                        <button
+                            onClick={() => void clearAllInsights()}
+                            title="Borrar todo el historial"
+                            className="p-3 text-neutral-700 hover:text-rose-400 transition-colors"
+                        >
+                            <Trash2 size={10} />
+                        </button>
+                    </div>
                     {showHistory && (
                         <div className="border-t border-white/5 divide-y divide-white/5">
                             {history.map(h => (
-                                <button
+                                <div
                                     key={h._id}
-                                    onClick={() => setCurrent(h)}
-                                    className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 text-left hover:bg-white/[0.02] transition-colors ${current?._id === h._id ? "bg-violet-500/5" : ""}`}
+                                    className={`flex items-center gap-1 hover:bg-white/[0.02] transition-colors ${current?._id === h._id ? "bg-violet-500/5" : ""}`}
                                 >
-                                    <div className="flex items-center gap-2 min-w-0">
-                                        <span className="text-[10px] text-neutral-400 shrink-0">
-                                            {new Date(h.createdAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                                        </span>
-                                        <span className="text-[9px] text-neutral-600 truncate">
-                                            {h.filters.totalProducts} productos · {h.filters.platforms.slice(0, 3).join(", ")}{h.filters.platforms.length > 3 ? ` +${h.filters.platforms.length - 3}` : ""}
-                                        </span>
-                                    </div>
-                                    {current?._id === h._id && (
-                                        <span className="shrink-0 h-4 px-1.5 rounded-full bg-violet-500/15 border border-violet-500/25 text-[8px] text-violet-400 font-black uppercase">activo</span>
-                                    )}
-                                </button>
+                                    <button
+                                        onClick={() => setCurrent(h)}
+                                        className="flex-1 flex items-center justify-between gap-3 px-4 py-2.5 text-left"
+                                    >
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <span className="text-[10px] text-neutral-400 shrink-0">
+                                                {new Date(h.createdAt).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                                            </span>
+                                            <span className="text-[9px] text-neutral-600 truncate">
+                                                {h.filters.totalProducts} productos · {h.filters.platforms.slice(0, 3).join(", ")}{h.filters.platforms.length > 3 ? ` +${h.filters.platforms.length - 3}` : ""}
+                                            </span>
+                                        </div>
+                                        {current?._id === h._id && (
+                                            <span className="shrink-0 h-4 px-1.5 rounded-full bg-violet-500/15 border border-violet-500/25 text-[8px] text-violet-400 font-black uppercase">activo</span>
+                                        )}
+                                    </button>
+                                    <button
+                                        onClick={() => void deleteInsight(h._id)}
+                                        className="px-3 py-2.5 text-neutral-700 hover:text-rose-400 transition-colors shrink-0"
+                                    >
+                                        <Trash2 size={10} />
+                                    </button>
+                                </div>
                             ))}
                         </div>
                     )}
