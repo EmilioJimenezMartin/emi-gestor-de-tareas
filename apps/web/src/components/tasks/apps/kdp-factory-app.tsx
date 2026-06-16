@@ -7317,8 +7317,31 @@ export function KdpFactoryApp() {
                                         const s = urgencyStyle[pred.urgency] ?? urgencyStyle.ok;
                                         const isPast = pred.weeksUntilPublish < 0;
                                         const weeksAbs = Math.abs(pred.weeksUntilPublish);
+                                        const tmId = `tm-${pred.nicheName}-${pred.optimalPublishDate}`;
+                                        const inCalendar = pubEvents.some(e => e.id === tmId);
+                                        const linkedNiche = niches.find(n => n.name.toLowerCase() === pred.nicheName.toLowerCase());
+                                        const urgencyColor: Record<string, string> = { critical: "#ef4444", soon: "#f59e0b", ok: "#0ea5e9", evergreen: "#10b981" };
+
+                                        const addToCalendar = () => {
+                                            const ev: PublishEvent = {
+                                                id: tmId,
+                                                title: pred.nicheName,
+                                                date: pred.optimalPublishDate,
+                                                nicheId: linkedNiche?._id,
+                                                status: "planned",
+                                                color: urgencyColor[pred.urgency] ?? "#6366f1",
+                                            };
+                                            savePubEvents([...pubEvents, ev]);
+                                            toast.success(`"${pred.nicheName}" añadido al calendario`);
+                                        };
+
+                                        const removeFromCalendar = () => {
+                                            savePubEvents(pubEvents.filter(e => e.id !== tmId));
+                                            toast("Eliminado del calendario", { icon: "🗑️" });
+                                        };
+
                                         return (
-                                            <div key={idx} className="rounded-2xl border border-white/8 bg-white/[0.02] overflow-hidden">
+                                            <div key={idx} className={`rounded-2xl border overflow-hidden transition-all ${inCalendar ? "border-indigo-500/25 bg-indigo-500/[0.03]" : "border-white/8 bg-white/[0.02]"}`}>
                                                 <div className={`h-0.5 ${s.bar}`} />
                                                 <div className="px-4 py-3 flex items-center gap-4">
                                                     <div className="flex-1 min-w-0">
@@ -7329,11 +7352,33 @@ export function KdpFactoryApp() {
                                                         </div>
                                                         <p className="text-[9px] text-neutral-500 italic mt-0.5">{pred.tip}</p>
                                                     </div>
-                                                    <div className="shrink-0 text-right">
+                                                    <div className="shrink-0 text-right space-y-1.5">
                                                         <p className={`text-[11px] font-black ${isPast ? "text-rose-400" : "text-white"}`}>
-                                                            {isPast ? `Ventana pasada (hace ${weeksAbs}s)` : `Publicar en ${weeksAbs} semanas`}
+                                                            {isPast ? `Ventana pasada (hace ${weeksAbs}s)` : `Publicar en ${weeksAbs}s`}
                                                         </p>
                                                         <p className="text-[9px] text-neutral-600">{pred.optimalPublishDate} · pico {pred.peakWeek}</p>
+                                                        {inCalendar ? (
+                                                            <div className="flex items-center gap-1 justify-end">
+                                                                <span className="text-[8px] font-black px-2 py-0.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 flex items-center gap-1">
+                                                                    <Check size={7} /> En calendario
+                                                                </span>
+                                                                <button
+                                                                    onClick={removeFromCalendar}
+                                                                    title="Quitar del calendario"
+                                                                    className="p-0.5 rounded-md text-neutral-600 hover:text-rose-400 hover:bg-rose-500/10 transition-all"
+                                                                >
+                                                                    <X size={9} />
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                onClick={addToCalendar}
+                                                                disabled={isPast}
+                                                                className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 text-[8px] font-black hover:bg-indigo-500/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed ml-auto"
+                                                            >
+                                                                <CalendarDays size={7} /> + Calendario
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
