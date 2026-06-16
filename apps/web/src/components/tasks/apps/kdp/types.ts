@@ -54,6 +54,7 @@ export interface NicheFE {
     sourceTitulo?: string;
     royalties?: NicheRoyaltyEntry[];
     listings?: NicheKDPListing[];
+    targetAudience?: "children" | "teens" | "adults" | "all";
     score?: number;
     scoreBreakdown?: { demand: number; competition: number; uniqueness: number; potential: number };
     scoreReason?: string;

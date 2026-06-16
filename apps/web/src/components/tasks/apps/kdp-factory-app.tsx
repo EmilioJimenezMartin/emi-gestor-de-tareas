@@ -678,6 +678,7 @@ export function KdpFactoryApp() {
     const pipelineBookPendingRef = useRef<Map<string, { catalogIds: string[]; imagesPerCatalog: number; nicheName: string }>>(new Map());
     const [nicheFormProductType, setNicheFormProductType] = useState<NicheProductType>("coloring-book");
     const [nicheFormStyles, setNicheFormStyles] = useState<NicheStyle[]>(["generic"]);
+    const [nicheFormAudience, setNicheFormAudience] = useState<NicheFE["targetAudience"]>("all");
     const [catalogNicheFilter, setCatalogNicheFilter] = useState<string | null>(null);
     const [catalogNicheStatusFilter, setCatalogNicheStatusFilter] = useState<NicheFilterStatus>("all");
     const [isSuggestingPrompt, setIsSuggestingPrompt] = useState(false);
@@ -1268,6 +1269,7 @@ export function KdpFactoryApp() {
             setNicheFormDemand(niche.demand);
             setNicheFormProductType(niche.productType ?? "coloring-book");
             setNicheFormStyles(niche.styleCategories?.length ? niche.styleCategories : [niche.styleCategory ?? "generic"]);
+            setNicheFormAudience(niche.targetAudience ?? "all");
             setNicheFormNotes(niche.notes);
             setNicheFormEtsyUrl(niche.etsyUrl ?? "");
             setNicheFormPrompt(niche.discoveryImagePrompt ?? niche.generatedPrompt ?? "");
@@ -1282,6 +1284,7 @@ export function KdpFactoryApp() {
             setNicheFormDemand("unknown");
             setNicheFormProductType("coloring-book");
             setNicheFormStyles(["generic"]);
+            setNicheFormAudience("all");
             setNicheFormNotes("");
             setNicheFormEtsyUrl("");
             setNicheFormPrompt("");
@@ -1371,7 +1374,12 @@ export function KdpFactoryApp() {
                         body: JSON.stringify({
                             type: "niche-particulars",
                             niche: niche.name,
-                            extras: isAnime ? "anime cartoon style" : undefined,
+                            extras: [
+                                isAnime ? "anime cartoon style" : undefined,
+                                niche.targetAudience === "children" ? "for children, simple cute friendly designs" :
+                                niche.targetAudience === "teens"    ? "for teens, cool trendy modern style" :
+                                niche.targetAudience === "adults"   ? "for adults, detailed intricate patterns" : undefined,
+                            ].filter(Boolean).join(", ") || undefined,
                             language: "en",
                         }),
                     });
@@ -1490,6 +1498,7 @@ export function KdpFactoryApp() {
                 productType: nicheFormProductType,
                 styleCategory: nicheFormStyles[0] ?? "generic",
                 styleCategories: nicheFormStyles,
+                targetAudience: nicheFormAudience,
                 notes: nicheFormNotes.trim(),
                 etsyUrl: nicheFormEtsyUrl.trim(),
                 generatedPrompt: nicheFormPrompt.trim(),
@@ -11672,50 +11681,62 @@ export function KdpFactoryApp() {
                             seo: "#8b5cf6", cover: "#d946ef", published: "#10b981",
                         };
                         return (
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Heat Map · Score vs Imágenes</p>
-                                    <div className="flex gap-2">
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                    <p className="text-xs font-black uppercase tracking-widest text-neutral-500">Heat Map · Score vs Imágenes</p>
+                                    <div className="flex gap-3 flex-wrap justify-end">
                                         {Object.entries(phaseColor).map(([p, c]) => (
-                                            <span key={p} className="flex items-center gap-1 text-[8px] text-neutral-700">
-                                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: c }} />{p}
+                                            <span key={p} className="flex items-center gap-1.5 text-[10px] font-bold text-neutral-500">
+                                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c }} />{p}
                                             </span>
                                         ))}
                                     </div>
                                 </div>
-                                <div className="relative h-36 rounded-2xl border border-white/8 bg-white/[0.015] overflow-hidden">
-                                    {[0,1,2,3].map(i => (
-                                        <div key={i} className="absolute w-full h-px bg-white/[0.03]" style={{ top: `${25 * (i + 1)}%` }} />
+                                <div className="relative rounded-2xl border border-white/8 bg-white/[0.015] overflow-visible" style={{ height: 320 }}>
+                                    {/* Grid */}
+                                    {[1,2,3].map(i => (
+                                        <div key={i} className="absolute w-full h-px bg-white/[0.04]" style={{ top: `${25 * i}%` }} />
                                     ))}
-                                    {[0,1,2,3].map(i => (
-                                        <div key={i} className="absolute h-full w-px bg-white/[0.03]" style={{ left: `${25 * (i + 1)}%` }} />
+                                    {[1,2,3].map(i => (
+                                        <div key={i} className="absolute h-full w-px bg-white/[0.04]" style={{ left: `${25 * i}%` }} />
                                     ))}
-                                    <span className="absolute bottom-1.5 left-3 text-[7px] text-neutral-700">Score 0</span>
-                                    <span className="absolute bottom-1.5 right-3 text-[7px] text-neutral-700">Score 100</span>
-                                    <span className="absolute top-2 left-3 text-[7px] text-neutral-700">↑ imgs</span>
+                                    {/* Axis labels */}
+                                    <span className="absolute bottom-2 left-3 text-[10px] font-bold text-neutral-600">Score 0</span>
+                                    <span className="absolute bottom-2 right-3 text-[10px] font-bold text-neutral-600">Score 100</span>
+                                    <span className="absolute top-2 left-3 text-[10px] font-bold text-neutral-600">↑ Imágenes</span>
                                     {activeN.map(n => {
                                         const sc = n.score ?? 50;
                                         const imgs = imgCount(n);
                                         const cats = (n.catalogIds ?? []).length;
-                                        const x = 5 + (sc / 100) * 88;
-                                        const y = 88 - (imgs / maxImgs) * 76;
-                                        const sz = 10 + Math.min(cats * 3, 14);
+                                        const x = 6 + (sc / 100) * 88;
+                                        const y = 82 - (imgs / maxImgs) * 70;
+                                        const sz = Math.max(22, 18 + Math.min(cats * 4, 18));
                                         const phase = nicheComputedPhases.get(n._id) ?? "niche";
                                         const color = phaseColor[phase] ?? "#6366f1";
+                                        const label = (n.nickname || n.name).slice(0, 15);
                                         return (
                                             <div
                                                 key={n._id}
-                                                title={`${n.name}\nScore: ${sc} · Imágenes: ${imgs} · Catálogos: ${cats}`}
-                                                className="absolute rounded-full transition-all hover:scale-150 cursor-default"
-                                                style={{
-                                                    left: `${x}%`, top: `${y}%`,
-                                                    width: sz, height: sz,
-                                                    backgroundColor: color + "50",
-                                                    border: `1px solid ${color}90`,
-                                                    transform: "translate(-50%, -50%)",
-                                                    boxShadow: `0 0 ${sz / 2}px ${color}40`,
-                                                }}
-                                            />
+                                                title={`${n.name}\nFase: ${phase} · Score: ${sc} · Imágenes: ${imgs} · Catálogos: ${cats}`}
+                                                className="absolute group cursor-default"
+                                                style={{ left: `${x}%`, top: `${y}%`, transform: "translate(-50%, -50%)" }}
+                                            >
+                                                <div
+                                                    className="rounded-full transition-all duration-200 group-hover:scale-125"
+                                                    style={{
+                                                        width: sz, height: sz,
+                                                        backgroundColor: color + "35",
+                                                        border: `2px solid ${color}`,
+                                                        boxShadow: `0 0 ${sz / 2}px ${color}55`,
+                                                    }}
+                                                />
+                                                <span
+                                                    className="absolute top-full left-1/2 mt-1.5 text-[10px] font-bold text-white/80 whitespace-nowrap pointer-events-none leading-none"
+                                                    style={{ transform: "translateX(-50%)" }}
+                                                >
+                                                    {label}
+                                                </span>
+                                            </div>
                                         );
                                     })}
                                 </div>
@@ -12707,7 +12728,14 @@ export function KdpFactoryApp() {
                                                                 : <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/8 shrink-0" />}
                                                             <div className="min-w-0">
                                                                 <p className="text-sm font-black text-white truncate max-w-[180px] sm:max-w-[260px]">{nd(niche)}</p>
-                                                                <p className="text-[10px] text-neutral-600 truncate">{NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType}</p>
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <p className="text-[10px] text-neutral-600 truncate">{NICHE_PRODUCT_OPTIONS.find(p => p.id === (niche.productType ?? "coloring-book"))?.label ?? niche.productType}</p>
+                                                                    {niche.targetAudience && niche.targetAudience !== "all" && (
+                                                                        <span className="text-[9px] font-black text-violet-400/70 border border-violet-500/20 px-1 rounded-full shrink-0">
+                                                                            {niche.targetAudience === "children" ? "👦" : niche.targetAudience === "teens" ? "🧑" : "🧑‍💼"}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </td>
@@ -13907,7 +13935,7 @@ export function KdpFactoryApp() {
                 const catalogImg = previewContext?.catalogCtx?.images[previewContext.index] ?? null;
                 return (
                     <div
-                        className="fixed inset-0 z-[100] bg-black/96"
+                        className="fixed inset-0 z-[9000] bg-black/80"
                         onClick={closePreview}
                         role="dialog"
                         aria-modal="true"
@@ -16484,6 +16512,24 @@ export function KdpFactoryApp() {
                                                 else setNicheFormStyles(["generic"]);
                                             }}
                                             className={`h-7 px-3 rounded-lg border text-[10px] font-black uppercase tracking-wide transition-all ${nicheFormProductType === opt.id ? "border-sky-500/40 bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20" : "border-white/10 bg-white/5 text-neutral-500 hover:text-white hover:border-white/20"}`}>
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            {/* Target Audience */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Público objetivo</label>
+                                <div className="flex gap-1.5">
+                                    {([
+                                        { id: "children" as const, label: "👦 Niños", desc: "Hasta ~12 años" },
+                                        { id: "teens"    as const, label: "🧑 Teens",  desc: "12–17 años" },
+                                        { id: "adults"   as const, label: "🧑‍💼 Adultos", desc: "18+" },
+                                        { id: "all"      as const, label: "👪 Todos",  desc: "Todas las edades" },
+                                    ]).map(opt => (
+                                        <button key={opt.id} type="button" title={opt.desc}
+                                            onClick={() => setNicheFormAudience(opt.id)}
+                                            className={`flex-1 h-9 rounded-xl border text-[10px] font-black uppercase tracking-wide transition-all ${nicheFormAudience === opt.id ? "border-violet-500/40 bg-violet-500/15 text-violet-300 ring-1 ring-violet-500/25" : "border-white/10 bg-white/5 text-neutral-500 hover:text-white hover:border-white/20"}`}>
                                             {opt.label}
                                         </button>
                                     ))}

@@ -57,7 +57,10 @@ const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { cmd: "/kdpotp <code>XXXXXX</code>",     desc: "Envía código OTP si KDP solicita verificación 2FA" },
     { section: "❓ Ayuda" },
     { cmd: "/ayuda",                       desc: "Este mensaje de ayuda" },
-    { section: "🧠 Asistente IA" },
+    { section: "🤖 Daily Focus — Asistente" },
+    { cmd: "/focus",                        desc: "Pide al asistente tu foco de trabajo más importante hoy (nichos, calendario, urgencias)" },
+    { cmd: "/focus <code>pregunta</code>",  desc: "Pregunta libre al asistente con contexto completo del negocio. Ej: /focus ¿qué nicho priorizo?" },
+    { section: "🧠 Chat IA libre" },
     { cmd: "<i>texto libre</i>",            desc: "Escribe cualquier pregunta en lenguaje natural — la IA responde con datos reales del sistema. Ej: «¿Cuántas imágenes se generaron hoy?» · «¿Qué nichos están en SEO?»" },
 ];
 
@@ -2087,6 +2090,59 @@ async function processUpdate(update: any): Promise<void> {
                     ...pipe.map(a => `  • ${a.nicheName} → ${a.targetPhase}`),
                 ].filter(Boolean).join("\n");
                 await sendTelegram(lines);
+            }
+            return;
+        }
+
+        // ── /focus — Daily Focus assistant with full business context ───────────────
+        if (text === "/focus" || text.startsWith("/focus ")) {
+            const userQuestion = text.startsWith("/focus ")
+                ? text.slice("/focus ".length).trim()
+                : "¿Cuál es mi foco de trabajo más importante hoy?";
+            try {
+                await sendTelegram("🤖 <i>Analizando tu negocio…</i>");
+                const { Catalog } = await import("../models/catalog.js");
+                const [allNiches, allCats, calRow, tmRow] = await Promise.all([
+                    Niche.find({ status: { $in: ["active", "found"] } }).select("name phase autoPilotEnabled score pipelineHasListings pipelineHasCover pipelineHasPdf catalogIds").lean(),
+                    Catalog.find().select("nicheIds images status").lean(),
+                    Settings.findOne({ key: "KDP_PUB_CALENDAR" }).lean(),
+                    Settings.findOne({ key: "KDP_TIME_MACHINE_LAST" }).lean(),
+                ]);
+                const nicheCount = (allNiches as any[]).length;
+                const byPhase = (p: string) => (allNiches as any[]).filter((n: any) => {
+                    if (p === "published") return n.phase === "published";
+                    if (p === "cover")   return n.pipelineHasCover && n.phase !== "published";
+                    if (p === "seo")     return n.pipelineHasListings && !n.pipelineHasCover && n.phase !== "published";
+                    if (p === "libro")   return n.pipelineHasPdf && !n.pipelineHasListings && n.phase !== "published";
+                    if (p === "catalog") return n.pipelineHasCover === false && n.pipelineHasListings === false && n.pipelineHasPdf === false && (n.catalogIds?.length > 0);
+                    return !n.pipelineHasCover && !n.pipelineHasListings && !n.pipelineHasPdf && (!n.catalogIds?.length);
+                }).length;
+                const totalImages = (allCats as any[]).reduce((s: number, c: any) => s + (c.images?.length ?? 0), 0);
+                const today = new Date().toISOString().split("T")[0];
+                let calendarLines = "";
+                try {
+                    const events = JSON.parse((calRow as any)?.value ?? "[]");
+                    const upcoming = (events as any[]).filter((e: any) => e.date >= today).sort((a: any, b: any) => a.date.localeCompare(b.date)).slice(0, 3);
+                    calendarLines = upcoming.length > 0 ? `Próximos eventos: ${upcoming.map((e: any) => `${e.title} (${e.date})`).join(", ")}` : "";
+                } catch { /* ignore */ }
+                let urgentTm = "";
+                try {
+                    const tmData = JSON.parse((tmRow as any)?.value ?? "[]");
+                    const urgent = (tmData as any[]).filter((t: any) => t.urgency === "critical" || t.urgency === "soon").slice(0, 3);
+                    urgentTm = urgent.length > 0 ? `Urgencias estacionales: ${urgent.map((t: any) => `${t.nicheName} (${t.urgency}, publicar ${t.optimalPublishDate})`).join(", ")}` : "";
+                } catch { /* ignore */ }
+                const ctx = [
+                    `Fecha: ${today}`,
+                    `Nichos activos: ${nicheCount} (${byPhase("niche")} en idea, ${byPhase("catalog")} en catálogo, ${byPhase("seo")} en SEO, ${byPhase("published")} publicados)`,
+                    `Imágenes generadas: ${totalImages}`,
+                    calendarLines,
+                    urgentTm,
+                ].filter(Boolean).join("\n");
+                const systemPrompt = `Eres el asistente de Daily Focus del autor KDP Emilio Jimenez. Ayudas a decidir qué hacer hoy para maximizar ingresos pasivos con libros de colorear en Amazon KDP.\n\nESTADO ACTUAL:\n${ctx}\n\nResponde en español, de forma concisa y accionable. Máximo 4 puntos. Usa HTML Telegram (<b>, <code>). NUNCA uses JSON.`;
+                const reply = await generateTextWithLLM(systemPrompt, userQuestion);
+                await sendTelegram(`🎯 <b>Daily Focus</b>\n\n${reply.slice(0, 3000)}`);
+            } catch (e: any) {
+                await sendTelegram(`❌ Error en Daily Focus: ${e.message?.slice(0, 100) ?? "desconocido"}`);
             }
             return;
         }

@@ -25,23 +25,30 @@ function browserSpeak(clean: string, lang: string) {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     stopCurrentAudio();
 
+    const synth = window.speechSynthesis;
+
     const doSpeak = () => {
         const utterance = new SpeechSynthesisUtterance(clean);
         utterance.lang = lang;
-        utterance.rate = 1.1;
-        utterance.pitch = 1.0;
+        utterance.rate = 1.0;
+        utterance.volume = 1.0;
         const savedVoice = localStorage.getItem("voice_name");
         if (savedVoice) {
-            const match = window.speechSynthesis.getVoices().find(v => v.name === savedVoice);
-            if (match) utterance.voice = match;
+            const match = synth.getVoices().find(v => v.name === savedVoice);
+            if (match) {
+                utterance.voice = match;
+                utterance.lang = match.lang;
+            }
         }
-        setTimeout(() => window.speechSynthesis.speak(utterance), 50);
+        // Chrome bug: cancel() + speak() same tick = silence. Yield 100ms + resume().
+        synth.cancel();
+        setTimeout(() => { synth.resume(); synth.speak(utterance); }, 100);
     };
 
-    if (window.speechSynthesis.getVoices().length > 0) {
+    if (synth.getVoices().length > 0) {
         doSpeak();
     } else {
-        window.speechSynthesis.addEventListener("voiceschanged", doSpeak, { once: true });
+        synth.addEventListener("voiceschanged", doSpeak, { once: true });
     }
 }
 

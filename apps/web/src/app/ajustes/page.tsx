@@ -41,7 +41,6 @@ import { createApiSocket } from "@/lib/socket";
 import { toast } from "sonner";
 import { refreshToken, getTokenExpiry } from "@/lib/auth-client";
 import { KdpTabBar } from "@/components/ui/kdp-tab-bar";
-import { speakBrowser } from "@/hooks/useSpeech";
 import { Toggle } from "@/components/ui/toggle";
 import { LlmTelemetryPanel } from "@/components/settings/LlmTelemetryPanel";
 
@@ -133,10 +132,6 @@ export default function AjustesPage() {
         return localStorage.getItem("voice_enabled") !== "false";
     });
     const [voiceTesting, setVoiceTesting] = useState(false);
-    const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
-    const [selectedVoiceName, setSelectedVoiceName] = useState(() =>
-        typeof window !== "undefined" ? (localStorage.getItem("voice_name") ?? "") : ""
-    );
 
     // fal.ai
     const [falAiKey, setFalAiKey] = useState("");
@@ -458,47 +453,27 @@ export default function AjustesPage() {
         localStorage.setItem("voice_enabled", val ? "true" : "false");
     };
 
-    useEffect(() => {
-        if (typeof window === "undefined" || !window.speechSynthesis) return;
-        const load = () => setAvailableVoices(window.speechSynthesis.getVoices());
-        load();
-        window.speechSynthesis.addEventListener("voiceschanged", load);
-        return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
-    }, []);
-
-    const testVoice = async () => {
+    const testVoice = () => {
         setVoiceTesting(true);
-        const testText = "Hola, la voz está funcionando correctamente.";
-        try {
-            // Try server TTS first
-            let serverOk = false;
-            try {
-                const res = await fetch(`${apiUrl}/voice/tts`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ text: testText }),
-                    signal: AbortSignal.timeout(5000),
-                });
-                if (res.ok) {
-                    const blob = await res.blob();
-                    const url = URL.createObjectURL(blob);
-                    const audio = new Audio(url);
-                    audio.onended = () => URL.revokeObjectURL(url);
-                    await audio.play();
-                    serverOk = true;
-                }
-            } catch { /* fall through */ }
-            // Fallback: browser's Web Speech API (works offline, no API needed)
-            if (!serverOk) {
-                if (typeof window !== "undefined" && window.speechSynthesis) {
-                    speakBrowser(testText);
-                } else {
-                    toast.error("TTS no disponible en este navegador");
-                }
-            }
-        } finally {
-            setVoiceTesting(false);
-        }
+        const done = () => setVoiceTesting(false);
+        const safety = setTimeout(done, 8000);
+
+        fetch(`${apiUrl}/voice/tts`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: "Hola, la voz está funcionando correctamente." }),
+            signal: AbortSignal.timeout(7000),
+        })
+            .then(r => r.ok ? r.blob() : Promise.reject())
+            .then(blob => {
+                clearTimeout(safety);
+                const url = URL.createObjectURL(blob);
+                const audio = new Audio(url);
+                audio.onended = () => { URL.revokeObjectURL(url); done(); };
+                audio.onerror = () => { URL.revokeObjectURL(url); done(); };
+                audio.play().catch(done);
+            })
+            .catch(() => { clearTimeout(safety); done(); });
     };
 
     return (
@@ -2536,27 +2511,6 @@ export default function AjustesPage() {
                                 {voiceTesting ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
                                 Probar voz
                             </button>
-                            {availableVoices.length > 0 && (
-                                <div className="space-y-2">
-                                    <p className="text-xs font-bold text-neutral-400">Tipo de voz del navegador</p>
-                                    <select
-                                        value={selectedVoiceName}
-                                        onChange={e => {
-                                            setSelectedVoiceName(e.target.value);
-                                            localStorage.setItem("voice_name", e.target.value);
-                                        }}
-                                        className="w-full h-9 px-3 bg-white/5 border border-white/10 rounded-xl text-sm text-neutral-300 focus:outline-none focus:border-emerald-500/40 transition-all"
-                                    >
-                                        <option value="">— Sistema por defecto —</option>
-                                        {availableVoices.map(v => (
-                                            <option key={v.name} value={v.name}>
-                                                {v.name} ({v.lang})
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <p className="text-[10px] text-neutral-600">Solo afecta al fallback del navegador. El servidor TTS usa su propio motor.</p>
-                                </div>
-                            )}
                         </div>
                     </div>
                 </section>
