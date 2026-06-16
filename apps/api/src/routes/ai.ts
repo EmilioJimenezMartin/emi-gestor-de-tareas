@@ -1319,11 +1319,19 @@ Return ONLY a JSON object: {"particulars": "...55-80 words of vivid hyper-specif
                 const compositionHint = extras?.split("composition:")?.[1]?.split(";")?.[0]?.trim() ?? "";
                 const visualRef = extras?.split("visual reference:")?.[1]?.split("; winning")?.[0]?.trim() ?? "";
                 const evolutionRaw = extras?.split("winning examples:")?.[1]?.trim() ?? "";
+                const audienceRaw = extras?.split("audience:")?.[1]?.split(";")?.[0]?.trim() ?? "";
+                const audienceGuide: Record<string, string> = {
+                    children: "TARGET AUDIENCE: Children (ages 4-10). Shapes MUST be large, round, and simple. MAX 2 characters. Absolutely no fine details or intricate patterns — thick bold outlines only. Expressions: happy, cute, friendly. Scene: joyful and easy to color.",
+                    teens:    "TARGET AUDIENCE: Teens (ages 11-17). Cool, trendy, modern style. Moderate complexity. Subjects that resonate with youth culture. Energetic composition, dynamic poses, stylish details. Not too childish, not too adult.",
+                    adults:   "TARGET AUDIENCE: Adults. Intricate and detailed — many small elements to color. Sophisticated composition. Fine line work, complex patterns, elaborate backgrounds. Rewarding and meditative to color.",
+                };
+                const audienceInstruction = audienceRaw ? (audienceGuide[audienceRaw] ?? "") : "";
 
                 return `You are a world-class art director specializing in KDP coloring book illustration prompts. Write ONE highly specific scene description that an AI image generator will use to create a coloring page.
 
 Niche: "${niche}"
 Style: ${styleMatch}
+${audienceInstruction ? `\n${audienceInstruction}` : ""}
 ${compositionHint ? `Composition/zoom: ${compositionHint}` : ""}
 ${visualRef ? `Visual reference (adapt, don't copy): ${visualRef}` : ""}
 ${evolutionRaw ? `\nPROVEN PATTERNS — these descriptions produced high-quality images for similar niches. Do NOT copy them. Study their level of specificity, concrete naming, and compositional clarity, then apply that same quality to a DIFFERENT scene for this niche:\n${evolutionRaw}` : ""}

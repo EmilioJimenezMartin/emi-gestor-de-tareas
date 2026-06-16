@@ -349,7 +349,9 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                 try {
                     const aiType = productType === "printable-poster" ? "printable-particulars" : "niche-particulars";
                     const evolutionSeed = await getEvolutionSeed(productType).catch(() => "");
-                    const quickExtras = [style, evolutionSeed].filter(Boolean).join("; ");
+                    const targetAudience = (niche as any).targetAudience as string | undefined;
+                    const audiencePart = targetAudience && targetAudience !== "all" ? `audience: ${targetAudience}` : "";
+                    const quickExtras = [style, audiencePart, evolutionSeed].filter(Boolean).join("; ");
                     const aiRes = await internalFetch(`${base}/ai/generate-text`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -441,7 +443,9 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                     ? `${nicheName} (market reference: "${sourceTitulo}")`
                     : nicheName;
                 const evolutionSeed = await getEvolutionSeed(productType).catch(() => "");
-                const discoverExtras = [style, evolutionSeed].filter(Boolean).join("; ");
+                const targetAudience = (niche as any).targetAudience as string | undefined;
+                const audiencePart = targetAudience && targetAudience !== "all" ? `audience: ${targetAudience}` : "";
+                const discoverExtras = [style, audiencePart, evolutionSeed].filter(Boolean).join("; ");
                 try {
                     const aiRes = await internalFetch(`${base2}/ai/generate-text`, {
                         method: "POST",
