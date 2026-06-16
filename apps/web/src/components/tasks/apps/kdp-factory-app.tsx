@@ -12824,6 +12824,7 @@ export function KdpFactoryApp() {
                     if (src?.bsr) lines.push(`BSR: ${src.bsr}`);
                     if (src?.price) lines.push(`Precio: ${src.price}`);
                     if (src?.reviews) lines.push(`Reseñas: ${src.reviews}`);
+                    if (src?.pages) lines.push(`Páginas: ${src.pages}`);
                     if (srcUrl) lines.push(`URL: ${srcUrl}`);
                     return lines.join("\n");
                 };
@@ -13113,21 +13114,23 @@ export function KdpFactoryApp() {
                                                 </div>
                                                 {isOpen && (
                                                     <div className="px-5 pb-4 space-y-3">
-                                                        <div className="rounded-2xl border border-rose-500/15 bg-rose-500/[0.03] p-3 space-y-1.5">
-                                                            <p className="text-xs font-black text-white">{entry.source.title}</p>
+                                                        <div className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.04] p-4 space-y-2">
+                                                            <p className="text-[9px] font-black uppercase tracking-widest text-rose-400">Bestseller analizado</p>
+                                                            <p className="text-sm font-black text-white leading-snug">{entry.source.title}</p>
                                                             <div className="flex gap-4 flex-wrap">
                                                                 {[
-                                                                    { label: "BSR", val: entry.source.bsr },
-                                                                    { label: "Precio", val: entry.source.price },
+                                                                    { label: "BSR",     val: entry.source.bsr },
+                                                                    { label: "Precio",  val: entry.source.price },
                                                                     { label: "Reseñas", val: entry.source.reviews },
+                                                                    { label: "Páginas", val: entry.source.pages },
                                                                 ].filter(x => x.val).map(({ label, val }) => (
                                                                     <div key={label} className="text-xs">
-                                                                        <span className="text-neutral-600 text-[9px] uppercase">{label}: </span>
-                                                                        <span className="text-neutral-300 font-black">{val}</span>
+                                                                        <span className="text-neutral-600 uppercase tracking-widest text-[9px]">{label}: </span>
+                                                                        <span className="text-neutral-200 font-black">{val}</span>
                                                                     </div>
                                                                 ))}
                                                             </div>
-                                                            {entry.source.formula && <p className="text-xs text-neutral-500 border-l-2 border-rose-500/20 pl-2 leading-relaxed">{entry.source.formula}</p>}
+                                                            {entry.source.formula && <p className="text-xs text-neutral-400 border-l-2 border-rose-500/30 pl-3 leading-relaxed">{entry.source.formula}</p>}
                                                         </div>
                                                         {entry.clones.map((clone, ci) => (
                                                             <CloneCard key={ci} clone={clone} cardKey={`hist-${idx}-${ci}`} tgSent={cloneTgSent.has(`hist-${idx}-${ci}`)} tgSending={cloneTgSending.has(`hist-${idx}-${ci}`)} onSave={() => void saveClone(clone, entry.source, entry.input)} onDelete={savedNicheId(clone.nicheName) ? () => setNicheDeleteId(savedNicheId(clone.nicheName)!) : null} onTelegram={() => void sendToTelegram(`hist-${idx}-${ci}`, clone, entry.source.title, entry.input)} />
