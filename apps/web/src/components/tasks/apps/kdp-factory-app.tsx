@@ -720,6 +720,7 @@ export function KdpFactoryApp() {
     const [isCreatingCustomCatalog, setIsCreatingCustomCatalog] = useState(false);
     // Feature: niche sort + filter + AI score
     const [nicheSortBy, setNicheSortBy] = useState<"score" | "market" | "date" | "name" | "images" | "catalogs">("score");
+    const [nicheSortDir, setNicheSortDir] = useState<"asc" | "desc">("desc");
     const [nicheSearch, setNicheSearch] = useState("");
     const [nicheQuickFilter, setNicheQuickFilter] = useState<"all" | "gold" | "no-catalogs" | "book" | "published">("all");
     const [nicheFilterAudience, setNicheFilterAudience] = useState<"all" | "children" | "teens" | "adults">("all");
@@ -11727,18 +11728,27 @@ export function KdpFactoryApp() {
                             </div>
                             <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest overflow-x-auto no-scrollbar ml-auto">
                                 {([
-                                    { id: "score" as const, label: "★ Score" },
-                                    { id: "market" as const, label: "📊 Market" },
-                                    { id: "date" as const, label: "↓ Reciente" },
-                                    { id: "catalogs" as const, label: "📚" },
-                                    { id: "images" as const, label: "🖼" },
-                                    { id: "name" as const, label: "A→Z" },
-                                ]).map(opt => (
-                                    <button key={opt.id} onClick={() => setNicheSortBy(opt.id)}
-                                        className={`px-2.5 h-8 rounded-[10px] transition-all whitespace-nowrap ${nicheSortBy === opt.id ? "bg-white/10 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                        {opt.label}
-                                    </button>
-                                ))}
+                                    { id: "score" as const, label: "Score IA" },
+                                    { id: "market" as const, label: "Market" },
+                                    { id: "date" as const, label: "Fecha" },
+                                    { id: "catalogs" as const, label: "Catálogos" },
+                                    { id: "images" as const, label: "Imágenes" },
+                                    { id: "name" as const, label: "Nombre" },
+                                ]).map(opt => {
+                                    const active = nicheSortBy === opt.id;
+                                    const dir = active ? nicheSortDir : "desc";
+                                    return (
+                                        <button key={opt.id}
+                                            onClick={() => {
+                                                if (active) setNicheSortDir(d => d === "desc" ? "asc" : "desc");
+                                                else { setNicheSortBy(opt.id); setNicheSortDir("desc"); }
+                                            }}
+                                            className={`px-2.5 h-8 rounded-[10px] transition-all whitespace-nowrap flex items-center gap-1 ${active ? "bg-white/10 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                            {opt.label}
+                                            {active && <span className="text-[9px] opacity-60">{dir === "desc" ? "↓" : "↑"}</span>}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
                         {/* Row 3: Audience + range filters */}
@@ -12068,19 +12078,20 @@ export function KdpFactoryApp() {
                             .filter(nicheMatchesFilters)
                             .slice()
                             .sort((a, b) => {
-                                if (nicheSortBy === "score") return nicheScore(b) - nicheScore(a);
-                                if (nicheSortBy === "market") return (b.marketScan?.score ?? -1) - (a.marketScan?.score ?? -1);
-                                if (nicheSortBy === "date") return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
-                                if (nicheSortBy === "name") return a.name.localeCompare(b.name, "es");
+                                const dir = nicheSortDir === "asc" ? 1 : -1;
+                                if (nicheSortBy === "score") return dir * (nicheScore(a) - nicheScore(b));
+                                if (nicheSortBy === "market") return dir * ((a.marketScan?.score ?? -1) - (b.marketScan?.score ?? -1));
+                                if (nicheSortBy === "date") return dir * (new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime());
+                                if (nicheSortBy === "name") return dir * a.name.localeCompare(b.name, "es");
                                 if (nicheSortBy === "catalogs") {
                                     const ac = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).length;
                                     const bc = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).length;
-                                    return bc - ac;
+                                    return dir * (ac - bc);
                                 }
                                 if (nicheSortBy === "images") {
                                     const ai = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).reduce((s, c) => s + c.images.length, 0);
                                     const bi = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).reduce((s, c) => s + c.images.length, 0);
-                                    return bi - ai;
+                                    return dir * (ai - bi);
                                 }
                                 return 0;
                             });
@@ -12769,12 +12780,13 @@ export function KdpFactoryApp() {
                             .filter(nicheMatchesFilters)
                             .slice()
                             .sort((a, b) => {
-                                if (nicheSortBy === "score") return nicheScore(b) - nicheScore(a);
-                                if (nicheSortBy === "market") return (b.marketScan?.score ?? -1) - (a.marketScan?.score ?? -1);
-                                if (nicheSortBy === "date") return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
-                                if (nicheSortBy === "name") return a.name.localeCompare(b.name, "es");
-                                if (nicheSortBy === "catalogs") { const ac = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).length; const bc = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).length; return bc - ac; }
-                                if (nicheSortBy === "images") { const ai = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).reduce((s, c) => s + c.images.length, 0); const bi = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).reduce((s, c) => s + c.images.length, 0); return bi - ai; }
+                                const dir = nicheSortDir === "asc" ? 1 : -1;
+                                if (nicheSortBy === "score") return dir * (nicheScore(a) - nicheScore(b));
+                                if (nicheSortBy === "market") return dir * ((a.marketScan?.score ?? -1) - (b.marketScan?.score ?? -1));
+                                if (nicheSortBy === "date") return dir * (new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime());
+                                if (nicheSortBy === "name") return dir * a.name.localeCompare(b.name, "es");
+                                if (nicheSortBy === "catalogs") { const ac = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).length; const bc = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).length; return dir * (ac - bc); }
+                                if (nicheSortBy === "images") { const ai = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).reduce((s, c) => s + c.images.length, 0); const bi = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).reduce((s, c) => s + c.images.length, 0); return dir * (ai - bi); }
                                 return 0;
                             });
                         if (tableNiches.length === 0) return null;
