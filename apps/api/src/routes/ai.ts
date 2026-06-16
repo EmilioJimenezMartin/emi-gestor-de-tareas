@@ -1737,13 +1737,15 @@ IMPORTANTE: Responde ÚNICA Y EXCLUSIVAMENTE con JSON puro sin ningún markdown,
 Estructura exacta:
 {"predictions":[{"nicheName":"string","season":"string","peakWeek":"YYYY-MM-DD","optimalPublishDate":"YYYY-MM-DD","weeksUntilPublish":0,"urgency":"critical","tip":"string"}]}`;
 
-        const nicheList = nicheNames.length > 0
-            ? nicheNames.map((n, i) => `${i + 1}. ${n}`).join("\n")
+        // Cap to avoid LLM truncation on large niche lists
+        const safeNicheNames = nicheNames.slice(0, 15);
+        const nicheList = safeNicheNames.length > 0
+            ? safeNicheNames.map((n, i) => `${i + 1}. ${n}`).join("\n")
             : "Sin nichos específicos — genera recomendaciones para los 8 tipos de nichos KDP más vendidos";
 
         try {
             const raw = await generateTextWithLLM(SYSTEM, `NICHOS A ANALIZAR:\n${nicheList}`);
-            // Strip markdown fences, JS comments, and trailing commas before parsing
+            // Strip markdown fences, JS comments, trailing commas, and raw control chars
             const cleaned = raw
                 .replace(/```[a-z]*\n?/gi, "")
                 .replace(/\/\/[^\n]*/g, "")
@@ -1752,7 +1754,34 @@ Estructura exacta:
                 .trim();
             const match = cleaned.match(/\{[\s\S]*\}/);
             if (!match) return reply.status(500).send({ error: "La IA no devolvió JSON válido" });
-            const parsed = JSON.parse(match[0]);
+
+            let parsed: any;
+            const jsonStr = match[0];
+
+            // Attempt 1: direct parse
+            try { parsed = JSON.parse(jsonStr); } catch { /* try next */ }
+
+            // Attempt 2: collapse whitespace (fixes unescaped newlines inside strings)
+            if (!parsed) {
+                try {
+                    const flat = jsonStr.replace(/[\n\r\t]/g, " ").replace(/ {2,}/g, " ").replace(/,\s*([}\]])/g, "$1");
+                    parsed = JSON.parse(flat);
+                } catch { /* try next */ }
+            }
+
+            // Attempt 3: recover truncated JSON (find last complete object, close array)
+            if (!parsed) {
+                try {
+                    const lastClose = jsonStr.lastIndexOf("}");
+                    if (lastClose > 0) {
+                        const recovered = jsonStr.slice(0, lastClose + 1).replace(/,\s*$/, "") + "]}";
+                        const flat = recovered.replace(/[\n\r\t]/g, " ").replace(/,\s*([}\]])/g, "$1");
+                        parsed = JSON.parse(flat);
+                    }
+                } catch { /* all attempts failed */ }
+            }
+
+            if (!parsed) return reply.status(500).send({ error: "La IA no devolvió JSON válido" });
 
             // Sort by urgency: critical first, then soon, ok, evergreen
             const order: Record<string, number> = { critical: 0, soon: 1, ok: 2, evergreen: 3 };
