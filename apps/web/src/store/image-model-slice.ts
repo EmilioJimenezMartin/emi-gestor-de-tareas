@@ -5,7 +5,7 @@ interface ImageModelState {
 }
 
 const initialState: ImageModelState = {
-    selectedModelId: "sf-flux-schnell",
+    selectedModelId: "pollinations-flux",
 };
 
 export const imageModelSlice = createSlice({

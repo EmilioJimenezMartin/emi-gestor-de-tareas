@@ -150,13 +150,14 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps?: { agen
         if (!ensureMongo(reply)) return;
         try {
             const { id } = request.params as { id: string };
-            const body = (request.body ?? {}) as { catalogsPerNiche?: number; imagesPerCatalog?: number };
+            const body = (request.body ?? {}) as { catalogsPerNiche?: number; imagesPerCatalog?: number; rawPrompt?: boolean };
 
             const niche = await Niche.findById(id);
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
 
             const catalogsPerNiche = body.catalogsPerNiche ?? 3;
             const imagesPerCatalog = body.imagesPerCatalog ?? 5;
+            const rawPrompt = body.rawPrompt ?? false;
             const port = process.env.PORT || 3001;
             const base = `http://localhost:${port}`;
 
@@ -195,6 +196,7 @@ export async function registerPipelineRoutes(app: FastifyInstance, deps?: { agen
                         aiModel,
                         nicheIds: [id],
                         productType: (niche as any).productType ?? "coloring-book",
+                        rawPrompt,
                     }),
                 });
                 if (res.ok) created++;

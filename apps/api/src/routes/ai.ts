@@ -1316,7 +1316,7 @@ Return ONLY a JSON object: {"particulars": "...55-80 words of vivid hyper-specif
                 };
                 const styleInstruction = styleGuide[styleMatch] ?? "Describe a balanced coloring page scene with a clear focal subject and supporting decorative elements. Medium complexity — satisfying to color for all ages.";
 
-                const variationHint = extras?.split("composition variation:")?.[1]?.split(";")?.[0]?.trim() ?? "";
+                const compositionHint = extras?.split("composition:")?.[1]?.split(";")?.[0]?.trim() ?? "";
                 const visualRef = extras?.split("visual reference:")?.[1]?.split("; winning")?.[0]?.trim() ?? "";
                 const evolutionRaw = extras?.split("winning examples:")?.[1]?.trim() ?? "";
 
@@ -1324,7 +1324,7 @@ Return ONLY a JSON object: {"particulars": "...55-80 words of vivid hyper-specif
 
 Niche: "${niche}"
 Style: ${styleMatch}
-${variationHint ? `Composition focus: ${variationHint}` : ""}
+${compositionHint ? `Composition/zoom: ${compositionHint}` : ""}
 ${visualRef ? `Visual reference (adapt, don't copy): ${visualRef}` : ""}
 ${evolutionRaw ? `\nPROVEN PATTERNS — these descriptions produced high-quality images for similar niches. Do NOT copy them. Study their level of specificity, concrete naming, and compositional clarity, then apply that same quality to a DIFFERENT scene for this niche:\n${evolutionRaw}` : ""}
 
@@ -1333,20 +1333,22 @@ STYLE GUIDANCE: ${styleInstruction}
 Write ONLY the "particulars" — 55-80 words of precise visual description for this single coloring page.
 
 RULES:
-1. SUBJECT: Name it concretely with a specific action or state. Not "a fox" — "a red fox mid-leap, one forepaw raised"
-2. SECONDARY: 2-4 supporting elements that directly reinforce the SPECIFIC niche topic. No generic filler.
-3. COMPOSITION: Explicit spatial description — close-up portrait / overhead flat lay / symmetrical mandala / dynamic diagonal / etc.
-4. DENSITY: What fills the margins and background — ornamental patterns, repeating motifs, border details, negative space distribution
-5. MOOD: One concrete, visual, SPECIFIC emotional quality tied to the niche — NOT abstract filler. "Reverent and ceremonial" ✓ — "inviting calm and focus" ✗
+1. SUBJECT: The subject MUST be directly from the niche "${niche}". Nothing else. Not a random animal, not a generic figure — the actual niche subject.
+2. COMPOSITION: Apply the composition/zoom hint to HOW the niche subject is framed — never to introduce a different subject.
+3. SECONDARY: 2-4 supporting elements that directly reinforce the SPECIFIC niche topic. No generic filler.
+4. DENSITY: What fills the margins — ornamental patterns, repeating motifs, border details, negative space.
+5. MOOD: One concrete, visual, SPECIFIC emotional quality tied to the niche.
+
+CRITICAL: Every word in your description must directly relate to "${niche}". If the niche is "fantasy doors", describe a fantasy door — not a creature, not an animal, not an unrelated object.
 
 BAD EXAMPLES (what NOT to produce):
-- "Intricate patterns fill the page, inviting a sense of calm and focus." ← too abstract, no specifics
-- "A beautiful mandala with swirling lines and symmetrical designs." ← banned adjectives, no niche connection
-- "Detailed scene with decorative elements creating a peaceful atmosphere." ← says nothing concrete
+- Any description that doesn't directly name the niche subject in the first sentence
+- "Intricate patterns fill the page" ← no niche connection
+- A description of an animal when the niche is about objects or environments
 
 GOOD EXAMPLES:
-- "A barn owl perched on a gnarled oak branch, wings half-spread mid-rotation, large facial disc ringed by feather rays. Dense fern fronds and acorn clusters frame the lower corners. Composition: centered portrait, slightly low-angle. Margins packed with intertwined ivy vines and Celtic knotwork. Mood: alert and nocturnal."
-- "Sixteen-point star mandala centered on lotus bloom, each petal subdivided into three concentric leaf segments. Outer ring: eight elephant silhouettes trunk-raised, alternating with peacock feathers in full display. Corners: corner-fill geometric triangles with paisley fill. Composition: perfect top-down symmetry. Mood: ceremonial and dense."
+- "A towering Gothic archway hewn from dark obsidian, iron gargoyle handles gripping a cracked door ajar, revealing a swirling violet portal beyond. Composition: centered low-angle view. Stone surround carved with runes and climbing thorned vines. Corner fills: stacked ancient bricks with moss growth. Mood: forbidding and mysterious."
+- "Sixteen-point star mandala centered on lotus bloom, each petal subdivided into three concentric leaf segments. Outer ring: eight elephant silhouettes trunk-raised. Composition: perfect top-down symmetry. Mood: ceremonial and dense."
 
 FORBIDDEN WORDS: beautiful, stunning, gorgeous, amazing, lovely, wonderful, intricate, delicate, elegant, inviting, serene, peaceful, calm, tranquil, soothing, whimsical, enchanting, magical.
 

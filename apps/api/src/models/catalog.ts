@@ -39,6 +39,8 @@ export interface ICatalog extends Document {
     nicheIds: string[];
     /** true cuando ya se aplicó (o se intentó) la micro-variación automática entre catálogos del mismo nicho */
     autoVariedPrompt?: boolean;
+    /** true = usar catalog.prompt verbatim, sin LLM ni fórmula de coloring book */
+    rawPrompt?: boolean;
     /** densidad de línea de la 1ª imagen aceptada — referencia de coherencia de estilo del catálogo */
     styleRefDensity?: number;
     createdAt: Date;
@@ -91,6 +93,7 @@ const CatalogSchema = new Schema<ICatalog>(
         queueOrder: { type: Number, default: 0 },
         nicheIds: [{ type: String }],
         autoVariedPrompt: { type: Boolean, default: false },
+        rawPrompt: { type: Boolean, default: false },
         styleRefDensity: { type: Number },
     },
     { timestamps: true }

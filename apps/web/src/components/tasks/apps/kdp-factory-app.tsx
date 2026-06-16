@@ -100,6 +100,7 @@ import { Badge } from "@/components/ui/badge";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Toggle } from "@/components/ui/toggle";
 import { ToggleRow } from "@/components/ui/setting-row";
+import { EmptyState } from "@/components/ui/empty-state";
 import { CatalogCard, KdpCardCtx, type KdpCardActions } from "./kdp-catalog-card";
 import { Modal } from "@/components/ui/modal";
 import { KdpStatCard } from "@/components/ui/kdp-stat-card";
@@ -187,21 +188,21 @@ const NICHE_STYLE_OPTIONS: { id: NicheStyle; label: string; desc: string }[] = [
 
 const NICHE_STYLE_MODEL: Record<NicheStyle, string> = {
     // Coloring book styles
-    generic: "cf-flux-schnell",
-    funko: "cf-flux-schnell",
-    anime: "cf-flux-schnell",
-    illustration: "openjourney-v4",
-    children: "coloringbook-redmond-v2",
-    realistic: "cf-flux-schnell",
-    watercolor: "openjourney-v4",
-    abstract: "cf-flux-schnell",
+    generic: "pollinations-flux",
+    funko: "pollinations-flux",
+    anime: "pollinations-flux-anime",
+    illustration: "pollinations-flux",
+    children: "pollinations-flux",
+    realistic: "pollinations-flux-realism",
+    watercolor: "pollinations-flux",
+    abstract: "pollinations-flux",
     // Printable poster styles
-    "wall-art":    "cf-flux-schnell",
-    "botanical":   "openjourney-v4",
-    "affirmation": "cf-flux-schnell",
-    "geometric":   "cf-flux-schnell",
-    "celestial":   "cf-flux-schnell",
-    "retro":       "openjourney-v4",
+    "wall-art":    "pollinations-flux",
+    "botanical":   "pollinations-flux",
+    "affirmation": "pollinations-flux",
+    "geometric":   "pollinations-flux",
+    "celestial":   "pollinations-flux",
+    "retro":       "pollinations-flux",
 };
 
 const NICHE_STYLE_TO_COVER: Record<NicheStyle, { style: string; colorTheme: string }> = {
@@ -351,7 +352,8 @@ interface IACatalogFE {
     nicheIds?: string[];
     currentPrompt?: string;
     createdAt: string;
-    imageStartedAt?: number; // ms timestamp when current image slot started generating
+    imageStartedAt?: number;
+    rawPrompt?: boolean;
 }
 
 interface SavedPromptFE {
@@ -556,6 +558,8 @@ export function KdpFactoryApp() {
     const [isLoadingNiches, setIsLoadingNiches] = useState(false);
     const [nicheFormOpen, setNicheFormOpen] = useState(false);
     const [nicheEditTarget, setNicheEditTarget] = useState<NicheFE | null>(null);
+    const [inlineNicheOpen, setInlineNicheOpen] = useState(true);
+    const [inlineNicheName, setInlineNicheName] = useState("");
     const [nicheFormName, setNicheFormName] = useState("");
     const [nicheFormNickname, setNicheFormNickname] = useState("");
     const [nicheFormDesc, setNicheFormDesc] = useState("");
@@ -815,7 +819,8 @@ export function KdpFactoryApp() {
     const [contentSaveNicheId, setContentSaveNicheId] = useState<string>("");
     const [savingContentListing, setSavingContentListing] = useState(false);
     // Pipeline config
-    const [pipelineConfig, setPipelineConfig] = useState({ catalogs: 5, imagesPerCatalog: 5 });
+    const [pipelineConfig, setPipelineConfig] = useState({ catalogs: 5, imagesPerCatalog: 5, rawPrompt: false });
+    const [studioRawPrompt, setStudioRawPrompt] = useState(false);
     const [showPipelineConfigId, setShowPipelineConfigId] = useState<string | null>(null);
     const [configSection, setConfigSection] = useState<"autopilot" | "notificaciones" | "integraciones">("autopilot");
     // Niche fork modal
@@ -1084,7 +1089,7 @@ export function KdpFactoryApp() {
             setCoverTitle(niche.nickname?.trim() || niche.name);
             setCoverStyle(coverMap.style);
             setCoverColorTheme(coverMap.colorTheme);
-            setCoverModelId(NICHE_STYLE_MODEL[niche.styleCategory] ?? "cf-flux-schnell");
+            setCoverModelId(NICHE_STYLE_MODEL[niche.styleCategory] ?? "pollinations-flux");
             setShowCoverModal(true);
         } else if (phase === "published") {
             toast.info("Nicho ya publicado. Puedes añadir royalties o crear una nueva edición.");
@@ -1190,6 +1195,7 @@ export function KdpFactoryApp() {
                     height: dim?.height ?? 1024,
                     totalImages: catalogFormCount,
                     nicheIds: catalogFormNicheId ? [catalogFormNicheId] : [],
+                    rawPrompt: studioRawPrompt,
                 }),
             });
             const data = await res.json();
@@ -1279,6 +1285,33 @@ export function KdpFactoryApp() {
             setNicheFormPrompt("");
         }
         setNicheFormOpen(true);
+    };
+
+    const quickCreateNiche = async (name: string) => {
+        if (!name.trim()) return;
+        setIsSavingNiche(true);
+        try {
+            const body = {
+                name: name.trim(), nickname: "", description: "",
+                tags: [], status: "found" as NicheStatus,
+                competition: "unknown" as NicheFE["competition"],
+                demand: "unknown" as NicheFE["demand"],
+                productType: nicheFormProductType,
+                styleCategory: nicheFormStyles[0] ?? "generic",
+                styleCategories: nicheFormStyles,
+                notes: "", etsyUrl: "", generatedPrompt: "",
+            };
+            const res = await fetch(`${API_BASE_URL}/niches`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Error");
+            setNiches(prev => [data.niche, ...prev]);
+            setInlineNicheName("");
+            toast.success(`Nicho "${data.niche.name}" creado`);
+        } catch (e: any) {
+            toast.error(e.message ?? "Error al crear nicho");
+        } finally {
+            setIsSavingNiche(false);
+        }
     };
 
     const generateNicheContent = async (niche: NicheFE, stylesToGen?: NicheStyle[]) => {
@@ -1381,7 +1414,7 @@ export function KdpFactoryApp() {
 
                 lastPrompt = imagePrompt;
                 const modelId = NICHE_STYLE_MODEL[style] ?? NICHE_STYLE_MODEL[niche.styleCategory ?? "generic"];
-                const model = AI_MODELS.find(m => m.id === modelId) ?? AI_MODELS.find(m => m.id === "cf-flux-schnell")!;
+                const model = AI_MODELS.find(m => m.id === modelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
                 const catalogLabel = styles.length > 1 ? `${niche.name} · ${style}` : niche.name;
 
                 const catalogRes = await fetch(`${API_BASE_URL}/catalogs`, {
@@ -2666,7 +2699,7 @@ export function KdpFactoryApp() {
     const [coverSubtitle, setCoverSubtitle] = useState("");
     const [coverStyle, setCoverStyle] = useState("vibrant illustration, fantasy");
     const [coverColorTheme, setCoverColorTheme] = useState("deep blue and gold");
-    const [coverModelId, setCoverModelId] = useState("cf-flux-schnell");
+    const [coverModelId, setCoverModelId] = useState("pollinations-flux");
     const [coverImgDims, setCoverImgDims] = useState("1024x1024");
     const [isBuildingCover, setIsBuildingCover] = useState(false);
     const [generatedCoverUrl, setGeneratedCoverUrl] = useState<string | null>(null);
@@ -2804,7 +2837,7 @@ export function KdpFactoryApp() {
 
     const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
     const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState<string | null>(null);
-    const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+    const [showAdvancedOptions, setShowAdvancedOptions] = useState(true);
     const [showCatalogAccordion, setShowCatalogAccordion] = useState(false);
     const [negativePrompt, setNegativePrompt] = useState("");
     const [inferenceSteps, setInferenceSteps] = useState(28);
@@ -4399,7 +4432,7 @@ export function KdpFactoryApp() {
             const res = await fetch(`${API_BASE_URL}/niches/${niche._id}/pipeline/run`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ catalogsPerNiche: MAX_CATALOGS, imagesPerCatalog: IMAGES_PER_CATALOG }),
+                body: JSON.stringify({ catalogsPerNiche: MAX_CATALOGS, imagesPerCatalog: IMAGES_PER_CATALOG, rawPrompt: pipelineConfig.rawPrompt }),
             });
 
             const data = await res.json().catch(() => ({})) as any;
@@ -8540,6 +8573,14 @@ export function KdpFactoryApp() {
                                 const prov = currentModel?.provider;
                                 return (
                                     <div className="px-6 pb-5 space-y-4">
+                                        {/* Prompt exacto (raw) */}
+                                        <ToggleRow
+                                            label="Prompt exacto — sin IA"
+                                            description="Envía el prompt tal cual al modelo de imagen. Sin fórmula de coloring book, sin variaciones LLM, sin modificaciones."
+                                            checked={studioRawPrompt}
+                                            onChange={setStudioRawPrompt}
+                                            color="amber"
+                                        />
                                         <div className="space-y-2">
                                             <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Prompt negativo</label>
                                             <input value={negativePrompt} onChange={e => setNegativePrompt(e.target.value)}
@@ -10486,7 +10527,7 @@ export function KdpFactoryApp() {
         setIsBuildingCover(true);
         setGeneratedCoverUrl(null);
         try {
-            const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "cf-flux-schnell")!;
+            const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
             const selectedNiche = niches.find(n => n._id === selectedCoverNicheId);
             const nicheContext = selectedNiche
                 ? `${selectedNiche.name}${selectedNiche.description ? `, ${selectedNiche.description}` : ""}`
@@ -10627,7 +10668,7 @@ export function KdpFactoryApp() {
         setIsBuildingBackCover(true);
         setGeneratedBackCoverUrl(null);
         try {
-            const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "cf-flux-schnell")!;
+            const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
             const selectedNiche = niches.find(n => n._id === selectedCoverNicheId);
             const nicheContext = selectedNiche
                 ? `${selectedNiche.name}${selectedNiche.description ? `, ${selectedNiche.description}` : ""}`
@@ -11114,7 +11155,7 @@ export function KdpFactoryApp() {
                                     setCoverSubtitle(n.productType === "coloring-book" ? "Coloring Book for Adults" : "");
                                     setCoverStyle(coverMap.style);
                                     setCoverColorTheme(coverMap.colorTheme);
-                                    setCoverModelId(NICHE_STYLE_MODEL[n.styleCategory] ?? "cf-flux-schnell");
+                                    setCoverModelId(NICHE_STYLE_MODEL[n.styleCategory] ?? "pollinations-flux");
                                     if (n.description) setCoverDescription(n.description);
                                     setShowCoverModal(true);
                                 };
@@ -11279,6 +11320,67 @@ export function KdpFactoryApp() {
                                 <Plus size={14} /> Nuevo nicho
                             </button>
                         </div>
+                    </div>
+
+                    {/* ── Quick Create Niche ── */}
+                    <div className="rounded-2xl border border-sky-500/20 bg-gradient-to-br from-sky-500/[0.06] to-cyan-500/[0.03] overflow-hidden">
+                        <button
+                            onClick={() => setInlineNicheOpen(v => !v)}
+                            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-all"
+                        >
+                            <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-lg bg-sky-500/20 flex items-center justify-center">
+                                    <Plus size={12} className="text-sky-400" />
+                                </div>
+                                <span className="text-sm font-black text-sky-300 tracking-wide">Nuevo nicho</span>
+                                {!inlineNicheOpen && (
+                                    <span className="text-[10px] text-neutral-600 font-normal ml-1">— click para expandir</span>
+                                )}
+                            </div>
+                            <ChevronDown size={13} className={`text-neutral-500 transition-transform duration-200 ${inlineNicheOpen ? "rotate-180" : ""}`} />
+                        </button>
+                        {inlineNicheOpen && (
+                            <div className="px-4 pb-4 space-y-3 border-t border-sky-500/10">
+                                {/* Name input */}
+                                <div className="flex items-center gap-2 pt-3">
+                                    <input
+                                        value={inlineNicheName}
+                                        onChange={e => setInlineNicheName(e.target.value)}
+                                        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) void quickCreateNiche(inlineNicheName); }}
+                                        placeholder="Nombre del nicho…"
+                                        autoComplete="off"
+                                        className="flex-1 h-10 bg-black/40 backdrop-blur-sm border border-white/10 rounded-xl px-4 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/50 focus:bg-sky-500/[0.04] transition-all"
+                                    />
+                                    <VoiceButton apiUrl={API_BASE_URL} onTranscript={t => setInlineNicheName(t)} size={13} />
+                                </div>
+                                {/* Product type pills */}
+                                <div className="flex flex-wrap gap-1.5">
+                                    {NICHE_PRODUCT_OPTIONS.map(opt => (
+                                        <button key={opt.id} onClick={() => setNicheFormProductType(opt.id)}
+                                            className={`h-7 px-3 rounded-lg border text-[10px] font-black uppercase tracking-wide transition-all ${nicheFormProductType === opt.id ? "border-sky-500/50 bg-sky-500/15 text-sky-400 shadow-[0_0_10px_rgba(14,165,233,0.15)]" : "border-white/8 bg-white/[0.02] text-neutral-600 hover:text-neutral-400 hover:border-white/15"}`}>
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {/* Actions */}
+                                <div className="flex items-center gap-2 pt-1">
+                                    <button
+                                        onClick={() => void quickCreateNiche(inlineNicheName)}
+                                        disabled={!inlineNicheName.trim() || isSavingNiche}
+                                        className="flex items-center gap-1.5 h-9 px-5 rounded-xl bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 text-white text-[11px] font-black uppercase tracking-widest transition-all disabled:opacity-40 shadow-[0_4px_15px_rgba(14,165,233,0.25)]"
+                                    >
+                                        {isSavingNiche ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+                                        Crear nicho
+                                    </button>
+                                    <button
+                                        onClick={() => { openNicheForm(); }}
+                                        className="flex items-center gap-1.5 h-9 px-4 rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-neutral-500 hover:text-white text-[11px] font-black uppercase tracking-widest transition-all"
+                                    >
+                                        <Pencil size={11} /> Completo
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* ── Stats row ── */}
@@ -11549,45 +11651,69 @@ export function KdpFactoryApp() {
                                                     const catsTotal = linkedCats.length;
                                                     const catsRunning = linkedCats.filter(c => c.status === "running" || c.status === "pending").length;
                                                     const catsFailed = linkedCats.filter(c => c.status === "failed").length;
+                                                    // Cover image: first image from any linked catalog
+                                                    const coverImg = linkedCats.flatMap(c => c.images).find(img => img.url)?.url ?? null;
                                                     return (
                                                         <div key={niche._id}
-                                                            className={`group relative rounded-xl border border-white/[0.07] bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/[0.12] hover:shadow-[0_0_20px_var(--col-glow)] transition-all cursor-pointer overflow-hidden`}
-                                                            style={{ "--col-glow": col.glow } as React.CSSProperties}
+                                                            className="group relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:scale-[1.015] hover:shadow-[0_8px_32px_var(--col-glow)]"
+                                                            style={{ "--col-glow": col.glow, boxShadow: `0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(255,255,255,0.06)` } as React.CSSProperties}
                                                             onClick={() => { setNicheDetailId(niche._id); setNicheDetailTab("images"); }}>
-                                                            <div className={`absolute -right-2 -top-2 w-10 h-10 ${col.blob} blur-xl rounded-full opacity-40 group-hover:scale-[2.5] group-hover:opacity-70 transition-all duration-500`} />
+
+                                                            {/* Cover image or gradient background */}
+                                                            {coverImg ? (
+                                                                <>
+                                                                    <div className="absolute inset-0">
+                                                                        <img src={coverImg} alt="" className="w-full h-full object-cover opacity-30 group-hover:opacity-45 transition-opacity duration-300 scale-105 group-hover:scale-110 transition-transform" />
+                                                                        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/50 to-black/80" />
+                                                                    </div>
+                                                                </>
+                                                            ) : (
+                                                                <div className={`absolute inset-0 ${col.blob} opacity-20`} />
+                                                            )}
+                                                            <div className={`absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[${col.dot.replace("bg-","").replace("-400","").replace("-500","")}]/40 to-transparent opacity-60`} />
+
                                                             {/* Card body */}
-                                                            <div className="p-3 space-y-2.5 relative">
+                                                            <div className="relative p-3 space-y-2">
                                                                 <div className="flex items-start gap-1.5">
-                                                                    <p className="text-[13px] font-black text-white leading-snug line-clamp-2 flex-1">{nd(niche)}</p>
+                                                                    <p className="text-[13px] font-black text-white leading-snug line-clamp-2 flex-1 drop-shadow-sm">{nd(niche)}</p>
                                                                     {niche.score != null && (
-                                                                        <span className={`shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full border ${niche.score >= 70 ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400" : niche.score >= 40 ? "bg-amber-500/15 border-amber-500/30 text-amber-400" : "bg-rose-500/15 border-rose-500/30 text-rose-400"}`}>
+                                                                        <span className={`shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded-full border backdrop-blur-sm ${niche.score >= 70 ? "bg-emerald-500/25 border-emerald-500/40 text-emerald-300" : niche.score >= 40 ? "bg-amber-500/25 border-amber-500/40 text-amber-300" : "bg-rose-500/25 border-rose-500/40 text-rose-300"}`}>
                                                                             {niche.score}
                                                                         </span>
                                                                     )}
                                                                 </div>
                                                                 {/* Pills */}
                                                                 <div className="flex flex-wrap gap-1">
-                                                                    <span className="text-[9px] font-black uppercase tracking-wide text-sky-400/80 bg-sky-500/10 border border-sky-500/15 px-1.5 py-0.5 rounded-full">{productLabel}</span>
-                                                                    <span className="text-[9px] font-black uppercase tracking-wide text-neutral-400 bg-white/[0.04] border border-white/[0.06] px-1.5 py-0.5 rounded-full">{styleLabel}</span>
+                                                                    <span className={`text-[9px] font-black uppercase tracking-wide ${col.accent} bg-black/30 backdrop-blur-sm border border-white/10 px-1.5 py-0.5 rounded-full`}>{productLabel}</span>
+                                                                    <span className="text-[9px] font-black uppercase tracking-wide text-white/50 bg-black/30 backdrop-blur-sm border border-white/[0.08] px-1.5 py-0.5 rounded-full">{styleLabel}</span>
                                                                 </div>
                                                                 {/* Demand / Competition */}
                                                                 {(niche.demand !== "unknown" || niche.competition !== "unknown") && (
                                                                     <div className="flex items-center gap-2">
                                                                         {niche.demand !== "unknown" && (
-                                                                            <span className={`text-[9px] font-black uppercase tracking-wide ${demandColor[niche.demand]}`}>↑ {niche.demand}</span>
+                                                                            <span className={`text-[9px] font-black uppercase tracking-wide drop-shadow ${demandColor[niche.demand]}`}>↑ {niche.demand}</span>
                                                                         )}
                                                                         {niche.competition !== "unknown" && (
-                                                                            <span className={`text-[9px] font-black uppercase tracking-wide ${compColor[niche.competition]}`}>⚔ {niche.competition}</span>
+                                                                            <span className={`text-[9px] font-black uppercase tracking-wide drop-shadow ${compColor[niche.competition]}`}>⚔ {niche.competition}</span>
                                                                         )}
                                                                     </div>
                                                                 )}
-                                                                {/* Images from catalog */}
-                                                                {imgCount > 0 && (
-                                                                    <div className="flex items-center gap-1.5">
-                                                                        <ImageIcon size={9} className="text-neutral-600 shrink-0" />
-                                                                        <span className="text-[10px] font-bold text-neutral-500">{imgCount} imágenes</span>
-                                                                    </div>
-                                                                )}
+                                                                {/* Image strip: show up to 4 thumbnails inline */}
+                                                                {imgCount > 0 && (() => {
+                                                                    const thumbs = linkedCats.flatMap(c => c.images.map(i => i.url)).slice(0, 4);
+                                                                    return (
+                                                                        <div className="flex items-center gap-1">
+                                                                            {thumbs.map((url, ti) => (
+                                                                                <div key={ti} className="w-7 h-7 rounded-lg overflow-hidden border border-white/10 shrink-0">
+                                                                                    <img src={url} alt="" className="w-full h-full object-cover" />
+                                                                                </div>
+                                                                            ))}
+                                                                            {imgCount > 4 && (
+                                                                                <span className="text-[9px] font-black text-white/40 ml-0.5">+{imgCount - 4}</span>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })()}
                                                                 {/* Catalog progress bar (catalog phase only) */}
                                                                 {catsTotal > 0 && col.id === "catalog" && (
                                                                     <div className="space-y-1">
@@ -11737,8 +11863,15 @@ export function KdpFactoryApp() {
                                     const phaseHoverBorder: Record<string, string> = { niche: "hover:border-sky-500/25", catalog: "hover:border-blue-500/25", libro: "hover:border-indigo-500/25", seo: "hover:border-violet-500/25", cover: "hover:border-fuchsia-500/25", published: "hover:border-emerald-500/25" };
                                     const phaseHoverShadow: Record<string, string> = { niche: "hover:shadow-[0_0_30px_rgba(14,165,233,0.08)]", catalog: "hover:shadow-[0_0_30px_rgba(59,130,246,0.08)]", libro: "hover:shadow-[0_0_30px_rgba(99,102,241,0.08)]", seo: "hover:shadow-[0_0_30px_rgba(139,92,246,0.08)]", cover: "hover:shadow-[0_0_30px_rgba(217,70,239,0.08)]", published: "hover:shadow-[0_0_30px_rgba(16,185,129,0.08)]" };
                                     const phaseBlob: Record<string, string> = { niche: "bg-sky-500/8", catalog: "bg-blue-500/8", libro: "bg-indigo-500/8", seo: "bg-violet-500/8", cover: "bg-fuchsia-500/8", published: "bg-emerald-500/8" };
+                                    const coverThumb = niche.coverUrl || niche.sampleImageUrl || linkedCats.find(c => c.images.length > 0)?.images[0]?.url;
                                     return (
                                         <div key={niche._id} className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] ${phaseHoverBorder[cardPhase] ?? "hover:border-sky-500/25"} ${phaseHoverShadow[cardPhase] ?? ""} hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden`}>
+                                            {coverThumb && (
+                                                <div className="absolute inset-0 pointer-events-none">
+                                                    <img src={coverThumb} alt="" className="w-full h-full object-cover opacity-20 group-hover:opacity-35 transition-all duration-500 scale-105 group-hover:scale-110" />
+                                                    <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/55 to-black/85" />
+                                                </div>
+                                            )}
                                             <div className={`absolute -right-4 -top-4 w-16 h-16 ${phaseBlob[cardPhase] ?? "bg-sky-500/8"} blur-2xl rounded-full transition-all duration-500 group-hover:scale-[2] group-hover:opacity-100 opacity-60`} />
                                             <div className={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${phaseGradient[cardPhase] ?? phaseGradient["niche"]} opacity-40 group-hover:opacity-100 transition-all duration-300`} />
                                             <div className="p-4 pl-5 sm:p-5 sm:pl-6 space-y-4 relative">
@@ -11746,32 +11879,28 @@ export function KdpFactoryApp() {
                                                 {/* ─ Card header ─ */}
                                                 <div className="flex items-start gap-3">
                                                     {/* Thumbnail — cover > sample > first catalog image */}
-                                                    {(() => {
-                                                        const thumb = niche.coverUrl || niche.sampleImageUrl ||
-                                                            linkedCats.find(c => c.images.length > 0)?.images[0]?.url;
-                                                        return thumb ? (
-                                                            <button
-                                                                onClick={() => setLightboxUrl({ url: thumb })}
-                                                                className="shrink-0 w-14 h-14 rounded-xl overflow-hidden border border-white/10 bg-white/5 relative group/thumb hover:border-white/30 transition-all"
-                                                                title="Ampliar imagen"
-                                                            >
-                                                                <img
-                                                                    src={thumb}
-                                                                    alt={niche.name}
-                                                                    className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-300"
-                                                                    loading="lazy"
-                                                                />
-                                                                <div className="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/30 transition-all flex items-center justify-center">
-                                                                    <ZoomIn size={14} className="text-white opacity-0 group-hover/thumb:opacity-100 transition-opacity drop-shadow" />
+                                                    {coverThumb && (
+                                                        <button
+                                                            onClick={() => setLightboxUrl({ url: coverThumb })}
+                                                            className="shrink-0 w-14 h-14 rounded-xl overflow-hidden border border-white/20 bg-white/5 relative group/thumb hover:border-white/40 transition-all"
+                                                            title="Ampliar imagen"
+                                                        >
+                                                            <img
+                                                                src={coverThumb}
+                                                                alt={niche.name}
+                                                                className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-300"
+                                                                loading="lazy"
+                                                            />
+                                                            <div className="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/30 transition-all flex items-center justify-center">
+                                                                <ZoomIn size={14} className="text-white opacity-0 group-hover/thumb:opacity-100 transition-opacity drop-shadow" />
+                                                            </div>
+                                                            {!niche.coverUrl && !niche.sampleImageUrl && (
+                                                                <div className="absolute bottom-0 right-0 w-4 h-4 bg-black/60 rounded-tl-lg flex items-center justify-center">
+                                                                    <span className="text-[7px] text-neutral-400">🖼</span>
                                                                 </div>
-                                                                {!niche.coverUrl && !niche.sampleImageUrl && (
-                                                                    <div className="absolute bottom-0 right-0 w-4 h-4 bg-black/60 rounded-tl-lg flex items-center justify-center">
-                                                                        <span className="text-[7px] text-neutral-400">🖼</span>
-                                                                    </div>
-                                                                )}
-                                                            </button>
-                                                        ) : null;
-                                                    })()}
+                                                            )}
+                                                        </button>
+                                                    )}
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 flex-wrap">
                                                             <p className="text-xl sm:text-2xl font-black text-white leading-tight tracking-tight">{nd(niche)}</p>
@@ -12100,6 +12229,13 @@ export function KdpFactoryApp() {
                                                                     </div>
                                                                 </div>
                                                                 <p className="text-sm text-neutral-600">Total: {pipelineConfig.catalogs * pipelineConfig.imagesPerCatalog} imágenes · {pipelineConfig.catalogs} catálogos de {pipelineConfig.imagesPerCatalog} c/u</p>
+                                                                <ToggleRow
+                                                                    label="Prompt exacto — sin IA"
+                                                                    description="Usa el prompt guardado tal cual. Sin modificaciones LLM ni fórmula."
+                                                                    checked={pipelineConfig.rawPrompt}
+                                                                    onChange={v => setPipelineConfig(p => ({ ...p, rawPrompt: v }))}
+                                                                    color="amber"
+                                                                />
                                                             </div>
                                                         )}
                                                     </div>
@@ -14026,7 +14162,7 @@ export function KdpFactoryApp() {
                                         setCoverSubtitle(n.productType === "coloring-book" ? "Coloring Book for Adults" : n.productType === "printable-poster" ? "Premium Printable Artwork" : "");
                                         setCoverStyle(coverMap.style);
                                         setCoverColorTheme(coverMap.colorTheme);
-                                        setCoverModelId(NICHE_STYLE_MODEL[n.styleCategory] ?? "cf-flux-schnell");
+                                        setCoverModelId(NICHE_STYLE_MODEL[n.styleCategory] ?? "pollinations-flux");
                                         if (n.description) setCoverDescription(n.description);
                                         setGeneratedCoverUrl(n.coverUrl ?? null);
                                         setGeneratedBackCoverUrl(n.backCoverUrl ?? null);
@@ -16115,11 +16251,18 @@ export function KdpFactoryApp() {
 
             {/* Niche Form Modal */}
             {nicheFormOpen && (
-                <div className="fixed inset-0 z-[160] bg-black/80 backdrop-blur-md flex items-center justify-center p-4" role="dialog" aria-modal="true">
-                    <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#0d0d0d] shadow-2xl flex flex-col max-h-[90vh]">
-                        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-white/8 shrink-0">
-                            <p className="text-sm font-black text-white">{nicheEditTarget ? "Editar nicho" : "Nuevo nicho"}</p>
-                            <button onClick={() => setNicheFormOpen(false)} className="p-2 rounded-xl text-neutral-500 hover:text-white hover:bg-white/10 transition-all"><X size={16} /></button>
+                <div className="fixed inset-0 z-[160] bg-black/75 backdrop-blur-xl flex items-center justify-center p-4" role="dialog" aria-modal="true">
+                    <div className="w-full max-w-lg rounded-3xl border border-white/12 bg-[#0a0c10]/95 backdrop-blur-2xl shadow-[0_40px_120px_rgba(0,0,0,0.8),0_0_0_1px_rgba(255,255,255,0.04)] flex flex-col max-h-[90vh]">
+                        {/* Gradient accent top */}
+                        <div className="h-px w-full bg-gradient-to-r from-sky-500/80 via-cyan-400/50 to-violet-500/30 rounded-t-3xl" />
+                        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-white/[0.06] shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-sky-500/30 to-cyan-500/20 border border-sky-500/25 flex items-center justify-center">
+                                    {nicheEditTarget ? <Pencil size={13} className="text-sky-400" /> : <Plus size={13} className="text-sky-400" />}
+                                </div>
+                                <p className="text-sm font-black text-white">{nicheEditTarget ? "Editar nicho" : "Nuevo nicho"}</p>
+                            </div>
+                            <button onClick={() => setNicheFormOpen(false)} className="p-2 rounded-xl text-neutral-600 hover:text-white hover:bg-white/10 transition-all"><X size={15} /></button>
                         </div>
                         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">
                             {/* Name */}
@@ -16289,10 +16432,10 @@ export function KdpFactoryApp() {
                                 )}
                             </div>
                         </div>
-                        <div className="px-6 pb-6 pt-4 border-t border-white/8 shrink-0 flex gap-3">
-                            <button onClick={() => setNicheFormOpen(false)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
+                        <div className="px-6 pb-6 pt-4 border-t border-white/[0.06] shrink-0 flex gap-3">
+                            <button onClick={() => setNicheFormOpen(false)} className="flex-1 h-11 rounded-2xl bg-white/[0.04] border border-white/8 text-sm font-black text-neutral-400 hover:text-white hover:bg-white/[0.08] transition-all">Cancelar</button>
                             <button onClick={() => void saveNiche()} disabled={isSavingNiche || !nicheFormName.trim()}
-                                className="flex-1 h-11 rounded-2xl bg-sky-500 text-white text-sm font-black hover:bg-sky-400 transition-all disabled:opacity-40 flex items-center justify-center gap-2">
+                                className="flex-1 h-11 rounded-2xl bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 text-white text-sm font-black transition-all disabled:opacity-40 flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(14,165,233,0.35)]">
                                 {isSavingNiche ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                                 {nicheEditTarget ? "Guardar cambios" : "Crear nicho"}
                             </button>
@@ -17379,38 +17522,116 @@ export function KdpFactoryApp() {
                             <div className="p-6">
                                 {nicheDetailTab === "images" && (
                                     <div className="space-y-4">
+                                        {/* Stats bar */}
+                                        {allImgs.length > 0 && (() => {
+                                            const catCount = allImgs.filter(img => img.catalogId).length;
+                                            const cloudCount = allImgs.filter(img => !img.catalogId).length;
+                                            return (
+                                                <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl border border-white/[0.07] bg-gradient-to-r from-violet-500/[0.06] via-transparent to-cyan-500/[0.04] backdrop-blur-sm">
+                                                    <div className="flex items-center gap-2 text-xs flex-1">
+                                                        <ImageIcon size={11} className="text-violet-400/70" />
+                                                        <span className="font-black text-white">{allImgs.length}</span>
+                                                        <span className="text-neutral-500">imagen{allImgs.length !== 1 ? "es" : ""}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        {catCount > 0 && (
+                                                            <span className="text-[10px] font-black text-violet-300 bg-violet-500/15 backdrop-blur-sm px-2.5 py-1 rounded-full border border-violet-500/25">
+                                                                {catCount} catálogo{catCount !== 1 ? "s" : ""}
+                                                            </span>
+                                                        )}
+                                                        {cloudCount > 0 && (
+                                                            <span className="text-[10px] font-black text-cyan-300 bg-cyan-500/15 backdrop-blur-sm px-2.5 py-1 rounded-full border border-cyan-500/25">
+                                                                {cloudCount} cloud
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+
+                                        {/* Grid or empty state */}
                                         {allImgs.length === 0 ? (
-                                            <div className="flex flex-col items-center justify-center py-16 gap-3 opacity-30">
-                                                <ImageIcon size={32} strokeWidth={1} className="text-neutral-600" />
-                                                <p className="text-sm font-black uppercase tracking-widest text-neutral-600">Sin imágenes aún — lanza el pipeline para generar</p>
-                                            </div>
+                                            <EmptyState
+                                                icon={<ImageIcon size={28} strokeWidth={1} />}
+                                                title="Sin imágenes aún"
+                                                description="Lanza el pipeline para comenzar a generar imágenes para este nicho."
+                                                size="md"
+                                            />
                                         ) : (
-                                            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                                                {allImgs.map(img => (
-                                                    <div key={img.publicId} className="aspect-square rounded-xl overflow-hidden border border-white/8 bg-white/[0.02] group relative">
-                                                        <img src={img.url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                                                        {/* Overlay: ampliar + borrar */}
-                                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                                {allImgs.map((img, idx) => {
+                                                    const catName = img.catalogId
+                                                        ? linkedCats.find(c => c._id === img.catalogId)?.name ?? null
+                                                        : null;
+                                                    const isCloud = !img.catalogId;
+                                                    return (
+                                                        <div
+                                                            key={img.publicId || idx}
+                                                            className="group relative aspect-square rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:scale-[1.02] hover:z-10"
+                                                            style={{
+                                                                boxShadow: "0 0 0 1px rgba(255,255,255,0.07)",
+                                                            }}
+                                                        >
+                                                            <img
+                                                                src={img.url}
+                                                                alt=""
+                                                                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                                                            />
+
+                                                            {/* Always-visible bottom fade */}
+                                                            <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/80 via-black/30 to-transparent pointer-events-none" />
+
+                                                            {/* Hover overlay */}
+                                                            <div className="absolute inset-0 bg-gradient-to-t from-violet-900/30 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+
+                                                            {/* Source badge — always visible */}
+                                                            <div className="absolute bottom-2 left-2 pointer-events-none">
+                                                                {catName ? (
+                                                                    <span className="text-[9px] font-bold text-white/80 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-full border border-violet-400/20 truncate block max-w-[120px]">
+                                                                        {catName}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-[9px] font-bold text-cyan-300/80 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-full border border-cyan-500/25">
+                                                                        Cloud
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Action buttons — slide in on hover */}
+                                                            <div className="absolute top-2 right-2 flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 -translate-y-1 group-hover:translate-y-0">
+                                                                <button
+                                                                    onClick={e => { e.stopPropagation(); setLightboxUrl({ url: img.url, catalogId: img.catalogId, publicId: img.publicId }); }}
+                                                                    className="p-1.5 rounded-xl bg-black/70 backdrop-blur-md border border-white/15 text-white hover:bg-white/20 hover:border-white/30 hover:scale-110 transition-all"
+                                                                    title="Ampliar"
+                                                                >
+                                                                    <ZoomIn size={11} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={e => {
+                                                                        e.stopPropagation();
+                                                                        img.catalogId
+                                                                            ? setConfirmDeleteImageInfo({ catalogId: img.catalogId, publicId: img.publicId })
+                                                                            : void deleteFromCloudinary(img.publicId);
+                                                                    }}
+                                                                    className="p-1.5 rounded-xl bg-black/70 backdrop-blur-md border border-rose-500/30 text-rose-400 hover:bg-rose-500/30 hover:border-rose-400/50 hover:scale-110 transition-all"
+                                                                    title="Eliminar"
+                                                                >
+                                                                    <Trash2 size={11} />
+                                                                </button>
+                                                            </div>
+
+                                                            {/* Glow border on hover */}
+                                                            <div className={`absolute inset-0 rounded-2xl pointer-events-none transition-opacity duration-300 opacity-0 group-hover:opacity-100 ${isCloud ? "ring-1 ring-cyan-400/30" : "ring-1 ring-violet-400/30"}`} />
+
+                                                            {/* Click capture for lightbox */}
                                                             <button
                                                                 onClick={() => setLightboxUrl({ url: img.url, catalogId: img.catalogId, publicId: img.publicId })}
-                                                                className="p-1.5 rounded-lg bg-black/60 border border-white/20 text-white hover:bg-white/20 transition-all"
-                                                                title="Ampliar"
-                                                            >
-                                                                <ZoomIn size={13} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => img.catalogId
-                                                                    ? setConfirmDeleteImageInfo({ catalogId: img.catalogId, publicId: img.publicId })
-                                                                    : void deleteFromCloudinary(img.publicId)
-                                                                }
-                                                                className="p-1.5 rounded-lg bg-black/60 border border-rose-500/40 text-rose-400 hover:bg-rose-500/30 transition-all"
-                                                                title="Eliminar imagen"
-                                                            >
-                                                                <Trash2 size={13} />
-                                                            </button>
+                                                                className="absolute inset-0"
+                                                                aria-label="Ver imagen"
+                                                            />
                                                         </div>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>

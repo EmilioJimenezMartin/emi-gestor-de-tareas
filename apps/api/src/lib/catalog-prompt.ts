@@ -1,76 +1,76 @@
-// Style-specific variation hints — each set generates semantically distinct pages
-// for that art style rather than cycling through generic complexity levels.
+// Variation hints are ONLY about spatial composition, zoom, and density.
+// They NEVER introduce a new subject, creature, or scene concept — the niche subject
+// is always the anchor and must dominate every generated image.
 const STYLE_VARIATION_HINTS: Record<string, string[]> = {
     anime: [
-        "chibi character close-up portrait, expressive large eyes, kawaii pose",
-        "dynamic action pose, diagonal energy, speed motion lines",
-        "magical girl or hero transformation, sparkles and ribbons, dramatic spread",
-        "cozy slice-of-life scene, multiple characters, indoor setting",
-        "fantasy landscape with character silhouette, epic wide shot",
-        "group scene, characters interacting, cheerful energy",
+        "close-up face and upper body, centered composition",
+        "wide shot showing full figure with minimal environment cues",
+        "slight low-angle view looking up at the subject",
+        "slight high-angle view, overhead perspective",
+        "3/4 angle view, subject turned slightly to one side",
+        "extreme close-up on a single detail of the subject",
     ],
     botanical: [
-        "close-up single specimen filling the page, high botanical detail",
-        "garden arrangement with 3-5 different plants, overhead flat lay",
-        "wild meadow scene, scattered organic composition, insects included",
-        "potted plant collection on a windowsill, domestic cozy setting",
-        "pressed botanical plate style, scientific specimen layout with labels",
-        "seasonal harvest — fruits, flowers and foliage, abundant composition",
+        "single specimen centered, filling the page, minimal negative space",
+        "wide view of an arrangement, multiple specimens spread across the page",
+        "close-up of a single structural detail — leaf, stem, seed pod",
+        "overhead flat-lay composition",
+        "slight low-angle, subject viewed from below",
+        "two specimens side-by-side, comparative layout",
     ],
     celestial: [
-        "central sun mandala with symmetrical radiating rays and geometric border",
-        "full moon with constellation ring, sacred geometry overlay",
-        "zodiac wheel — 12 symbols arranged in intricate circular pattern",
-        "crystal cluster and gem arrangement, sacred geometry lines",
-        "celestial eye mandala, third-eye symmetrical composition",
-        "phases of the moon sequence, horizontal banner with star fill",
+        "perfectly centered radial symmetry, filling the page",
+        "slightly off-center, asymmetric balance",
+        "tight crop on the central motif, border cut off",
+        "wide view with significant negative space in corners",
+        "zoomed-in on one quadrant detail",
+        "full-page tiling, edge-to-edge repetition",
     ],
     geometric: [
-        "central mandala with 8-fold symmetry, intricate petal layers",
-        "tessellated hexagonal pattern filling the full page",
-        "concentric circles with interlocking ornamental details",
-        "kaleidoscope star pattern, 6-fold radial symmetry",
-        "Islamic geometric lattice, star polygon interlace",
-        "fractal-inspired spiral, Fibonacci growth pattern",
+        "center-weighted mandala, full-page fill",
+        "corner-anchored design, diagonal axis",
+        "single repeating unit zoomed in to fill the page",
+        "wide view showing the full pattern repeat",
+        "tight crop on the innermost ring of detail",
+        "asymmetric offset, pattern shifted to one side",
     ],
     children: [
-        "single cute character, large simple shapes, centered, easy to color",
-        "two animal friends in a fun outdoor scene, simple backgrounds",
-        "animal close-up portrait, big expressive face, bold outlines",
-        "magical vehicle or object, simple shape, playful details",
-        "repeating pattern of simple cute icons, grid layout",
-        "cozy scene — child's bedroom or garden — simple furniture, happy mood",
+        "centered subject, generous white space all around",
+        "subject slightly lower in frame, open sky or space above",
+        "close-up showing face and upper body only",
+        "wide shot with subject small in the middle of open space",
+        "subject in the corner, large open area to color freely",
+        "two of the same subject side by side, mirrored",
     ],
     "wall-art": [
-        "centered portrait composition, Art Nouveau ornamental border",
-        "botanical wreath with decorative lettering space in center",
-        "abstract floral explosion, filling the frame edge to edge",
-        "architectural archway with nature framing, elegant symmetry",
-        "goddess or nature figure, flowing robes, organic motifs surrounding",
-        "geometric triptych pattern, three vertical panels with connecting motifs",
+        "centered portrait orientation, balanced negative space",
+        "wide landscape crop, subject spanning the full width",
+        "close-up on the central motif, border cropped out",
+        "zoomed out, full decorative border visible",
+        "slight diagonal tilt, dynamic balance",
+        "triptych-style, subject repeated three times across the width",
     ],
     retro: [
-        "vintage travel poster composition, bold horizon, simple scenery",
-        "mid-century modern abstract, geometric shapes, 50s palette reference",
-        "retro diner or soda shop scene, cheerful Americana",
-        "vintage botanical label illustration, bordered, decorative typography space",
-        "pin-up style character silhouette, clean graphic composition",
-        "retro space race illustration, rocket and stars, bold geometry",
+        "centered, poster-style composition with clear horizon",
+        "close-up on the focal element, cropped tight",
+        "wide establishing shot, small subject in large setting",
+        "low-angle heroic perspective",
+        "flat overhead bird's-eye view",
+        "two-thirds rule — subject offset to the left or right",
     ],
 };
 
-// Hints designed to be safe for coloring book format: isolated focal subject,
-// no complex backgrounds, no conflicting lighting instructions.
+// Safe fallback: purely about zoom/angle/density — never about subject matter.
 export const DEFAULT_VARIATION_HINTS = [
-    "centered isolated subject filling the page, clean white space around, no background elements",
-    "close-up portrait of the main subject, highly detailed face and features, no scene context",
-    "full-body or full-form view, subject posed elegantly, pure white background",
-    "decorative ornamental arrangement of the subject, symmetrical layout, mandala-like framing",
-    "two or three instances of the subject grouped together, playful arrangement, no background",
-    "subject shown mid-action, flowing lines suggesting movement, isolated on white",
+    "centered composition, subject filling 70% of the frame, even white margins",
+    "close-up crop on the upper portion of the subject, detailed texture emphasis",
+    "wide view, subject centered but smaller, generous negative space all around",
+    "slight low-angle perspective, subject seen from just below center",
+    "slight high-angle perspective, subject seen from just above center",
+    "tight crop on the most intricate region of the subject, maximum detail density",
 ];
 
-/** Hint de variación composicional para un slot dado — cada imagen del catálogo sale distinta. */
+/** Hint de variación composicional para un slot dado. */
 export function getVariationHint(style: string, slotIndex: number): string {
     const hints = STYLE_VARIATION_HINTS[style] ?? DEFAULT_VARIATION_HINTS;
     return hints[slotIndex % hints.length];
@@ -78,12 +78,11 @@ export function getVariationHint(style: string, slotIndex: number): string {
 
 /**
  * Inyecta el hint de variación en un prompt ya formado.
- * Si el prompt lleva la fórmula de coloring (con exclusiones al final), lo inserta ANTES
- * de las exclusiones para que FLUX le dé peso; si no, lo añade al final.
+ * Solo añade información de composición/zoom — nunca cambia el sujeto.
  */
 export function injectVariationHint(prompt: string, style: string, slotIndex: number): string {
     const hint = getVariationHint(style, slotIndex);
-    if (prompt.toLowerCase().includes(hint.slice(0, 30).toLowerCase())) return prompt; // ya inyectado
+    if (prompt.toLowerCase().includes(hint.slice(0, 30).toLowerCase())) return prompt;
     const anchor = ", no color, no shading";
     const idx = prompt.indexOf(anchor);
     if (idx >= 0) return `${prompt.slice(0, idx)}, ${hint}${prompt.slice(idx)}`;
@@ -104,13 +103,13 @@ export async function generateCatalogPrompt(
 ): Promise<string | null> {
     const aiType = productType === "printable-poster" ? "printable-particulars" : "niche-particulars";
 
-    // Pick style-specific variation hint so each slot is semantically different
+    // Use only spatial/zoom hint — never a subject-changing hint
     const hints = STYLE_VARIATION_HINTS[style] ?? DEFAULT_VARIATION_HINTS;
     const hint = hints[slotIndex % hints.length];
 
     const extras = [
         style,
-        `composition variation: ${hint}`,
+        `composition: ${hint}`,
         discoveryPrompt ? `visual reference: ${discoveryPrompt.slice(0, 120)}` : "",
         evolutionSeed || "",
     ].filter(Boolean).join("; ");

@@ -419,8 +419,10 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
         try {
             // Build prompt — use simplified override on retries
             const creativity = catalog.creativity ?? 50;
+            const isRawMode = !!(catalog as any).rawPrompt && !overridePrompt;
             let finalPrompt = overridePrompt || catalog.prompt;
-            if (catalog.promptParts?.theme) {
+
+            if (!isRawMode && catalog.promptParts?.theme) {
                 let particulars = catalog.promptParts.particulars ?? "";
                 if (particulars && creativity > 10) {
                     try {
@@ -441,10 +443,7 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
             }
 
             // ── Micro-variación automática entre catálogos del mismo nicho ──
-            // Aplica sinónimos suaves al prompt del slot 1 para que catalogs hermanos
-            // no generen imágenes clónicas. NO se persiste en catalog.prompt para evitar
-            // que el LLM introduzca drift que dañe los slots posteriores.
-            if (!catalog.promptParts?.theme && !overridePrompt && !catalog.autoVariedPrompt
+            if (!isRawMode && !catalog.promptParts?.theme && !overridePrompt && !catalog.autoVariedPrompt
                 && (catalog.nicheIds?.length ?? 0) > 0
                 && !finalPrompt.includes("coloring book page")) {
                 catalog.autoVariedPrompt = true;
@@ -459,8 +458,6 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                             setTimeout(() => reject(new Error("vary timeout 12s")), 12_000));
                         const varied = await Promise.race([varyTextWithLLM(finalPrompt, 30), timeout]);
                         if (varied && varied !== finalPrompt && varied.length > 10) {
-                            // Solo afecta este slot — NO se guarda en catalog.prompt
-                            // para que los slots 2+ usen siempre el prompt base limpio
                             finalPrompt = varied;
                             console.log(`${tag} Variación auto slot 1 (${siblings} hermanos): "${varied.slice(0, 70)}…"`);
                         }
@@ -468,48 +465,40 @@ export function defineCatalogJob(agenda: Agenda, io: any) {
                 } catch (e: any) {
                     console.warn(`${tag} Variación auto falló (prompt intacto): ${e?.message ?? e}`);
                 }
-                await catalog.save().catch(() => {}); // persiste solo autoVariedPrompt=true
+                await catalog.save().catch(() => {});
             }
 
-            // Apply product-type modifiers and build negative prompt
-            // Si el prompt pide explícitamente algo que no es página de colorear
-            // (color, póster, foto…), se trata como "other": sin fórmula CB,
-            // sin negative anti-color y sin binarización.
+            // Apply product-type modifiers and formula — skipped entirely in raw mode
             const { isNonColoringIntent } = await import("../routes/autopilot.js");
             let productType = catalog.productType ?? "coloring-book";
-            // Only apply heuristic when productType was NOT explicitly stored (null/undefined).
-            // If the catalog already has productType:"coloring-book" set by autopilot/user, honor it.
-            if (!catalog.productType && productType === "coloring-book" && isNonColoringIntent(finalPrompt)) {
-                console.log(`${tag} Prompt pide contenido no-colorear → fórmula CB omitida`);
-                productType = "other";
-            }
             const catalogStyle = ((catalog as any).styleCategory ?? (catalog as any).styleCategories?.[0] ?? "generic") as string;
             const userNegative = catalog.negativePrompt?.trim() ?? "";
-
             let finalNegativePrompt = "";
-            if (productType === "coloring-book") {
-                // Style-aware formula — only append if technical suffix not already present
-                const alreadyHasFormula = finalPrompt.includes("coloring book page") || finalPrompt.includes("black line art on white");
-                if (!alreadyHasFormula) {
-                    finalPrompt = buildColoringBookPrompt(finalPrompt, catalogStyle);
-                }
-                const coloringNegative = "gray, grey, gray background, grey background, gray fill, grey fill, gray tones, solid fill, solid black, black fill, filled shapes, filled areas, black areas, heavy blacks, silhouette, black silhouette, ink wash, grayscale, charcoal, dark fill, dark foliage, shaded foliage, shaded rooftop, off-white, cream, beige, shading, shadow, shadows, soft shadow, drop shadow, inner shadow, cast shadow, gradient, gradients, color, colors, sepia, tones, halftone, texture, textures, rough texture, paper texture, canvas texture, crosshatching, stippling, hatching, watercolor, painterly, painting, illustrated, blur, blurry, soft focus, glow, bloom, soft edges, feathered edges, background pattern, noise, film grain, grain, vignette, fog, mist, ambient occlusion, depth of field, bokeh, watermark, signature, logo, frame, border decoration, 3d render, 3d, realistic, photo, photograph";
-                finalNegativePrompt = userNegative ? `${coloringNegative}, ${userNegative}` : coloringNegative;
-            } else if (productType === "printable-poster") {
-                finalPrompt += ". Style: high quality, high resolution, vibrant colors, print-ready, professional poster design, sharp fine details, suitable for large format printing";
+
+            if (isRawMode) {
+                // Raw mode: prompt is sent verbatim — no formula, no product modifiers, no negative prefix
                 finalNegativePrompt = userNegative;
+                console.log(`${tag} RAW MODE — prompt enviado sin modificaciones (${finalPrompt.length} chars)`);
             } else {
-                finalNegativePrompt = userNegative;
+                if (!catalog.productType && productType === "coloring-book" && isNonColoringIntent(finalPrompt)) {
+                    console.log(`${tag} Prompt pide contenido no-colorear → fórmula CB omitida`);
+                    productType = "other";
+                }
+                if (productType === "coloring-book") {
+                    const alreadyHasFormula = finalPrompt.includes("coloring book page") || finalPrompt.includes("black line art on white");
+                    if (!alreadyHasFormula) finalPrompt = buildColoringBookPrompt(finalPrompt, catalogStyle);
+                    const coloringNegative = "gray, grey, gray background, grey background, gray fill, grey fill, gray tones, solid fill, solid black, black fill, filled shapes, filled areas, black areas, heavy blacks, silhouette, black silhouette, ink wash, grayscale, charcoal, dark fill, dark foliage, shaded foliage, shaded rooftop, off-white, cream, beige, shading, shadow, shadows, soft shadow, drop shadow, inner shadow, cast shadow, gradient, gradients, color, colors, sepia, tones, halftone, texture, textures, rough texture, paper texture, canvas texture, crosshatching, stippling, hatching, watercolor, painterly, painting, illustrated, blur, blurry, soft focus, glow, bloom, soft edges, feathered edges, background pattern, noise, film grain, grain, vignette, fog, mist, ambient occlusion, depth of field, bokeh, watermark, signature, logo, frame, border decoration, 3d render, 3d, realistic, photo, photograph";
+                    finalNegativePrompt = userNegative ? `${coloringNegative}, ${userNegative}` : coloringNegative;
+                } else if (productType === "printable-poster") {
+                    finalPrompt += ". Style: high quality, high resolution, vibrant colors, print-ready, professional poster design, sharp fine details, suitable for large format printing";
+                    finalNegativePrompt = userNegative;
+                } else {
+                    finalNegativePrompt = userNegative;
+                }
             }
 
-            // Variación automática por slot: sin promptParts, todos los slots compartían el
-            // mismo prompt → imágenes casi idénticas. Cada slot recibe un hint composicional
-            // distinto (rotando por estilo) + seed aleatoria explícita.
-            if (!catalog.promptParts?.theme && !overridePrompt) {
-                const { injectVariationHint } = await import("../lib/catalog-prompt.js");
-                finalPrompt = injectVariationHint(finalPrompt, catalogStyle, imageSlot - 1);
-                console.log(`${tag} Variación slot ${imageSlot}: hint inyectado`);
-            }
+            // Variación: solo seed aleatoria por slot — el prompt NO se modifica para evitar
+            // que los hints de composición hagan que el modelo genere sujetos incorrectos.
             const slotSeed = Math.floor(Math.random() * 999_999);
 
             console.log(`${tag} Prompt (${finalPrompt.length} chars): ${finalPrompt.slice(0, 100)}...`);

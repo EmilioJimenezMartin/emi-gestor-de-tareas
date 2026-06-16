@@ -35,7 +35,7 @@ const rootReducer = combineReducers({
   ),
   finance: financeReducer,
   imageModel: persistReducer(
-    { key: "imageModel", version: 1, storage },
+    { key: "imageModel", version: 2, storage },
     imageModelReducer
   ),
 });
