@@ -30,6 +30,11 @@ function browserSpeak(clean: string, lang: string) {
         utterance.lang = lang;
         utterance.rate = 1.1;
         utterance.pitch = 1.0;
+        const savedVoice = localStorage.getItem("voice_name");
+        if (savedVoice) {
+            const match = window.speechSynthesis.getVoices().find(v => v.name === savedVoice);
+            if (match) utterance.voice = match;
+        }
         setTimeout(() => window.speechSynthesis.speak(utterance), 50);
     };
 

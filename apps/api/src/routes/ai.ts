@@ -2116,4 +2116,42 @@ Return ONLY a JSON object:
             return reply.status(502).send({ error: `Colorize failed: ${e?.message ?? "Unknown error"}` });
         }
     });
+
+    // POST /assistant/chat — conversational AI with KDP context
+    app.post("/assistant/chat", async (request: any, reply) => {
+        const { messages, systemContext } = request.body as {
+            messages: { role: string; content: string }[];
+            systemContext?: string;
+        };
+        if (!Array.isArray(messages) || messages.length === 0) {
+            return reply.status(400).send({ error: "messages required" });
+        }
+        try {
+            const { generateTextWithLLM } = await import("../lib/ai.js");
+            const system = systemContext?.trim() ||
+                "Eres un asistente especializado en KDP. Responde en español, de forma concisa y accionable.";
+            const history = messages.slice(0, -1)
+                .map(m => `${m.role === "user" ? "Usuario" : "Asistente"}: ${m.content}`)
+                .join("\n");
+            const lastContent = messages.at(-1)?.content ?? "";
+            const userPrompt = history ? `${history}\nUsuario: ${lastContent}` : lastContent;
+            const replyText = await generateTextWithLLM(system, userPrompt);
+            return reply.send({ reply: replyText.trim() });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message ?? "Error" });
+        }
+    });
+
+    // POST /assistant/telegram-send — forward a message to the configured Telegram chat
+    app.post("/assistant/telegram-send", async (request: any, reply) => {
+        const { text } = request.body as { text: string };
+        if (!text?.trim()) return reply.status(400).send({ error: "text required" });
+        try {
+            const { sendTelegram } = await import("../lib/telegram.js");
+            await sendTelegram(`🤖 <b>Daily Focus</b>\n${text.trim()}`);
+            return reply.send({ ok: true });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message ?? "Error" });
+        }
+    });
 }

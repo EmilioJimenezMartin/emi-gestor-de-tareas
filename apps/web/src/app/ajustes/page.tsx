@@ -133,6 +133,10 @@ export default function AjustesPage() {
         return localStorage.getItem("voice_enabled") !== "false";
     });
     const [voiceTesting, setVoiceTesting] = useState(false);
+    const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+    const [selectedVoiceName, setSelectedVoiceName] = useState(() =>
+        typeof window !== "undefined" ? (localStorage.getItem("voice_name") ?? "") : ""
+    );
 
     // fal.ai
     const [falAiKey, setFalAiKey] = useState("");
@@ -453,6 +457,14 @@ export default function AjustesPage() {
         setVoiceEnabled(val);
         localStorage.setItem("voice_enabled", val ? "true" : "false");
     };
+
+    useEffect(() => {
+        if (typeof window === "undefined" || !window.speechSynthesis) return;
+        const load = () => setAvailableVoices(window.speechSynthesis.getVoices());
+        load();
+        window.speechSynthesis.addEventListener("voiceschanged", load);
+        return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
+    }, []);
 
     const testVoice = async () => {
         setVoiceTesting(true);
@@ -2515,7 +2527,7 @@ export default function AjustesPage() {
                             </div>
                             <Toggle checked={voiceEnabled} onChange={(next) => toggleVoice(next)} color="emerald" />
                         </div>
-                        <div className={`transition-opacity ${voiceEnabled ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
+                        <div className={`transition-opacity space-y-4 ${voiceEnabled ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
                             <button
                                 onClick={() => void testVoice()}
                                 disabled={voiceTesting}
@@ -2524,6 +2536,27 @@ export default function AjustesPage() {
                                 {voiceTesting ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
                                 Probar voz
                             </button>
+                            {availableVoices.length > 0 && (
+                                <div className="space-y-2">
+                                    <p className="text-xs font-bold text-neutral-400">Tipo de voz del navegador</p>
+                                    <select
+                                        value={selectedVoiceName}
+                                        onChange={e => {
+                                            setSelectedVoiceName(e.target.value);
+                                            localStorage.setItem("voice_name", e.target.value);
+                                        }}
+                                        className="w-full h-9 px-3 bg-white/5 border border-white/10 rounded-xl text-sm text-neutral-300 focus:outline-none focus:border-emerald-500/40 transition-all"
+                                    >
+                                        <option value="">— Sistema por defecto —</option>
+                                        {availableVoices.map(v => (
+                                            <option key={v.name} value={v.name}>
+                                                {v.name} ({v.lang})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-neutral-600">Solo afecta al fallback del navegador. El servidor TTS usa su propio motor.</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </section>

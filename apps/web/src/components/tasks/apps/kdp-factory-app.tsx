@@ -93,6 +93,7 @@ import {
     Printer,
     GitBranch,
     RotateCcw,
+    Bot,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -121,6 +122,7 @@ import { VoiceButton } from "@/components/ui/VoiceButton";
 import { VoiceRecorderModal } from "@/components/ui/VoiceRecorderModal";
 import { useAppSelector, useAppDispatch } from "@/store/hooks";
 import { setSelectedModelId } from "@/store/image-model-slice";
+import { FocusChat } from "./kdp/FocusChat";
 
 interface ProductPlatform {
     name: string;
@@ -2835,6 +2837,25 @@ export function KdpFactoryApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [niches]);
 
+    const focusChatContext = useMemo(() => {
+        const today = new Date().toISOString().split("T")[0];
+        const activeN = niches.filter(n => n.status !== "archived");
+        const byPhase = (p: string) => activeN.filter(n => (nicheComputedPhases.get(n._id) ?? "niche") === p).length;
+        const totalImgs = iaCatalogs.reduce((s, c) => s + c.images.length, 0);
+        const nextEvents = pubEvents.filter(e => e.date >= today).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3);
+        const urgentTm = timeMachineData.filter(t => t.urgency === "critical" || t.urgency === "soon").slice(0, 3);
+        const lastClone = cloneHistory.at(-1);
+        const lines = [
+            `Fecha: ${today}`,
+            `Nichos: ${activeN.length} activos (${byPhase("niche")} en idea, ${byPhase("catalog")} en catálogo, ${byPhase("seo")} en SEO, ${byPhase("published")} publicados)`,
+            `Imágenes generadas: ${totalImgs}`,
+            nextEvents.length > 0 ? `Próximos eventos: ${nextEvents.map(e => `${e.title} el ${e.date}`).join(", ")}` : "",
+            urgentTm.length > 0 ? `Urgencias Time Machine: ${urgentTm.map(t => `${t.nicheName} (${t.urgency} — publicar ${t.optimalPublishDate})`).join(", ")}` : "",
+            lastClone ? `Último Clone Engine: "${lastClone.source.title}" BSR ${lastClone.source.bsr}` : "",
+        ].filter(Boolean).join("\n");
+        return `Eres el asistente de Daily Focus del autor KDP Emilio Jimenez. Le ayudas a decidir qué hacer hoy para maximizar ingresos pasivos con libros de colorear en Amazon KDP.\n\nESTADO ACTUAL:\n${lines}\n\nResponde siempre en español. Sé directo, conciso y accionable. Máximo 3-4 oraciones. Prioriza el mayor impacto económico.`;
+    }, [niches, iaCatalogs, pubEvents, timeMachineData, cloneHistory, nicheComputedPhases]);
+
     const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
     const [confirmDeleteDraftId, setConfirmDeleteDraftId] = useState<string | null>(null);
     const [showAdvancedOptions, setShowAdvancedOptions] = useState(true);
@@ -4158,14 +4179,30 @@ export function KdpFactoryApp() {
             const productTypeLabel = selectedNiche?.productType === "coloring-book" ? "Libro de colorear KDP"
                 : selectedNiche?.productType === "printable-poster" ? "Poster imprimible KDP"
                 : "Libro KDP";
-            const extrasContext = selectedNiche
-                ? [
+            const cloneEntryForListing = cloneHistory.find(h =>
+                selectedNiche && (
+                    h.clones.some(c => c.nicheName.toLowerCase().includes(selectedNiche.name.toLowerCase()) || selectedNiche.name.toLowerCase().includes(c.nicheName.toLowerCase())) ||
+                    h.input.toLowerCase().includes(selectedNiche.name.toLowerCase())
+                )
+            );
+            const activeSrc = cloneSource ?? cloneEntryForListing?.source ?? null;
+            const cloneExtrasListing = activeSrc ? [
+                activeSrc.title ? `bestseller analizado: "${activeSrc.title}"` : "",
+                activeSrc.bsr ? `BSR competencia: ${activeSrc.bsr}` : "",
+                activeSrc.price ? `precio competencia: ${activeSrc.price}` : "",
+                activeSrc.pages ? `páginas referencia: ${activeSrc.pages}` : "",
+                activeSrc.formula ? `análisis mercado: ${activeSrc.formula}` : "",
+                cloneEntryForListing?.clones[0]?.keywords?.length ? `keywords detectadas: ${cloneEntryForListing.clones[0].keywords.slice(0, 8).join(", ")}` : "",
+            ].filter(Boolean).join(" · ") : undefined;
+            const extrasContext = [
+                selectedNiche ? [
                     selectedNiche.tags.length > 0 ? `tags: ${selectedNiche.tags.join(", ")}` : "",
                     selectedNiche.styleCategory ? `estilo: ${selectedNiche.styleCategory}` : "",
                     selectedNiche.description ? `descripción: ${selectedNiche.description}` : "",
                     selectedNiche.demand !== "unknown" ? `demanda: ${selectedNiche.demand}` : "",
-                  ].filter(Boolean).join(" · ")
-                : undefined;
+                ].filter(Boolean).join(" · ") : "",
+                cloneExtrasListing ?? "",
+            ].filter(Boolean).join(" · ") || undefined;
             const res = await fetch(`${API_BASE_URL}/ai/generate-text`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -4256,6 +4293,19 @@ export function KdpFactoryApp() {
         setGeneratingListingNicheId(niche._id);
         setDraftListings(prev => ({ ...prev, [niche._id]: null }));
         try {
+            const cloneEntry = cloneHistory.find(h =>
+                h.clones.some(c => c.nicheName.toLowerCase().includes(niche.name.toLowerCase()) || niche.name.toLowerCase().includes(c.nicheName.toLowerCase())) ||
+                h.input.toLowerCase().includes(niche.name.toLowerCase())
+            );
+            const cloneSrc = cloneSource ?? cloneEntry?.source ?? null;
+            const cloneExtras = cloneSrc ? [
+                cloneSrc.title ? `bestseller analizado: "${cloneSrc.title}"` : "",
+                cloneSrc.bsr ? `BSR competencia: ${cloneSrc.bsr}` : "",
+                cloneSrc.price ? `precio competencia: ${cloneSrc.price}` : "",
+                cloneSrc.pages ? `páginas referencia: ${cloneSrc.pages}` : "",
+                cloneSrc.formula ? `análisis mercado: ${cloneSrc.formula}` : "",
+                cloneEntry?.clones[0]?.keywords?.length ? `keywords detectadas: ${cloneEntry.clones[0].keywords.slice(0, 8).join(", ")}` : "",
+            ].filter(Boolean).join(" · ") : undefined;
             const res = await fetch(`${API_BASE_URL}/ai/generate-text`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -4267,7 +4317,8 @@ export function KdpFactoryApp() {
                         niche.tags.length > 0 ? `tags: ${niche.tags.join(", ")}` : "",
                         niche.styleCategory ? `estilo: ${niche.styleCategory}` : "",
                         niche.description ? `descripción: ${niche.description}` : "",
-                    ].filter(Boolean).join(" · "),
+                        cloneExtras ?? "",
+                    ].filter(Boolean).join(" · ") || undefined,
                     language: "es",
                 }),
             });
@@ -11607,6 +11658,71 @@ export function KdpFactoryApp() {
                         )}
                     </div>
 
+                    {/* ── Niche Heat Map ── */}
+                    {!isLoadingNiches && niches.filter(n => n.status !== "archived").length > 1 && (() => {
+                        const activeN = niches.filter(n => n.status !== "archived");
+                        const imgCount = (n: NicheFE) =>
+                            (n.catalogIds ?? []).reduce((s, cid) => {
+                                const cat = iaCatalogs.find(c => c._id === cid);
+                                return s + (cat?.images?.length ?? 0);
+                            }, 0);
+                        const maxImgs = Math.max(...activeN.map(imgCount), 10);
+                        const phaseColor: Record<string, string> = {
+                            niche: "#0ea5e9", catalog: "#3b82f6", libro: "#6366f1",
+                            seo: "#8b5cf6", cover: "#d946ef", published: "#10b981",
+                        };
+                        return (
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-neutral-600">Heat Map · Score vs Imágenes</p>
+                                    <div className="flex gap-2">
+                                        {Object.entries(phaseColor).map(([p, c]) => (
+                                            <span key={p} className="flex items-center gap-1 text-[8px] text-neutral-700">
+                                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: c }} />{p}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="relative h-36 rounded-2xl border border-white/8 bg-white/[0.015] overflow-hidden">
+                                    {[0,1,2,3].map(i => (
+                                        <div key={i} className="absolute w-full h-px bg-white/[0.03]" style={{ top: `${25 * (i + 1)}%` }} />
+                                    ))}
+                                    {[0,1,2,3].map(i => (
+                                        <div key={i} className="absolute h-full w-px bg-white/[0.03]" style={{ left: `${25 * (i + 1)}%` }} />
+                                    ))}
+                                    <span className="absolute bottom-1.5 left-3 text-[7px] text-neutral-700">Score 0</span>
+                                    <span className="absolute bottom-1.5 right-3 text-[7px] text-neutral-700">Score 100</span>
+                                    <span className="absolute top-2 left-3 text-[7px] text-neutral-700">↑ imgs</span>
+                                    {activeN.map(n => {
+                                        const sc = n.score ?? 50;
+                                        const imgs = imgCount(n);
+                                        const cats = (n.catalogIds ?? []).length;
+                                        const x = 5 + (sc / 100) * 88;
+                                        const y = 88 - (imgs / maxImgs) * 76;
+                                        const sz = 10 + Math.min(cats * 3, 14);
+                                        const phase = nicheComputedPhases.get(n._id) ?? "niche";
+                                        const color = phaseColor[phase] ?? "#6366f1";
+                                        return (
+                                            <div
+                                                key={n._id}
+                                                title={`${n.name}\nScore: ${sc} · Imágenes: ${imgs} · Catálogos: ${cats}`}
+                                                className="absolute rounded-full transition-all hover:scale-150 cursor-default"
+                                                style={{
+                                                    left: `${x}%`, top: `${y}%`,
+                                                    width: sz, height: sz,
+                                                    backgroundColor: color + "50",
+                                                    border: `1px solid ${color}90`,
+                                                    transform: "translate(-50%, -50%)",
+                                                    boxShadow: `0 0 ${sz / 2}px ${color}40`,
+                                                }}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        );
+                    })()}
+
                     {/* ── Loading skeletons ── */}
                     {isLoadingNiches && niches.length === 0 && (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -18110,6 +18226,9 @@ export function KdpFactoryApp() {
                     document.body
                 );
             })()}
+
+            {/* ── Daily Focus AI Chat ── */}
+            <FocusChat systemContext={focusChatContext} apiBase={API_BASE_URL} />
 
             {/* Confirm Delete Cloudinary Image Dialog */}
             {confirmDeleteCloudinaryId && (
