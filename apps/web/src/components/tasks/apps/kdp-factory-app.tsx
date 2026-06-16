@@ -9811,8 +9811,16 @@ export function KdpFactoryApp() {
                                                 const imgSec = Math.floor(imgMs / 1000);
                                                 const imgHeatColor = imgMs <= 0 ? "#6b7280" : imgMs < 2*60000 ? "#22c55e" : imgMs < 4*60000 ? "#eab308" : imgMs < 6*60000 ? "#f97316" : "#ef4444";
                                                 const productLabel = niche?.productType === "printable-poster" ? "Póster" : "Libro";
+                                                const pipelineCoverImg = (niche as any)?.coverUrl || (niche as any)?.sampleImageUrl || nicheCats.flatMap(c => c.images).find((img: any) => img.url)?.url;
                                                 return (
-                                                    <div key={nicheId} className="rounded-2xl border border-amber-500/15 bg-amber-500/[0.02] px-4 py-3 space-y-2.5">
+                                                    <div key={nicheId} className="relative rounded-2xl border border-amber-500/15 bg-amber-500/[0.02] overflow-hidden group">
+                                                        {pipelineCoverImg && (
+                                                            <div className="absolute inset-0 pointer-events-none">
+                                                                <img src={pipelineCoverImg} alt="" className="w-full h-full object-cover opacity-[0.18] group-hover:opacity-[0.30] transition-all duration-500 scale-105 group-hover:scale-110" />
+                                                                <div className="absolute inset-0 bg-gradient-to-b from-black/75 via-black/60 to-black/85" />
+                                                            </div>
+                                                        )}
+                                                        <div className="relative px-4 py-3 space-y-2.5">
                                                         {/* Header: Niche name → product type */}
                                                         <div className="flex items-center gap-2">
                                                             <span className="relative flex h-2 w-2 shrink-0">
@@ -9860,6 +9868,7 @@ export function KdpFactoryApp() {
                                                                 </span>
                                                             )}
                                                         </div>
+                                                        </div>{/* /relative content wrapper */}
                                                     </div>
                                                 );
                                             })}
@@ -12497,9 +12506,11 @@ export function KdpFactoryApp() {
                             .slice()
                             .sort((a, b) => {
                                 if (nicheSortBy === "score") return nicheScore(b) - nicheScore(a);
+                                if (nicheSortBy === "market") return (b.marketScan?.score ?? -1) - (a.marketScan?.score ?? -1);
                                 if (nicheSortBy === "date") return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
                                 if (nicheSortBy === "name") return a.name.localeCompare(b.name, "es");
                                 if (nicheSortBy === "catalogs") { const ac = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).length; const bc = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).length; return bc - ac; }
+                                if (nicheSortBy === "images") { const ai = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(a._id)).reduce((s, c) => s + c.images.length, 0); const bi = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(b._id)).reduce((s, c) => s + c.images.length, 0); return bi - ai; }
                                 return 0;
                             });
                         if (tableNiches.length === 0) return null;

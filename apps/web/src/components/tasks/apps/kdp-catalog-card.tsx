@@ -136,6 +136,26 @@ export const CatalogCard = React.memo(function CatalogCard({
 
     const isDraggable = catalog.status === "queued";
 
+    // Confetti on completion
+    const prevStatusRef = React.useRef(catalog.status);
+    const [showConfetti, setShowConfetti] = React.useState(false);
+    React.useEffect(() => {
+        if (prevStatusRef.current !== "completed" && catalog.status === "completed") {
+            setShowConfetti(true);
+            const t = setTimeout(() => setShowConfetti(false), 1100);
+            prevStatusRef.current = catalog.status;
+            return () => clearTimeout(t);
+        }
+        prevStatusRef.current = catalog.status;
+    }, [catalog.status]);
+
+    const CONFETTI_DIRS: [number, number][] = [
+        [0, -44], [22, -38], [38, -22], [44, 0], [38, 22], [22, 38],
+        [0, 44], [-22, 38], [-38, 22], [-44, 0], [-38, -22], [-22, -38],
+        [30, -30], [30, 30], [-30, 30], [-30, -30],
+    ];
+    const CONFETTI_COLORS = ['#3b82f6','#8b5cf6','#10b981','#f59e0b','#ec4899','#06b6d4','#f97316','#a855f7'];
+
     return (
         <Card
             key={catalog._id}
@@ -147,6 +167,12 @@ export const CatalogCard = React.memo(function CatalogCard({
             onDrop={(e: React.DragEvent) => { e.preventDefault(); if (draggingId && isDraggable) void actions.handleQueueReorder(draggingId, catalog._id); actions.setDraggingId(null); actions.setDragOverId(null); }}
             className={`group relative bg-white/[0.01] overflow-hidden transition-all duration-300 ${imgHeatLevel > 0 ? heatBorderCls : `border-white/5 ${providerColor.border} ${providerColor.glow}`} ${isDraggable ? "cursor-grab active:cursor-grabbing" : ""} ${isDragOver ? "ring-1 ring-orange-500/50 border-orange-500/30" : ""} ${isDragging ? "opacity-50" : ""}`}
         >
+            {catalog.images.length > 0 && (
+                <div className="absolute inset-0 pointer-events-none">
+                    <img src={catalog.images[0].url} alt="" className="w-full h-full object-cover opacity-30 group-hover:opacity-50 transition-all duration-500 scale-105 group-hover:scale-110" />
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/45 to-black/75" />
+                </div>
+            )}
             <div className={`absolute -right-4 -top-4 w-16 h-16 ${providerColor.blob} blur-2xl rounded-full opacity-50 transition-all duration-500 group-hover:scale-[2] group-hover:opacity-80`} />
             <div className={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${providerColor.gradient} opacity-40 group-hover:opacity-100 transition-all duration-300`} />
             {heatBarColor && imgElapsedMs > 0 ? (
@@ -157,7 +183,7 @@ export const CatalogCard = React.memo(function CatalogCard({
             ) : (
                 <div className={`h-px w-full ${providerColor.bar} opacity-60`} />
             )}
-            <div className="p-4 pl-5 space-y-3">
+            <div className="p-4 pl-5 space-y-3 relative">
                 {/* Header */}
                 <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 space-y-1">
@@ -349,7 +375,7 @@ export const CatalogCard = React.memo(function CatalogCard({
 
             {/* Progress bar */}
             {isActive && (
-                <div className="px-4 pb-3 space-y-1.5 border-t border-white/5 pt-3">
+                <div className="px-4 pb-3 space-y-1.5 border-t border-white/5 pt-3 relative">
                     <div className="flex justify-between text-sm uppercase tracking-widest text-neutral-600">
                         <span className="flex items-center gap-1.5"><Loader2 size={8} className="animate-spin text-blue-400" />{catalog.status === "queued" ? `En cola · posición ${queuePos}` : catalog.status === "pending" ? "Iniciando..." : "Generando"}</span>
                         {catalog.status !== "queued" && <span className="font-black text-neutral-400">{Math.round(progress)}% {timeStr && <span className="text-sky-400/80 normal-case">{timeStr}</span>}</span>}
@@ -357,7 +383,14 @@ export const CatalogCard = React.memo(function CatalogCard({
                     <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
                         {catalog.status === "queued"
                             ? <div className="h-full w-1/3 bg-gradient-to-r from-orange-500/30 to-orange-400/60 rounded-full animate-pulse" />
-                            : <div className="h-full bg-gradient-to-r from-sky-500 to-blue-400 rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
+                            : <div
+                                className="h-full rounded-full transition-all duration-700"
+                                style={{
+                                    width: `${progress}%`,
+                                    background: 'linear-gradient(90deg,#0ea5e9 0%,#8b5cf6 50%,#10b981 100%)',
+                                    boxShadow: progress > 3 ? '2px 0 8px rgba(139,92,246,0.9),0 0 4px rgba(16,185,129,0.6)' : 'none',
+                                }}
+                              />
                         }
                     </div>
                 </div>
@@ -365,7 +398,7 @@ export const CatalogCard = React.memo(function CatalogCard({
 
             {/* Niche picker inline */}
             {isNichePickerOpen && (
-                <div className="px-4 pb-4 border-t border-sky-500/10 pt-3 space-y-3 bg-gradient-to-b from-sky-500/[0.04] to-transparent">
+                <div className="px-4 pb-4 border-t border-sky-500/10 pt-3 space-y-3 bg-gradient-to-b from-sky-500/[0.04] to-transparent relative">
                     <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                             <div className="w-5 h-5 rounded-lg bg-sky-500/15 border border-sky-500/25 flex items-center justify-center">
@@ -403,7 +436,7 @@ export const CatalogCard = React.memo(function CatalogCard({
 
             {/* Image grid */}
             {catalog.images.length > 0 && (
-                <div className="px-4 pb-4 border-t border-white/5 pt-3 space-y-2">
+                <div className="px-4 pb-4 border-t border-white/5 pt-3 space-y-2 relative">
                     <div className="flex items-center justify-between gap-2">
                         <span className="text-sm text-neutral-700 font-mono">{catalog.images.length} imgs</span>
                         <div className="flex items-center gap-1.5">
@@ -468,7 +501,7 @@ export const CatalogCard = React.memo(function CatalogCard({
                                         }
                                     }}
                                 >
-                                    <img src={img.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                                    <img src={img.url} alt="" className="w-full h-full object-cover kdp-img-pop" loading="lazy" />
                                     {isBulkMode && (
                                         <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border flex items-center justify-center transition-all ${isBulkSel ? "bg-red-500 border-red-500" : "bg-black/50 border-white/30 backdrop-blur-sm"}`}>
                                             {isBulkSel && <Check size={9} className="text-white" strokeWidth={3} />}
@@ -503,12 +536,38 @@ export const CatalogCard = React.memo(function CatalogCard({
                                 </div>
                             );
                         })}
-                        {isActive && Array.from({ length: catalog.totalImages - catalog.images.length }).map((_, i) => (
-                            <div key={`ph-${i}`} className="aspect-square rounded-lg bg-white/[0.02] border border-dashed border-white/10 flex items-center justify-center">
-                                <Loader2 size={10} className="text-neutral-700 animate-spin" />
-                            </div>
-                        ))}
+                        {isActive && Array.from({ length: catalog.totalImages - catalog.images.length }).map((_, i) => {
+                            const isNext = catalog.status === "running" && i === 0;
+                            return (
+                                <div key={`ph-${i}`} className={`aspect-square rounded-lg overflow-hidden relative ${isNext ? `border ${providerColor.badge.split(" ").find(c => c.startsWith("border-")) ?? "border-white/20"}` : "border border-dashed border-white/8"}`}>
+                                    <div className={`absolute inset-0 ${isNext ? providerColor.blob : "bg-white/[0.025]"}`} />
+                                    <div className="absolute inset-0 skeleton-shimmer" style={{ animationDelay: `${i * 0.12}s` }} />
+                                    {isNext && (
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                            <Loader2 size={10} className="text-white/40 animate-spin" />
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
+                </div>
+            )}
+            {/* Confetti burst on completion */}
+            {showConfetti && (
+                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                    {CONFETTI_DIRS.map(([tx, ty], i) => (
+                        <div
+                            key={i}
+                            className="kdp-confetti-particle absolute w-2 h-2 rounded-full"
+                            style={{
+                                top: '38%', left: '50%',
+                                backgroundColor: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+                                '--tx': `${tx}px`, '--ty': `${ty}px`,
+                                animationDelay: `${i * 30}ms`,
+                            } as React.CSSProperties}
+                        />
+                    ))}
                 </div>
             )}
         </Card>
