@@ -18,11 +18,13 @@ import { Button } from "@/components/ui/button";
 import { createApiSocket } from "@/lib/socket";
 import { isAuthenticated, clearToken } from "@/lib/auth-client";
 import { AuthFetchPatcher } from "@/components/layout/auth-fetch-patcher";
+import { CommandPalette, CommandPaletteTrigger } from "@/components/ui/CommandPalette";
 
 export function NavigationWrapper({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const pathname = usePathname();
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [paletteOpen, setPaletteOpen] = useState(false);
     const [dbStatus, setDbStatus] = useState<"unknown" | "connected" | "disconnected" | "connecting" | "disconnecting">("connecting");
     const [authChecked, setAuthChecked] = useState(false);
     const apiUrl = useMemo(
@@ -45,6 +47,19 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
             setAuthChecked(true);
         }
     }, [pathname, isLoginPage, router]);
+
+    // ⌘K / Ctrl+K global shortcut
+    useEffect(() => {
+        if (isLoginPage) return;
+        const handler = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+                e.preventDefault();
+                setPaletteOpen(p => !p);
+            }
+        };
+        window.addEventListener("keydown", handler);
+        return () => window.removeEventListener("keydown", handler);
+    }, [isLoginPage]);
 
     useEffect(() => {
         if (isLoginPage) return;
@@ -132,6 +147,7 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
                     </div>
                     <div className="hidden md:flex items-center gap-4">
                         <h2 className="text-sm font-medium text-neutral-400 uppercase tracking-widest px-2">Gestor de Tareas</h2>
+                        <CommandPaletteTrigger onClick={() => setPaletteOpen(true)} />
                     </div>
 
                     <div className="flex items-center gap-4">
@@ -192,6 +208,9 @@ export function NavigationWrapper({ children }: { children: React.ReactNode }) {
 
             {/* Modal */}
             <AddTaskModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+
+            {/* Command Palette */}
+            <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
         </div>
         </>
     );

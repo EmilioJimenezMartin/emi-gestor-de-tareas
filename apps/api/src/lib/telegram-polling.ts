@@ -4,6 +4,7 @@ import { synthesizeSpeech } from "./tts.js";
 import { TelegramAction } from "../models/telegram-action.js";
 import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
+import { Catalog } from "../models/catalog.js";
 import { activateNextQueued } from "./catalog-queue.js";
 import { withImageSlot } from "./ai-semaphore.js";
 import { generateImage, getAutopilotImageModel } from "./image-gen.js";
@@ -2360,11 +2361,22 @@ async function poll(): Promise<void> {
         });
         for (const action of expired) {
             if (action.type === "niche-discovery") {
-                action.status = "descartar";
                 action.resolvedAt = new Date();
-                await action.save();
-                await Niche.findByIdAndUpdate(action.nicheId, { $set: { status: "archived" } });
-                await sendTelegram(`⏱️ <b>Auto-descartado</b> (48h sin respuesta)\n<b>${action.nicheName}</b> → archivado`);
+                // Only archive niches with no generated images
+                const hasImages = await Catalog.exists({
+                    nicheIds: String(action.nicheId),
+                    "images.0": { $exists: true },
+                });
+                if (hasImages) {
+                    action.status = "expired";
+                    await action.save();
+                    await sendTelegram(`⏱️ <b>Acción expirada</b> (48h sin respuesta)\n<b>${action.nicheName}</b> — tiene imágenes, no se archiva`);
+                } else {
+                    action.status = "descartar";
+                    await action.save();
+                    await Niche.findByIdAndUpdate(action.nicheId, { $set: { status: "archived" } });
+                    await sendTelegram(`⏱️ <b>Auto-descartado</b> (48h sin respuesta, sin imágenes)\n<b>${action.nicheName}</b> → archivado`);
+                }
             } else if (action.type === "phase-approve") {
                 action.status = "approved";
                 action.resolvedAt = new Date();

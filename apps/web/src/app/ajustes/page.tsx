@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import { refreshToken, getTokenExpiry } from "@/lib/auth-client";
 import { KdpTabBar } from "@/components/ui/kdp-tab-bar";
 import { speakBrowser } from "@/hooks/useSpeech";
+import { Toggle } from "@/components/ui/toggle";
 import { LlmTelemetryPanel } from "@/components/settings/LlmTelemetryPanel";
 
 interface LogEntry { t: number; level: "info" | "warn" | "error"; msg: string; }
@@ -1899,12 +1900,7 @@ export default function AjustesPage() {
                                         <p className="text-sm font-bold text-white">Publicación automática</p>
                                         <p className="text-xs text-neutral-500 mt-0.5">Crea el producto en Gumroad al completar el pipeline (portada + PDF + listing SEO).</p>
                                     </div>
-                                    <button
-                                        onClick={() => setGumroadEnabled(v => !v)}
-                                        className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${gumroadEnabled ? "bg-violet-500" : "bg-white/10"}`}
-                                    >
-                                        <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${gumroadEnabled ? "left-6" : "left-0.5"}`} />
-                                    </button>
+                                    <Toggle checked={gumroadEnabled} onChange={() => setGumroadEnabled(v => !v)} color="violet" />
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="space-y-2">
@@ -2320,12 +2316,7 @@ export default function AjustesPage() {
                                 <p className="text-sm font-bold text-white">Activar filtro de calidad</p>
                                 <p className="text-xs text-neutral-500 mt-0.5">Solo aplica a libros de colorear. Las páginas con menos blanco del umbral se descartan.</p>
                             </div>
-                            <button
-                                onClick={() => setQualityFilterEnabled(v => !v)}
-                                className={`relative w-12 h-6 rounded-full transition-colors ${qualityFilterEnabled ? "bg-emerald-500" : "bg-white/10"}`}
-                            >
-                                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${qualityFilterEnabled ? "left-6" : "left-0.5"}`} />
-                            </button>
+                            <Toggle checked={qualityFilterEnabled} onChange={() => setQualityFilterEnabled(v => !v)} color="emerald" />
                         </div>
                         <div className={`space-y-2 transition-opacity ${qualityFilterEnabled ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
                             <label className="text-xs font-black uppercase tracking-widest text-neutral-500">Mínimo de píxeles blancos (%)</label>
@@ -2522,12 +2513,7 @@ export default function AjustesPage() {
                                     <p className="text-xs text-neutral-500 mt-0.5">La app hablará cuando terminen catálogos, lleguen mensajes de Telegram, etc.</p>
                                 </div>
                             </div>
-                            <button
-                                onClick={() => toggleVoice(!voiceEnabled)}
-                                className={`relative w-12 h-6 rounded-full transition-colors ${voiceEnabled ? "bg-emerald-500" : "bg-white/10"}`}
-                            >
-                                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${voiceEnabled ? "left-6" : "left-0.5"}`} />
-                            </button>
+                            <Toggle checked={voiceEnabled} onChange={(next) => toggleVoice(next)} color="emerald" />
                         </div>
                         <div className={`transition-opacity ${voiceEnabled ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
                             <button

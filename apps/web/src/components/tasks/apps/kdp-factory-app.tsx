@@ -98,6 +98,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
+import { Toggle } from "@/components/ui/toggle";
+import { ToggleRow } from "@/components/ui/setting-row";
 import { CatalogCard, KdpCardCtx, type KdpCardActions } from "./kdp-catalog-card";
 import { Modal } from "@/components/ui/modal";
 import { KdpStatCard } from "@/components/ui/kdp-stat-card";
@@ -7971,11 +7973,7 @@ export function KdpFactoryApp() {
                                                     <p className="text-xs font-black text-white">{ev.label}</p>
                                                     <p className="text-[10px] text-neutral-500 mt-0.5">{ev.desc}</p>
                                                 </div>
-                                                <button
-                                                    onClick={() => void toggleNotificationRule(ev.id)}
-                                                    className={`relative shrink-0 w-11 h-6 rounded-full transition-all duration-200 ${enabled ? "bg-amber-500" : "bg-white/10"}`}>
-                                                    <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${enabled ? "left-[22px]" : "left-0.5"}`} />
-                                                </button>
+                                                <Toggle checked={enabled} onChange={() => void toggleNotificationRule(ev.id)} color="amber" />
                                             </div>
                                         );
                                     })}
@@ -8019,90 +8017,50 @@ export function KdpFactoryApp() {
             <section className="space-y-3">
                 <SectionHeader icon={<Bell size={13} />} title="General" subtitle="Opciones globales de notificación y pipeline" color="amber" size="sm" />
                 <div className="space-y-2">
-                    <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-white/8 bg-white/[0.02]">
-                        <div>
-                            <p className="text-xs font-black text-white">Resumen semanal</p>
-                            <p className="text-[10px] text-neutral-500 mt-0.5">Cada lunes a las 9:00 · pipeline, royalties y catálogos atascados</p>
-                        </div>
-                        <button
-                            onClick={async () => {
-                                const next = !weeklyDigestEnabled;
-                                setWeeklyDigestEnabled(next);
-                                await fetch(`${API_BASE_URL}/settings`, {
-                                    method: "PATCH",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify([{ key: "TELEGRAM_WEEKLY_DIGEST", value: next ? "true" : "false" }]),
-                                });
-                                toast.success(next ? "Resumen semanal activado" : "Resumen semanal desactivado");
-                            }}
-                            className={`relative shrink-0 w-11 h-6 rounded-full transition-all duration-200 ${weeklyDigestEnabled ? "bg-sky-500" : "bg-white/10"}`}
-                        >
-                            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${weeklyDigestEnabled ? "left-[22px]" : "left-0.5"}`} />
-                        </button>
-                    </div>
-                    <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-white/8 bg-white/[0.02]">
-                        <div>
-                            <p className="text-xs font-black text-white">Control de calidad</p>
-                            <p className="text-[10px] text-neutral-500 mt-0.5">{qualityCheckEnabled ? "Filtra imágenes sin líneas o con colores incorrectos" : "Desactivado — acepta todas las imágenes sin filtrar"}</p>
-                        </div>
-                        <button
-                            onClick={async () => {
-                                const next = !qualityCheckEnabled;
-                                setQualityCheckEnabled(next);
-                                await fetch(`${API_BASE_URL}/settings`, {
-                                    method: "PATCH",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify([{ key: "QUALITY_CHECK_ENABLED", value: next ? "1" : "0" }]),
-                                });
-                                toast.success(next ? "Control de calidad activado" : "Control de calidad desactivado");
-                            }}
-                            className={`relative shrink-0 w-11 h-6 rounded-full transition-all duration-200 ${qualityCheckEnabled ? "bg-amber-500" : "bg-white/10"}`}
-                        >
-                            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${qualityCheckEnabled ? "left-[22px]" : "left-0.5"}`} />
-                        </button>
-                    </div>
-                    <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-white/8 bg-white/[0.02]">
-                        <div>
-                            <p className="text-xs font-black text-white">Prompt Evolution Engine</p>
-                            <p className="text-[10px] text-neutral-500 mt-0.5">{promptEvolutionEnabled ? "Usa los mejores prompts históricos como referencia al generar nuevos" : "Desactivado — cada prompt se genera desde cero sin histórico"}</p>
-                        </div>
-                        <button
-                            onClick={async () => {
-                                const next = !promptEvolutionEnabled;
-                                setPromptEvolutionEnabled(next);
-                                await fetch(`${API_BASE_URL}/settings`, {
-                                    method: "PATCH",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify([{ key: "PROMPT_EVOLUTION_ENABLED", value: next ? "1" : "0" }]),
-                                });
-                                toast.success(next ? "Prompt Evolution activado" : "Prompt Evolution desactivado");
-                            }}
-                            className={`relative shrink-0 w-11 h-6 rounded-full transition-all duration-200 ${promptEvolutionEnabled ? "bg-violet-500" : "bg-white/10"}`}
-                        >
-                            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${promptEvolutionEnabled ? "left-[22px]" : "left-0.5"}`} />
-                        </button>
-                    </div>
-                    <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-white/8 bg-white/[0.02]">
-                        <div>
-                            <p className="text-xs font-black text-white">Vault → Telegram</p>
-                            <p className="text-[10px] text-neutral-500 mt-0.5">{qualityVaultTelegramEnabled ? "Envía imágenes rechazadas a Telegram para revisión" : "Solo guarda en el vault de la app — sin notificación"}</p>
-                        </div>
-                        <button
-                            onClick={async () => {
-                                const next = !qualityVaultTelegramEnabled;
-                                setQualityVaultTelegramEnabled(next);
-                                await fetch(`${API_BASE_URL}/settings`, {
-                                    method: "PATCH",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify([{ key: "QUALITY_VAULT_TELEGRAM_NOTIFY", value: next ? "1" : "0" }]),
-                                });
-                                toast.success(next ? "Notificación Telegram del vault activada" : "Notificación Telegram del vault desactivada");
-                            }}
-                            className={`relative shrink-0 w-11 h-6 rounded-full transition-all duration-200 ${qualityVaultTelegramEnabled ? "bg-sky-500" : "bg-white/10"}`}
-                        >
-                            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all duration-200 ${qualityVaultTelegramEnabled ? "left-[22px]" : "left-0.5"}`} />
-                        </button>
-                    </div>
+                    <ToggleRow
+                        label="Resumen semanal"
+                        description="Cada lunes a las 9:00 · pipeline, royalties y catálogos atascados"
+                        checked={weeklyDigestEnabled}
+                        color="sky"
+                        onChange={async (next) => {
+                            setWeeklyDigestEnabled(next);
+                            await fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "TELEGRAM_WEEKLY_DIGEST", value: next ? "true" : "false" }]) });
+                            toast.success(next ? "Resumen semanal activado" : "Resumen semanal desactivado");
+                        }}
+                    />
+                    <ToggleRow
+                        label="Control de calidad"
+                        description={qualityCheckEnabled ? "Filtra imágenes sin líneas o con colores incorrectos" : "Desactivado — acepta todas las imágenes sin filtrar"}
+                        checked={qualityCheckEnabled}
+                        color="amber"
+                        onChange={async (next) => {
+                            setQualityCheckEnabled(next);
+                            await fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "QUALITY_CHECK_ENABLED", value: next ? "1" : "0" }]) });
+                            toast.success(next ? "Control de calidad activado" : "Control de calidad desactivado");
+                        }}
+                    />
+                    <ToggleRow
+                        label="Prompt Evolution Engine"
+                        description={promptEvolutionEnabled ? "Usa los mejores prompts históricos como referencia al generar nuevos" : "Desactivado — cada prompt se genera desde cero sin histórico"}
+                        checked={promptEvolutionEnabled}
+                        color="violet"
+                        onChange={async (next) => {
+                            setPromptEvolutionEnabled(next);
+                            await fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "PROMPT_EVOLUTION_ENABLED", value: next ? "1" : "0" }]) });
+                            toast.success(next ? "Prompt Evolution activado" : "Prompt Evolution desactivado");
+                        }}
+                    />
+                    <ToggleRow
+                        label="Vault → Telegram"
+                        description={qualityVaultTelegramEnabled ? "Envía imágenes rechazadas a Telegram para revisión" : "Solo guarda en el vault de la app — sin notificación"}
+                        checked={qualityVaultTelegramEnabled}
+                        color="sky"
+                        onChange={async (next) => {
+                            setQualityVaultTelegramEnabled(next);
+                            await fetch(`${API_BASE_URL}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify([{ key: "QUALITY_VAULT_TELEGRAM_NOTIFY", value: next ? "1" : "0" }]) });
+                            toast.success(next ? "Notificación Telegram del vault activada" : "Notificación Telegram del vault desactivada");
+                        }}
+                    />
                 </div>
             </section>
             </div>}
