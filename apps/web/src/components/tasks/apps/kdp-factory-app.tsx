@@ -722,6 +722,11 @@ export function KdpFactoryApp() {
     const [nicheSortBy, setNicheSortBy] = useState<"score" | "market" | "date" | "name" | "images" | "catalogs">("score");
     const [nicheSearch, setNicheSearch] = useState("");
     const [nicheQuickFilter, setNicheQuickFilter] = useState<"all" | "gold" | "no-catalogs" | "book" | "published">("all");
+    const [nicheFilterAudience, setNicheFilterAudience] = useState<"all" | "children" | "teens" | "adults">("all");
+    const [nicheFilterMinImgs, setNicheFilterMinImgs] = useState<number | "">("");
+    const [nicheFilterMaxImgs, setNicheFilterMaxImgs] = useState<number | "">("");
+    const [nicheFilterMinCats, setNicheFilterMinCats] = useState<number | "">("");
+    const [nicheFilterMaxCats, setNicheFilterMaxCats] = useState<number | "">("");
     // Toolbar de catálogos IA
     const [iaCatalogSearch, setIaCatalogSearch] = useState("");
     const [iaCatalogStatusFilter, setIaCatalogStatusFilter] = useState<"all" | "active" | "queued" | "completed" | "failed" | "cancelled">("all");
@@ -1587,6 +1592,16 @@ export function KdpFactoryApp() {
         if (nicheQuickFilter === "no-catalogs" && (n.catalogIds?.length ?? 0) > 0) return false;
         if (nicheQuickFilter === "book" && !n.pipelineHasPdf) return false;
         if (nicheQuickFilter === "published" && !(n.phase === "published" || n.lifecycleStage === "published")) return false;
+        if (nicheFilterAudience !== "all" && (n.targetAudience ?? "all") !== nicheFilterAudience) return false;
+        if (nicheFilterMinImgs !== "" || nicheFilterMaxImgs !== "" || nicheFilterMinCats !== "" || nicheFilterMaxCats !== "") {
+            const cats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(n._id));
+            const imgs = cats.reduce((s, c) => s + (c.images?.length ?? 0), 0);
+            const catsCount = cats.length;
+            if (nicheFilterMinImgs !== "" && imgs < nicheFilterMinImgs) return false;
+            if (nicheFilterMaxImgs !== "" && imgs > nicheFilterMaxImgs) return false;
+            if (nicheFilterMinCats !== "" && catsCount < nicheFilterMinCats) return false;
+            if (nicheFilterMaxCats !== "" && catsCount > nicheFilterMaxCats) return false;
+        }
         return true;
     };
 
@@ -11600,73 +11615,6 @@ export function KdpFactoryApp() {
                         );
                     })()}
 
-                    {/* ── Search + product type + sort ── */}
-                    <div className="flex gap-2 flex-wrap">
-                        <div className="relative flex-1 min-w-[140px]">
-                            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600 pointer-events-none" />
-                            <input
-                                value={nicheSearch}
-                                onChange={e => setNicheSearch(e.target.value)}
-                                placeholder="Buscar por nombre, descripción o tags…"
-                                className="w-full h-9 bg-white/[0.04] border border-white/[0.08] rounded-xl pl-8 pr-8 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 focus:bg-white/[0.06] transition-all"
-                            />
-                            {nicheSearch && (
-                                <button onClick={() => setNicheSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
-                                    <X size={11} />
-                                </button>
-                            )}
-                        </div>
-                        <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest shrink-0">
-                            {(["all", "coloring-book", "printable-poster", "seamless-pattern"] as const).map(f => (
-                                <button key={f} onClick={() => setKanbanProductFilter(f)}
-                                    className={`px-2.5 h-8 rounded-[10px] transition-all whitespace-nowrap ${kanbanProductFilter === f ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                    {f === "all" ? "Todos" : f === "coloring-book" ? "📚" : f === "printable-poster" ? "🖼" : "🔁"}
-                                    <span className="hidden sm:inline ml-1">{f === "all" ? "" : f === "coloring-book" ? "Libros" : f === "printable-poster" ? "Pósters" : "Patrones"}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* ── Chips rápidos + ordenar ── */}
-                    <div className="flex gap-2 flex-wrap items-center">
-                        <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest overflow-x-auto no-scrollbar">
-                            {([
-                                { id: "all" as const, label: "Todos", count: niches.length },
-                                { id: "gold" as const, label: "🥇 Gold", count: niches.filter(n => n.marketScan?.verdict === "gold").length },
-                                { id: "no-catalogs" as const, label: "Sin catálogos", count: niches.filter(n => (n.catalogIds?.length ?? 0) === 0).length },
-                                { id: "book" as const, label: "📕 Con libro", count: niches.filter(n => n.pipelineHasPdf).length },
-                                { id: "published" as const, label: "✅ Publicados", count: niches.filter(n => n.phase === "published" || n.lifecycleStage === "published").length },
-                            ]).map(c => (
-                                <button key={c.id} onClick={() => setNicheQuickFilter(c.id)}
-                                    className={`px-2.5 h-8 rounded-[10px] transition-all whitespace-nowrap flex items-center gap-1 ${nicheQuickFilter === c.id ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                    {c.label}
-                                    <span className={`text-[9px] px-1 py-px rounded-full tabular-nums ${nicheQuickFilter === c.id ? "bg-white/15" : "bg-white/[0.05]"}`}>{c.count}</span>
-                                </button>
-                            ))}
-                        </div>
-                        <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest overflow-x-auto no-scrollbar ml-auto">
-                            {([
-                                { id: "score" as const, label: "★ Score" },
-                                { id: "market" as const, label: "📊 Market" },
-                                { id: "date" as const, label: "↓ Reciente" },
-                                { id: "catalogs" as const, label: "📚" },
-                                { id: "images" as const, label: "🖼" },
-                                { id: "name" as const, label: "A→Z" },
-                            ]).map(opt => (
-                                <button key={opt.id} onClick={() => setNicheSortBy(opt.id)}
-                                    className={`px-2.5 h-8 rounded-[10px] transition-all whitespace-nowrap ${nicheSortBy === opt.id ? "bg-white/10 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                    {opt.label}
-                                </button>
-                            ))}
-                        </div>
-                        {(nicheSearch.trim() || nicheQuickFilter !== "all" || kanbanProductFilter !== "all") && (
-                            <button onClick={() => { setNicheSearch(""); setNicheQuickFilter("all"); setKanbanProductFilter("all"); }}
-                                className="h-8 px-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-rose-400/70 hover:text-rose-300 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all">
-                                ✕ Limpiar ({niches.filter(nicheMatchesFilters).length})
-                            </button>
-                        )}
-                    </div>
-
                     {/* ── Niche Heat Map ── */}
                     {!isLoadingNiches && niches.filter(n => n.status !== "archived").length > 1 && (() => {
                         const activeN = niches.filter(n => n.status !== "archived");
@@ -11693,17 +11641,18 @@ export function KdpFactoryApp() {
                                     </div>
                                 </div>
                                 <div className="relative rounded-2xl border border-white/8 bg-white/[0.015] overflow-visible" style={{ height: 320 }}>
-                                    {/* Grid */}
                                     {[1,2,3].map(i => (
                                         <div key={i} className="absolute w-full h-px bg-white/[0.04]" style={{ top: `${25 * i}%` }} />
                                     ))}
                                     {[1,2,3].map(i => (
                                         <div key={i} className="absolute h-full w-px bg-white/[0.04]" style={{ left: `${25 * i}%` }} />
                                     ))}
-                                    {/* Axis labels */}
-                                    <span className="absolute bottom-2 left-3 text-[10px] font-bold text-neutral-600">Score 0</span>
-                                    <span className="absolute bottom-2 right-3 text-[10px] font-bold text-neutral-600">Score 100</span>
-                                    <span className="absolute top-2 left-3 text-[10px] font-bold text-neutral-600">↑ Imágenes</span>
+                                    <span className="absolute bottom-2 left-3 text-[10px] font-bold text-neutral-600">← Score bajo</span>
+                                    <span className="absolute bottom-2 right-3 text-[10px] font-bold text-neutral-600">Score alto →</span>
+                                    <span className="absolute top-2 left-3 text-[10px] font-bold text-neutral-600">↑ + imágenes</span>
+                                    <span className="absolute bottom-10 left-3 text-[10px] font-bold text-neutral-700">↓ − imágenes</span>
+                                    <span className="absolute top-3 right-3 text-[9px] font-bold text-emerald-600/50 uppercase tracking-widest">Alto potencial</span>
+                                    <span className="absolute top-3 left-1/4 text-[9px] font-bold text-neutral-700/50 uppercase tracking-widest">Produciendo</span>
                                     {activeN.map(n => {
                                         const sc = n.score ?? 50;
                                         const imgs = imgCount(n);
@@ -11715,27 +11664,14 @@ export function KdpFactoryApp() {
                                         const color = phaseColor[phase] ?? "#6366f1";
                                         const label = (n.nickname || n.name).slice(0, 15);
                                         return (
-                                            <div
-                                                key={n._id}
+                                            <div key={n._id}
                                                 title={`${n.name}\nFase: ${phase} · Score: ${sc} · Imágenes: ${imgs} · Catálogos: ${cats}`}
                                                 className="absolute group cursor-default"
-                                                style={{ left: `${x}%`, top: `${y}%`, transform: "translate(-50%, -50%)" }}
-                                            >
-                                                <div
-                                                    className="rounded-full transition-all duration-200 group-hover:scale-125"
-                                                    style={{
-                                                        width: sz, height: sz,
-                                                        backgroundColor: color + "35",
-                                                        border: `2px solid ${color}`,
-                                                        boxShadow: `0 0 ${sz / 2}px ${color}55`,
-                                                    }}
-                                                />
-                                                <span
-                                                    className="absolute top-full left-1/2 mt-1.5 text-[10px] font-bold text-white/80 whitespace-nowrap pointer-events-none leading-none"
-                                                    style={{ transform: "translateX(-50%)" }}
-                                                >
-                                                    {label}
-                                                </span>
+                                                style={{ left: `${x}%`, top: `${y}%`, transform: "translate(-50%, -50%)" }}>
+                                                <div className="rounded-full transition-all duration-200 group-hover:scale-125"
+                                                    style={{ width: sz, height: sz, backgroundColor: color + "35", border: `2px solid ${color}`, boxShadow: `0 0 ${sz / 2}px ${color}55` }} />
+                                                <span className="absolute top-full left-1/2 mt-1.5 text-[10px] font-bold text-white/80 whitespace-nowrap pointer-events-none leading-none"
+                                                    style={{ transform: "translateX(-50%)" }}>{label}</span>
                                             </div>
                                         );
                                     })}
@@ -11743,6 +11679,115 @@ export function KdpFactoryApp() {
                             </div>
                         );
                     })()}
+
+                    {/* ── Filtros + Búsqueda ── */}
+                    <div className="space-y-2">
+                        {/* Row 1: Search + product type */}
+                        <div className="flex gap-2 flex-wrap">
+                            <div className="relative flex-1 min-w-[140px]">
+                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600 pointer-events-none" />
+                                <input
+                                    value={nicheSearch}
+                                    onChange={e => setNicheSearch(e.target.value)}
+                                    placeholder="Buscar por nombre, descripción o tags…"
+                                    className="w-full h-9 bg-white/[0.04] border border-white/[0.08] rounded-xl pl-8 pr-8 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 focus:bg-white/[0.06] transition-all"
+                                />
+                                {nicheSearch && (
+                                    <button onClick={() => setNicheSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                        <X size={11} />
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest shrink-0">
+                                {(["all", "coloring-book", "printable-poster", "seamless-pattern"] as const).map(f => (
+                                    <button key={f} onClick={() => setKanbanProductFilter(f)}
+                                        className={`px-2.5 h-8 rounded-[10px] transition-all whitespace-nowrap ${kanbanProductFilter === f ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                        {f === "all" ? "Todos" : f === "coloring-book" ? "📚" : f === "printable-poster" ? "🖼" : "🔁"}
+                                        <span className="hidden sm:inline ml-1">{f === "all" ? "" : f === "coloring-book" ? "Libros" : f === "printable-poster" ? "Pósters" : "Patrones"}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        {/* Row 2: Quick chips + sort */}
+                        <div className="flex gap-2 flex-wrap items-center">
+                            <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest overflow-x-auto no-scrollbar">
+                                {([
+                                    { id: "all" as const, label: "Todos", count: niches.length },
+                                    { id: "gold" as const, label: "🥇 Gold", count: niches.filter(n => n.marketScan?.verdict === "gold").length },
+                                    { id: "no-catalogs" as const, label: "Sin catálogos", count: niches.filter(n => (n.catalogIds?.length ?? 0) === 0).length },
+                                    { id: "book" as const, label: "📕 Con libro", count: niches.filter(n => n.pipelineHasPdf).length },
+                                    { id: "published" as const, label: "✅ Publicados", count: niches.filter(n => n.phase === "published" || n.lifecycleStage === "published").length },
+                                ]).map(c => (
+                                    <button key={c.id} onClick={() => setNicheQuickFilter(c.id)}
+                                        className={`px-2.5 h-8 rounded-[10px] transition-all whitespace-nowrap flex items-center gap-1 ${nicheQuickFilter === c.id ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                        {c.label}
+                                        <span className={`text-[9px] px-1 py-px rounded-full tabular-nums ${nicheQuickFilter === c.id ? "bg-white/15" : "bg-white/[0.05]"}`}>{c.count}</span>
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest overflow-x-auto no-scrollbar ml-auto">
+                                {([
+                                    { id: "score" as const, label: "★ Score" },
+                                    { id: "market" as const, label: "📊 Market" },
+                                    { id: "date" as const, label: "↓ Reciente" },
+                                    { id: "catalogs" as const, label: "📚" },
+                                    { id: "images" as const, label: "🖼" },
+                                    { id: "name" as const, label: "A→Z" },
+                                ]).map(opt => (
+                                    <button key={opt.id} onClick={() => setNicheSortBy(opt.id)}
+                                        className={`px-2.5 h-8 rounded-[10px] transition-all whitespace-nowrap ${nicheSortBy === opt.id ? "bg-white/10 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        {/* Row 3: Audience + range filters */}
+                        <div className="flex gap-2 flex-wrap items-center">
+                            {/* Audience filter */}
+                            <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 text-[10px] font-black uppercase tracking-widest shrink-0">
+                                {([
+                                    { id: "all" as const, label: "👪 Todos" },
+                                    { id: "children" as const, label: "👦 Niños" },
+                                    { id: "teens" as const, label: "🧑 Teens" },
+                                    { id: "adults" as const, label: "🧑‍💼 Adultos" },
+                                ] as const).map(a => (
+                                    <button key={a.id} onClick={() => setNicheFilterAudience(a.id)}
+                                        className={`px-2.5 h-8 rounded-[10px] transition-all whitespace-nowrap ${nicheFilterAudience === a.id ? "bg-violet-500/20 text-violet-300" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                        {a.label}
+                                    </button>
+                                ))}
+                            </div>
+                            {/* Images range */}
+                            <div className="flex items-center gap-1 text-[10px] font-black text-neutral-600 uppercase tracking-widest">
+                                <span>🖼</span>
+                                <input type="number" min={0} placeholder="min" value={nicheFilterMinImgs}
+                                    onChange={e => setNicheFilterMinImgs(e.target.value === "" ? "" : Number(e.target.value))}
+                                    className="w-14 h-8 bg-white/[0.03] border border-white/8 rounded-xl px-2 text-xs text-white focus:outline-none focus:border-sky-500/30 transition-all text-center" />
+                                <span className="text-neutral-700">—</span>
+                                <input type="number" min={0} placeholder="max" value={nicheFilterMaxImgs}
+                                    onChange={e => setNicheFilterMaxImgs(e.target.value === "" ? "" : Number(e.target.value))}
+                                    className="w-14 h-8 bg-white/[0.03] border border-white/8 rounded-xl px-2 text-xs text-white focus:outline-none focus:border-sky-500/30 transition-all text-center" />
+                            </div>
+                            {/* Catalogs range */}
+                            <div className="flex items-center gap-1 text-[10px] font-black text-neutral-600 uppercase tracking-widest">
+                                <span>📚</span>
+                                <input type="number" min={0} placeholder="min" value={nicheFilterMinCats}
+                                    onChange={e => setNicheFilterMinCats(e.target.value === "" ? "" : Number(e.target.value))}
+                                    className="w-14 h-8 bg-white/[0.03] border border-white/8 rounded-xl px-2 text-xs text-white focus:outline-none focus:border-sky-500/30 transition-all text-center" />
+                                <span className="text-neutral-700">—</span>
+                                <input type="number" min={0} placeholder="max" value={nicheFilterMaxCats}
+                                    onChange={e => setNicheFilterMaxCats(e.target.value === "" ? "" : Number(e.target.value))}
+                                    className="w-14 h-8 bg-white/[0.03] border border-white/8 rounded-xl px-2 text-xs text-white focus:outline-none focus:border-sky-500/30 transition-all text-center" />
+                            </div>
+                            {/* Clear */}
+                            {(nicheSearch.trim() || nicheQuickFilter !== "all" || kanbanProductFilter !== "all" || nicheFilterAudience !== "all" || nicheFilterMinImgs !== "" || nicheFilterMaxImgs !== "" || nicheFilterMinCats !== "" || nicheFilterMaxCats !== "") && (
+                                <button onClick={() => { setNicheSearch(""); setNicheQuickFilter("all"); setKanbanProductFilter("all"); setNicheFilterAudience("all"); setNicheFilterMinImgs(""); setNicheFilterMaxImgs(""); setNicheFilterMinCats(""); setNicheFilterMaxCats(""); }}
+                                    className="h-8 px-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-rose-400/70 hover:text-rose-300 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all ml-auto">
+                                    ✕ Limpiar ({niches.filter(nicheMatchesFilters).length})
+                                </button>
+                            )}
+                        </div>
+                    </div>
 
                     {/* ── Loading skeletons ── */}
                     {isLoadingNiches && niches.length === 0 && (
@@ -12045,7 +12090,29 @@ export function KdpFactoryApp() {
                         const safePage = Math.min(nichePage, totalPages - 1);
                         const pagedNiches = listNiches.slice(safePage * NICHES_PER_PAGE, (safePage + 1) * NICHES_PER_PAGE);
                         return (
-                        <><div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <>
+                        {totalPages > 1 && (
+                            <div className="flex items-center justify-center gap-2">
+                                <button onClick={() => setNichePage(p => Math.max(0, p - 1))} disabled={safePage === 0}
+                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl border border-white/10 bg-white/[0.03] text-sm font-black text-neutral-400 hover:text-white hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                    ‹ Anterior
+                                </button>
+                                <div className="flex items-center gap-1">
+                                    {Array.from({ length: totalPages }, (_, i) => (
+                                        <button key={i} onClick={() => setNichePage(i)}
+                                            className={`w-7 h-7 rounded-lg text-sm font-black transition-all ${i === safePage ? "bg-sky-500/20 border border-sky-500/40 text-sky-300" : "text-neutral-600 hover:text-neutral-300 hover:bg-white/[0.05] border border-transparent"}`}>
+                                            {i + 1}
+                                        </button>
+                                    ))}
+                                </div>
+                                <button onClick={() => setNichePage(p => Math.min(totalPages - 1, p + 1))} disabled={safePage === totalPages - 1}
+                                    className="flex items-center gap-1.5 h-8 px-3 rounded-xl border border-white/10 bg-white/[0.03] text-sm font-black text-neutral-400 hover:text-white hover:border-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                                    Siguiente ›
+                                </button>
+                                <span className="text-sm text-neutral-700 ml-1 tabular-nums">{listNiches.length} nichos</span>
+                            </div>
+                        )}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             {pagedNiches.map(niche => {
                                     const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
                                     const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
@@ -12095,6 +12162,21 @@ export function KdpFactoryApp() {
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 flex-wrap">
                                                             <p className="text-xl sm:text-2xl font-black text-white leading-tight tracking-tight">{nd(niche)}</p>
+                                                            {/* Audience badge — clickable to cycle */}
+                                                            {niche.targetAudience && niche.targetAudience !== "all" && (
+                                                                <button
+                                                                    onClick={async e => {
+                                                                        e.stopPropagation();
+                                                                        const cycle: NicheFE["targetAudience"][] = ["children","teens","adults","all"];
+                                                                        const next = cycle[(cycle.indexOf(niche.targetAudience!) + 1) % cycle.length];
+                                                                        await fetch(`${API_BASE_URL}/niches/${niche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ targetAudience: next }) });
+                                                                        setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, targetAudience: next } : n));
+                                                                    }}
+                                                                    title="Cambiar público objetivo"
+                                                                    className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border border-violet-500/30 bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition-all">
+                                                                    {niche.targetAudience === "children" ? "👦 Niños" : niche.targetAudience === "teens" ? "🧑 Teens" : "🧑‍💼 Adultos"}
+                                                                </button>
+                                                            )}
                                                             {niche.score != null ? (
                                                                 <button onClick={() => void scoreNicheWithAI(niche)} disabled={scoringNicheId === niche._id} title={niche.scoreReason ?? "Puntuación IA — click para recalcular"}
                                                                     className={`shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border transition-all ${niche.score >= 70 ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/25" : niche.score >= 40 ? "bg-amber-500/15 border-amber-500/30 text-amber-400 hover:bg-amber-500/25" : "bg-rose-500/15 border-rose-500/30 text-rose-400 hover:bg-rose-500/25"}`}>
