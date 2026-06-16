@@ -16,6 +16,7 @@ interface ConfirmModalProps {
     variant?: Variant;
     icon?: React.ReactNode;
     isLoading?: boolean;
+    zIndex?: number;
 }
 
 const VARIANT_STYLES: Record<Variant, { icon: string; confirm: string; confirmHover: string }> = {
@@ -52,11 +53,12 @@ export function ConfirmModal({
     variant = "danger",
     icon,
     isLoading = false,
+    zIndex = 200,
 }: ConfirmModalProps) {
     const styles = VARIANT_STYLES[variant];
 
     return (
-        <Modal open={open} onClose={onClose} zIndex={200}>
+        <Modal open={open} onClose={onClose} zIndex={zIndex}>
             <div className="p-8 space-y-6">
                 <div className="space-y-3 text-center">
                     {icon && (

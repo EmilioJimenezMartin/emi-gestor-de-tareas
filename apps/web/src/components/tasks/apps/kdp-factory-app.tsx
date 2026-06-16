@@ -14015,83 +14015,90 @@ export function KdpFactoryApp() {
                 const vaultImg = vaultIdx >= 0 ? vaultImages[vaultIdx] : null;
                 const cldImg = previewContext?.cloudinaryCtx ? cloudinaryImages[previewContext.index] : null;
                 const catalogImg = previewContext?.catalogCtx?.images[previewContext.index] ?? null;
-                return (
+                return createPortal(
                     <div
                         className="fixed inset-0 z-[9000] bg-black/80"
                         onClick={closePreview}
                         role="dialog"
                         aria-modal="true"
                     >
-                        {/* Image — explicit top/bottom push so full image is always visible */}
+                        {/* Image — centering div stops at toolbar top, 16px breathing room at top */}
                         <div
-                            className="absolute inset-x-0 flex items-center justify-center px-8"
-                            style={{ top: "88px", bottom: "calc(env(safe-area-inset-bottom) + 220px)" }}
+                            className="absolute left-0 right-0 flex items-center justify-center"
+                            style={{ top: "16px", bottom: "130px" }}
                             onClick={closePreview}
                         >
                             <div
-                                className="relative flex items-center justify-center w-full max-w-6xl gap-3"
-                                style={{ height: "100%" }}
+                                style={{
+                                    width: "calc(100vw - 160px)",
+                                    height: "100%",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    position: "relative",
+                                }}
                                 onClick={(e) => e.stopPropagation()}
+                                onMouseMove={e => {
+                                    const img = previewImgRef.current;
+                                    const lens = previewLensRef.current;
+                                    if (!img || !lens || !previewMagnifier) return;
+                                    const rect = img.getBoundingClientRect();
+                                    const LENS = 180;
+                                    const x = e.clientX - rect.left;
+                                    const y = e.clientY - rect.top;
+                                    if (x < 0 || y < 0 || x > rect.width || y > rect.height) { lens.style.display = "none"; return; }
+                                    lens.style.display = "block";
+                                    lens.style.left = `${Math.min(Math.max(x - LENS / 2, 0), rect.width - LENS)}px`;
+                                    lens.style.top = `${Math.min(Math.max(y - LENS / 2, 0), rect.height - LENS)}px`;
+                                    lens.style.backgroundPosition = `${-(x * previewZoom - LENS / 2)}px ${-(y * previewZoom - LENS / 2)}px`;
+                                    lens.style.backgroundSize = `${rect.width * previewZoom}px ${rect.height * previewZoom}px`;
+                                    lens.style.backgroundImage = `url(${previewImage})`;
+                                }}
+                                onMouseLeave={() => { if (previewLensRef.current) previewLensRef.current.style.display = "none"; }}
                             >
-                                {previewContext && previewContext.index > 0 ? (
-                                    <button onClick={() => navigatePreview(-1)}
-                                        className="shrink-0 w-11 h-11 rounded-2xl bg-black/60 backdrop-blur-md text-white border border-white/10 hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center">
-                                        <ChevronLeft size={20} />
-                                    </button>
-                                ) : previewContext ? <div className="shrink-0 w-11" /> : null}
-                                {/* Image + magnifier lens (only active when previewMagnifier=true) */}
-                                <div className="flex-1 min-w-0 relative flex items-center justify-center"
-                                    onMouseMove={e => {
-                                        const img = previewImgRef.current;
-                                        const lens = previewLensRef.current;
-                                        if (!img || !lens || !previewMagnifier) return;
-                                        const rect = img.getBoundingClientRect();
-                                        const LENS = 180;
-                                        const x = e.clientX - rect.left;
-                                        const y = e.clientY - rect.top;
-                                        if (x < 0 || y < 0 || x > rect.width || y > rect.height) { lens.style.display = "none"; return; }
-                                        lens.style.display = "block";
-                                        lens.style.left = `${Math.min(Math.max(x - LENS / 2, 0), rect.width - LENS)}px`;
-                                        lens.style.top = `${Math.min(Math.max(y - LENS / 2, 0), rect.height - LENS)}px`;
-                                        lens.style.backgroundPosition = `${-(x * previewZoom - LENS / 2)}px ${-(y * previewZoom - LENS / 2)}px`;
-                                        lens.style.backgroundSize = `${rect.width * previewZoom}px ${rect.height * previewZoom}px`;
-                                        lens.style.backgroundImage = `url(${previewImage})`;
+                                <img
+                                    key={previewImage}
+                                    ref={previewImgRef}
+                                    src={previewImage}
+                                    alt="Vista previa"
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{
+                                        display: "block",
+                                        maxWidth: "100%",
+                                        maxHeight: "100%",
+                                        width: "auto",
+                                        height: "auto",
+                                        borderRadius: "16px",
+                                        cursor: previewMagnifier ? "crosshair" : "default",
                                     }}
-                                    onMouseLeave={() => { if (previewLensRef.current) previewLensRef.current.style.display = "none"; }}
-                                >
-                                    <img
-                                        key={previewImage}
-                                        ref={previewImgRef}
-                                        src={previewImage}
-                                        alt="Vista previa"
-                                        className="w-auto h-auto object-contain rounded-2xl"
-                                        onClick={(e) => e.stopPropagation()}
-                                        style={{
-                                            maxWidth: "100%",
-                                            maxHeight: "calc(100vh - 370px)",
-                                            cursor: previewMagnifier ? "crosshair" : "default",
-                                        }}
-                                    />
-                                    {/* Magnifier lens — only shown via JS when magnifier is active */}
-                                    <div
-                                        ref={previewLensRef}
-                                        className="absolute pointer-events-none rounded-2xl border-2 border-white/40 shadow-[0_0_0_1px_rgba(0,0,0,0.6),0_8px_32px_rgba(0,0,0,0.9)]"
-                                        style={{ width: 180, height: 180, display: "none", backgroundRepeat: "no-repeat" }}
-                                    />
-                                </div>
-                                {previewContext && previewContext.index < previewContext.urls.length - 1 ? (
-                                    <button onClick={() => navigatePreview(1)}
-                                        className="shrink-0 w-11 h-11 rounded-2xl bg-black/60 backdrop-blur-md text-white border border-white/10 hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center">
-                                        <ChevronRight size={20} />
-                                    </button>
-                                ) : previewContext ? <div className="shrink-0 w-11" /> : null}
+                                />
+                                {/* Magnifier lens */}
+                                <div
+                                    ref={previewLensRef}
+                                    className="absolute pointer-events-none rounded-2xl border-2 border-white/40 shadow-[0_0_0_1px_rgba(0,0,0,0.6),0_8px_32px_rgba(0,0,0,0.9)]"
+                                    style={{ width: 180, height: 180, display: "none", backgroundRepeat: "no-repeat" }}
+                                />
                             </div>
                         </div>
 
-                        {/* Toolbar — gradient overlay anchored at bottom, safe-area aware */}
+                        {/* Nav arrows — absolute so they don't affect image sizing */}
+                        {previewContext && previewContext.index > 0 && (
+                            <button onClick={(e) => { e.stopPropagation(); navigatePreview(-1); }}
+                                className="absolute left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-2xl bg-black/60 backdrop-blur-md text-white border border-white/10 hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center z-10">
+                                <ChevronLeft size={20} />
+                            </button>
+                        )}
+                        {previewContext && previewContext.index < previewContext.urls.length - 1 && (
+                            <button onClick={(e) => { e.stopPropagation(); navigatePreview(1); }}
+                                className="absolute right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-2xl bg-black/60 backdrop-blur-md text-white border border-white/10 hover:bg-white/10 active:scale-95 transition-all flex items-center justify-center z-10">
+                                <ChevronRight size={20} />
+                            </button>
+                        )}
+
+                        {/* Toolbar — absolute at bottom */}
                         <div
-                            className="absolute left-0 right-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent flex flex-col items-center gap-2.5 pt-10"
-                            style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 56px)" }}
+                            className="absolute left-0 right-0 bottom-0 flex flex-col items-center gap-2.5 py-3"
+                            style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="flex items-center gap-3">
@@ -14215,7 +14222,8 @@ export function KdpFactoryApp() {
                                 </button>
                             </div>
                         </div>
-                    </div>
+                    </div>,
+                    document.body
                 );
             })()}
 
@@ -14664,6 +14672,79 @@ export function KdpFactoryApp() {
                                     </div>
                                 </div>
                             )}
+
+                            {/* ── Competition reference ── */}
+                            {(() => {
+                                if (!selectedCoverNicheId) return null;
+                                const selectedNiche = niches.find(n => n._id === selectedCoverNicheId);
+                                if (!selectedNiche) return null;
+                                const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+                                const relatedEntries = cloneHistory.filter(h =>
+                                    h.clones.some(c => norm(c.nicheName) === norm(selectedNiche.name))
+                                );
+                                if (relatedEntries.length === 0 && cloneHistory.length === 0) return null;
+
+                                if (relatedEntries.length === 0) {
+                                    return (
+                                        <div className="border-t border-white/6 pt-3">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600 flex items-center gap-1.5">
+                                                <TrendingUp size={9} /> Competencia · Sin datos
+                                            </p>
+                                            <p className="text-[9px] text-neutral-700 mt-1">Analiza un bestseller con Clone Engine para ver referencias aquí</p>
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <div className="space-y-2 border-t border-white/6 pt-3">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5">
+                                            <TrendingUp size={9} /> Competencia · Referencia Clone Engine
+                                        </p>
+                                        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                                            {relatedEntries.slice(0, 5).map((entry, i) => {
+                                                const asinMatch = entry.input.match(/([A-Z0-9]{10})/i);
+                                                const asin = asinMatch?.[1]?.toUpperCase() ?? null;
+                                                const imgUrl = asin
+                                                    ? `https://images-na.ssl-images-amazon.com/images/P/${asin}.01.LZZZZZZZ.jpg`
+                                                    : null;
+                                                return (
+                                                    <div key={i} className="shrink-0 w-28 rounded-xl border border-white/8 bg-white/[0.03] overflow-hidden flex flex-col">
+                                                        <div className="relative w-full bg-neutral-900/60" style={{ aspectRatio: "2/3" }}>
+                                                            <div className="absolute inset-0 flex items-center justify-center">
+                                                                <BookOpen size={14} className="text-neutral-700" />
+                                                            </div>
+                                                            {imgUrl && (
+                                                                <img src={imgUrl} alt={entry.source.title}
+                                                                    className="absolute inset-0 w-full h-full object-cover"
+                                                                    onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                                                            )}
+                                                        </div>
+                                                        <div className="p-2 space-y-1 flex-1 flex flex-col">
+                                                            <p className="text-[9px] font-black text-neutral-300 leading-tight line-clamp-3 flex-1">{entry.source.title}</p>
+                                                            {entry.source.bsr && (
+                                                                <p className="text-[9px] text-amber-400/70 font-black">BSR {entry.source.bsr}</p>
+                                                            )}
+                                                            {entry.source.reviews && (
+                                                                <p className="text-[8px] text-neutral-600">{entry.source.reviews} reseñas</p>
+                                                            )}
+                                                            {entry.source.formula && (
+                                                                <>
+                                                                    <p className="text-[8px] text-neutral-600 leading-snug line-clamp-2 italic">{entry.source.formula}</p>
+                                                                    <button
+                                                                        onClick={() => { setCoverStyle(entry.source.formula); toast.success("Fórmula de competencia aplicada al estilo"); }}
+                                                                        className="w-full h-5 rounded-lg bg-fuchsia-500/10 border border-fuchsia-500/20 text-[8px] font-black text-fuchsia-400 hover:bg-fuchsia-500/20 transition-all">
+                                                                        Inspirar estilo
+                                                                    </button>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
 
                             {/* ── Generate button ── */}
                             <div className="pt-1">
@@ -16406,6 +16487,7 @@ export function KdpFactoryApp() {
                 confirmLabel="Eliminar"
                 variant="danger"
                 icon={<ImageIcon size={24} className="text-red-400" />}
+                zIndex={9100}
             />
             <ConfirmModal
                 open={confirmDeleteVaultIndex !== null}
