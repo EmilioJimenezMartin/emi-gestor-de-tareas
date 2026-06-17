@@ -178,10 +178,16 @@ async function runDiscovery(
 
         if (abort.aborted) break;
 
-        // Generate prompt if missing
-        let prompt = niche.generatedPrompt;
-        if (!prompt) {
+        // Strip marketing subtitles from niche name for cleaner AI prompts
+        const visualCoreName = niche.name
+            .split(":")[0]
+            .replace(/\s+(coloring\s*book|activity\s*book|printable|for\s+adults?|for\s+kids?|for\s+seniors?|with\s+\d+|vol\s*\.|volume\s*\d)\b.*/i, "")
+            .trim() || niche.name.split(":")[0].trim();
+
+        // Always regenerate prompt fresh — never use stale cache
+        {
             emitStage(io, "prompt", String(niche._id), niche.name);
+            let prompt: string | undefined;
             try {
                 const productType = niche.productType ?? "coloring-book";
                 const style = niche.styleCategory ?? "generic";
@@ -190,7 +196,7 @@ async function runDiscovery(
                     fetch(`${base}/ai/generate-text`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ type: aiType, niche: niche.name, productType, extras: style }),
+                        body: JSON.stringify({ type: aiType, niche: visualCoreName, productType, extras: style }),
                         signal: AbortSignal.timeout(25_000),
                     })
                 );
@@ -238,18 +244,21 @@ async function runDiscovery(
         emitStage(io, "sample", String(niche._id), niche.name);
         io?.emit("autopilot:log", { nicheId: String(niche._id), message: `🎨 Mejorando prompt de muestra con IA para "${niche.name}"…` });
         let sampleUrl: string;
-        let discoveryImagePromptForAction = "";
+        let _bgWrappedPrompt = "";
         try {
             const aiCore = await buildAiEnhancedSampleCore(
-                niche.name,
+                visualCoreName,
                 niche.productType ?? "coloring-book",
                 niche.styleCategory ?? "generic",
                 base
             );
             if (aiCore) {
-                sampleUrl = buildSampleUrl(niche.name, niche.styleCategory ?? "generic", niche.productType ?? "coloring-book", aiCore);
-                discoveryImagePromptForAction = aiCore;
-                await Niche.findByIdAndUpdate(niche._id, { $set: { discoveryImagePrompt: aiCore } });
+                const wrappedDiscoveryPrompt = (niche.productType ?? "coloring-book") === "printable-poster"
+                    ? buildPosterPrompt(aiCore, niche.styleCategory ?? "generic")
+                    : buildColoringBookPrompt(aiCore, niche.styleCategory ?? "generic");
+                _bgWrappedPrompt = wrappedDiscoveryPrompt;
+                sampleUrl = buildSampleUrl(visualCoreName, niche.styleCategory ?? "generic", niche.productType ?? "coloring-book", aiCore);
+                await Niche.findByIdAndUpdate(niche._id, { $set: { discoveryImagePrompt: wrappedDiscoveryPrompt, generatedPrompt: aiCore } });
                 io?.emit("autopilot:log", { nicheId: String(niche._id), message: `✓ Prompt mejorado por IA → pre-generando prompts de catálogo…` });
                 // Pre-generate catalog prompts in background (ready when Telegram approves)
                 const _nicheName = niche.name;
@@ -303,12 +312,14 @@ async function runDiscovery(
         const _bgSampleUrl = sampleUrl;
         const _bgCfg = cfg;
         const _bgStagger = idx * 20_000;
+        const _bgDiscoveryPrompt = _bgWrappedPrompt; // captured wrapped prompt from aiCore
         setTimeout(async () => {
             try {
                 const bgPt = _bgNiche.productType ?? "coloring-book";
-                const bgImageGenPrompt = bgPt === "printable-poster"
+                // Use the AI-enhanced wrapped prompt if available; fallback to niche name
+                const bgImageGenPrompt = _bgDiscoveryPrompt || (bgPt === "printable-poster"
                     ? buildPosterPrompt(_bgNiche.name, _bgNiche.styleCategory ?? "generic")
-                    : buildColoringBookPrompt(_bgNiche.name, _bgNiche.styleCategory ?? "generic");
+                    : buildColoringBookPrompt(_bgNiche.name, _bgNiche.styleCategory ?? "generic"));
 
                 const bgDiscoveryAiModel = await getAutopilotImageModel();
                 _bgIo?.emit("autopilot:log", { nicheId: String(_bgNiche._id), message: `🎨 Generando imagen con ${bgDiscoveryAiModel.name}…` });

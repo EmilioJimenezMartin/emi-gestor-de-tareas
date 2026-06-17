@@ -441,15 +441,23 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             const sourceTitulo = ((niche as any).sourceTitulo as string | undefined)?.trim() || "";
             const nicheName = (niche as any).name as string;
 
-            // Step 1: get visual particulars from configured LLM (theme/scene description)
-            let particulars = (niche as any).generatedPrompt as string | undefined;
-            if (!particulars) {
+            // Strip marketing subtitles from the niche name before feeding to the AI
+            // e.g. "Elegant Patterns: Coloring Book for Adults with..." → "Elegant Patterns"
+            const visualCoreName = nicheName
+                .split(":")[0]
+                .replace(/\s+(coloring\s*book|activity\s*book|printable|for\s+adults?|for\s+kids?|for\s+seniors?|with\s+\d+|vol\s*\.|volume\s*\d)/i, "")
+                .trim() || nicheName.split(":")[0].trim();
+
+            // Step 1: ALWAYS generate fresh visual particulars — never use cached generatedPrompt.
+            // Reason: generatedPrompt may be stale OR already-wrapped (causes double-wrapping with buildColoringBookPrompt).
+            let particulars: string | undefined;
+            {
                 const port2 = process.env.PORT || 3001;
                 const base2 = `http://localhost:${port2}`;
                 const aiType = productType === "printable-poster" ? "printable-particulars" : "niche-particulars";
                 const nicheForAI = sourceTitulo && sourceTitulo !== nicheName
-                    ? `${nicheName} (market reference: "${sourceTitulo}")`
-                    : nicheName;
+                    ? `${visualCoreName} (market reference: "${sourceTitulo}")`
+                    : visualCoreName;
                 const evolutionSeed = await getEvolutionSeed(productType).catch(() => "");
                 const targetAudience = (niche as any).targetAudience as string | undefined;
                 const audiencePart = targetAudience && targetAudience !== "all" ? `audience: ${targetAudience}` : "";
@@ -464,19 +472,17 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
                     if (aiRes.ok) {
                         const aiData = await aiRes.json() as any;
                         particulars = aiData.result?.particulars as string | undefined;
-                        if (particulars) await Niche.findByIdAndUpdate(nicheId, { $set: { generatedPrompt: particulars } });
                     }
-                } catch { /* fallback below */ }
+                } catch { /* fallback to visual core name */ }
             }
 
-            // Step 2: wrap particulars in proven formula (fixed specs + fixed details)
-            // NEVER use sourceTitulo as image prompt — it's a raw product title, not a scene description
-            const sceneDesc = particulars || nicheName;
+            // Step 2: wrap the RAW scene description in the proven formula.
+            // Use visualCoreName as fallback — never the full subtitle-heavy nicheName.
+            const sceneDesc = particulars || visualCoreName;
             let samplePrompt: string;
             if (productType === "printable-poster") {
                 samplePrompt = buildPosterPrompt(sceneDesc, style);
             } else {
-                // Style-aware formula — modifier adapts to niche styleCategory
                 samplePrompt = buildColoringBookPrompt(sceneDesc, style);
             }
 
@@ -485,7 +491,9 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             // Resolve model BEFORE saving to niche so discoveryAiModel is always set
             const discoveryModel = await getAutopilotImageModel();
 
-            await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: sampleUrl, discoveryImagePrompt: samplePrompt, generatedPrompt: samplePrompt, discoveryAiModel: discoveryModel } });
+            // Save: discoveryImagePrompt = full wrapped prompt (used as style anchor in explode-catalogs)
+            //       generatedPrompt = RAW scene desc only (prevents double-wrapping on future runs)
+            await Niche.findByIdAndUpdate(nicheId, { $set: { sampleImageUrl: sampleUrl, discoveryImagePrompt: samplePrompt, generatedPrompt: sceneDesc, discoveryAiModel: discoveryModel } });
             deps.io?.emit("niches:updated");
 
             const port = process.env.PORT || 3001;
