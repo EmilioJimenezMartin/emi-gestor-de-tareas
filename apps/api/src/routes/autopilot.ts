@@ -340,40 +340,47 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             const port = process.env.PORT || 3001;
             const base = `http://localhost:${port}`;
 
-            // Paso 1: particulars visuales del LLM (misma llamada que discover)
-            // OJO: discover guarda en generatedPrompt el prompt COMPLETO (con fórmula);
-            // si ya la incluye, no debemos envolverlo otra vez.
-            let particulars = (niche as any).generatedPrompt as string | undefined;
-            const alreadyWrapped = !!particulars && /coloring book page|printable wall art poster|seamless repeating/i.test(particulars);
-            if (!particulars) {
-                try {
-                    const aiType = productType === "printable-poster" ? "printable-particulars" : "niche-particulars";
-                    const evolutionSeed = await getEvolutionSeed(productType).catch(() => "");
-                    const targetAudience = (niche as any).targetAudience as string | undefined;
-                    const audiencePart = targetAudience && targetAudience !== "all" ? `audience: ${targetAudience}` : "";
-                    const quickExtras = [style, audiencePart, evolutionSeed].filter(Boolean).join("; ");
-                    const aiRes = await internalFetch(`${base}/ai/generate-text`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ type: aiType, niche: nicheName, productType, extras: quickExtras }),
-                        signal: AbortSignal.timeout(25_000),
-                    });
-                    if (aiRes.ok) {
-                        const aiData = await aiRes.json() as any;
-                        particulars = aiData.result?.particulars as string | undefined;
-                    }
-                } catch { /* fallback al nombre */ }
+            // Priority 1: discoveryImagePrompt (the exact prompt that generated the approved Telegram image)
+            // Priority 2: generatedPrompt (may be set from earlier runs)
+            // Priority 3: generate a fresh one (only if niche has never had a discovery image)
+            const savedDiscoveryPrompt = ((niche as any).discoveryImagePrompt as string | undefined)?.trim();
+            let prompt: string;
+
+            if (savedDiscoveryPrompt) {
+                // Use the proven discovery prompt verbatim — this is what the user approved
+                prompt = savedDiscoveryPrompt;
+            } else {
+                // No discovery prompt exists yet — generate one and save it
+                let particulars = (niche as any).generatedPrompt as string | undefined;
+                const alreadyWrapped = !!particulars && /coloring book page|printable wall art poster|seamless repeating/i.test(particulars);
+                if (!particulars) {
+                    try {
+                        const aiType = productType === "printable-poster" ? "printable-particulars" : "niche-particulars";
+                        const evolutionSeed = await getEvolutionSeed(productType).catch(() => "");
+                        const targetAudience = (niche as any).targetAudience as string | undefined;
+                        const audiencePart = targetAudience && targetAudience !== "all" ? `audience: ${targetAudience}` : "";
+                        const quickExtras = [style, audiencePart, evolutionSeed].filter(Boolean).join("; ");
+                        const aiRes = await internalFetch(`${base}/ai/generate-text`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ type: aiType, niche: nicheName, productType, extras: quickExtras }),
+                            signal: AbortSignal.timeout(25_000),
+                        });
+                        if (aiRes.ok) {
+                            const aiData = await aiRes.json() as any;
+                            particulars = aiData.result?.particulars as string | undefined;
+                        }
+                    } catch { /* fallback al nombre */ }
+                }
+                const sceneDesc = particulars || nicheName;
+                prompt = alreadyWrapped
+                    ? sceneDesc
+                    : productType === "printable-poster"
+                        ? buildPosterPrompt(sceneDesc, style)
+                        : buildColoringBookPrompt(sceneDesc, style);
             }
 
-            // Paso 2: fórmula probada según tipo de producto (si no viene ya envuelto)
-            const sceneDesc = particulars || nicheName;
-            const prompt = alreadyWrapped
-                ? sceneDesc
-                : productType === "printable-poster"
-                    ? buildPosterPrompt(sceneDesc, style)
-                    : buildColoringBookPrompt(sceneDesc, style);
-
-            // Paso 3: crear catálogo con el modelo y tamaño configurados del autopilot
+            // Crear catálogo con el modelo y tamaño configurados del autopilot
             const model = await getAutopilotImageModel();
             const imgRow = await Settings.findOne({ key: "AUTOPILOT_IMAGES_PER_CATALOG" }).lean();
             const totalImages = parseInt(String((imgRow as any)?.value ?? "5")) || 5;
@@ -395,8 +402,9 @@ export async function registerAutoPilotRoutes(app: FastifyInstance, deps: { agen
             const catData = await catRes.json() as any;
             if (!catRes.ok) return reply.status(502).send({ error: catData.error ?? "Error creando catálogo" });
 
+            // Only update generatedPrompt — NEVER overwrite discoveryImagePrompt (it's the approved baseline)
             await Niche.findByIdAndUpdate(nicheId, {
-                $set: { generatedPrompt: prompt, discoveryImagePrompt: prompt, pipelineHasCatalogs: true, phase: "catalog" },
+                $set: { generatedPrompt: prompt, pipelineHasCatalogs: true, phase: "catalog" },
             });
             deps.io?.emit("niches:updated");
             deps.io?.emit("autopilot:log", { nicheId, message: `📦 Catálogo directo creado para "${nicheName}" (${totalImages} imágenes, ${model.name})` });

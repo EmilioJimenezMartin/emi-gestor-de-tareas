@@ -9,9 +9,7 @@ import { Catalog } from "../models/catalog.js";
 import { activateNextQueued } from "./catalog-queue.js";
 import { withImageSlot } from "./ai-semaphore.js";
 import { generateImage, getAutopilotImageModel } from "./image-gen.js";
-import { generateCatalogPrompt } from "./catalog-prompt.js";
 import { generateTextWithLLM } from "./ai.js";
-import { getEvolutionSeed } from "./prompt-evolution.js";
 import { handleAutoCloneTelegramCallback } from "../routes/auto-clone.js";
 
 const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
@@ -377,7 +375,7 @@ async function processUpdate(update: any): Promise<void> {
         if (action === "cat_niche") {
             try {
                 const { Catalog } = await import("../models/catalog.js");
-                const niche = await Niche.findById(actionId).select("name styleCategory productType generatedPrompt").lean();
+                const niche = await Niche.findById(actionId).select("name styleCategory productType generatedPrompt discoveryImagePrompt").lean();
                 if (!niche) {
                     await answerCallbackQuery(cq.id, "Nicho no encontrado");
                     return;
@@ -388,13 +386,10 @@ async function processUpdate(update: any): Promise<void> {
                 const port = process.env.PORT || 3001;
                 const base = `http://localhost:${port}`;
 
-                // Always generate a fresh AI prompt
-                const productType = (niche as any).productType ?? "coloring-book";
-                const style = (niche as any).styleCategory ?? "generic";
-                const evolutionSeed = await getEvolutionSeed(productType).catch(() => "");
-                const catalogPrompt = await generateCatalogPrompt(base, (niche as any).name, productType, style, undefined, 0, evolutionSeed)
-                    ?? (niche as any).generatedPrompt
-                    ?? (niche as any).name;
+                // Always use the saved discovery prompt — never regenerate
+                const catalogPrompt = (niche as any).discoveryImagePrompt
+                    || (niche as any).generatedPrompt
+                    || (niche as any).name;
 
                 const res = await internalFetch(`${base}/catalogs`, {
                     method: "POST",
@@ -1209,7 +1204,7 @@ async function processUpdate(update: any): Promise<void> {
             try {
                 const { Catalog } = await import("../models/catalog.js");
                 const allNiches = await Niche.find()
-                    .select("name styleCategory productType generatedPrompt phase status")
+                    .select("name styleCategory productType generatedPrompt discoveryImagePrompt phase status")
                     .lean();
                 const niche = (allNiches as any[]).find(n =>
                     String(n._id).endsWith(idArg.toLowerCase()) || String(n._id) === idArg
@@ -1230,15 +1225,12 @@ async function processUpdate(update: any): Promise<void> {
                 const port = process.env.PORT || 3001;
                 const base = `http://localhost:${port}`;
 
-                // Generate a fresh AI prompt unless the user supplied one explicitly
+                // Use discovery prompt if available — never regenerate unless user supplied one explicitly
                 let catalogPrompt = customPrompt;
                 if (!catalogPrompt) {
-                    const productType = (niche as any).productType ?? "coloring-book";
-                    const style = (niche as any).styleCategory ?? "generic";
-                    const evolutionSeed2 = await getEvolutionSeed(productType).catch(() => "");
-                    catalogPrompt = await generateCatalogPrompt(base, (niche as any).name, productType, style, undefined, 0, evolutionSeed2)
-                        ?? (niche as any).generatedPrompt
-                        ?? (niche as any).name;
+                    catalogPrompt = (niche as any).discoveryImagePrompt
+                        || (niche as any).generatedPrompt
+                        || (niche as any).name;
                 }
 
                 const res = await internalFetch(`${base}/catalogs`, {

@@ -2818,6 +2818,11 @@ export function KdpFactoryApp() {
             setScoringCovers(false);
         }
     };
+    const [isBuildingCoverVariants, setIsBuildingCoverVariants] = useState(false);
+    const [variantProgress, setVariantProgress] = useState(0);
+    const [variantCount, setVariantCount] = useState<2 | 3 | 5>(3);
+    const [spinePageCount, setSpinePageCount] = useState(50);
+    const [spinePaperType, setSpinePaperType] = useState<"white" | "cream" | "premium-color">("white");
     const [showCoverModal, setShowCoverModal] = useState(false);
     const [coverModalTab, setCoverModalTab] = useState<"front" | "back">("front");
     const [coverMode, setCoverMode] = useState<"ai" | "collage" | "colorize">("ai");
@@ -10760,6 +10765,86 @@ export function KdpFactoryApp() {
         } catch { toast.error("Error conectando con la API"); } finally { setIsBuildingCover(false); }
     };
 
+    const generateCoverVariants = async (count: number) => {
+        if (!coverTitle.trim()) { toast.error("Escribe el título del libro"); return; }
+        if (!selectedCoverNicheId) { toast.error("Selecciona un nicho"); return; }
+        setIsBuildingCoverVariants(true);
+        setVariantProgress(0);
+        const model = AI_MODELS.find(m => m.id === coverModelId) ?? AI_MODELS.find(m => m.id === "pollinations-flux")!;
+        const selectedNiche = niches.find(n => n._id === selectedCoverNicheId);
+        const nicheContext = selectedNiche
+            ? `${selectedNiche.name}${selectedNiche.description ? `, ${selectedNiche.description}` : ""}`
+            : coverTitle;
+        const productType = selectedNiche?.productType ?? "coloring-book";
+        const isColoringBook = productType === "coloring-book";
+        const styleStr = coverStyle ? `Visual style: ${coverStyle}.` : "";
+        const paletteStr = coverColorTheme ? `Color palette: ${coverColorTheme}.` : "";
+        const [dimW, dimH] = coverImgDims.split("x").map(Number);
+        const newUrls: string[] = [];
+        for (let i = 0; i < count; i++) {
+            try {
+                // Vary the seed keyword so each generation is distinct
+                const variationSeeds = ["vibrant", "dramatic lighting", "ethereal", "bold composition", "painterly"];
+                const seedHint = variationSeeds[i % variationSeeds.length];
+                let prompt: string;
+                if (isColoringBook) {
+                    const baseSubject = `${nicheContext}. ${styleStr} ${paletteStr} ${seedHint}`;
+                    if (coverColoringStyle === "half-left") {
+                        prompt = `KDP coloring book cover artwork. LEFT HALF: breathtaking fully-colored illustration of ${baseSubject}, rich vibrant colors, stunning detail, professional digital art. RIGHT HALF: the exact same scene as clean black-and-white line art ready to color, crisp outlines, no fill. Sharp vertical split down the center. Spectacular composition, no text, no letters.`;
+                    } else if (coverColoringStyle === "half-right") {
+                        prompt = `KDP coloring book cover artwork. LEFT HALF: clean black-and-white line art of ${baseSubject}, crisp outlines, no fill, ready to color. RIGHT HALF: the exact same scene fully colored, breathtaking vibrant colors, rich detail, professional digital art. Sharp vertical split down the center. Spectacular composition, no text, no letters.`;
+                    } else {
+                        prompt = `Stunning KDP coloring book cover illustration: ${baseSubject}. Breathtaking fully-colored artwork, hyper-detailed intricate patterns, vibrant rich colors, professional digital painting, masterpiece composition filling the entire frame, cinematic lighting, eye-catching thumbnail, award-winning illustration, no text, no letters, purely illustrative.`;
+                    }
+                } else {
+                    prompt = `KDP printable poster cover: ${nicheContext}. ${styleStr} ${paletteStr} ${seedHint}. Premium wall art illustration, beautiful decorative composition, professional quality, centered focal artwork, no text, no letters, no words`;
+                }
+                const res = await fetch(`${API_BASE_URL}/ai/generate-image`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ prompt, provider: model.provider, modelId: model.modelId, width: dimW || 1024, height: dimH || 1024 }),
+                });
+                if (!res.ok) { setVariantProgress(i + 1); continue; }
+                let blob = await res.blob();
+                blob = await applyKdpPadding(blob).catch(() => blob);
+                const dataUrl = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+                const uploadRes = await fetch(`${API_BASE_URL}/cloudinary/upload`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ dataUrl }),
+                });
+                if (uploadRes.ok) {
+                    const cloudUrl: string = (await uploadRes.json()).image?.url;
+                    if (cloudUrl) newUrls.push(cloudUrl);
+                }
+            } catch { /* skip failed variant */ }
+            setVariantProgress(i + 1);
+        }
+        if (newUrls.length > 0) {
+            const existing = niches.find(n => n._id === selectedCoverNicheId)?.coverCandidates ?? [];
+            const allCandidates = [...existing, ...newUrls.filter(u => !existing.includes(u))];
+            const mainUrl = newUrls[0];
+            await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
+                method: "PATCH", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ coverUrl: mainUrl, coverCandidates: allCandidates, pipelineHasCover: true }),
+            }).catch(() => {});
+            setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, coverUrl: mainUrl, coverCandidates: allCandidates, pipelineHasCover: true } : n));
+            setGeneratedCoverUrl(mainUrl);
+            toast.success(`${newUrls.length} variante${newUrls.length !== 1 ? "s" : ""} generada${newUrls.length !== 1 ? "s" : ""} · puntuando…`);
+            if (allCandidates.length >= 2) {
+                const updatedNiche = niches.find(n => n._id === selectedCoverNicheId);
+                if (updatedNiche) void scoreCoverCandidates({ ...updatedNiche, coverCandidates: allCandidates, coverUrl: mainUrl });
+            }
+        } else {
+            toast.error("No se pudo generar ninguna variante");
+        }
+        setIsBuildingCoverVariants(false);
+    };
+
     const buildCollage = async () => {
         if (!selectedCoverNicheId) { toast.error("Selecciona un nicho primero"); return; }
         const allUrls = iaCatalogs
@@ -14564,7 +14649,7 @@ export function KdpFactoryApp() {
             {showCoverModal && (
                 <div className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
                     onClick={() => setShowCoverModal(false)} role="dialog" aria-modal="true">
-                    <div className="relative w-full max-w-2xl rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col"
+                    <div className="relative w-full max-w-5xl rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col"
                         onClick={e => e.stopPropagation()}>
                         <div className="absolute -top-24 -right-24 w-72 h-72 bg-fuchsia-500/8 blur-[80px] pointer-events-none" />
                         {/* Header */}
@@ -14952,6 +15037,83 @@ export function KdpFactoryApp() {
                                 )}
                             </div>
 
+                            {/* ── Variants: generate N at once + auto-score ── */}
+                            {coverModalTab === "front" && coverMode === "ai" && (
+                                <div className="border border-fuchsia-500/15 bg-fuchsia-500/[0.03] rounded-2xl p-3 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-fuchsia-400/70 flex items-center gap-1.5">
+                                            <Sparkles size={9} /> Variantes · auto-puntuar
+                                        </p>
+                                        <div className="flex gap-1">
+                                            {([2, 3, 5] as const).map(n => (
+                                                <button key={n} onClick={() => setVariantCount(n)}
+                                                    className={`w-7 h-6 rounded-lg border text-[10px] font-black transition-all ${variantCount === n ? "border-fuchsia-500/50 bg-fuchsia-500/20 text-fuchsia-300" : "border-white/8 text-neutral-600 hover:text-neutral-400"}`}>
+                                                    {n}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    {isBuildingCoverVariants ? (
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center justify-between text-[10px]">
+                                                <span className="text-neutral-500 flex items-center gap-1.5"><Loader2 size={9} className="animate-spin" /> Generando variante {variantProgress + 1} de {variantCount}…</span>
+                                                <span className="text-fuchsia-400/70">{variantProgress}/{variantCount}</span>
+                                            </div>
+                                            <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                                                <div className="h-full bg-gradient-to-r from-fuchsia-500 to-violet-500 rounded-full transition-all duration-500"
+                                                    style={{ width: `${(variantProgress / variantCount) * 100}%` }} />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <button onClick={() => void generateCoverVariants(variantCount)}
+                                            disabled={!coverTitle.trim() || !selectedCoverNicheId}
+                                            className="w-full h-9 rounded-xl bg-gradient-to-r from-fuchsia-600/80 to-violet-600/80 hover:from-fuchsia-500 hover:to-violet-500 text-white text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 active:scale-[0.98]">
+                                            <Sparkles size={11} /> Generar {variantCount} variantes · puntuar con IA
+                                        </button>
+                                    )}
+                                    <p className="text-[9px] text-neutral-700 leading-snug">Genera {variantCount} portadas distintas, las sube como candidatas y elige la mejor automáticamente por CTR de miniatura.</p>
+                                </div>
+                            )}
+
+                            {/* ── KDP Spine Calculator ── */}
+                            {(() => {
+                                const THICKNESS: Record<string, number> = { white: 0.0025, cream: 0.002254, "premium-color": 0.002252 };
+                                const PAPER_LABELS: Record<string, string> = { white: "White (50#)", cream: "Cream (50#)", "premium-color": "Color (60#)" };
+                                const thick = THICKNESS[spinePaperType] ?? 0.0025;
+                                const spineIn = (spinePageCount * thick) + 0.250;
+                                const spineMm = spineIn * 25.4;
+                                return (
+                                    <div className="border border-white/8 bg-white/[0.02] rounded-2xl p-3 space-y-2.5">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5">
+                                            <BookOpen size={9} /> Lomo KDP · calculadora
+                                        </p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-neutral-700">Páginas</label>
+                                                <input type="number" min={24} max={800} value={spinePageCount}
+                                                    onChange={e => setSpinePageCount(Math.max(24, Math.min(800, Number(e.target.value))))}
+                                                    className="w-full h-8 px-2.5 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white text-center focus:outline-none focus:border-fuchsia-500/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-neutral-700">Papel</label>
+                                                <select value={spinePaperType} onChange={e => setSpinePaperType(e.target.value as any)}
+                                                    className="w-full h-8 px-2 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white focus:outline-none focus:border-fuchsia-500/40 [color-scheme:dark]">
+                                                    {Object.entries(PAPER_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between rounded-xl bg-white/[0.04] border border-white/8 px-3 py-2">
+                                            <span className="text-[10px] text-neutral-600 font-black uppercase tracking-widest">Ancho de lomo</span>
+                                            <div className="flex items-baseline gap-2">
+                                                <span className="text-base font-black text-white tabular-nums">{spineIn.toFixed(3)}"</span>
+                                                <span className="text-[11px] text-neutral-500 tabular-nums">{spineMm.toFixed(1)} mm</span>
+                                            </div>
+                                        </div>
+                                        <p className="text-[9px] text-neutral-700 leading-snug">Fórmula KDP: (páginas × grosor/página) + 0.250" de cubiertas. Aplica a libros impresos en demanda.</p>
+                                    </div>
+                                );
+                            })()}
+
                             {/* ── Text overlay panel ── */}
                             {coverModalTab === "front" && (() => {
                                 const t = coverTitle || "Título del libro";
@@ -15088,7 +15250,7 @@ export function KdpFactoryApp() {
                             </div>{/* end left column */}
 
                             {/* ── Right: live preview ── */}
-                            <div className="w-52 shrink-0 p-5 flex flex-col items-center gap-4 sticky top-0">
+                            <div className="w-80 shrink-0 p-5 flex flex-col items-center gap-4 sticky top-0">
                                 {(() => {
                                     const url = coverModalTab === "front" ? generatedCoverUrl : generatedBackCoverUrl;
                                     const isBuilding = coverModalTab === "front" ? (isBuildingCover || isBuildingCollage) : isBuildingBackCover;

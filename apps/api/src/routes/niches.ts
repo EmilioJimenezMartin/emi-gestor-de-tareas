@@ -953,13 +953,19 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
                 ? audienceHint[niche.targetAudience] ?? ""
                 : "";
 
+            // The discovery prompt is the approved visual reference — all variations must match its style
+            const discoveryPrompt = (niche.discoveryImagePrompt || niche.generatedPrompt || "").trim();
+            const discoveryAnchorBlock = discoveryPrompt
+                ? `\n\nAPPROVED VISUAL STYLE (this is the EXACT prompt that generated the accepted sample image — every situation you create MUST produce images that look like this same visual style, same technique, same line art quality):\n"${discoveryPrompt}"\nIMPORTANT: Do NOT reinvent the visual style. Keep the same drawing technique, level of detail, and aesthetic. Only change the SUBJECT or SCENE composition.`
+                : "";
+
             const user = `Niche: "${niche.name}"
 Description: ${niche.description || "(none)"}
-Product type: ${niche.productType ?? "coloring-book"} · Style: ${style}${audience ? `\n${audience}` : ""}${alreadyUsedBlock}
+Product type: ${niche.productType ?? "coloring-book"} · Style: ${style}${audience ? `\n${audience}` : ""}${discoveryAnchorBlock}${alreadyUsedBlock}
 
 Detect exactly ${n} DISTINCT visual situations/sub-themes within this niche, each one different enough to justify its own catalog (e.g. for mandalas: animal-inspired, floral, zen figures, temples, geometric patterns).
-${usedPrompts.length > 0 ? "IMPORTANT: The situations above have already been generated. You MUST invent entirely new sub-themes — different subjects, settings, and moods.\n" : ""}${audience ? "Tailor each scene to match the target audience above.\n" : ""}
-For each, write an IMAGE GENERATION PROMPT in English (30-60 words): concrete scene/subject description only — no style/technical keywords (those are added automatically later).
+${usedPrompts.length > 0 ? "IMPORTANT: The situations above have already been generated. You MUST invent entirely new sub-themes — different subjects, settings, and moods.\n" : ""}${audience ? "Tailor each scene to match the target audience above.\n" : ""}${discoveryPrompt ? "Each prompt MUST preserve the visual technique from the approved style anchor above. Vary the subject, not the drawing style.\n" : ""}
+For each, write an IMAGE GENERATION PROMPT in English (30-60 words): concrete scene/subject description only, keeping the same visual style as the anchor — no extra style/technical keywords (those are added automatically later).
 
 Return JSON: [{"situation": "<2-4 word label in Spanish>", "prompt": "<the scene prompt in English>"}]`;
 
