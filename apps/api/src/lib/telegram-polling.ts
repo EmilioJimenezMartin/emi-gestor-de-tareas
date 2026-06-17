@@ -55,6 +55,7 @@ const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { cmd: "/sugerir",                       desc: "IA sugiere un nicho con potencial no explorado (cualquier tipo)" },
     { cmd: "/sugerir <code>tipo</code>",     desc: "Sugiere para un tipo concreto: <code>colorear</code> · <code>poster</code> · <code>patron</code>" },
     { cmd: "/autoclone [n]",                 desc: "AutoClone: IA detecta nichos sin cubrir, busca bestsellers en Amazon y manda candidatos para aprobar (n=cantidad, máx 10)" },
+    { cmd: "/explotar <code>id</code> [n]",  desc: "Explosión IA: genera N catálogos con prompts distintos para un nicho. Ej: /explotar a3b2 5" },
     { section: "📦 KDP" },
     { cmd: "/kdp <code>id</code>",            desc: "Sube el libro a KDP (requiere PDF + SEO + credenciales)" },
     { cmd: "/kdpotp <code>XXXXXX</code>",     desc: "Envía código OTP si KDP solicita verificación 2FA" },
@@ -167,44 +168,29 @@ async function handleNicheDiscovery(
             } catch { /* non-critical */ }
         }
 
-        // Directly create catalogs without relying on the autopilot scheduler
+        // Explosión IA: each catalog gets its own distinct AI-generated prompt
         setImmediate(async () => {
             try {
                 const port = process.env.PORT || 3001;
                 const base = `http://localhost:${port}`;
-                const n = niche as any;
-
-                // Use exact model and prompt from the Telegram image — never fall back to current settings
                 const aiModel = (tAction as any).aiModel ?? await getAutopilotImageModel();
-                const catalogPrompt = (tAction as any).imagePrompt || n?.discoveryImagePrompt || n?.generatedPrompt || tAction.nicheName;
 
-                let created = 0;
-                for (let i = 0; i < cfg.catalogsPerNiche; i++) {
-                    try {
-                        const res = await internalFetch(`${base}/catalogs`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                name: `${tAction.nicheName} — v${i + 1}`,
-                                prompt: catalogPrompt,
-                                totalImages: cfg.imagesPerCatalog,
-                                aiModel,
-                                nicheIds: [String(tAction.nicheId)],
-                                productType: n?.productType ?? "coloring-book",
-                            }),
-                        });
-                        if (res.ok) created++;
-                    } catch { /* continue on error */ }
-                    // Small delay so catalogs queue up cleanly
-                    await new Promise(r => setTimeout(r, 300));
-                }
+                const explodeRes = await internalFetch(`${base}/niches/${String(tAction.nicheId)}/explode-catalogs`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        count: cfg.catalogsPerNiche,
+                        imagesPerCatalog: cfg.imagesPerCatalog,
+                        ...(aiModel?.provider && aiModel?.modelId ? { model: aiModel } : {}),
+                    }),
+                });
+                const explodeData = await explodeRes.json() as any;
+                const created = explodeData?.catalogs?.length ?? 0;
 
                 _io?.emit("niches:updated");
                 _io?.emit("catalogs:updated");
-                console.log(`[telegram-poll] Created ${created}/${cfg.catalogsPerNiche} catalogs for niche ${tAction.nicheName}`);
 
-                if (created === 0) {
-                    // Reset so user can retry from Telegram
+                if (!explodeRes.ok || created === 0) {
                     await TelegramAction.findByIdAndUpdate(tAction._id, {
                         $set: { status: "pending", resolvedAt: null },
                     }).catch(() => {});
@@ -213,16 +199,20 @@ async function handleNicheDiscovery(
                         { text: "⏭️ Omitir",    callback_data: `omitir:${String(tAction._id)}` },
                     ]];
                     await sendTelegramButtons(
-                        `⚠️ <b>Fallo al crear catálogos</b>\n📚 <b>${tAction.nicheName}</b>\n<i>Pulsa Continuar para reintentar</i>`,
+                        `⚠️ <b>Fallo al crear catálogos</b>\n📚 <b>${tAction.nicheName}</b>\n<i>${explodeData?.error ?? "Sin catálogos creados"}</i>\n<i>Pulsa Continuar para reintentar</i>`,
                         buttons
                     ).catch(() => {});
-                    console.warn(`[telegram-poll] 0 catalogs created — action reset to pending for retry`);
                     return;
                 }
 
-                await sendTelegram(`🏭 <b>${tAction.nicheName}</b>\n🖼️ ${created} catálogos en generación · ${created * cfg.imagesPerCatalog} imágenes totales`).catch(() => {});
+                const situations: string[] = explodeData?.situations ?? [];
+                const situationPreview = situations.slice(0, 4).join(" · ");
+                await sendTelegram(
+                    `🏭 <b>${tAction.nicheName}</b>\n` +
+                    `🖼️ ${created} catálogos en generación · ${created * cfg.imagesPerCatalog} imágenes totales\n` +
+                    (situationPreview ? `<i>${situationPreview}${situations.length > 4 ? "…" : ""}</i>` : "")
+                ).catch(() => {});
 
-                // Always schedule autopilot monitoring — needed to advance catalog→libro→seo→cover.
                 try {
                     if (_agenda) {
                         await _agenda.now("autopilot-run", {});
@@ -236,7 +226,7 @@ async function handleNicheDiscovery(
             }
         });
 
-        return `✅ Lanzado — ${cfg.catalogsPerNiche} catálogos en producción`;
+        return `✅ Lanzado — ${cfg.catalogsPerNiche} catálogos (Explosión IA)`;
     }
 
     if (decision === "omitir") {
@@ -706,39 +696,35 @@ async function processUpdate(update: any): Promise<void> {
                         `Creando <b>${cfg.catalogsPerNiche} catálogos</b> × <b>${cfg.imagesPerCatalog} imágenes</b>…`
                     );
 
-                    // 2 · Crear catálogos — mismo prompt Y mismo modelo que generó la imagen de Telegram
+                    // 2 · Explosión IA — catálogos con prompts distintos generados por IA
                     const nicheId = String((niche as any)._id);
-                    const imagePrompt = tAction.imagePrompt || tAction.nicheName;
-                    // Reutilizar el modelo guardado en el action (el mismo que generó la preview de Telegram)
                     const aiModel = (tAction as any).aiModel ?? await getAutopilotImageModel();
 
                     setImmediate(async () => {
                         try {
                             const port = process.env.PORT || 3001;
                             const base = `http://localhost:${port}`;
-                            let created = 0;
-                            for (let i = 0; i < cfg.catalogsPerNiche; i++) {
-                                try {
-                                    const res = await internalFetch(`${base}/catalogs`, {
-                                        method: "POST",
-                                        headers: { "Content-Type": "application/json" },
-                                        body: JSON.stringify({
-                                            name: `${tAction.nicheName} — v${i + 1}`,
-                                            prompt: imagePrompt,
-                                            totalImages: cfg.imagesPerCatalog,
-                                            aiModel,
-                                            nicheIds: [nicheId],
-                                            productType: "coloring-book",
-                                        }),
-                                    });
-                                    if (res.ok) created++;
-                                } catch { /* continue */ }
-                                await new Promise(r => setTimeout(r, 300));
-                            }
+                            const explodeRes = await internalFetch(`${base}/niches/${nicheId}/explode-catalogs`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                    count: cfg.catalogsPerNiche,
+                                    imagesPerCatalog: cfg.imagesPerCatalog,
+                                    ...(aiModel?.provider && aiModel?.modelId ? { model: aiModel } : {}),
+                                }),
+                            });
+                            const explodeData = await explodeRes.json() as any;
+                            const created = explodeData?.catalogs?.length ?? 0;
                             _io?.emit("niches:updated");
                             _io?.emit("catalogs:updated");
                             if (created > 0) {
-                                await sendTelegram(`🏭 <b>${tAction.nicheName}</b>\n🖼️ ${created} catálogos en generación · ${created * cfg.imagesPerCatalog} imágenes totales`).catch(() => {});
+                                const situations: string[] = explodeData?.situations ?? [];
+                                const situationPreview = situations.slice(0, 4).join(" · ");
+                                await sendTelegram(
+                                    `🏭 <b>${tAction.nicheName}</b>\n` +
+                                    `🖼️ ${created} catálogos en generación · ${created * cfg.imagesPerCatalog} imágenes totales\n` +
+                                    (situationPreview ? `<i>${situationPreview}${situations.length > 4 ? "…" : ""}</i>` : "")
+                                ).catch(() => {});
                                 try {
                                     if (_agenda) {
                                         await _agenda.now("autopilot-run", {});
@@ -2005,6 +1991,67 @@ async function processUpdate(update: any): Promise<void> {
                 );
             } catch (e: any) {
                 await sendTelegram(`❌ Error: ${e.message}`);
+            }
+            return;
+        }
+
+        // ── /explotar — Explosión IA para un nicho existente ─────────────────
+        if (text.startsWith("/explotar ") || text === "/explotar") {
+            const parts = normalized.slice(10).trim().split(/\s+/);
+            const idArg = parts[0] ?? "";
+            const countArg = parseInt(parts[1] ?? "5");
+            const count = isNaN(countArg) ? 5 : Math.min(Math.max(2, countArg), 20);
+
+            if (!idArg) {
+                await sendTelegram("❌ Uso: <code>/explotar &lt;id&gt; [n]</code>\n<i>Usa /nichos para ver los IDs · n = número de catálogos (máx 20)</i>");
+                return;
+            }
+
+            try {
+                const allNiches = await Niche.find().select("name phase productType").lean();
+                const niche = (allNiches as any[]).find(n =>
+                    String(n._id).endsWith(idArg.toLowerCase()) || String(n._id) === idArg
+                );
+                if (!niche) {
+                    await sendTelegram(`❌ No encontré ningún nicho con ID <code>${idArg}</code>\n<i>Usa /nichos para ver los IDs</i>`);
+                    return;
+                }
+
+                await sendTelegram(`💥 <b>Explosión IA iniciada</b>\n📚 <b>${niche.name}</b>\n🔮 Generando ${count} situaciones visuales distintas…`);
+
+                const port = process.env.PORT || 3001;
+                const cfg = await getAutoPilotConfig();
+                const aiModel = await getAutopilotImageModel();
+
+                const res = await internalFetch(`http://localhost:${port}/niches/${String(niche._id)}/explode-catalogs`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        count,
+                        imagesPerCatalog: cfg.imagesPerCatalog,
+                        model: { id: aiModel.id, name: aiModel.name, provider: aiModel.provider, modelId: aiModel.modelId },
+                    }),
+                });
+                const data: any = await res.json();
+                if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+
+                const situations: string[] = data.situations ?? [];
+                const created: number = data.catalogs?.length ?? 0;
+                const lines = [
+                    `✅ <b>Explosión completada</b>`,
+                    `📚 <b>${niche.name}</b>`,
+                    `🖼️ ${created} catálogos · ${created * cfg.imagesPerCatalog} imágenes totales`,
+                    situations.length > 0 ? `\n<i>${situations.join("\n")}</i>` : "",
+                ].filter(Boolean).join("\n");
+                await sendTelegram(lines);
+                _io?.emit("catalogs:updated");
+                _io?.emit("niches:updated");
+
+                if (_agenda) {
+                    await _agenda.now("autopilot-run", {}).catch(() => {});
+                }
+            } catch (e: any) {
+                await sendTelegram(`❌ Explosión error: ${e.message}`);
             }
             return;
         }

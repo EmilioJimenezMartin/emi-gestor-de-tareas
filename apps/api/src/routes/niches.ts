@@ -913,22 +913,52 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
         if (!ensureMongo(reply)) return;
         try {
             const { count = 5, imagesPerCatalog = 5, model } = request.body ?? {};
-            const n = Math.min(Math.max(2, Number(count)), 8);
+            const n = Math.min(Math.max(2, Number(count)), 20);
             const imgsPer = Math.min(Math.max(1, Number(imagesPerCatalog)), 20);
 
             const niche = await Niche.findById(request.params.id).lean() as any;
             if (!niche) return reply.status(404).send({ error: "Nicho no encontrado" });
 
+            // 1. Load existing catalog prompts so the AI can avoid repeating them
+            const existingCatalogs = await Catalog.find({ nicheIds: String(niche._id) })
+                .select("name prompt")
+                .lean() as any[];
+            const usedPrompts = existingCatalogs
+                .map((c: any) => c.prompt?.trim())
+                .filter(Boolean)
+                .slice(0, 40); // cap to keep prompt size sane
+            const usedSituations = existingCatalogs
+                .map((c: any) => {
+                    // Extract the situation label from catalog name: "Niche — Situación" → "Situación"
+                    const sep = c.name?.lastIndexOf(" — ");
+                    return sep > -1 ? c.name.slice(sep + 3).trim() : null;
+                })
+                .filter(Boolean);
+
             // 1. La IA detecta N situaciones/sub-temáticas visuales distintas
             const { generateTextWithLLM } = await import("../lib/ai.js");
             const style = niche.styleCategory ?? "generic";
             const system = `You are a creative director for coloring book and printable art production. Reply ONLY with valid JSON, no markdown fences, no explanations.`;
+
+            const alreadyUsedBlock = usedPrompts.length > 0
+                ? `\n\nALREADY USED — do NOT repeat or closely resemble any of these (${usedPrompts.length} existing catalogs):\n${usedPrompts.map((p, i) => `${i + 1}. ${p}`).join("\n")}${usedSituations.length ? `\nUsed situation labels: ${usedSituations.join(", ")}` : ""}`
+                : "";
+
+            const audienceHint: Record<string, string> = {
+                children: "TARGET AUDIENCE: Children (ages 4-10). Simple, bold, friendly subjects — animals, toys, fairy-tale scenes. Avoid anything scary or complex.",
+                teens:    "TARGET AUDIENCE: Teens (ages 11-17). Trendy, expressive subjects — pop culture, fantasy, anime-adjacent, nature, empowerment themes.",
+                adults:   "TARGET AUDIENCE: Adults. Intricate, detailed, meditative subjects — fine patterns, architecture, botanicals, elaborate fantasy, stress-relief themes.",
+            };
+            const audience = niche.targetAudience && niche.targetAudience !== "all"
+                ? audienceHint[niche.targetAudience] ?? ""
+                : "";
+
             const user = `Niche: "${niche.name}"
 Description: ${niche.description || "(none)"}
-Product type: ${niche.productType ?? "coloring-book"} · Style: ${style}
+Product type: ${niche.productType ?? "coloring-book"} · Style: ${style}${audience ? `\n${audience}` : ""}${alreadyUsedBlock}
 
 Detect exactly ${n} DISTINCT visual situations/sub-themes within this niche, each one different enough to justify its own catalog (e.g. for mandalas: animal-inspired, floral, zen figures, temples, geometric patterns).
-
+${usedPrompts.length > 0 ? "IMPORTANT: The situations above have already been generated. You MUST invent entirely new sub-themes — different subjects, settings, and moods.\n" : ""}${audience ? "Tailor each scene to match the target audience above.\n" : ""}
 For each, write an IMAGE GENERATION PROMPT in English (30-60 words): concrete scene/subject description only — no style/technical keywords (those are added automatically later).
 
 Return JSON: [{"situation": "<2-4 word label in Spanish>", "prompt": "<the scene prompt in English>"}]`;

@@ -3700,7 +3700,7 @@ export function KdpFactoryApp() {
     };
 
     // Fetch catalogs on mount (socket connects when entering creation tab)
-    useEffect(() => { void fetchCatalogs(); void fetchApRuns(); void fetchPipelineData(); void fetchRejectedImages(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { void fetchCatalogs(); void fetchApRuns(); void fetchPipelineData(); void fetchRejectedImages(); void fetchAutoCloneQueue(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Sync calendar events from MongoDB on mount (backend may have them from another session)
     useEffect(() => {
@@ -11965,8 +11965,9 @@ export function KdpFactoryApp() {
                                                     const catsTotal = linkedCats.length;
                                                     const catsRunning = linkedCats.filter(c => c.status === "running" || c.status === "pending").length;
                                                     const catsFailed = linkedCats.filter(c => c.status === "failed").length;
-                                                    // Cover image: first image from any linked catalog
-                                                    const coverImg = linkedCats.flatMap(c => c.images).find(img => img.url)?.url ?? null;
+                                                    const firstCatImg = linkedCats.flatMap(c => c.images).find(img => img.url)?.url ?? null;
+                                                    // coverUrl → sampleImageUrl → first catalog image
+                                                    const coverImg = niche.coverUrl || niche.sampleImageUrl || firstCatImg;
                                                     return (
                                                         <div key={niche._id}
                                                             className="group relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:scale-[1.015] hover:shadow-[0_8px_32px_var(--col-glow)]"
@@ -11977,7 +11978,10 @@ export function KdpFactoryApp() {
                                                             {coverImg ? (
                                                                 <>
                                                                     <div className="absolute inset-0">
-                                                                        <img src={coverImg} alt="" className="w-full h-full object-cover opacity-30 group-hover:opacity-45 transition-opacity duration-300 scale-105 group-hover:scale-110 transition-transform" />
+                                                                        <img src={coverImg} alt=""
+                                                                            className="w-full h-full object-cover opacity-30 group-hover:opacity-45 transition-opacity duration-300 scale-105 group-hover:scale-110 transition-transform"
+                                                                            onError={firstCatImg && coverImg !== firstCatImg ? e => { (e.currentTarget as HTMLImageElement).src = firstCatImg; } : undefined}
+                                                                        />
                                                                         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/50 to-black/80" />
                                                                     </div>
                                                                 </>
@@ -12200,12 +12204,16 @@ export function KdpFactoryApp() {
                                     const phaseHoverBorder: Record<string, string> = { niche: "hover:border-sky-500/25", catalog: "hover:border-blue-500/25", libro: "hover:border-indigo-500/25", seo: "hover:border-violet-500/25", cover: "hover:border-fuchsia-500/25", published: "hover:border-emerald-500/25" };
                                     const phaseHoverShadow: Record<string, string> = { niche: "hover:shadow-[0_0_30px_rgba(14,165,233,0.08)]", catalog: "hover:shadow-[0_0_30px_rgba(59,130,246,0.08)]", libro: "hover:shadow-[0_0_30px_rgba(99,102,241,0.08)]", seo: "hover:shadow-[0_0_30px_rgba(139,92,246,0.08)]", cover: "hover:shadow-[0_0_30px_rgba(217,70,239,0.08)]", published: "hover:shadow-[0_0_30px_rgba(16,185,129,0.08)]" };
                                     const phaseBlob: Record<string, string> = { niche: "bg-sky-500/8", catalog: "bg-blue-500/8", libro: "bg-indigo-500/8", seo: "bg-violet-500/8", cover: "bg-fuchsia-500/8", published: "bg-emerald-500/8" };
-                                    const coverThumb = niche.coverUrl || niche.sampleImageUrl || linkedCats.find(c => c.images.length > 0)?.images[0]?.url;
+                                    const firstCatThumb = linkedCats.find(c => c.images.length > 0)?.images[0]?.url;
+                                                    const coverThumb = niche.coverUrl || niche.sampleImageUrl || firstCatThumb;
                                     return (
                                         <div key={niche._id} className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] ${phaseHoverBorder[cardPhase] ?? "hover:border-sky-500/25"} ${phaseHoverShadow[cardPhase] ?? ""} hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden`}>
                                             {coverThumb && (
                                                 <div className="absolute inset-0 pointer-events-none">
-                                                    <img src={coverThumb} alt="" className="w-full h-full object-cover opacity-20 group-hover:opacity-35 transition-all duration-500 scale-105 group-hover:scale-110" />
+                                                    <img src={coverThumb} alt=""
+                                                        className="w-full h-full object-cover opacity-20 group-hover:opacity-35 transition-all duration-500 scale-105 group-hover:scale-110"
+                                                        onError={firstCatThumb && coverThumb !== firstCatThumb ? e => { (e.currentTarget as HTMLImageElement).src = firstCatThumb; } : undefined}
+                                                    />
                                                     <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/55 to-black/85" />
                                                 </div>
                                             )}
@@ -12227,6 +12235,7 @@ export function KdpFactoryApp() {
                                                                 alt={niche.name}
                                                                 className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-300"
                                                                 loading="lazy"
+                                                                onError={firstCatThumb && coverThumb !== firstCatThumb ? e => { (e.currentTarget as HTMLImageElement).src = firstCatThumb; } : undefined}
                                                             />
                                                             <div className="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/30 transition-all flex items-center justify-center">
                                                                 <ZoomIn size={14} className="text-white opacity-0 group-hover/thumb:opacity-100 transition-opacity drop-shadow" />
@@ -12878,7 +12887,8 @@ export function KdpFactoryApp() {
                                             const linkedCats = iaCatalogs.filter(c => (c.nicheIds ?? []).includes(niche._id));
                                             const linkedImgs = linkedCats.reduce((s, c) => s + c.images.length, 0);
                                             const cardPhase = nicheComputedPhases.get(niche._id) ?? "niche";
-                                            const thumb = niche.coverUrl || niche.sampleImageUrl || linkedCats.find(c => c.images.length > 0)?.images[0]?.url;
+                                            const firstCatThumbT = linkedCats.find(c => c.images.length > 0)?.images[0]?.url;
+                                            const thumb = niche.coverUrl || niche.sampleImageUrl || firstCatThumbT;
                                             return (
                                                 <tr key={niche._id}
                                                     className={`border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors cursor-pointer ${idx % 2 === 0 ? "" : "bg-white/[0.008]"}`}
@@ -12886,7 +12896,8 @@ export function KdpFactoryApp() {
                                                     <td className="px-4 py-3">
                                                         <div className="flex items-center gap-2.5 min-w-0">
                                                             {thumb
-                                                                ? <img src={thumb} alt="" className="w-9 h-9 rounded-xl object-cover border border-white/10 shrink-0" loading="lazy" />
+                                                                ? <img src={thumb} alt="" className="w-9 h-9 rounded-xl object-cover border border-white/10 shrink-0" loading="lazy"
+                                                                    onError={firstCatThumbT && thumb !== firstCatThumbT ? e => { (e.currentTarget as HTMLImageElement).src = firstCatThumbT; } : undefined} />
                                                                 : <div className="w-9 h-9 rounded-xl bg-white/[0.04] border border-white/8 shrink-0" />}
                                                             <div className="min-w-0">
                                                                 <p className="text-sm font-black text-white truncate max-w-[180px] sm:max-w-[260px]">{nd(niche)}</p>
