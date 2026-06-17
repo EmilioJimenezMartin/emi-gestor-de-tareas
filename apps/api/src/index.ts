@@ -37,6 +37,7 @@ import { registerPipelineRoutes } from "./routes/pipeline.js";
 import { registerBookDraftRoutes } from "./routes/book-drafts.js";
 import { registerRejectedImageRoutes } from "./routes/rejected-images.js";
 import { registerVoiceRoutes } from "./routes/voice.js";
+import { registerAutoCloneRoutes } from "./routes/auto-clone.js";
 import { startTelegramPolling } from "./lib/telegram-polling.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerJwtMiddleware } from "./lib/jwt-middleware.js";
@@ -134,7 +135,7 @@ await registerTaskRoutes(app, deps);
 await registerExtractorRoutes(app, deps);
 await registerSettingsRoutes(app);
 await registerFinanceRoutes(app, { io });
-await registerAIRoutes(app);
+await registerAIRoutes(app, deps);
 await registerCloudinaryRoutes(app);
 await registerCatalogRoutes(app, { io });
 await registerSavedPromptsRoutes(app);
@@ -155,6 +156,7 @@ await registerBookDraftRoutes(app);
 await registerRejectedImageRoutes(app, { io });
 await registerVoiceRoutes(app);
 await registerPipelineRoutes(app, deps);
+await registerAutoCloneRoutes(app, deps);
 
 app.setErrorHandler((error, _req, reply) => {
   if (error instanceof ZodError) {

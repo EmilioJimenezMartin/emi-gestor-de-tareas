@@ -217,9 +217,12 @@ export function CommandPalette({ open, onClose }: Props) {
                             <X size={13} />
                         </button>
                     )}
-                    <kbd className="hidden sm:flex items-center gap-1 h-5 px-1.5 rounded border border-white/10 bg-white/[0.03] text-[10px] text-neutral-600 font-mono shrink-0">
-                        esc
-                    </kbd>
+                    <button
+                        onClick={onClose}
+                        className="shrink-0 w-6 h-6 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/10 transition-all"
+                    >
+                        <X size={11} />
+                    </button>
                 </div>
 
                 {/* Results */}

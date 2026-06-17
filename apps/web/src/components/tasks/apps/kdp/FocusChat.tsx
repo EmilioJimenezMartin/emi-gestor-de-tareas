@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { Bot, ChevronDown, Loader2, Send, SendHorizontal, Sparkles, X } from "lucide-react";
+import { Bot, ChevronDown, Loader2, Send, SendHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { useSpeech } from "@/hooks/useSpeech";
 import { toast } from "sonner";
+import { createApiSocket } from "@/lib/socket";
 
-type Message = { role: "user" | "assistant"; text: string };
+type Message = { _id?: string; role: "user" | "assistant"; text: string; source?: "ui" | "telegram"; createdAt?: string };
 
 type Props = {
     systemContext: string;
@@ -104,12 +105,8 @@ const SUGGESTION_MAP: { keywords: string[]; label: string; question: string }[] 
 
 function getSuggestions(text: string): { label: string; question: string }[] {
     const lower = text.toLowerCase();
-    return SUGGESTION_MAP
-        .filter(s => s.keywords.some(k => lower.includes(k)))
-        .slice(0, 3);
+    return SUGGESTION_MAP.filter(s => s.keywords.some(k => lower.includes(k))).slice(0, 3);
 }
-
-// ── System prompt wrapper ─────────────────────────────────────────────────────
 
 function wrapSystemContext(ctx: string): string {
     return `${ctx}
@@ -129,7 +126,7 @@ export function FocusChat({ systemContext, apiBase }: Props) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    const [greeted, setGreeted] = useState(false);
+    const [historyLoaded, setHistoryLoaded] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const { speak } = useSpeech();
@@ -138,21 +135,44 @@ export function FocusChat({ systemContext, apiBase }: Props) {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, isLoading]);
 
-    const chat = async (msgs: Message[]) => {
+    // Load history on mount
+    useEffect(() => {
+        fetch(`${apiBase}/assistant/history`)
+            .then(r => r.json())
+            .then((data: Message[]) => {
+                if (Array.isArray(data) && data.length > 0) setMessages(data);
+                setHistoryLoaded(true);
+            })
+            .catch(() => setHistoryLoaded(true));
+    }, [apiBase]);
+
+    // Real-time: listen for new messages from any source
+    useEffect(() => {
+        const socket = createApiSocket();
+        socket.on("chat:message", (msg: Message) => {
+            setMessages(prev => {
+                // Avoid duplicates if this client sent it
+                if (msg._id && prev.some(m => m._id === msg._id)) return prev;
+                return [...prev, msg];
+            });
+        });
+        socket.on("chat:cleared", () => setMessages([]));
+        return () => { socket.disconnect(); };
+    }, []);
+
+    const chat = async (text: string) => {
         setIsLoading(true);
         try {
             const res = await fetch(`${apiBase}/assistant/chat`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    messages: msgs.map(m => ({ role: m.role, content: m.text })),
-                    systemContext: wrapSystemContext(systemContext),
-                }),
+                body: JSON.stringify({ text, systemContext: wrapSystemContext(systemContext) }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error ?? "Error");
+            // Server persists + broadcasts via socket — but also update locally for instant feedback
+            // The socket event will dedupe if _id matches
             const reply = (data.reply as string).trim();
-            setMessages(prev => [...prev, { role: "assistant", text: reply }]);
             const plain = reply.replace(/\*\*(.*?)\*\*/g, "$1").replace(/^[-•▸]\s/gm, "").slice(0, 180);
             void speak(plain);
         } catch {
@@ -165,11 +185,11 @@ export function FocusChat({ systemContext, apiBase }: Props) {
     const handleOpen = () => {
         setIsOpen(true);
         setTimeout(() => inputRef.current?.focus(), 200);
-        if (!greeted) {
-            setGreeted(true);
-            const initMsg: Message = { role: "user", text: "¿Cuál es mi foco de trabajo más importante hoy?" };
-            setMessages([initMsg]);
-            void chat([initMsg]);
+        // Only send greeting if no history at all
+        if (historyLoaded && messages.length === 0) {
+            const greet = "¿Cuál es mi foco de trabajo más importante hoy?";
+            setMessages([{ role: "user", text: greet, source: "ui" }]);
+            void chat(greet);
         }
     };
 
@@ -177,9 +197,18 @@ export function FocusChat({ systemContext, apiBase }: Props) {
         const t = (text ?? input).trim();
         if (!t || isLoading) return;
         setInput("");
-        const updated: Message[] = [...messages, { role: "user", text: t }];
-        setMessages(updated);
-        void chat(updated);
+        // Optimistically add user message — socket will add the real one with _id
+        setMessages(prev => [...prev, { role: "user", text: t, source: "ui" }]);
+        void chat(t);
+    };
+
+    const clearHistory = async () => {
+        try {
+            await fetch(`${apiBase}/assistant/history`, { method: "DELETE" });
+            // socket chat:cleared will update state
+        } catch {
+            toast.error("Error limpiando historial");
+        }
     };
 
     const forwardToTelegram = async (text: string) => {
@@ -196,8 +225,8 @@ export function FocusChat({ systemContext, apiBase }: Props) {
         }
     };
 
-    // Visible messages: hide the auto-greeting (first user msg)
-    const visibleMessages = messages.filter((m, i) => !(m.role === "user" && i === 0));
+    // Hide the initial greeting user message
+    const visibleMessages = messages.filter((m, i) => !(m.role === "user" && i === 0 && m.text === "¿Cuál es mi foco de trabajo más importante hoy?"));
 
     return (
         <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
@@ -217,16 +246,25 @@ export function FocusChat({ systemContext, apiBase }: Props) {
                             </div>
                             <div>
                                 <p className="text-sm font-black text-white leading-none">Daily Focus</p>
-                                <p className="text-[9px] text-indigo-300/60 mt-0.5">Asistente KDP</p>
+                                <p className="text-[9px] text-indigo-300/60 mt-0.5">Conversación unificada UI + Telegram</p>
                             </div>
                             {isLoading && <Loader2 size={11} className="animate-spin text-indigo-400 ml-1" />}
                         </div>
-                        <button
-                            onClick={() => setIsOpen(false)}
-                            className="p-1.5 rounded-xl hover:bg-white/10 text-neutral-500 hover:text-white transition-all"
-                        >
-                            <X size={13} />
-                        </button>
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={clearHistory}
+                                className="p-1.5 rounded-xl hover:bg-white/10 text-neutral-600 hover:text-rose-400 transition-all"
+                                title="Limpiar historial"
+                            >
+                                <Trash2 size={11} />
+                            </button>
+                            <button
+                                onClick={() => setIsOpen(false)}
+                                className="p-1.5 rounded-xl hover:bg-white/10 text-neutral-500 hover:text-white transition-all"
+                            >
+                                <X size={13} />
+                            </button>
+                        </div>
                     </div>
 
                     {/* ── Messages ── */}
@@ -242,24 +280,22 @@ export function FocusChat({ systemContext, apiBase }: Props) {
 
                         {visibleMessages.map((m, i) => (
                             m.role === "user" ? (
-                                <div key={i} className="flex justify-end">
-                                    <div className="max-w-[82%] rounded-2xl rounded-br-sm px-3 py-2.5 bg-indigo-500/20 border border-indigo-500/20 text-[11px] text-indigo-100 leading-relaxed">
+                                <div key={m._id ?? i} className="flex justify-end">
+                                    <div className={`max-w-[82%] rounded-2xl rounded-br-sm px-3 py-2.5 border text-[11px] leading-relaxed ${m.source === "telegram" ? "bg-sky-500/15 border-sky-500/25 text-sky-100" : "bg-indigo-500/20 border-indigo-500/20 text-indigo-100"}`}>
+                                        {m.source === "telegram" && <span className="text-[8px] font-black uppercase tracking-widest text-sky-400/70 block mb-0.5">📱 Telegram</span>}
                                         {m.text}
                                     </div>
                                 </div>
                             ) : (
-                                <div key={i} className="flex gap-2 items-start group">
-                                    <div className="w-6 h-6 rounded-xl bg-gradient-to-br from-indigo-500/25 to-violet-500/25 border border-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5">
-                                        <Sparkles size={9} className="text-indigo-400" />
+                                <div key={m._id ?? i} className="flex gap-2 items-start group">
+                                    <div className={`w-6 h-6 rounded-xl border flex items-center justify-center shrink-0 mt-0.5 ${m.source === "telegram" ? "bg-sky-500/20 border-sky-500/25" : "bg-gradient-to-br from-indigo-500/25 to-violet-500/25 border-indigo-500/20"}`}>
+                                        {m.source === "telegram" ? <span className="text-[9px]">📱</span> : <Sparkles size={9} className="text-indigo-400" />}
                                     </div>
                                     <div className="flex-1 min-w-0 space-y-2">
-                                        {/* Bubble */}
                                         <div className="rounded-2xl rounded-tl-sm px-3.5 py-3 bg-white/[0.04] border border-white/8">
                                             {renderContent(m.text)}
                                         </div>
-                                        {/* Actions row */}
                                         <div className="flex items-center gap-1.5 flex-wrap">
-                                            {/* Telegram forward */}
                                             <button
                                                 onClick={() => void forwardToTelegram(m.text)}
                                                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest text-neutral-600 hover:text-indigo-400 hover:bg-indigo-500/10 border border-transparent hover:border-indigo-500/20 transition-all opacity-0 group-hover:opacity-100"
@@ -267,7 +303,6 @@ export function FocusChat({ systemContext, apiBase }: Props) {
                                                 <SendHorizontal size={8} /> Telegram
                                             </button>
                                         </div>
-                                        {/* Suggested CTAs (only on last assistant message) */}
                                         {i === visibleMessages.length - 1 && !isLoading && (() => {
                                             const sugg = getSuggestions(m.text);
                                             if (sugg.length === 0) return null;
@@ -290,7 +325,6 @@ export function FocusChat({ systemContext, apiBase }: Props) {
                             )
                         ))}
 
-                        {/* Typing indicator */}
                         {isLoading && (
                             <div className="flex gap-2 items-start">
                                 <div className="w-6 h-6 rounded-xl bg-gradient-to-br from-indigo-500/25 to-violet-500/25 border border-indigo-500/20 flex items-center justify-center shrink-0">

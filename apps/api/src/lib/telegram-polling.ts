@@ -2,6 +2,7 @@ import { getUpdates, answerCallbackQuery, editTelegramMessage, sendTelegram, pin
 import { transcribeAudio } from "./whisper.js";
 import { synthesizeSpeech } from "./tts.js";
 import { TelegramAction } from "../models/telegram-action.js";
+import { ChatMessage } from "../models/chat-message.js";
 import { Niche } from "../models/niche.js";
 import { Settings } from "../models/settings.js";
 import { Catalog } from "../models/catalog.js";
@@ -11,6 +12,7 @@ import { generateImage, getAutopilotImageModel } from "./image-gen.js";
 import { generateCatalogPrompt } from "./catalog-prompt.js";
 import { generateTextWithLLM } from "./ai.js";
 import { getEvolutionSeed } from "./prompt-evolution.js";
+import { handleAutoCloneTelegramCallback } from "../routes/auto-clone.js";
 
 const _SERVER_API_KEY = process.env.SERVER_API_KEY || "";
 function internalFetch(url: string, init: RequestInit = {}): Promise<Response> {
@@ -52,6 +54,7 @@ const COMMANDS: Array<{ cmd?: string; desc?: string; section?: string }> = [
     { section: "🔮 Descubrimiento" },
     { cmd: "/sugerir",                       desc: "IA sugiere un nicho con potencial no explorado (cualquier tipo)" },
     { cmd: "/sugerir <code>tipo</code>",     desc: "Sugiere para un tipo concreto: <code>colorear</code> · <code>poster</code> · <code>patron</code>" },
+    { cmd: "/autoclone [n]",                 desc: "AutoClone: IA detecta nichos sin cubrir, busca bestsellers en Amazon y manda candidatos para aprobar (n=cantidad, máx 10)" },
     { section: "📦 KDP" },
     { cmd: "/kdp <code>id</code>",            desc: "Sube el libro a KDP (requiere PDF + SEO + credenciales)" },
     { cmd: "/kdpotp <code>XXXXXX</code>",     desc: "Envía código OTP si KDP solicita verificación 2FA" },
@@ -373,6 +376,12 @@ async function processUpdate(update: any): Promise<void> {
         if (colonIdx === -1) return;
         const action = data.slice(0, colonIdx);
         const actionId = data.slice(colonIdx + 1);
+
+        // ── AutoClone approve/reject ──────────────────────────────────────────
+        if (data.startsWith("autoclone:")) {
+            await handleAutoCloneTelegramCallback(cq.id, data, _io);
+            return;
+        }
 
         // ── Quick niche picker for /cat ──────────────────────────────────────
         if (action === "cat_niche") {
@@ -2000,6 +2009,27 @@ async function processUpdate(update: any): Promise<void> {
             return;
         }
 
+        // ── /autoclone — automated Clone Engine discovery ────────────────────
+        if (text === "/autoclone" || text.startsWith("/autoclone ")) {
+            const countArg = parseInt(text.split(" ")[1] ?? "5");
+            const count = isNaN(countArg) ? 5 : Math.min(Math.max(countArg, 1), 10);
+            await sendTelegram(`🔍 AutoClone iniciado — buscando ${count} nichos sin cubrir en Amazon…`);
+            const port = process.env.PORT || 3001;
+            try {
+                const res = await internalFetch(`http://localhost:${port}/auto-clone/discover`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ count }),
+                });
+                const data: any = await res.json();
+                if (!res.ok) throw new Error(data?.error ?? "Error");
+                await sendTelegram(`✅ AutoClone: ${data.count} candidatos encontrados. Revisa cada uno y aprueba o descarta.`);
+            } catch (e: any) {
+                await sendTelegram(`❌ AutoClone error: ${e.message}`);
+            }
+            return;
+        }
+
         if (text === "/sugerir" || text.startsWith("/sugerir ")) {
             const typeArg = normalized.slice(9).trim().toLowerCase();
             let productType = "";
@@ -2141,6 +2171,11 @@ async function processUpdate(update: any): Promise<void> {
                 const systemPrompt = `Eres el asistente de Daily Focus del autor KDP Emilio Jimenez. Ayudas a decidir qué hacer hoy para maximizar ingresos pasivos con libros de colorear en Amazon KDP.\n\nESTADO ACTUAL:\n${ctx}\n\nResponde en español, de forma concisa y accionable. Máximo 4 puntos. Usa HTML Telegram (<b>, <code>). NUNCA uses JSON.`;
                 const reply = await generateTextWithLLM(systemPrompt, userQuestion);
                 await sendTelegram(`🎯 <b>Daily Focus</b>\n\n${reply.slice(0, 3000)}`);
+                // Persist to shared chat history
+                const umsg = await ChatMessage.create({ role: "user", text: userQuestion, source: "telegram" });
+                const amsg = await ChatMessage.create({ role: "assistant", text: reply.trim(), source: "telegram" });
+                _io?.emit("chat:message", { _id: (umsg as any)._id, role: "user", text: userQuestion, source: "telegram", createdAt: (umsg as any).createdAt });
+                _io?.emit("chat:message", { _id: (amsg as any)._id, role: "assistant", text: reply.trim(), source: "telegram", createdAt: (amsg as any).createdAt });
             } catch (e: any) {
                 await sendTelegram(`❌ Error en Daily Focus: ${e.message?.slice(0, 100) ?? "desconocido"}`);
             }
@@ -2227,6 +2262,11 @@ REGLAS — no negociables:
 
             const response = await generateTextWithLLM(systemPrompt, raw);
             await sendTelegram(response.slice(0, 4000));
+            // Persist to shared chat history
+            const umsg2 = await ChatMessage.create({ role: "user", text: raw, source: "telegram" });
+            const amsg2 = await ChatMessage.create({ role: "assistant", text: response.trim(), source: "telegram" });
+            _io?.emit("chat:message", { _id: (umsg2 as any)._id, role: "user", text: raw, source: "telegram", createdAt: (umsg2 as any).createdAt });
+            _io?.emit("chat:message", { _id: (amsg2 as any)._id, role: "assistant", text: response.trim(), source: "telegram", createdAt: (amsg2 as any).createdAt });
         } catch (e: any) {
             console.warn("[telegram-poll llm-fallback] Error:", e.message);
             await sendTelegram(`❓ No entendí eso. Usa <code>/ayuda</code> para ver los comandos disponibles.`);

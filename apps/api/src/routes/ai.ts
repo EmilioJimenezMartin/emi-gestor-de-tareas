@@ -82,7 +82,8 @@ function ratioFromDims(width?: number, height?: number) {
   return `${Math.round(w / g)}:${Math.round(h / g)}`;
 }
 
-export async function registerAIRoutes(app: FastifyInstance) {
+export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }) {
+    const io = deps?.io;
     // GET proxy para usar Pollinations como src de <img> desde el frontend.
     // El navegador no tiene la API key — el backend la añade y devuelve los bytes.
     app.get("/ai/image-proxy", async (request: any, reply) => {
@@ -107,7 +108,11 @@ export async function registerAIRoutes(app: FastifyInstance) {
 
     app.post("/ai/generate-image", async (request: any, reply) => {
         const { prompt: rawPrompt, modelId, provider, width, height, initImage, advancedParams, productType, style } = request.body;
-        const negativePrompt: string = advancedParams?.negativePrompt?.trim() || "";
+        const userNegative: string = advancedParams?.negativePrompt?.trim() || "";
+        const CB_HAND_NEGATIVE = "bad hands, extra fingers, missing fingers, deformed hands, mutated hands, fused fingers, too many fingers, malformed limbs, poorly drawn hands, cloned hands, ugly hands";
+        const negativePrompt: string = productType === "coloring-book"
+            ? [CB_HAND_NEGATIVE, userNegative].filter(Boolean).join(", ")
+            : userNegative;
         const steps: number | undefined = typeof advancedParams?.steps === "number" ? advancedParams.steps : undefined;
         const guidanceScale: number | undefined = typeof advancedParams?.guidanceScale === "number" ? advancedParams.guidanceScale : undefined;
         const fixedSeed: number | undefined = typeof advancedParams?.seed === "number" ? advancedParams.seed : undefined;
@@ -1362,6 +1367,13 @@ FORBIDDEN WORDS: beautiful, stunning, gorgeous, amazing, lovely, wonderful, intr
 
 NEVER mention: line style, outlines, coloring, black and white, or page format.
 
+HANDS RULE — CRITICAL: AI image generators cannot reliably render hands with the correct number of fingers. To avoid broken hands in the output:
+- NEVER describe open, outstretched, or spread hands/fingers
+- If a character must hold something, write: "gripping [object]", "clutching [object]", "holding [object] with both hands wrapped around it" — the object obscures finger detail
+- Prefer poses where hands are: in pockets, behind back, under chin, crossed at chest, resting on lap, or holding tools/weapons/shields that cover finger visibility
+- If the scene is a close-up of a character where hands are NOT the focus, omit hand description entirely
+- NEVER write: "outstretched hands", "open palms", "five fingers", "hand reaching", "waving hand"
+
 Return ONLY: {"particulars": "...55-80 words..."}`;
             })(),
 
@@ -2125,32 +2137,68 @@ Return ONLY a JSON object:
         }
     });
 
-    // POST /assistant/chat — conversational AI with KDP context
-    app.post("/assistant/chat", async (request: any, reply) => {
-        const { messages, systemContext } = request.body as {
-            messages: { role: string; content: string }[];
-            systemContext?: string;
-        };
-        if (!Array.isArray(messages) || messages.length === 0) {
-            return reply.status(400).send({ error: "messages required" });
-        }
+    // GET /assistant/history — last N messages from shared conversation
+    app.get("/assistant/history", async (_req, reply) => {
         try {
-            const { generateTextWithLLM } = await import("../lib/ai.js");
-            const system = systemContext?.trim() ||
-                "Eres un asistente especializado en KDP. Responde en español, de forma concisa y accionable.";
-            const history = messages.slice(0, -1)
-                .map(m => `${m.role === "user" ? "Usuario" : "Asistente"}: ${m.content}`)
-                .join("\n");
-            const lastContent = messages.at(-1)?.content ?? "";
-            const userPrompt = history ? `${history}\nUsuario: ${lastContent}` : lastContent;
-            const replyText = await generateTextWithLLM(system, userPrompt);
-            return reply.send({ reply: replyText.trim() });
+            const { ChatMessage } = await import("../models/chat-message.js");
+            const msgs = await ChatMessage.find().sort({ createdAt: 1 }).limit(100).lean();
+            return reply.send(msgs);
         } catch (e: any) {
             return reply.status(500).send({ error: e.message ?? "Error" });
         }
     });
 
-    // POST /assistant/telegram-send — forward a message to the configured Telegram chat
+    // DELETE /assistant/history — clear conversation
+    app.delete("/assistant/history", async (_req, reply) => {
+        try {
+            const { ChatMessage } = await import("../models/chat-message.js");
+            await ChatMessage.deleteMany({});
+            io?.emit("chat:cleared", {});
+            return reply.send({ ok: true });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message ?? "Error" });
+        }
+    });
+
+    // POST /assistant/chat — unified conversational AI (persisted, broadcast via Socket.IO)
+    app.post("/assistant/chat", async (request: any, reply) => {
+        const { text, systemContext, source = "ui" } = request.body as {
+            text: string;
+            systemContext?: string;
+            source?: "ui" | "telegram";
+        };
+        if (!text?.trim()) return reply.status(400).send({ error: "text required" });
+        try {
+            const { ChatMessage } = await import("../models/chat-message.js");
+            const { generateTextWithLLM } = await import("../lib/ai.js");
+
+            // Persist user message
+            const userMsg = await ChatMessage.create({ role: "user", text: text.trim(), source });
+            io?.emit("chat:message", { _id: (userMsg as any)._id, role: "user", text: text.trim(), source, createdAt: (userMsg as any).createdAt });
+
+            // Build history for context (last 20 messages)
+            const history = await ChatMessage.find().sort({ createdAt: -1 }).limit(21).lean();
+            history.reverse();
+            const historyPrompt = history.slice(0, -1)
+                .map((m: any) => `${m.role === "user" ? "Usuario" : "Asistente"}: ${m.text}`)
+                .join("\n");
+
+            const system = systemContext?.trim() ||
+                "Eres un asistente especializado en KDP (Kindle Direct Publishing) y libros de colorear en Amazon. Responde en español, de forma concisa y accionable.";
+            const userPrompt = historyPrompt ? `${historyPrompt}\nUsuario: ${text.trim()}` : text.trim();
+            const replyText = (await generateTextWithLLM(system, userPrompt)).trim();
+
+            // Persist assistant reply
+            const assistantMsg = await ChatMessage.create({ role: "assistant", text: replyText, source: "ui" });
+            io?.emit("chat:message", { _id: (assistantMsg as any)._id, role: "assistant", text: replyText, source: "ui", createdAt: (assistantMsg as any).createdAt });
+
+            return reply.send({ reply: replyText });
+        } catch (e: any) {
+            return reply.status(500).send({ error: e.message ?? "Error" });
+        }
+    });
+
+    // POST /assistant/telegram-send — send a UI message to Telegram
     app.post("/assistant/telegram-send", async (request: any, reply) => {
         const { text } = request.body as { text: string };
         if (!text?.trim()) return reply.status(400).send({ error: "text required" });

@@ -41,14 +41,20 @@ type ServerToClientEvents = {
   "catalogs:updated": () => void;
   "logs:line": (payload: { t: number; level: "info" | "warn" | "error"; msg: string }) => void;
   "vault:rejected": (payload: { id: string; catalogId: string; catalogName: string; nicheIds: string[]; imageUrl: string; reason: string; score: number }) => void;
+  "autoclone:new": (payload: { item: any }) => void;
+  "autoclone:updated": (payload: { id: string; status: any; clones?: any[] }) => void;
+  "autoclone:deleted": (payload: { id: string }) => void;
+  "chat:message": (payload: { _id?: string; role: "user" | "assistant"; text: string; source?: "ui" | "telegram"; createdAt?: string }) => void;
+  "chat:cleared": (payload: Record<string, never>) => void;
 };
 
 type ClientToServerEvents = Record<string, never>;
 
 export type ApiSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
-export function createApiSocket(apiUrl: string): ApiSocket {
-  return io(apiUrl, {
+export function createApiSocket(apiUrl?: string): ApiSocket {
+  const url = apiUrl ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+  return io(url, {
     transports: ["websocket"],
   });
 }

@@ -6,7 +6,7 @@ export interface ITelegramAction {
     nicheName: string;
     targetPhase?: string;
     messageId?: number;
-    status: "pending" | "continuar" | "omitir" | "descartar" | "approved" | "rejected";
+    status: "pending" | "continuar" | "omitir" | "descartar" | "approved" | "rejected" | "expired";
     imageUrl?: string;
     imagePrompt?: string;
     aiModel?: { id: string; name: string; provider: string; modelId: string };

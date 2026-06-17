@@ -602,6 +602,62 @@ export function KdpFactoryApp() {
         try { return new Set(JSON.parse(typeof window !== "undefined" ? (localStorage.getItem("kdp-clone-tgsent") ?? "[]") : "[]")); } catch { return new Set(); }
     });
 
+    // ── AutoClone state ──────────────────────────────────────────────────────
+    type AutoCloneStatus = "pending_approval" | "approved" | "cloning" | "done" | "rejected";
+    type AutoCloneItem = { _id: string; topic: string; searchQuery: string; asin?: string; amazonUrl?: string; foundTitle?: string; foundBsr?: string; status: AutoCloneStatus; clones?: any[]; createdAt: string };
+    const [autoCloneItems, setAutoCloneItems] = useState<AutoCloneItem[]>([]);
+    const [autoCloneLoading, setAutoCloneLoading] = useState(false);
+    const [autoCloneDiscovering, setAutoCloneDiscovering] = useState(false);
+    const [autoCloneCount, setAutoCloneCount] = useState(5);
+
+    const fetchAutoCloneQueue = async () => {
+        setAutoCloneLoading(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/auto-clone/queue`);
+            if (res.ok) setAutoCloneItems(await res.json());
+        } catch {} finally { setAutoCloneLoading(false); }
+    };
+
+    const discoverAutoClone = async () => {
+        setAutoCloneDiscovering(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/auto-clone/discover`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ count: autoCloneCount }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            toast.success(`${data.count} candidatos enviados a Telegram para aprobar`);
+            void fetchAutoCloneQueue();
+        } catch (e: any) {
+            toast.error(e.message ?? "Error en AutoClone");
+        } finally { setAutoCloneDiscovering(false); }
+    };
+
+    const approveAutoClone = async (id: string) => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/auto-clone/${id}/approve`, { method: "POST" });
+            if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
+            setAutoCloneItems(prev => prev.map(i => i._id === id ? { ...i, status: "approved" as AutoCloneStatus } : i));
+            toast.success("Aprobado — clonando bestseller…");
+        } catch (e: any) { toast.error(e.message); }
+    };
+
+    const rejectAutoClone = async (id: string) => {
+        try {
+            await fetch(`${API_BASE_URL}/auto-clone/${id}/reject`, { method: "POST" });
+            setAutoCloneItems(prev => prev.map(i => i._id === id ? { ...i, status: "rejected" as AutoCloneStatus } : i));
+        } catch {}
+    };
+
+    const deleteAutoClone = async (id: string) => {
+        try {
+            await fetch(`${API_BASE_URL}/auto-clone/${id}`, { method: "DELETE" });
+            setAutoCloneItems(prev => prev.filter(i => i._id !== id));
+        } catch {}
+    };
+
     // ── Time Machine state ───────────────────────────────────────────────────
     type TimePrediction = { nicheName: string; season: string; peakWeek: string; optimalPublishDate: string; weeksUntilPublish: number; urgency: "critical" | "soon" | "ok" | "evergreen"; tip: string };
     const [timeMachineData, setTimeMachineData] = useState<TimePrediction[]>([]);
@@ -3830,6 +3886,17 @@ export function KdpFactoryApp() {
                 .replace(/\s+/g, " ")
                 .trim();
             if (clean) speak(clean.slice(0, 200));
+        });
+
+        socket.on("autoclone:new", (data: { item: AutoCloneItem }) => {
+            setAutoCloneItems(prev => [data.item, ...prev.filter(i => i._id !== data.item._id)]);
+            toast.info(`AutoClone: nuevo candidato — ${data.item.topic}`);
+        });
+        socket.on("autoclone:updated", (data: { id: string; status: AutoCloneStatus; clones?: any[] }) => {
+            setAutoCloneItems(prev => prev.map(i => i._id === data.id ? { ...i, status: data.status, ...(data.clones ? { clones: data.clones } : {}) } : i));
+        });
+        socket.on("autoclone:deleted", (data: { id: string }) => {
+            setAutoCloneItems(prev => prev.filter(i => i._id !== data.id));
         });
 
         (socket as any).on("vault:rejected", (data: { id: string; catalogId: string; catalogName: string; nicheIds: string[]; imageUrl: string; reason: string; score: number }) => {
@@ -11388,6 +11455,7 @@ export function KdpFactoryApp() {
         const switchStudioTab = (t: "niches" | "radar" | "calendar" | "clone") => {
             setStudioSubTab(t);
             localStorage.setItem("kdp-studio-subtab", t);
+            if (t === "clone") void fetchAutoCloneQueue();
         };
         return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6">
@@ -13251,7 +13319,7 @@ export function KdpFactoryApp() {
                                 />
 
                                 {/* Input */}
-                                <div className="space-y-2">
+                                <div className="space-y-3">
                                     <div className="flex gap-2">
                                         <input
                                             value={cloneInput}
@@ -13269,6 +13337,28 @@ export function KdpFactoryApp() {
                                             {isCloning ? "Analizando..." : "Analizar"}
                                         </button>
                                     </div>
+
+                                    {/* AutoClone row */}
+                                    <div className="flex items-center gap-2 pt-1 border-t border-white/[0.05]">
+                                        <Bot size={11} className="text-sky-400 shrink-0" />
+                                        <p className="text-[10px] text-neutral-600 flex-1">AutoClone — IA detecta nichos sin cubrir y busca bestsellers automáticamente</p>
+                                        <div className="flex items-center gap-1.5">
+                                            <input
+                                                type="number" min={1} max={10} value={autoCloneCount}
+                                                onChange={e => setAutoCloneCount(Math.min(10, Math.max(1, Number(e.target.value))))}
+                                                className="w-10 h-7 bg-white/[0.03] border border-white/10 rounded-xl text-center text-xs text-white focus:outline-none focus:border-sky-500/40 transition-all"
+                                            />
+                                            <button
+                                                onClick={discoverAutoClone}
+                                                disabled={autoCloneDiscovering}
+                                                className="h-7 px-3 rounded-xl bg-sky-500/15 border border-sky-500/25 text-[9px] font-black uppercase tracking-widest text-sky-300 hover:bg-sky-500/25 transition-all disabled:opacity-50 flex items-center gap-1.5"
+                                            >
+                                                {autoCloneDiscovering ? <Loader2 size={9} className="animate-spin" /> : <Sparkles size={9} />}
+                                                Descubrir
+                                            </button>
+                                        </div>
+                                    </div>
+
                                     <p className="text-[10px] text-neutral-700">Funciona con amazon.es, amazon.com, amazon.co.uk — o pega directamente el ASIN (B0…)</p>
                                 </div>
 
@@ -13429,6 +13519,72 @@ export function KdpFactoryApp() {
                     </div>
                 );
             })()}
+
+            {/* ══ AUTO CLONE QUEUE ══ */}
+            {autoCloneItems.length > 0 && (
+                <div className="rounded-3xl border border-white/8 bg-white/[0.015] overflow-hidden">
+                    <div className="h-px w-full bg-gradient-to-r from-sky-500/40 via-cyan-400/10 to-transparent" />
+                    <div className="px-5 py-3 flex items-center justify-between border-b border-white/[0.05]">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-sky-400/70 flex items-center gap-1.5">
+                            <Bot size={9} /> Cola AutoClone · {autoCloneItems.filter(i => i.status === "pending_approval").length} pendientes
+                        </p>
+                        <button onClick={fetchAutoCloneQueue} disabled={autoCloneLoading} className="h-6 w-6 rounded-lg text-neutral-600 hover:text-white transition-all flex items-center justify-center">
+                            <RefreshCw size={10} className={autoCloneLoading ? "animate-spin" : ""} />
+                        </button>
+                    </div>
+                    <div className="divide-y divide-white/[0.04]">
+                        {autoCloneItems.map(item => {
+                            const statusConfig = {
+                                pending_approval: { label: "Pendiente", color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+                                approved:         { label: "Aprobado",  color: "text-sky-400 bg-sky-500/10 border-sky-500/20" },
+                                cloning:          { label: "Clonando…", color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
+                                done:             { label: "Listo",     color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+                                rejected:         { label: "Descartado",color: "text-neutral-600 bg-neutral-500/10 border-neutral-500/20" },
+                            }[item.status];
+                            return (
+                                <div key={item._id} className={`px-5 py-3 flex items-center gap-3 ${item.status === "rejected" ? "opacity-35" : ""}`}>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <p className="text-sm font-black text-white">{item.topic}</p>
+                                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${statusConfig.color}`}>{statusConfig.label}</span>
+                                            {item.status === "cloning" && <Loader2 size={9} className="animate-spin text-violet-400" />}
+                                        </div>
+                                        {item.asin ? (
+                                            <a href={item.amazonUrl ?? `https://www.amazon.com/dp/${item.asin}`} target="_blank" rel="noopener noreferrer"
+                                                className="text-[10px] text-sky-400 hover:underline font-mono flex items-center gap-1 mt-0.5">
+                                                <ExternalLink size={8} /> {item.asin}{item.foundTitle ? ` · ${item.foundTitle.slice(0, 45)}` : ""}
+                                            </a>
+                                        ) : (
+                                            <p className="text-[10px] text-neutral-700 mt-0.5 italic">{item.searchQuery}</p>
+                                        )}
+                                        {item.clones && item.clones.length > 0 && (
+                                            <p className="text-[9px] text-emerald-400 mt-0.5">{item.clones.length} clones → Telegram</p>
+                                        )}
+                                    </div>
+                                    {item.status === "pending_approval" && (
+                                        <div className="flex gap-1.5 shrink-0">
+                                            <button onClick={() => void approveAutoClone(item._id)} disabled={!item.asin}
+                                                className="h-7 px-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-[9px] font-black text-emerald-300 hover:bg-emerald-500/25 transition-all disabled:opacity-30">
+                                                ✓
+                                            </button>
+                                            <button onClick={() => void rejectAutoClone(item._id)}
+                                                className="h-7 px-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[9px] font-black text-rose-400 hover:bg-rose-500/20 transition-all">
+                                                ✕
+                                            </button>
+                                        </div>
+                                    )}
+                                    {(item.status === "rejected" || item.status === "done") && (
+                                        <button onClick={() => void deleteAutoClone(item._id)}
+                                            className="h-7 w-7 rounded-xl text-neutral-700 hover:text-rose-400 hover:bg-rose-500/10 transition-all flex items-center justify-center shrink-0">
+                                            <Trash2 size={11} />
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
         </div>
         );
