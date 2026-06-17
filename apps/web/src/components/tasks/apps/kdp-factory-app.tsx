@@ -11566,28 +11566,6 @@ export function KdpFactoryApp() {
                                 className="p-2.5 rounded-xl bg-white/5 border border-white/8 text-neutral-500 hover:text-sky-400 hover:border-sky-500/30 transition-all disabled:opacity-40">
                                 {isLoadingNiches ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                             </button>
-                            <div className="flex p-1 bg-white/[0.04] border border-white/8 rounded-xl gap-0.5">
-                                <button onClick={() => setNicheViewMode("list")} title="Vista lista"
-                                    className={`w-8 h-7 rounded-lg flex items-center justify-center transition-all ${nicheViewMode === "list" ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="0" y="1" width="13" height="2" rx="1" fill="currentColor"/><rect x="0" y="5.5" width="13" height="2" rx="1" fill="currentColor"/><rect x="0" y="10" width="13" height="2" rx="1" fill="currentColor"/></svg>
-                                </button>
-                                <button onClick={() => setNicheViewMode("kanban")} title="Vista kanban"
-                                    className={`w-8 h-7 rounded-lg flex items-center justify-center transition-all ${nicheViewMode === "kanban" ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="0" y="0" width="3.5" height="13" rx="1" fill="currentColor"/><rect x="4.75" y="0" width="3.5" height="13" rx="1" fill="currentColor"/><rect x="9.5" y="0" width="3.5" height="13" rx="1" fill="currentColor"/></svg>
-                                </button>
-                                <button onClick={() => setNicheViewMode("table")} title="Vista tabla"
-                                    className={`w-8 h-7 rounded-lg flex items-center justify-center transition-all ${nicheViewMode === "table" ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
-                                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                                        <rect x="0" y="0" width="13" height="2.5" rx="1" fill="currentColor"/>
-                                        <rect x="0" y="3.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.5"/>
-                                        <rect x="7.5" y="3.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.5"/>
-                                        <rect x="0" y="6.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.35"/>
-                                        <rect x="7.5" y="6.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.35"/>
-                                        <rect x="0" y="9.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.2"/>
-                                        <rect x="7.5" y="9.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.2"/>
-                                    </svg>
-                                </button>
-                            </div>
                             <button onClick={() => setVoiceModalMode("image")} title="Generar imagen con voz"
                                 className="flex items-center gap-1.5 h-10 px-3 rounded-2xl bg-white/5 border border-white/10 text-neutral-500 hover:text-amber-300 hover:bg-amber-500/15 hover:border-amber-500/30 transition-all">
                                 <Mic size={13} />
@@ -11836,7 +11814,7 @@ export function KdpFactoryApp() {
 
                     {/* ── Filtros + Búsqueda ── */}
                     <div className="space-y-2">
-                        {/* Row 1: Search + product type */}
+                        {/* Row 1: Search + product type + view switcher */}
                         <div className="flex gap-2 flex-wrap">
                             <div className="relative flex-1 min-w-[140px]">
                                 <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600 pointer-events-none" />
@@ -11860,6 +11838,29 @@ export function KdpFactoryApp() {
                                         <span className="hidden sm:inline ml-1">{f === "all" ? "" : f === "coloring-book" ? "Libros" : f === "printable-poster" ? "Pósters" : "Patrones"}</span>
                                     </button>
                                 ))}
+                            </div>
+                            {/* View mode switcher */}
+                            <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 shrink-0">
+                                <button onClick={() => setNicheViewMode("list")} title="Vista lista"
+                                    className={`w-9 h-8 rounded-[10px] flex items-center justify-center transition-all ${nicheViewMode === "list" ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="0" y="1" width="13" height="2" rx="1" fill="currentColor"/><rect x="0" y="5.5" width="13" height="2" rx="1" fill="currentColor"/><rect x="0" y="10" width="13" height="2" rx="1" fill="currentColor"/></svg>
+                                </button>
+                                <button onClick={() => setNicheViewMode("kanban")} title="Vista kanban"
+                                    className={`w-9 h-8 rounded-[10px] flex items-center justify-center transition-all ${nicheViewMode === "kanban" ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="0" y="0" width="3.5" height="13" rx="1" fill="currentColor"/><rect x="4.75" y="0" width="3.5" height="13" rx="1" fill="currentColor"/><rect x="9.5" y="0" width="3.5" height="13" rx="1" fill="currentColor"/></svg>
+                                </button>
+                                <button onClick={() => setNicheViewMode("table")} title="Vista tabla"
+                                    className={`w-9 h-8 rounded-[10px] flex items-center justify-center transition-all ${nicheViewMode === "table" ? "bg-white/15 text-white" : "text-neutral-600 hover:text-neutral-400"}`}>
+                                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                                        <rect x="0" y="0" width="13" height="2.5" rx="1" fill="currentColor"/>
+                                        <rect x="0" y="3.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.5"/>
+                                        <rect x="7.5" y="3.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.5"/>
+                                        <rect x="0" y="6.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.35"/>
+                                        <rect x="7.5" y="6.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.35"/>
+                                        <rect x="0" y="9.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.2"/>
+                                        <rect x="7.5" y="9.5" width="5.5" height="2" rx="0.5" fill="currentColor" opacity="0.2"/>
+                                    </svg>
+                                </button>
                             </div>
                         </div>
                         {/* Row 2: Quick chips + sort */}

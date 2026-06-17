@@ -938,7 +938,13 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
             // 1. La IA detecta N situaciones/sub-temáticas visuales distintas
             const { generateTextWithLLM } = await import("../lib/ai.js");
             const style = niche.styleCategory ?? "generic";
-            const system = `You are a creative director for coloring book and printable art production. Reply ONLY with valid JSON, no markdown fences, no explanations.`;
+            const system = `You are a creative director for coloring book and printable art production. Reply ONLY with a valid JSON array, no markdown fences, no explanations.`;
+
+            // Strip marketing subtitles for a clean subject name
+            const visualCoreName = niche.name
+                .split(":")[0]
+                .replace(/\s+(coloring\s*book|activity\s*book|printable|for\s+adults?|for\s+kids?|for\s+seniors?|with\s+\d+|vol\s*\.|volume\s*\d)\b.*/i, "")
+                .trim() || niche.name.split(":")[0].trim();
 
             const alreadyUsedBlock = usedPrompts.length > 0
                 ? `\n\nALREADY USED — do NOT repeat or closely resemble any of these (${usedPrompts.length} existing catalogs):\n${usedPrompts.map((p, i) => `${i + 1}. ${p}`).join("\n")}${usedSituations.length ? `\nUsed situation labels: ${usedSituations.join(", ")}` : ""}`
@@ -959,15 +965,45 @@ Respond ONLY with valid JSON (no markdown): { "theme": "string", "particulars": 
                 ? `\n\nAPPROVED VISUAL STYLE (this is the EXACT prompt that generated the accepted sample image — every situation you create MUST produce images that look like this same visual style, same technique, same line art quality):\n"${discoveryPrompt}"\nIMPORTANT: Do NOT reinvent the visual style. Keep the same drawing technique, level of detail, and aesthetic. Only change the SUBJECT or SCENE composition.`
                 : "";
 
-            const user = `Niche: "${niche.name}"
+            // Randomised variation axes — shuffled each call so the AI explores different dimensions
+            const ALL_VARIATION_AXES = [
+                `different sub-types of ${visualCoreName} (e.g. by animal species, plant family, building style…)`,
+                `different settings/environments where ${visualCoreName} appear (nature, urban, mythological, cosmic…)`,
+                `different cultural/historical inspirations (Japanese, Celtic, Art Nouveau, Tribal, Geometric, Baroque…)`,
+                `different moods or energy (serene/meditative, playful/fun, dramatic/powerful, festive/celebratory…)`,
+                `different composition approaches (symmetrical mandala-like, scattered repeat, single focal scene, border pattern…)`,
+                `different levels of intricacy (simple bold outlines, moderate detail, highly intricate fine-line…)`,
+                `different symbolic themes within ${visualCoreName} (seasonal, elemental, spiritual, folkloric, pop-culture…)`,
+            ];
+            const shuffledAxes = ALL_VARIATION_AXES.sort(() => Math.random() - 0.5).slice(0, Math.min(n, 4));
+            const axesBlock = `\nSPREAD your ${n} situations across these variation axes (pick the most relevant ones):\n${shuffledAxes.map((a, i) => `  ${i + 1}. ${a}`).join("\n")}`;
+
+            // Rotating anti-obvious nudge — prevents the LLM from always picking the same top-of-mind choices
+            const antiObviousOptions = [
+                `Avoid the first ${n} ideas that come to mind — dig deeper for less obvious but equally relevant sub-themes.`,
+                `Do NOT default to the most common or generic variations. Seek specific, visually distinctive sub-themes.`,
+                `Challenge yourself: think about what a seasoned KDP publisher would choose to stand out on Amazon.`,
+                `Prioritise specificity over generality — "owls in a forest mandala" beats "nature mandala".`,
+            ];
+            const antiObvious = antiObviousOptions[Math.floor(Math.random() * antiObviousOptions.length)];
+
+            const user = `Niche subject: "${visualCoreName}"
+Full niche name: "${niche.name}"
 Description: ${niche.description || "(none)"}
 Product type: ${niche.productType ?? "coloring-book"} · Style: ${style}${audience ? `\n${audience}` : ""}${discoveryAnchorBlock}${alreadyUsedBlock}
 
-Detect exactly ${n} DISTINCT visual situations/sub-themes within this niche, each one different enough to justify its own catalog (e.g. for mandalas: animal-inspired, floral, zen figures, temples, geometric patterns).
-${usedPrompts.length > 0 ? "IMPORTANT: The situations above have already been generated. You MUST invent entirely new sub-themes — different subjects, settings, and moods.\n" : ""}${audience ? "Tailor each scene to match the target audience above.\n" : ""}${discoveryPrompt ? "Each prompt MUST preserve the visual technique from the approved style anchor above. Vary the subject, not the drawing style.\n" : ""}
-For each, write an IMAGE GENERATION PROMPT in English (30-60 words): concrete scene/subject description only, keeping the same visual style as the anchor — no extra style/technical keywords (those are added automatically later).
+Generate exactly ${n} DISTINCT catalog situations for this niche. Rules:
+1. "${visualCoreName}" MUST be the central element of every situation — never drift to an unrelated subject.
+2. Each situation must be visually distinct (different sub-type, setting, cultural style, or mood) — not just "more of the same".
+3. ${antiObvious}
+${axesBlock}
+${usedPrompts.length > 0 ? "\nMANDATORY: Situations already used are listed above. You MUST produce entirely different sub-themes.\n" : ""}${audience ? `\n${audienceHint[niche.targetAudience ?? ""] ?? ""}\n` : ""}${discoveryPrompt ? "\nEach prompt MUST preserve the visual technique from the approved style anchor. Vary the SUBJECT, not the drawing style.\n" : ""}
+For each situation, write an IMAGE GENERATION PROMPT in English (30-60 words): a concrete scene/subject description with "${visualCoreName}" at its core. No extra style/technical keywords — those are added automatically.
 
-Return JSON: [{"situation": "<2-4 word label in Spanish>", "prompt": "<the scene prompt in English>"}]`;
+GOOD example for "Mandalas": {"situation": "Fauna del bosque", "prompt": "intricate mandala with forest animals — deer, owls and foxes arranged in circular symmetry, fine organic line patterns"}
+BAD example (subject drift): {"situation": "Jardín zen", "prompt": "peaceful zen garden with raked gravel, stones and cherry blossom trees"} — mandalas are missing!
+
+Return JSON array: [{"situation": "<2-4 word label in Spanish>", "prompt": "<scene prompt in English>"}]`;
 
             const raw = await generateTextWithLLM(system, user);
             const clean = raw.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
