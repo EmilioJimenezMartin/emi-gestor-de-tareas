@@ -13695,7 +13695,7 @@ export function KdpFactoryApp() {
             })()}
 
             {/* ══ AUTO CLONE QUEUE ══ */}
-            {autoCloneItems.length > 0 && (
+            {studioSubTab === "clone" && autoCloneItems.length > 0 && (
                 <div className="rounded-3xl border border-white/8 bg-white/[0.015] overflow-hidden">
                     <div className="h-px w-full bg-gradient-to-r from-sky-500/40 via-cyan-400/10 to-transparent" />
                     <div className="px-5 py-3 flex items-center justify-between border-b border-white/[0.05]">

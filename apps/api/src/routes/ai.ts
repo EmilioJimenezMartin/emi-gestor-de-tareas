@@ -5,7 +5,7 @@ import { Settings } from "../models/settings.js";
 import { getMongoStatus } from "../lib/mongo.js";
 import { isPollinationsBlocked, pollinationsFetch, getPollinationsToken } from "../lib/pollinations-circuit.js";
 import { getApiKey } from "../lib/keys.js";
-import { getImageHfKey, getImageLeonardoKey, getSiliconflowKey, getTensorartApiKey, getTensorartAppId, getTensorartPrivateKey } from "../lib/image-gen.js";
+import { getImageHfKey, getImageLeonardoKey, getSiliconflowKey, getTensorartApiKey, getTensorartAppId, getTensorartPrivateKey, generateImage as generateImageFallback } from "../lib/image-gen.js";
 import { buildColoringBookPrompt } from "./autopilot.js";
 
 /** Generates TAMS-SHA256-RSA Authorization header for Tensor.art API */
@@ -1121,26 +1121,21 @@ export async function registerAIRoutes(app: FastifyInstance, deps?: { io?: any }
                 }
             }
 
-            // ── EMERGENCY FALLBACK: Pollinations (free, no key needed) ────────────
-            const hasPollinationsTokenFallback = !!getPollinationsToken();
-            if (hasPollinationsTokenFallback || !isPollinationsBlocked()) {
-                try {
-                    const fallbackModel = "flux";
-                    const fw = typeof width === "number" && width > 0 ? width : 1024;
-                    const fh = typeof height === "number" && height > 0 ? height : 1024;
-                    const fallbackUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${fw}&height=${fh}&seed=${Math.floor(Math.random() * 999999)}&model=${fallbackModel}&enhance=false`;
-                    console.log(`[ai/generate-image] Pollinations fallback...`);
-                    const pollFallbackRes = await pollinationsFetch(fallbackUrl, { signal: AbortSignal.timeout(60_000) });
-                    const pct = pollFallbackRes.headers.get("content-type") ?? "";
-                    if (pollFallbackRes.ok && pct.startsWith("image/")) {
-                        console.log(`[ai/generate-image] Pollinations fallback OK`);
-                        return reply.header("X-AI-Fallback", "pollinations").type(pct).send(Buffer.from(await pollFallbackRes.arrayBuffer()));
-                    }
-                    await pollFallbackRes.body?.cancel();
-                    console.warn(`[ai/generate-image] Pollinations fallback FALLÓ — status=${pollFallbackRes.status}`);
-                } catch (pollFallbackErr: any) {
-                    console.warn(`[ai/generate-image] Pollinations fallback ERROR — ${pollFallbackErr?.message}`);
+            // ── EMERGENCY FALLBACK: cadena SiliconFlow → CF → Segmind → HF ─────────
+            // No llamar a Pollinations aquí — si llegamos a este punto es porque el
+            // proveedor principal (a menudo Pollinations) ya falló. Reintentar el mismo
+            // proveedor sólo añade latencia sin mejorar la situación.
+            console.warn(`[ai/generate-image] Proveedor principal falló — usando cadena de emergencia (SiliconFlow → CF → Segmind → HF)...`);
+            try {
+                const fw = typeof width === "number" && width > 0 ? width : 1024;
+                const fh = typeof height === "number" && height > 0 ? height : 1024;
+                const fallbackBuf = await generateImageFallback(prompt, { width: fw, height: fh });
+                if (fallbackBuf) {
+                    console.log(`[ai/generate-image] Emergency fallback OK (${fallbackBuf.length} bytes)`);
+                    return reply.header("X-AI-Fallback", "emergency-chain").type("image/png").send(fallbackBuf);
                 }
+            } catch (emergencyErr: any) {
+                console.warn(`[ai/generate-image] Emergency fallback ERROR — ${emergencyErr?.message}`);
             }
 
             console.warn(`[ai/generate-image] Todos los fallbacks fallaron — devolviendo 503`);
