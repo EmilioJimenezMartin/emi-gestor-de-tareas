@@ -542,6 +542,8 @@ export function KdpFactoryApp() {
     const [confirmDeleteCoverNicheId, setConfirmDeleteCoverNicheId] = useState<string | null>(null);
     const [confirmDeleteVaultIndex, setConfirmDeleteVaultIndex] = useState<number | null>(null);
     const [confirmDeleteCloudinaryId, setConfirmDeleteCloudinaryId] = useState<string | null>(null);
+    const [confirmDeleteCoverMain, setConfirmDeleteCoverMain] = useState<"front" | "back" | null>(null);
+    const [confirmDeleteCoverVariant, setConfirmDeleteCoverVariant] = useState<{ candUrl: string; isMain: boolean } | null>(null);
     const [savedPrompts, setSavedPrompts] = useState<SavedPromptFE[]>([]);
     const [isLoadingSavedPrompts, setIsLoadingSavedPrompts] = useState(false);
     const [showSavePromptDialog, setShowSavePromptDialog] = useState(false);
@@ -579,10 +581,11 @@ export function KdpFactoryApp() {
     const [nichePage, setNichePage] = useState(0);
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban" | "table">("kanban");
     const [kanbanProductFilter, setKanbanProductFilter] = useState<"all" | "coloring-book" | "printable-poster" | "seamless-pattern">("all");
-    const [studioSubTab, setStudioSubTab] = useState<"niches" | "radar" | "calendar" | "clone">(() => {
+    const [studioSubTab, setStudioSubTab] = useState<"niches" | "intelligence" | "calendar">(() => {
         const saved = typeof window !== "undefined" ? localStorage.getItem("kdp-studio-subtab") : null;
-        return (saved === "niches" || saved === "radar" || saved === "calendar" || saved === "clone") ? saved as "niches" | "radar" | "calendar" | "clone" : "niches";
+        return (saved === "niches" || saved === "intelligence" || saved === "calendar") ? saved as "niches" | "intelligence" | "calendar" : "niches";
     });
+    const [intelliMode, setIntelliMode] = useState<"scraping" | "clone" | "auto">("scraping");
 
     // ── Clone Engine state ───────────────────────────────────────────────────
     type CloneResult = { nicheName: string; title: string; titleTemplate?: string; audience: string; coverBrief: string; keywords: string[]; whyItWorks: string; competition: "low" | "medium" | "high" };
@@ -918,7 +921,7 @@ export function KdpFactoryApp() {
     const [pipelineViewMode, setPipelineViewMode] = useState<"list" | "columns">(() =>
         (typeof window !== "undefined" && (localStorage.getItem("kdp-pipeline-view") as "list" | "columns")) || "list"
     );
-    const studioSubTabRef = useRef<"niches" | "radar" | "calendar" | "clone">("niches");
+    const studioSubTabRef = useRef<"niches" | "intelligence" | "calendar">("niches");
     // Keep ref in sync so socket handlers read current tab without stale closure
     studioSubTabRef.current = studioSubTab;
     // --- Ventas / KDP Sales state ---
@@ -2825,7 +2828,11 @@ export function KdpFactoryApp() {
     const [spinePaperType, setSpinePaperType] = useState<"white" | "cream" | "premium-color">("white");
     const [showCoverModal, setShowCoverModal] = useState(false);
     const [coverModalTab, setCoverModalTab] = useState<"front" | "back">("front");
-    const [coverMode, setCoverMode] = useState<"ai" | "collage" | "colorize">("ai");
+    const [coverMode, setCoverMode] = useState<"ai" | "collage" | "colorize" | "upload">("ai");
+    const [coverStep, setCoverStep] = useState<1 | 2 | 3>(1);
+    const [isSavingCover, setIsSavingCover] = useState(false);
+    const [uploadBrowseSource, setUploadBrowseSource] = useState<"vault" | "cloud" | "niches" | null>(null);
+    const [uploadBrowseNicheId, setUploadBrowseNicheId] = useState<string>("");
     const [coverDescription, setCoverDescription] = useState("");
     const [coverAuthor, setCoverAuthor] = useState("Emilio Jimenez");
     const [generatedBackCoverUrl, setGeneratedBackCoverUrl] = useState<string | null>(null);
@@ -10766,6 +10773,7 @@ export function KdpFactoryApp() {
             blob = await applyKdpPadding(blob).catch(() => blob);
             pendingCoverBlobRef.current = blob;
             setGeneratedCoverUrl(URL.createObjectURL(blob));
+            setCoverStep(2);
         } catch { toast.error("Error conectando con la API"); } finally { setIsBuildingCover(false); }
     };
 
@@ -10943,6 +10951,7 @@ export function KdpFactoryApp() {
             finalBlob = await applyKdpPadding(finalBlob).catch(() => finalBlob);
             pendingCoverBlobRef.current = finalBlob;
             setGeneratedCoverUrl(URL.createObjectURL(finalBlob));
+            setCoverStep(2);
         } catch (e: any) {
             toast.error(e.message ?? "Error generando collage");
         } finally {
@@ -10981,6 +10990,7 @@ export function KdpFactoryApp() {
             blob = await applyKdpPadding(blob).catch(() => blob);
             pendingBackCoverBlobRef.current = blob;
             setGeneratedBackCoverUrl(URL.createObjectURL(blob));
+            setCoverStep(2);
         } catch { toast.error("Error conectando con la API"); } finally { setIsBuildingBackCover(false); }
     };
 
@@ -10999,6 +11009,7 @@ export function KdpFactoryApp() {
             pendingCoverBlobRef.current = blob;
             setGeneratedCoverUrl(blobUrl);
             toast.success("¡Imagen coloreada!");
+            setCoverStep(2);
         } catch { toast.error("Error conectando con la API"); }
         finally { setIsColorizing(false); }
     };
@@ -11073,6 +11084,7 @@ export function KdpFactoryApp() {
 
     const saveCoverToNiche = async (type: "front" | "back") => {
         if (!selectedCoverNicheId) { toast.error("Selecciona un nicho primero"); return; }
+        setIsSavingCover(true);
 
         // Get base blob — from pending ref or by fetching the current URL
         let baseBlob: Blob | null = type === "front" ? pendingCoverBlobRef.current : pendingBackCoverBlobRef.current;
@@ -11115,6 +11127,7 @@ export function KdpFactoryApp() {
                 pendingCoverBlobRef.current = null;
                 setCoverTextLayers([]);
                 toast.success("Portada guardada");
+                if (coverStep === 3) { setShowCoverModal(false); setCoverStep(1); setGeneratedCoverUrl(null); setGeneratedBackCoverUrl(null); setCoverTitle(""); setCoverSubtitle(""); setCoverAuthor("Emilio Jimenez"); setCoverDescription(""); setSelectedCoverNicheId(null); setCoverMode("ai"); setColorizeSourceUrl(null); setSelectedCollageImages(new Set()); setUploadBrowseSource(null); }
             } else {
                 await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
                     method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -11124,8 +11137,10 @@ export function KdpFactoryApp() {
                 setGeneratedBackCoverUrl(cloudUrl);
                 pendingBackCoverBlobRef.current = null;
                 toast.success("Contraportada guardada");
+                if (coverStep === 3) { setShowCoverModal(false); setCoverStep(1); setGeneratedCoverUrl(null); setGeneratedBackCoverUrl(null); setCoverTitle(""); setCoverSubtitle(""); setCoverAuthor("Emilio Jimenez"); setCoverDescription(""); setSelectedCoverNicheId(null); setCoverMode("ai"); setColorizeSourceUrl(null); setSelectedCollageImages(new Set()); setUploadBrowseSource(null); }
             }
         } catch { toast.error("Error al guardar"); }
+        finally { setIsSavingCover(false); }
     };
 
     const fetchTrends = async (forceRefresh = false) => {
@@ -11534,18 +11549,407 @@ export function KdpFactoryApp() {
         );
     };
 
+
+        const renderCloneEngine = () => {
+            const normalize = (s: string) => s.trim().toLowerCase().replace(/\/ref=.*/i, "").replace(/\/$/, "");
+
+            const runClone = async () => {
+                const input = cloneInput.trim();
+                if (!input) return;
+                const already = cloneHistory.find(h => normalize(h.input) === normalize(input));
+                if (already) {
+                    toast("Ya analizaste esta URL — cargando resultado guardado", { icon: "ℹ️" });
+                    setCloneSource(already.source);
+                    setCloneResults(already.clones);
+                    setCloneSaved(new Set());
+                    return;
+                }
+                setIsCloning(true);
+                setCloneResults([]);
+                setCloneSource(null);
+                setCloneSaved(new Set());
+                try {
+                    const res = await fetch(`${API_BASE_URL}/niches/clone-bestseller`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(input.startsWith("http") ? { url: input } : { asin: input }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error ?? "Error");
+                    const src: CloneSource = data.source ?? { title: input, bsr: "", price: "", reviews: "", pages: "", formula: "" };
+                    const clones: CloneResult[] = data.clones ?? [];
+                    setCloneSource(src);
+                    setCloneResults(clones);
+                    const entry: CloneHistoryEntry = { input, source: src, clones, date: new Date().toISOString() };
+                    setCloneHistory(prev => {
+                        const next = [entry, ...prev].slice(0, 20);
+                        try { localStorage.setItem("kdp-clone-history", JSON.stringify(next)); } catch {}
+                        return next;
+                    });
+                } catch (e: any) {
+                    toast.error(e.message ?? "Error analizando bestseller");
+                } finally {
+                    setIsCloning(false);
+                }
+            };
+
+            const nicheNameMap = new Map(niches.map(n => [n.name.toLowerCase(), n._id]));
+            const isNicheSaved = (name: string) => nicheNameMap.has(name.toLowerCase());
+            const savedNicheId = (name: string) => nicheNameMap.get(name.toLowerCase()) ?? null;
+
+            const buildNotes = (clone: CloneResult, src?: CloneSource | null, srcUrl?: string): string => {
+                const lines = [`Clone Engine`, ``, `— Por qué funciona: ${clone.whyItWorks}`, `— Audiencia: ${clone.audience}`, `— Cover: ${clone.coverBrief}`];
+                if (src?.title) lines.push(``, `Basado en: ${src.title}`);
+                if (src?.formula) lines.push(`Fórmula: ${src.formula}`);
+                if (src?.bsr) lines.push(`BSR: ${src.bsr}`);
+                if (src?.price) lines.push(`Precio: ${src.price}`);
+                if (src?.reviews) lines.push(`Reseñas: ${src.reviews}`);
+                if (src?.pages) lines.push(`Páginas: ${src.pages}`);
+                if (srcUrl) lines.push(`URL: ${srcUrl}`);
+                return lines.join("\n");
+            };
+
+            const saveClone = async (clone: CloneResult, src?: CloneSource | null, srcUrl?: string) => {
+                try {
+                    const res = await fetch(`${API_BASE_URL}/niches`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name: clone.nicheName, description: clone.title || clone.titleTemplate || "", tags: clone.keywords, competition: clone.competition, notes: buildNotes(clone, src, srcUrl) }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error ?? "Error");
+                    toast.success(data.duplicate ? "Nicho ya existía" : `"${clone.nicheName}" añadido a tus nichos`);
+                    void fetchNiches();
+                } catch (e: any) {
+                    toast.error(e.message ?? "Error guardando");
+                }
+            };
+
+            const deleteHistoryEntry = (idx: number) => {
+                if (!window.confirm("¿Eliminar este análisis del historial? Esta acción no se puede deshacer.")) return;
+                setCloneHistory(prev => {
+                    const next = prev.filter((_, i) => i !== idx);
+                    try { localStorage.setItem("kdp-clone-history", JSON.stringify(next)); } catch {}
+                    return next;
+                });
+                if (expandedHistoryIdx === idx) setExpandedHistoryIdx(null);
+            };
+
+            const compColor = (c: string) => c === "low" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : c === "medium" ? "text-amber-400 bg-amber-500/10 border-amber-500/20" : "text-rose-400 bg-rose-500/10 border-rose-500/20";
+            const compLabel = (c: string) => c === "low" ? "Baja" : c === "medium" ? "Media" : "Alta";
+
+            const extractNicheNameFromTitle = (title: string): string => {
+                return (title.split(":")[0].replace(/\s+(coloring|activity|puzzle|adult|kids?|children|teens?|boys?|girls?|women|men|seniors?|beginners?|printable|workbook|journal)\b.*/i, "").replace(/\s+book\b.*/i, "").replace(/\s+by\s+.*/i, "").trim()) || title.split(":")[0].trim().slice(0, 60);
+            };
+
+            const sendToTelegram = async (cardKey: string, clone: CloneResult, srcTitle?: string, srcUrl?: string) => {
+                setCloneTgSending(prev => new Set([...prev, cardKey]));
+                setCloneTgSent(prev => { const s = new Set(prev); s.delete(cardKey); return s; });
+                try {
+                    const res = await fetch(`${API_BASE_URL}/niches/clone-telegram`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clone, sourceTitle: srcTitle, sourceUrl: srcUrl }) });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error ?? "Error");
+                    setCloneTgSent(prev => { const s = new Set([...prev, cardKey]); try { localStorage.setItem("kdp-clone-tgsent", JSON.stringify([...s])); } catch {} return s; });
+                    toast.success("En camino a Telegram — imagen generándose en background ✓");
+                } catch (e: any) {
+                    toast.error(e.message ?? "Error enviando a Telegram");
+                } finally {
+                    setCloneTgSending(prev => { const s = new Set(prev); s.delete(cardKey); return s; });
+                }
+            };
+
+            const CloneCard = ({ clone, cardKey, tgSent, tgSending, onSave, onDelete, onTelegram, isOriginal }: { clone: CloneResult; cardKey: string; tgSent: boolean; tgSending: boolean; onSave: () => void; onDelete: (() => void) | null; onTelegram: () => void; isOriginal?: boolean }) => {
+                const saved = isNicheSaved(clone.nicheName);
+                return (
+                <div className={`rounded-2xl border p-4 space-y-3 transition-all ${isOriginal ? "border-amber-500/30 bg-amber-500/[0.04]" : saved ? "border-emerald-500/25 bg-emerald-500/[0.02] bg-white/[0.02]" : "border-white/8 bg-white/[0.02] hover:border-rose-500/20"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                {isOriginal && <span className="text-[9px] font-black px-2 py-0.5 rounded-full border border-amber-500/40 bg-amber-500/15 text-amber-300 flex items-center gap-1">⭐ ORIGINAL</span>}
+                                <p className="text-base font-black text-white">{clone.nicheName}</p>
+                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${compColor(clone.competition)}`}>{compLabel(clone.competition)}</span>
+                                {saved && <span className="text-[9px] font-black px-2 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 flex items-center gap-1"><CheckCircle2 size={9} /> En tus nichos</span>}
+                            </div>
+                            <p className="text-xs text-neutral-500 mt-1 font-mono leading-relaxed">{clone.title || clone.titleTemplate}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                            <button onClick={onTelegram} disabled={tgSending} title="Enviar a Telegram para decidir"
+                                className={`h-8 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${tgSent ? "bg-sky-500/15 border border-sky-500/30 text-sky-400 hover:bg-sky-500/25" : "bg-white/[0.04] border border-white/10 text-neutral-500 hover:border-sky-500/30 hover:text-sky-400"}`}>
+                                {tgSending ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                                {tgSent ? "Re-enviar" : "Telegram"}
+                            </button>
+                            {saved ? (
+                                onDelete && (
+                                    <button onClick={onDelete} title="Eliminar nicho"
+                                        className="h-8 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20">
+                                        <Trash2 size={11} /> Borrar
+                                    </button>
+                                )
+                            ) : (
+                                <button onClick={onSave}
+                                    className="h-8 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 bg-rose-500/15 border border-rose-500/30 text-rose-300 hover:bg-rose-500/25">
+                                    + Nicho
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                        <div className="space-y-1">
+                            <p className="text-[9px] text-neutral-600 uppercase tracking-widest font-black">Audiencia</p>
+                            <p className="text-neutral-300 leading-relaxed">{clone.audience}</p>
+                        </div>
+                        <div className="space-y-1">
+                            <p className="text-[9px] text-neutral-600 uppercase tracking-widest font-black">Cover</p>
+                            <p className="text-neutral-300 leading-relaxed">{clone.coverBrief}</p>
+                        </div>
+                        <div className="space-y-1">
+                            <p className="text-[9px] text-neutral-600 uppercase tracking-widest font-black">Por qué funciona</p>
+                            <p className="text-emerald-400/80 leading-relaxed">{clone.whyItWorks}</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-1 flex-wrap">
+                        {clone.keywords.map(kw => (
+                            <span key={kw} className="text-[9px] px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/8 text-neutral-400 font-mono">{kw}</span>
+                        ))}
+                    </div>
+                </div>
+                );
+            };
+
+            return (
+                <div className="space-y-4">
+                    {/* ── Main card ── */}
+                    <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                        <div className="h-px w-full bg-gradient-to-r from-rose-500/80 via-pink-400/40 to-transparent" />
+                        <div className="p-6 space-y-6">
+                            <SectionHeader
+                                icon={<Copy size={20} />}
+                                title={<><span className="text-white">Clone </span><span className="bg-gradient-to-r from-rose-300 to-pink-400 bg-clip-text text-transparent">Engine</span></>}
+                                subtitle="Pega la URL o ASIN de un bestseller de Amazon y genera 5 nichos adyacentes con la misma fórmula de éxito"
+                                color="rose"
+                                size="lg"
+                            />
+                            <div className="space-y-3">
+                                <div className="flex gap-2">
+                                    <input value={cloneInput} onChange={e => setCloneInput(e.target.value)} onKeyDown={e => e.key === "Enter" && void runClone()}
+                                        placeholder="https://www.amazon.es/…/dp/B0XXXXXXXX o solo el ASIN"
+                                        className="flex-1 h-11 bg-white/[0.04] border border-white/10 rounded-2xl px-4 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-rose-500/40 transition-all font-mono" />
+                                    <button onClick={() => void runClone()} disabled={isCloning || !cloneInput.trim()}
+                                        className="h-11 px-5 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 text-black text-[10px] font-black uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-40 flex items-center gap-2 shrink-0">
+                                        {isCloning ? <Loader2 size={13} className="animate-spin" /> : <Copy size={13} />}
+                                        {isCloning ? "Analizando..." : "Analizar"}
+                                    </button>
+                                </div>
+                                <div className="flex items-center gap-2 pt-1 border-t border-white/[0.05]">
+                                    <Bot size={11} className="text-sky-400 shrink-0" />
+                                    <p className="text-[10px] text-neutral-600 flex-1">AutoClone — IA detecta nichos sin cubrir y busca bestsellers automáticamente</p>
+                                    <div className="flex items-center gap-1.5">
+                                        <input type="number" min={1} max={10} value={autoCloneCount}
+                                            onChange={e => setAutoCloneCount(Math.min(10, Math.max(1, Number(e.target.value))))}
+                                            className="w-10 h-7 bg-white/[0.03] border border-white/10 rounded-xl text-center text-xs text-white focus:outline-none focus:border-sky-500/40 transition-all" />
+                                        <button onClick={discoverAutoClone} disabled={autoCloneDiscovering}
+                                            className="h-7 px-3 rounded-xl bg-sky-500/15 border border-sky-500/25 text-[9px] font-black uppercase tracking-widest text-sky-300 hover:bg-sky-500/25 transition-all disabled:opacity-50 flex items-center gap-1.5">
+                                            {autoCloneDiscovering ? <Loader2 size={9} className="animate-spin" /> : <Sparkles size={9} />}
+                                            Descubrir
+                                        </button>
+                                    </div>
+                                </div>
+                                <p className="text-[10px] text-neutral-700">Funciona con amazon.es, amazon.com, amazon.co.uk — o pega directamente el ASIN (B0…)</p>
+                            </div>
+                            {cloneSource && (
+                                <div className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.04] p-4 space-y-2">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-rose-400">Bestseller analizado</p>
+                                    <p className="text-sm font-black text-white leading-snug">{cloneSource.title}</p>
+                                    <div className="flex gap-4 flex-wrap">
+                                        {[{ label: "BSR", val: cloneSource.bsr }, { label: "Precio", val: cloneSource.price }, { label: "Reseñas", val: cloneSource.reviews }, { label: "Páginas", val: cloneSource.pages }].filter(x => x.val).map(({ label, val }) => (
+                                            <div key={label} className="text-xs">
+                                                <span className="text-neutral-600 uppercase tracking-widest text-[9px]">{label}: </span>
+                                                <span className="text-neutral-200 font-black">{val}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <p className="text-xs text-neutral-400 border-l-2 border-rose-500/30 pl-3 leading-relaxed">{cloneSource.formula}</p>
+                                </div>
+                            )}
+                            {isCloning && (
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2 pb-1">
+                                        <Loader2 size={11} className="animate-spin text-rose-400" />
+                                        <p className="text-xs font-black uppercase tracking-widest text-rose-400/70">Analizando bestseller…</p>
+                                    </div>
+                                    {[0,1,2,3,4].map(i => (
+                                        <div key={i} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 space-y-3 animate-pulse">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex-1 space-y-2">
+                                                    <div className="flex gap-2 items-center">
+                                                        <div className="h-5 rounded-lg bg-white/[0.07]" style={{ width: `${[42,55,38,60,48][i]}%` }} />
+                                                        <div className="h-4 w-10 rounded-full bg-white/[0.04]" />
+                                                    </div>
+                                                    <div className="h-3 rounded-lg bg-white/[0.04]" style={{ width: `${[70,60,75,65,72][i]}%` }} />
+                                                </div>
+                                                <div className="flex gap-1.5 shrink-0">
+                                                    <div className="h-8 w-20 rounded-xl bg-white/[0.04]" />
+                                                    <div className="h-8 w-16 rounded-xl bg-white/[0.04]" />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-3">
+                                                {[0,1,2].map(j => (
+                                                    <div key={j} className="space-y-1.5">
+                                                        <div className="h-2 w-14 rounded bg-white/[0.04]" />
+                                                        <div className="h-3 rounded bg-white/[0.04]" style={{ width: `${[80,90,75][j]}%` }} />
+                                                        <div className="h-3 rounded bg-white/[0.03]" style={{ width: `${[60,70,55][j]}%` }} />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="flex gap-1 flex-wrap">
+                                                {Array.from({ length: 4 + i % 2 }).map((_, k) => (
+                                                    <div key={k} className="h-5 rounded-md bg-white/[0.04]" style={{ width: `${[48,56,44,52,60][k % 5]}px` }} />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {!isCloning && cloneResults.length === 0 && !cloneSource && (
+                                <div className="flex flex-col items-center justify-center py-10 rounded-2xl border border-dashed border-white/[0.06] bg-white/[0.01] gap-4">
+                                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-rose-500/8 border border-rose-500/15">
+                                        <Copy size={20} className="text-rose-400/30" />
+                                    </div>
+                                    <p className="text-sm text-neutral-700 text-center max-w-xs">Pega la URL de un bestseller de Amazon para generar 5 nichos clonados</p>
+                                </div>
+                            )}
+                            {(cloneResults.length > 0 || cloneSource) && cloneSource && (() => {
+                                const originalNicheName = extractNicheNameFromTitle(cloneSource.title);
+                                const originalKeywords = cloneSource.title.split(/\s+/).filter(w => w.length > 3).slice(0, 6).map(w => w.toLowerCase().replace(/[^a-z]/g, "")).filter(Boolean);
+                                const originalAsClone: CloneResult = {
+                                    nicheName: originalNicheName, title: cloneSource.title, titleTemplate: cloneSource.title,
+                                    audience: `Audiencia del bestseller · validada por ${cloneSource.reviews ? `${cloneSource.reviews} reseñas` : "el mercado"}`,
+                                    coverBrief: "Misma estética que el bestseller — portada comprobada en el mercado",
+                                    keywords: originalKeywords,
+                                    whyItWorks: cloneSource.formula || "Bestseller validado — fórmula demostrada en el mercado",
+                                    competition: "high",
+                                };
+                                return (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-amber-400/70">El libro original · lánzalo tú con imágenes IA</p>
+                                            <div className="flex-1 h-px bg-amber-500/10" />
+                                        </div>
+                                        <CloneCard clone={originalAsClone} cardKey="orig-0" tgSent={cloneTgSent.has("orig-0")} tgSending={cloneTgSending.has("orig-0")} onSave={() => void saveClone(originalAsClone, cloneSource, cloneInput)} onDelete={savedNicheId(originalAsClone.nicheName) ? () => setNicheDeleteId(savedNicheId(originalAsClone.nicheName)!) : null} onTelegram={() => void sendToTelegram("orig-0", originalAsClone, cloneSource.title, cloneInput)} isOriginal />
+                                        {cloneResults.length > 0 && (
+                                            <>
+                                                <div className="flex items-center gap-2 pt-1">
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{cloneResults.length} nichos adyacentes · misma fórmula</p>
+                                                    <div className="flex-1 h-px bg-white/[0.05]" />
+                                                </div>
+                                                {cloneResults.map((clone, idx) => (
+                                                    <CloneCard key={idx} clone={clone} cardKey={`cur-${idx}`} tgSent={cloneTgSent.has(`cur-${idx}`)} tgSending={cloneTgSending.has(`cur-${idx}`)} onSave={() => void saveClone(clone, cloneSource, cloneInput)} onDelete={savedNicheId(clone.nicheName) ? () => setNicheDeleteId(savedNicheId(clone.nicheName)!) : null} onTelegram={() => void sendToTelegram(`cur-${idx}`, clone, cloneSource?.title, cloneInput)} />
+                                                ))}
+                                            </>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    </div>
+                    {cloneHistory.length > 0 && (
+                        <div className="rounded-3xl border border-white/8 bg-white/[0.015] overflow-hidden">
+                            <div className="px-5 py-3 flex items-center justify-between border-b border-white/[0.06]">
+                                <p className="text-xs font-black uppercase tracking-widest text-neutral-500">Historial · {cloneHistory.length} análisis</p>
+                                <button onClick={() => { if (window.confirm(`¿Borrar los ${cloneHistory.length} análisis del historial? Esta acción no se puede deshacer.`)) { setCloneHistory([]); try { localStorage.removeItem("kdp-clone-history"); } catch {} } }} className="text-[9px] text-neutral-700 hover:text-rose-400 transition-colors">Borrar todo</button>
+                            </div>
+                            <div className="divide-y divide-white/[0.04]">
+                                {cloneHistory.map((entry, idx) => {
+                                    const isOpen = expandedHistoryIdx === idx;
+                                    const d = new Date(entry.date);
+                                    const dateStr = d.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
+                                    const shortInput = entry.input.length > 55 ? `…${entry.input.slice(-52)}` : entry.input;
+                                    return (
+                                        <div key={idx}>
+                                            <div role="button" tabIndex={0} onClick={() => setExpandedHistoryIdx(isOpen ? null : idx)} onKeyDown={e => e.key === "Enter" && setExpandedHistoryIdx(isOpen ? null : idx)}
+                                                className="w-full px-5 py-3 flex items-center gap-3 hover:bg-white/[0.02] transition-colors cursor-pointer">
+                                                <ChevronDown size={13} className={`text-neutral-600 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm text-neutral-300 font-semibold truncate">{entry.source.title || shortInput}</p>
+                                                    <p className="text-[9px] text-neutral-700 font-mono truncate">{shortInput}</p>
+                                                </div>
+                                                <div className="shrink-0 text-right">
+                                                    <p className="text-[9px] text-neutral-600">{dateStr}</p>
+                                                    <p className="text-[9px] text-neutral-700">{entry.clones.length} clones</p>
+                                                </div>
+                                                <button onClick={e => { e.stopPropagation(); deleteHistoryEntry(idx); }}
+                                                    className="shrink-0 p-1 rounded-lg hover:bg-rose-500/10 text-neutral-700 hover:text-rose-400 transition-all">
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                            {isOpen && (() => {
+                                                const histOriginalNicheName = extractNicheNameFromTitle(entry.source.title);
+                                                const histOriginalKeywords = entry.source.title.split(/\s+/).filter(w => w.length > 3).slice(0, 6).map(w => w.toLowerCase().replace(/[^a-z]/g, "")).filter(Boolean);
+                                                const histOriginalClone: CloneResult = {
+                                                    nicheName: histOriginalNicheName, title: entry.source.title, titleTemplate: entry.source.title,
+                                                    audience: `Audiencia del bestseller · validada por ${entry.source.reviews ? `${entry.source.reviews} reseñas` : "el mercado"}`,
+                                                    coverBrief: "Misma estética que el bestseller — portada comprobada en el mercado",
+                                                    keywords: entry.source.title.split(/\s+/).filter(w => w.length > 3).slice(0, 6).map(w => w.toLowerCase().replace(/[^a-z]/g, "")).filter(Boolean),
+                                                    whyItWorks: entry.source.formula || "Bestseller validado — fórmula demostrada en el mercado",
+                                                    competition: "high",
+                                                };
+                                                return (
+                                                <div className="px-5 pb-4 space-y-3">
+                                                    <div className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.04] p-4 space-y-2">
+                                                        <p className="text-[9px] font-black uppercase tracking-widest text-rose-400">Bestseller analizado</p>
+                                                        <p className="text-sm font-black text-white leading-snug">{entry.source.title}</p>
+                                                        <div className="flex gap-4 flex-wrap">
+                                                            {[{ label: "BSR", val: entry.source.bsr }, { label: "Precio", val: entry.source.price }, { label: "Reseñas", val: entry.source.reviews }, { label: "Páginas", val: entry.source.pages }].filter(x => x.val).map(({ label, val }) => (
+                                                                <div key={label} className="text-xs">
+                                                                    <span className="text-neutral-600 uppercase tracking-widest text-[9px]">{label}: </span>
+                                                                    <span className="text-neutral-200 font-black">{val}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                        {entry.source.formula && <p className="text-xs text-neutral-400 border-l-2 border-rose-500/30 pl-3 leading-relaxed">{entry.source.formula}</p>}
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-amber-400/70">El libro original</p>
+                                                        <div className="flex-1 h-px bg-amber-500/10" />
+                                                    </div>
+                                                    <CloneCard clone={histOriginalClone} cardKey={`hist-${idx}-orig`} tgSent={cloneTgSent.has(`hist-${idx}-orig`)} tgSending={cloneTgSending.has(`hist-${idx}-orig`)} onSave={() => void saveClone(histOriginalClone, entry.source, entry.input)} onDelete={savedNicheId(histOriginalClone.nicheName) ? () => setNicheDeleteId(savedNicheId(histOriginalClone.nicheName)!) : null} onTelegram={() => void sendToTelegram(`hist-${idx}-orig`, histOriginalClone, entry.source.title, entry.input)} isOriginal />
+                                                    {entry.clones.length > 0 && (
+                                                        <>
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{entry.clones.length} nichos adyacentes</p>
+                                                                <div className="flex-1 h-px bg-white/[0.05]" />
+                                                            </div>
+                                                            {entry.clones.map((clone, ci) => (
+                                                                <CloneCard key={ci} clone={clone} cardKey={`hist-${idx}-${ci}`} tgSent={cloneTgSent.has(`hist-${idx}-${ci}`)} tgSending={cloneTgSending.has(`hist-${idx}-${ci}`)} onSave={() => void saveClone(clone, entry.source, entry.input)} onDelete={savedNicheId(clone.nicheName) ? () => setNicheDeleteId(savedNicheId(clone.nicheName)!) : null} onTelegram={() => void sendToTelegram(`hist-${idx}-${ci}`, clone, entry.source.title, entry.input)} />
+                                                            ))}
+                                                        </>
+                                                    )}
+                                                </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
     const renderStudio = () => {
-        const STUDIO_TABS: KdpTabDef<"niches" | "radar" | "calendar" | "clone">[] = [
-            { id: "niches",   label: "Nichos",       icon: <Target size={13} />,       color: "text-sky-400",    activeBg: "bg-sky-500/10 border-sky-500/25 text-sky-300"          },
-            { id: "radar",    label: "Radar",        icon: <Search size={13} />,       color: "text-amber-400",  activeBg: "bg-amber-500/10 border-amber-500/25 text-amber-300"    },
-            { id: "calendar", label: "Calendario",   icon: <CalendarDays size={13} />, color: "text-indigo-400", activeBg: "bg-indigo-500/10 border-indigo-500/25 text-indigo-300" },
-            { id: "clone",    label: "Clone Engine", icon: <Copy size={13} />,         color: "text-rose-400",   activeBg: "bg-rose-500/10 border-rose-500/25 text-rose-300"       },
+        const STUDIO_TABS: KdpTabDef<"niches" | "intelligence" | "calendar">[] = [
+            { id: "niches",       label: "Nichos",       icon: <Target size={13} />,       color: "text-sky-400",    activeBg: "bg-sky-500/10 border-sky-500/25 text-sky-300"          },
+            { id: "intelligence", label: "Intelligence", icon: <Zap size={13} />,          color: "text-violet-400", activeBg: "bg-violet-500/10 border-violet-500/25 text-violet-300" },
+            { id: "calendar",     label: "Calendario",   icon: <CalendarDays size={13} />, color: "text-indigo-400", activeBg: "bg-indigo-500/10 border-indigo-500/25 text-indigo-300" },
         ];
-        const switchStudioTab = (t: "niches" | "radar" | "calendar" | "clone") => {
+        const switchStudioTab = (t: "niches" | "intelligence" | "calendar") => {
             setStudioSubTab(t);
             localStorage.setItem("kdp-studio-subtab", t);
-            if (t === "clone") void fetchAutoCloneQueue();
+            if (t === "intelligence") void fetchAutoCloneQueue();
         };
+
+
         return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 space-y-6">
 
@@ -13176,569 +13580,154 @@ export function KdpFactoryApp() {
 
             </>}
 
-            {/* ══ RADAR DE NICHOS — ETSY ══ */}
-            {studioSubTab === "radar" && <div className="space-y-5">
-                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
-                    <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent" />
-                    <div className="p-6">
-                        <NicheRadar apiUrl={API_BASE_URL} niches={niches} onStorageKeyChange={setRadarStorageKey} />
-                        <RadarResultsTable
-                            apiUrl={API_BASE_URL}
-                            storageKey="ALL"
-                            niches={niches}
-                            onNicheCreated={() => void fetchNiches()}
-                            pipelineAction={{
-                                label: "🚀 Lanzar",
-                                colorScheme: "amber",
-                                isCreated: (_row) => false,
-                                onCreate: async (row) => { await launchPipelineFromRow(row); },
-                            }}
-                        />
-                    </div>
-                </div>
-                <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
-                    <div className="h-px w-full bg-gradient-to-r from-violet-500/60 via-indigo-400/20 to-transparent" />
-                    <div className="p-6 space-y-4">
-                        <SectionHeader icon={<Sparkles size={15} />} title="Radar Insights" subtitle="Análisis IA del historial de productos detectados" color="violet" size="sm" />
-                        <RadarInsightsPanel apiUrl={API_BASE_URL} />
-                    </div>
-                </div>
-            </div>}
 
             {/* ══ PUBLISHING CALENDAR (sub-tab) ══ */}
             {studioSubTab === "calendar" && renderCalendar()}
 
-            {/* ══ CLONE ENGINE ══ */}
-            {studioSubTab === "clone" && (() => {
-                const normalize = (s: string) => s.trim().toLowerCase().replace(/\/ref=.*/i, "").replace(/\/$/, "");
-
-                const runClone = async () => {
-                    const input = cloneInput.trim();
-                    if (!input) return;
-
-                    // Duplicate detection
-                    const already = cloneHistory.find(h => normalize(h.input) === normalize(input));
-                    if (already) {
-                        toast("Ya analizaste esta URL — cargando resultado guardado", { icon: "ℹ️" });
-                        setCloneSource(already.source);
-                        setCloneResults(already.clones);
-                        setCloneSaved(new Set());
-                        return;
-                    }
-
-                    setIsCloning(true);
-                    setCloneResults([]);
-                    setCloneSource(null);
-                    setCloneSaved(new Set());
-                    try {
-                        const res = await fetch(`${API_BASE_URL}/niches/clone-bestseller`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(
-                                input.startsWith("http") ? { url: input } : { asin: input }
-                            ),
-                        });
-                        const data = await res.json();
-                        if (!res.ok) throw new Error(data.error ?? "Error");
-                        const src: CloneSource = data.source ?? { title: input, bsr: "", price: "", reviews: "", pages: "", formula: "" };
-                        const clones: CloneResult[] = data.clones ?? [];
-                        setCloneSource(src);
-                        setCloneResults(clones);
-                        // Persist to history
-                        const entry: CloneHistoryEntry = { input, source: src, clones, date: new Date().toISOString() };
-                        setCloneHistory(prev => {
-                            const next = [entry, ...prev].slice(0, 20);
-                            try { localStorage.setItem("kdp-clone-history", JSON.stringify(next)); } catch {}
-                            return next;
-                        });
-                    } catch (e: any) {
-                        toast.error(e.message ?? "Error analizando bestseller");
-                    } finally {
-                        setIsCloning(false);
-                    }
-                };
-
-                // Map niche name → _id for all niches in DB (case-insensitive)
-                const nicheNameMap = new Map(niches.map(n => [n.name.toLowerCase(), n._id]));
-                const isNicheSaved = (name: string) => nicheNameMap.has(name.toLowerCase());
-                const savedNicheId = (name: string) => nicheNameMap.get(name.toLowerCase()) ?? null;
-
-                const buildNotes = (clone: CloneResult, src?: CloneSource | null, srcUrl?: string): string => {
-                    const lines = [
-                        `Clone Engine`,
-                        ``,
-                        `— Por qué funciona: ${clone.whyItWorks}`,
-                        `— Audiencia: ${clone.audience}`,
-                        `— Cover: ${clone.coverBrief}`,
-                    ];
-                    if (src?.title) lines.push(``, `Basado en: ${src.title}`);
-                    if (src?.formula) lines.push(`Fórmula: ${src.formula}`);
-                    if (src?.bsr) lines.push(`BSR: ${src.bsr}`);
-                    if (src?.price) lines.push(`Precio: ${src.price}`);
-                    if (src?.reviews) lines.push(`Reseñas: ${src.reviews}`);
-                    if (src?.pages) lines.push(`Páginas: ${src.pages}`);
-                    if (srcUrl) lines.push(`URL: ${srcUrl}`);
-                    return lines.join("\n");
-                };
-
-                const saveClone = async (clone: CloneResult, src?: CloneSource | null, srcUrl?: string) => {
-                    try {
-                        const res = await fetch(`${API_BASE_URL}/niches`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                name: clone.nicheName,
-                                description: clone.title || clone.titleTemplate || "",
-                                tags: clone.keywords,
-                                competition: clone.competition,
-                                notes: buildNotes(clone, src, srcUrl),
-                            }),
-                        });
-                        const data = await res.json();
-                        if (!res.ok) throw new Error(data.error ?? "Error");
-                        toast.success(data.duplicate ? "Nicho ya existía" : `"${clone.nicheName}" añadido a tus nichos`);
-                        void fetchNiches();
-                    } catch (e: any) {
-                        toast.error(e.message ?? "Error guardando");
-                    }
-                };
-
-                const deleteHistoryEntry = (idx: number) => {
-                    if (!window.confirm("¿Eliminar este análisis del historial? Esta acción no se puede deshacer.")) return;
-                    setCloneHistory(prev => {
-                        const next = prev.filter((_, i) => i !== idx);
-                        try { localStorage.setItem("kdp-clone-history", JSON.stringify(next)); } catch {}
-                        return next;
-                    });
-                    if (expandedHistoryIdx === idx) setExpandedHistoryIdx(null);
-                };
-
-                const compColor = (c: string) => c === "low" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : c === "medium" ? "text-amber-400 bg-amber-500/10 border-amber-500/20" : "text-rose-400 bg-rose-500/10 border-rose-500/20";
-                const compLabel = (c: string) => c === "low" ? "Baja" : c === "medium" ? "Media" : "Alta";
-
-                // Extract a clean niche name from a raw Amazon title
-                const extractNicheNameFromTitle = (title: string): string => {
-                    return (title
-                        .split(":")[0]
-                        .replace(/\s+(coloring|activity|puzzle|adult|kids?|children|teens?|boys?|girls?|women|men|seniors?|beginners?|printable|workbook|journal)\b.*/i, "")
-                        .replace(/\s+book\b.*/i, "")
-                        .replace(/\s+by\s+.*/i, "")
-                        .trim()
-                    ) || title.split(":")[0].trim().slice(0, 60);
-                };
-
-                const sendToTelegram = async (cardKey: string, clone: CloneResult, srcTitle?: string, srcUrl?: string) => {
-                    setCloneTgSending(prev => new Set([...prev, cardKey]));
-                    setCloneTgSent(prev => { const s = new Set(prev); s.delete(cardKey); return s; });
-                    try {
-                        const res = await fetch(`${API_BASE_URL}/niches/clone-telegram`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ clone, sourceTitle: srcTitle, sourceUrl: srcUrl }),
-                        });
-                        const data = await res.json();
-                        if (!res.ok) throw new Error(data.error ?? "Error");
-                        setCloneTgSent(prev => {
-                            const s = new Set([...prev, cardKey]);
-                            try { localStorage.setItem("kdp-clone-tgsent", JSON.stringify([...s])); } catch {}
-                            return s;
-                        });
-                        toast.success("En camino a Telegram — imagen generándose en background ✓");
-                    } catch (e: any) {
-                        toast.error(e.message ?? "Error enviando a Telegram");
-                    } finally {
-                        setCloneTgSending(prev => { const s = new Set(prev); s.delete(cardKey); return s; });
-                    }
-                };
-
-                const CloneCard = ({ clone, cardKey, tgSent, tgSending, onSave, onDelete, onTelegram, isOriginal }: { clone: CloneResult; cardKey: string; tgSent: boolean; tgSending: boolean; onSave: () => void; onDelete: (() => void) | null; onTelegram: () => void; isOriginal?: boolean }) => {
-                    const saved = isNicheSaved(clone.nicheName);
-                    return (
-                    <div className={`rounded-2xl border p-4 space-y-3 transition-all ${isOriginal ? "border-amber-500/30 bg-amber-500/[0.04]" : saved ? "border-emerald-500/25 bg-emerald-500/[0.02] bg-white/[0.02]" : "border-white/8 bg-white/[0.02] hover:border-rose-500/20"}`}>
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    {isOriginal && <span className="text-[9px] font-black px-2 py-0.5 rounded-full border border-amber-500/40 bg-amber-500/15 text-amber-300 flex items-center gap-1">⭐ ORIGINAL</span>}
-                                    <p className="text-base font-black text-white">{clone.nicheName}</p>
-                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${compColor(clone.competition)}`}>{compLabel(clone.competition)}</span>
-                                    {saved && <span className="text-[9px] font-black px-2 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 flex items-center gap-1"><CheckCircle2 size={9} /> En tus nichos</span>}
-                                </div>
-                                <p className="text-xs text-neutral-500 mt-1 font-mono leading-relaxed">{clone.title || clone.titleTemplate}</p>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                                <button
-                                    onClick={onTelegram}
-                                    disabled={tgSending}
-                                    title="Enviar a Telegram para decidir"
-                                    className={`h-8 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${tgSent ? "bg-sky-500/15 border border-sky-500/30 text-sky-400 hover:bg-sky-500/25" : "bg-white/[0.04] border border-white/10 text-neutral-500 hover:border-sky-500/30 hover:text-sky-400"}`}
-                                >
-                                    {tgSending ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
-                                    {tgSent ? "Re-enviar" : "Telegram"}
-                                </button>
-                                {saved ? (
-                                    onDelete && (
-                                        <button
-                                            onClick={onDelete}
-                                            title="Eliminar nicho"
-                                            className="h-8 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20"
-                                        >
-                                            <Trash2 size={11} /> Borrar
-                                        </button>
-                                    )
-                                ) : (
-                                    <button
-                                        onClick={onSave}
-                                        className="h-8 px-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 bg-rose-500/15 border border-rose-500/30 text-rose-300 hover:bg-rose-500/25"
-                                    >
-                                        + Nicho
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                            <div className="space-y-1">
-                                <p className="text-[9px] text-neutral-600 uppercase tracking-widest font-black">Audiencia</p>
-                                <p className="text-neutral-300 leading-relaxed">{clone.audience}</p>
-                            </div>
-                            <div className="space-y-1">
-                                <p className="text-[9px] text-neutral-600 uppercase tracking-widest font-black">Cover</p>
-                                <p className="text-neutral-300 leading-relaxed">{clone.coverBrief}</p>
-                            </div>
-                            <div className="space-y-1">
-                                <p className="text-[9px] text-neutral-600 uppercase tracking-widest font-black">Por qué funciona</p>
-                                <p className="text-emerald-400/80 leading-relaxed">{clone.whyItWorks}</p>
-                            </div>
-                        </div>
-                        <div className="flex gap-1 flex-wrap">
-                            {clone.keywords.map(kw => (
-                                <span key={kw} className="text-[9px] px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/8 text-neutral-400 font-mono">{kw}</span>
-                            ))}
-                        </div>
-                    </div>
-                    );
-                };
-
-                return (
-                    <div className="space-y-4">
-                        {/* ── Main card ── */}
-                        <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
-                            <div className="h-px w-full bg-gradient-to-r from-rose-500/80 via-pink-400/40 to-transparent" />
-                            <div className="p-6 space-y-6">
+            {/* ══ INTELLIGENCE HUB ══ */}
+            {studioSubTab === "intelligence" && (
+                <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {/* Header */}
+                    <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                        <div className="h-px w-full bg-gradient-to-r from-violet-500/80 via-purple-400/40 to-transparent" />
+                        <div className="p-6 space-y-5">
+                            <div className="flex items-start justify-between gap-4">
                                 <SectionHeader
-                                    icon={<Copy size={20} />}
-                                    title={<><span className="text-white">Clone </span><span className="bg-gradient-to-r from-rose-300 to-pink-400 bg-clip-text text-transparent">Engine</span></>}
-                                    subtitle="Pega la URL o ASIN de un bestseller de Amazon y genera 5 nichos adyacentes con la misma fórmula de éxito"
-                                    color="rose"
+                                    icon={<Zap size={20} />}
+                                    title={<><span className="text-white">Intelligence </span><span className="bg-gradient-to-r from-violet-300 to-purple-400 bg-clip-text text-transparent">Hub</span></>}
+                                    subtitle="Descubre oportunidades de mercado · Clona bestsellers · Automatiza con IA — todo desde un único panel"
+                                    color="violet"
                                     size="lg"
                                 />
-
-                                {/* Input */}
-                                <div className="space-y-3">
-                                    <div className="flex gap-2">
-                                        <input
-                                            value={cloneInput}
-                                            onChange={e => setCloneInput(e.target.value)}
-                                            onKeyDown={e => e.key === "Enter" && void runClone()}
-                                            placeholder="https://www.amazon.es/…/dp/B0XXXXXXXX o solo el ASIN"
-                                            className="flex-1 h-11 bg-white/[0.04] border border-white/10 rounded-2xl px-4 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-rose-500/40 transition-all font-mono"
-                                        />
-                                        <button
-                                            onClick={() => void runClone()}
-                                            disabled={isCloning || !cloneInput.trim()}
-                                            className="h-11 px-5 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 text-black text-[10px] font-black uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-40 flex items-center gap-2 shrink-0"
-                                        >
-                                            {isCloning ? <Loader2 size={13} className="animate-spin" /> : <Copy size={13} />}
-                                            {isCloning ? "Analizando..." : "Analizar"}
-                                        </button>
-                                    </div>
-
-                                    {/* AutoClone row */}
-                                    <div className="flex items-center gap-2 pt-1 border-t border-white/[0.05]">
-                                        <Bot size={11} className="text-sky-400 shrink-0" />
-                                        <p className="text-[10px] text-neutral-600 flex-1">AutoClone — IA detecta nichos sin cubrir y busca bestsellers automáticamente</p>
-                                        <div className="flex items-center gap-1.5">
-                                            <input
-                                                type="number" min={1} max={10} value={autoCloneCount}
-                                                onChange={e => setAutoCloneCount(Math.min(10, Math.max(1, Number(e.target.value))))}
-                                                className="w-10 h-7 bg-white/[0.03] border border-white/10 rounded-xl text-center text-xs text-white focus:outline-none focus:border-sky-500/40 transition-all"
-                                            />
-                                            <button
-                                                onClick={discoverAutoClone}
-                                                disabled={autoCloneDiscovering}
-                                                className="h-7 px-3 rounded-xl bg-sky-500/15 border border-sky-500/25 text-[9px] font-black uppercase tracking-widest text-sky-300 hover:bg-sky-500/25 transition-all disabled:opacity-50 flex items-center gap-1.5"
-                                            >
-                                                {autoCloneDiscovering ? <Loader2 size={9} className="animate-spin" /> : <Sparkles size={9} />}
-                                                Descubrir
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <p className="text-[10px] text-neutral-700">Funciona con amazon.es, amazon.com, amazon.co.uk — o pega directamente el ASIN (B0…)</p>
-                                </div>
-
-                                {/* Source info */}
-                                {cloneSource && (
-                                    <div className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.04] p-4 space-y-2">
-                                        <p className="text-[9px] font-black uppercase tracking-widest text-rose-400">Bestseller analizado</p>
-                                        <p className="text-sm font-black text-white leading-snug">{cloneSource.title}</p>
-                                        <div className="flex gap-4 flex-wrap">
-                                            {[
-                                                { label: "BSR", val: cloneSource.bsr },
-                                                { label: "Precio", val: cloneSource.price },
-                                                { label: "Reseñas", val: cloneSource.reviews },
-                                                { label: "Páginas", val: cloneSource.pages },
-                                            ].filter(x => x.val).map(({ label, val }) => (
-                                                <div key={label} className="text-xs">
-                                                    <span className="text-neutral-600 uppercase tracking-widest text-[9px]">{label}: </span>
-                                                    <span className="text-neutral-200 font-black">{val}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        <p className="text-xs text-neutral-400 border-l-2 border-rose-500/30 pl-3 leading-relaxed">{cloneSource.formula}</p>
-                                    </div>
-                                )}
-
-                                {/* Skeleton while analyzing */}
-                                {isCloning && (
-                                    <div className="space-y-3">
-                                        <div className="flex items-center gap-2 pb-1">
-                                            <Loader2 size={11} className="animate-spin text-rose-400" />
-                                            <p className="text-xs font-black uppercase tracking-widest text-rose-400/70">Analizando bestseller…</p>
-                                        </div>
-                                        {[0,1,2,3,4].map(i => (
-                                            <div key={i} className="rounded-2xl border border-white/8 bg-white/[0.02] p-4 space-y-3 animate-pulse">
-                                                <div className="flex items-start justify-between gap-3">
-                                                    <div className="flex-1 space-y-2">
-                                                        <div className="flex gap-2 items-center">
-                                                            <div className="h-5 rounded-lg bg-white/[0.07]" style={{ width: `${[42,55,38,60,48][i]}%` }} />
-                                                            <div className="h-4 w-10 rounded-full bg-white/[0.04]" />
-                                                        </div>
-                                                        <div className="h-3 rounded-lg bg-white/[0.04]" style={{ width: `${[70,60,75,65,72][i]}%` }} />
-                                                    </div>
-                                                    <div className="flex gap-1.5 shrink-0">
-                                                        <div className="h-8 w-20 rounded-xl bg-white/[0.04]" />
-                                                        <div className="h-8 w-16 rounded-xl bg-white/[0.04]" />
-                                                    </div>
-                                                </div>
-                                                <div className="grid grid-cols-3 gap-3">
-                                                    {[0,1,2].map(j => (
-                                                        <div key={j} className="space-y-1.5">
-                                                            <div className="h-2 w-14 rounded bg-white/[0.04]" />
-                                                            <div className="h-3 rounded bg-white/[0.04]" style={{ width: `${[80,90,75][j]}%` }} />
-                                                            <div className="h-3 rounded bg-white/[0.03]" style={{ width: `${[60,70,55][j]}%` }} />
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                                <div className="flex gap-1 flex-wrap">
-                                                    {Array.from({ length: 4 + i % 2 }).map((_, k) => (
-                                                        <div key={k} className="h-5 rounded-md bg-white/[0.04]" style={{ width: `${[48,56,44,52,60][k % 5]}px` }} />
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Empty state */}
-                                {!isCloning && cloneResults.length === 0 && !cloneSource && (
-                                    <div className="flex flex-col items-center justify-center py-10 rounded-2xl border border-dashed border-white/[0.06] bg-white/[0.01] gap-4">
-                                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-rose-500/8 border border-rose-500/15">
-                                            <Copy size={20} className="text-rose-400/30" />
-                                        </div>
-                                        <p className="text-sm text-neutral-700 text-center max-w-xs">Pega la URL de un bestseller de Amazon para generar 5 nichos clonados</p>
-                                    </div>
-                                )}
-
-                                {/* Clone cards — original first, then adjacent niches */}
-                                {(cloneResults.length > 0 || cloneSource) && cloneSource && (() => {
-                                    const originalNicheName = extractNicheNameFromTitle(cloneSource.title);
-                                    const originalKeywords = cloneSource.title
-                                        .split(/\s+/)
-                                        .filter(w => w.length > 3)
-                                        .slice(0, 6)
-                                        .map(w => w.toLowerCase().replace(/[^a-z]/g, ""))
-                                        .filter(Boolean);
-                                    const originalAsClone: CloneResult = {
-                                        nicheName: originalNicheName,
-                                        title: cloneSource.title,
-                                        titleTemplate: cloneSource.title,
-                                        audience: `Audiencia del bestseller · validada por ${cloneSource.reviews ? `${cloneSource.reviews} reseñas` : "el mercado"}`,
-                                        coverBrief: "Misma estética que el bestseller — portada comprobada en el mercado",
-                                        keywords: originalKeywords,
-                                        whyItWorks: cloneSource.formula || "Bestseller validado — fórmula demostrada en el mercado",
-                                        competition: "high",
-                                    };
-                                    return (
-                                        <div className="space-y-3">
-                                            {/* Original */}
-                                            <div className="flex items-center gap-2">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-amber-400/70">El libro original · lánzalo tú con imágenes IA</p>
-                                                <div className="flex-1 h-px bg-amber-500/10" />
-                                            </div>
-                                            <CloneCard clone={originalAsClone} cardKey="orig-0" tgSent={cloneTgSent.has("orig-0")} tgSending={cloneTgSending.has("orig-0")} onSave={() => void saveClone(originalAsClone, cloneSource, cloneInput)} onDelete={savedNicheId(originalAsClone.nicheName) ? () => setNicheDeleteId(savedNicheId(originalAsClone.nicheName)!) : null} onTelegram={() => void sendToTelegram("orig-0", originalAsClone, cloneSource.title, cloneInput)} isOriginal />
-                                            {/* Adjacent clones */}
-                                            {cloneResults.length > 0 && (
-                                                <>
-                                                    <div className="flex items-center gap-2 pt-1">
-                                                        <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{cloneResults.length} nichos adyacentes · misma fórmula</p>
-                                                        <div className="flex-1 h-px bg-white/[0.05]" />
-                                                    </div>
-                                                    {cloneResults.map((clone, idx) => (
-                                                        <CloneCard key={idx} clone={clone} cardKey={`cur-${idx}`} tgSent={cloneTgSent.has(`cur-${idx}`)} tgSending={cloneTgSending.has(`cur-${idx}`)} onSave={() => void saveClone(clone, cloneSource, cloneInput)} onDelete={savedNicheId(clone.nicheName) ? () => setNicheDeleteId(savedNicheId(clone.nicheName)!) : null} onTelegram={() => void sendToTelegram(`cur-${idx}`, clone, cloneSource?.title, cloneInput)} />
-                                                    ))}
-                                                </>
-                                            )}
-                                        </div>
-                                    );
-                                })()}
+                            </div>
+                            {/* Mode switcher */}
+                            <div className="flex gap-2 flex-wrap">
+                                {([
+                                    { id: "scraping" as const, label: "Radar / Scraping", icon: <Search size={11} />, activeCls: "bg-amber-500/15 border-amber-500/30 text-amber-300" },
+                                    { id: "clone"    as const, label: "Clone Engine",     icon: <Copy size={11} />,   activeCls: "bg-rose-500/15 border-rose-500/30 text-rose-300"  },
+                                    { id: "auto"     as const, label: "AutoClone IA",     icon: <Bot size={11} />,    activeCls: "bg-sky-500/15 border-sky-500/30 text-sky-300"     },
+                                ]).map(m => (
+                                    <button key={m.id} onClick={() => setIntelliMode(m.id)}
+                                        className={`h-9 px-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all border ${intelliMode === m.id ? m.activeCls : "bg-white/[0.03] border-white/8 text-neutral-500 hover:border-white/15 hover:text-neutral-300"}`}>
+                                        {m.icon}{m.label}
+                                    </button>
+                                ))}
                             </div>
                         </div>
+                    </div>
 
-                        {/* ── History ── */}
-                        {cloneHistory.length > 0 && (
-                            <div className="rounded-3xl border border-white/8 bg-white/[0.015] overflow-hidden">
-                                <div className="px-5 py-3 flex items-center justify-between border-b border-white/[0.06]">
-                                    <p className="text-xs font-black uppercase tracking-widest text-neutral-500">Historial · {cloneHistory.length} análisis</p>
-                                    <button onClick={() => { if (window.confirm(`¿Borrar los ${cloneHistory.length} análisis del historial? Esta acción no se puede deshacer.`)) { setCloneHistory([]); try { localStorage.removeItem("kdp-clone-history"); } catch {} } }} className="text-[9px] text-neutral-700 hover:text-rose-400 transition-colors">Borrar todo</button>
-                                </div>
-                                <div className="divide-y divide-white/[0.04]">
-                                    {cloneHistory.map((entry, idx) => {
-                                        const isOpen = expandedHistoryIdx === idx;
-                                        const d = new Date(entry.date);
-                                        const dateStr = d.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
-                                        const shortInput = entry.input.length > 55 ? `…${entry.input.slice(-52)}` : entry.input;
-                                        return (
-                                            <div key={idx}>
-                                                <div
-                                                    role="button"
-                                                    tabIndex={0}
-                                                    onClick={() => setExpandedHistoryIdx(isOpen ? null : idx)}
-                                                    onKeyDown={e => e.key === "Enter" && setExpandedHistoryIdx(isOpen ? null : idx)}
-                                                    className="w-full px-5 py-3 flex items-center gap-3 hover:bg-white/[0.02] transition-colors cursor-pointer"
-                                                >
-                                                    <ChevronDown size={13} className={`text-neutral-600 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm text-neutral-300 font-semibold truncate">{entry.source.title || shortInput}</p>
-                                                        <p className="text-[9px] text-neutral-700 font-mono truncate">{shortInput}</p>
-                                                    </div>
-                                                    <div className="shrink-0 text-right">
-                                                        <p className="text-[9px] text-neutral-600">{dateStr}</p>
-                                                        <p className="text-[9px] text-neutral-700">{entry.clones.length} clones</p>
-                                                    </div>
-                                                    <button
-                                                        onClick={e => { e.stopPropagation(); deleteHistoryEntry(idx); }}
-                                                        className="shrink-0 p-1 rounded-lg hover:bg-rose-500/10 text-neutral-700 hover:text-rose-400 transition-all"
-                                                    >
-                                                        <X size={12} />
-                                                    </button>
-                                                </div>
-                                                {isOpen && (() => {
-                                                    const histOriginalNicheName = extractNicheNameFromTitle(entry.source.title);
-                                                    const histOriginalKeywords = entry.source.title.split(/\s+/).filter(w => w.length > 3).slice(0, 6).map(w => w.toLowerCase().replace(/[^a-z]/g, "")).filter(Boolean);
-                                                    const histOriginalClone: CloneResult = {
-                                                        nicheName: histOriginalNicheName,
-                                                        title: entry.source.title,
-                                                        titleTemplate: entry.source.title,
-                                                        audience: `Audiencia del bestseller · validada por ${entry.source.reviews ? `${entry.source.reviews} reseñas` : "el mercado"}`,
-                                                        coverBrief: "Misma estética que el bestseller — portada comprobada en el mercado",
-                                                        keywords: histOriginalKeywords,
-                                                        whyItWorks: entry.source.formula || "Bestseller validado — fórmula demostrada en el mercado",
-                                                        competition: "high",
-                                                    };
-                                                    return (
-                                                    <div className="px-5 pb-4 space-y-3">
-                                                        <div className="rounded-2xl border border-rose-500/20 bg-rose-500/[0.04] p-4 space-y-2">
-                                                            <p className="text-[9px] font-black uppercase tracking-widest text-rose-400">Bestseller analizado</p>
-                                                            <p className="text-sm font-black text-white leading-snug">{entry.source.title}</p>
-                                                            <div className="flex gap-4 flex-wrap">
-                                                                {[
-                                                                    { label: "BSR",     val: entry.source.bsr },
-                                                                    { label: "Precio",  val: entry.source.price },
-                                                                    { label: "Reseñas", val: entry.source.reviews },
-                                                                    { label: "Páginas", val: entry.source.pages },
-                                                                ].filter(x => x.val).map(({ label, val }) => (
-                                                                    <div key={label} className="text-xs">
-                                                                        <span className="text-neutral-600 uppercase tracking-widest text-[9px]">{label}: </span>
-                                                                        <span className="text-neutral-200 font-black">{val}</span>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                            {entry.source.formula && <p className="text-xs text-neutral-400 border-l-2 border-rose-500/30 pl-3 leading-relaxed">{entry.source.formula}</p>}
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <p className="text-[10px] font-black uppercase tracking-widest text-amber-400/70">El libro original</p>
-                                                            <div className="flex-1 h-px bg-amber-500/10" />
-                                                        </div>
-                                                        <CloneCard clone={histOriginalClone} cardKey={`hist-${idx}-orig`} tgSent={cloneTgSent.has(`hist-${idx}-orig`)} tgSending={cloneTgSending.has(`hist-${idx}-orig`)} onSave={() => void saveClone(histOriginalClone, entry.source, entry.input)} onDelete={savedNicheId(histOriginalClone.nicheName) ? () => setNicheDeleteId(savedNicheId(histOriginalClone.nicheName)!) : null} onTelegram={() => void sendToTelegram(`hist-${idx}-orig`, histOriginalClone, entry.source.title, entry.input)} isOriginal />
-                                                        {entry.clones.length > 0 && (
-                                                            <>
-                                                                <div className="flex items-center gap-2">
-                                                                    <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{entry.clones.length} nichos adyacentes</p>
-                                                                    <div className="flex-1 h-px bg-white/[0.05]" />
-                                                                </div>
-                                                                {entry.clones.map((clone, ci) => (
-                                                                    <CloneCard key={ci} clone={clone} cardKey={`hist-${idx}-${ci}`} tgSent={cloneTgSent.has(`hist-${idx}-${ci}`)} tgSending={cloneTgSending.has(`hist-${idx}-${ci}`)} onSave={() => void saveClone(clone, entry.source, entry.input)} onDelete={savedNicheId(clone.nicheName) ? () => setNicheDeleteId(savedNicheId(clone.nicheName)!) : null} onTelegram={() => void sendToTelegram(`hist-${idx}-${ci}`, clone, entry.source.title, entry.input)} />
-                                                                ))}
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                    );
-                                                })()}
-                                            </div>
-                                        );
-                                    })}
+                    {/* Scraping mode */}
+                    {intelliMode === "scraping" && (
+                        <div className="space-y-5">
+                            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                                <div className="h-px w-full bg-gradient-to-r from-amber-500/60 via-orange-400/20 to-transparent" />
+                                <div className="p-6">
+                                    <NicheRadar apiUrl={API_BASE_URL} niches={niches} onStorageKeyChange={setRadarStorageKey} />
+                                    <RadarResultsTable
+                                        apiUrl={API_BASE_URL}
+                                        storageKey="ALL"
+                                        niches={niches}
+                                        onNicheCreated={() => void fetchNiches()}
+                                        pipelineAction={{
+                                            label: "🚀 Lanzar",
+                                            colorScheme: "amber",
+                                            isCreated: (_row) => false,
+                                            onCreate: async (row) => { await launchPipelineFromRow(row); },
+                                        }}
+                                    />
                                 </div>
                             </div>
-                        )}
-                    </div>
-                );
-            })()}
+                            <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                                <div className="h-px w-full bg-gradient-to-r from-violet-500/60 via-indigo-400/20 to-transparent" />
+                                <div className="p-6 space-y-4">
+                                    <SectionHeader icon={<Sparkles size={15} />} title="Radar Insights" subtitle="Análisis IA del historial de productos detectados" color="violet" size="sm" />
+                                    <RadarInsightsPanel apiUrl={API_BASE_URL} />
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
-            {/* ══ AUTO CLONE QUEUE ══ */}
-            {studioSubTab === "clone" && autoCloneItems.length > 0 && (
-                <div className="rounded-3xl border border-white/8 bg-white/[0.015] overflow-hidden">
-                    <div className="h-px w-full bg-gradient-to-r from-sky-500/40 via-cyan-400/10 to-transparent" />
-                    <div className="px-5 py-3 flex items-center justify-between border-b border-white/[0.05]">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-sky-400/70 flex items-center gap-1.5">
-                            <Bot size={9} /> Cola AutoClone · {autoCloneItems.filter(i => i.status === "pending_approval").length} pendientes
-                        </p>
-                        <button onClick={fetchAutoCloneQueue} disabled={autoCloneLoading} className="h-6 w-6 rounded-lg text-neutral-600 hover:text-white transition-all flex items-center justify-center">
-                            <RefreshCw size={10} className={autoCloneLoading ? "animate-spin" : ""} />
-                        </button>
-                    </div>
-                    <div className="divide-y divide-white/[0.04]">
-                        {autoCloneItems.map(item => {
-                            const statusConfig = {
-                                pending_approval: { label: "Pendiente", color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
-                                approved:         { label: "Aprobado",  color: "text-sky-400 bg-sky-500/10 border-sky-500/20" },
-                                cloning:          { label: "Clonando…", color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
-                                done:             { label: "Listo",     color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
-                                rejected:         { label: "Descartado",color: "text-neutral-600 bg-neutral-500/10 border-neutral-500/20" },
-                            }[item.status];
-                            return (
-                                <div key={item._id} className={`px-5 py-3 flex items-center gap-3 ${item.status === "rejected" ? "opacity-35" : ""}`}>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <p className="text-sm font-black text-white">{item.topic}</p>
-                                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${statusConfig.color}`}>{statusConfig.label}</span>
-                                            {item.status === "cloning" && <Loader2 size={9} className="animate-spin text-violet-400" />}
+                    {/* Clone mode */}
+                    {intelliMode === "clone" && renderCloneEngine()}
+
+                    {/* Auto mode */}
+                    {intelliMode === "auto" && (
+                        <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
+                            <div className="h-px w-full bg-gradient-to-r from-sky-500/60 via-cyan-400/20 to-transparent" />
+                            <div className="p-6 space-y-5">
+                                <SectionHeader icon={<Bot size={20} />}
+                                    title={<><span className="text-white">AutoClone </span><span className="bg-gradient-to-r from-sky-300 to-cyan-400 bg-clip-text text-transparent">IA</span></>}
+                                    subtitle="La IA detecta nichos sin cubrir en tu catálogo y busca bestsellers automáticamente para clonar"
+                                    color="sky" size="lg" />
+                                <div className="flex items-center gap-3 p-4 rounded-2xl bg-sky-500/[0.05] border border-sky-500/15">
+                                    <Bot size={16} className="text-sky-400 shrink-0" />
+                                    <p className="text-sm text-neutral-400 flex-1">AutoClone analiza tu catálogo actual y descubre los {autoCloneCount} nichos con mayor oportunidad no cubierta</p>
+                                    <input type="number" min={1} max={10} value={autoCloneCount}
+                                        onChange={e => setAutoCloneCount(Math.min(10, Math.max(1, Number(e.target.value))))}
+                                        className="w-12 h-9 bg-white/[0.03] border border-white/10 rounded-xl text-center text-sm text-white focus:outline-none focus:border-sky-500/40 transition-all" />
+                                    <button onClick={discoverAutoClone} disabled={autoCloneDiscovering}
+                                        className="h-9 px-5 rounded-2xl bg-gradient-to-r from-sky-600 to-cyan-600 text-white text-[10px] font-black uppercase tracking-widest hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center gap-2 shrink-0">
+                                        {autoCloneDiscovering ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                        {autoCloneDiscovering ? "Descubriendo..." : "Descubrir"}
+                                    </button>
+                                </div>
+                                {autoCloneItems.length === 0 && !autoCloneDiscovering && (
+                                    <div className="flex flex-col items-center justify-center py-10 rounded-2xl border border-dashed border-white/[0.06] bg-white/[0.01] gap-3">
+                                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-sky-500/8 border border-sky-500/15">
+                                            <Bot size={20} className="text-sky-400/30" />
                                         </div>
-                                        {item.asin ? (
-                                            <a href={item.amazonUrl ?? `https://www.amazon.com/dp/${item.asin}`} target="_blank" rel="noopener noreferrer"
-                                                className="text-[10px] text-sky-400 hover:underline font-mono flex items-center gap-1 mt-0.5">
-                                                <ExternalLink size={8} /> {item.asin}{item.foundTitle ? ` · ${item.foundTitle.slice(0, 45)}` : ""}
-                                            </a>
-                                        ) : (
-                                            <p className="text-[10px] text-neutral-700 mt-0.5 italic">{item.searchQuery}</p>
-                                        )}
-                                        {item.clones && item.clones.length > 0 && (
-                                            <p className="text-[9px] text-emerald-400 mt-0.5">{item.clones.length} clones → Telegram</p>
-                                        )}
+                                        <p className="text-sm text-neutral-700 text-center max-w-xs">Pulsa Descubrir para que la IA analice tu catálogo y encuentre oportunidades de mercado</p>
                                     </div>
-                                    {item.status === "pending_approval" && (
-                                        <div className="flex gap-1.5 shrink-0">
-                                            <button onClick={() => void approveAutoClone(item._id)} disabled={!item.asin}
-                                                className="h-7 px-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-[9px] font-black text-emerald-300 hover:bg-emerald-500/25 transition-all disabled:opacity-30">
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* AutoClone Queue — visible in clone and auto modes */}
+                    {(intelliMode === "clone" || intelliMode === "auto") && autoCloneItems.length > 0 && (
+                        <div className="rounded-3xl border border-white/8 bg-white/[0.015] overflow-hidden">
+                            <div className="h-px w-full bg-gradient-to-r from-sky-500/40 via-cyan-400/10 to-transparent" />
+                            <div className="px-5 py-3 flex items-center justify-between border-b border-white/[0.05]">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-sky-400/70 flex items-center gap-1.5">
+                                    <Bot size={9} /> Cola AutoClone · {autoCloneItems.filter(i => i.status === "pending_approval").length} pendientes
+                                </p>
+                                <button onClick={fetchAutoCloneQueue} disabled={autoCloneLoading} className="h-6 w-6 rounded-lg text-neutral-600 hover:text-white transition-all flex items-center justify-center">
+                                    <RefreshCw size={10} className={autoCloneLoading ? "animate-spin" : ""} />
+                                </button>
+                            </div>
+                            <div className="divide-y divide-white/[0.04]">
+                                {autoCloneItems.map(item => {
+                                    const statusConfig = {
+                                        pending_approval: { label: "Pendiente", color: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+                                        approved:         { label: "Aprobado",  color: "text-sky-400 bg-sky-500/10 border-sky-500/20" },
+                                        cloning:          { label: "Clonando…", color: "text-violet-400 bg-violet-500/10 border-violet-500/20" },
+                                        done:             { label: "Listo",     color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+                                        rejected:         { label: "Descartado",color: "text-neutral-600 bg-neutral-500/10 border-neutral-500/20" },
+                                    }[item.status];
+                                    return (
+                                        <div key={item._id} className={`px-5 py-3 flex items-center gap-3 ${item.status === "rejected" ? "opacity-35" : ""}`}>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <p className="text-sm font-black text-white">{item.topic}</p>
+                                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${statusConfig.color}`}>{statusConfig.label}</span>
+                                                    {item.status === "cloning" && <Loader2 size={9} className="animate-spin text-violet-400" />}
+                                                </div>
+                                                {item.asin ? (
+                                                    <a href={item.amazonUrl ?? `https://www.amazon.com/dp/${item.asin}`} target="_blank" rel="noopener noreferrer"
+                                                        className="text-[10px] text-sky-400 hover:underline font-mono flex items-center gap-1 mt-0.5">
+                                                        <ExternalLink size={8} /> {item.asin}{item.foundTitle ? ` · ${item.foundTitle.slice(0, 45)}` : ""}
+                                                    </a>
+                                                ) : (
+                                                    <p className="text-[10px] text-neutral-700 mt-0.5 italic">{item.searchQuery}</p>
+                                                )}
+                                                {item.clones && item.clones.length > 0 && (
+                                                    <p className="text-[9px] text-emerald-400 mt-0.5">{item.clones.length} clones → Telegram</p>
+                                                )}
+                                            </div>
+                                            {item.status === "pending_approval" && (
+                                                <div className="flex gap-1.5 shrink-0">
+                                                    <button onClick={() => void approveAutoClone(item._id)} disabled={!item.asin}
+                                                        className="h-7 px-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/25 text-[9px] font-black text-emerald-300 hover:bg-emerald-500/25 transition-all disabled:opacity-30">
                                                 ✓
                                             </button>
                                             <button onClick={() => void rejectAutoClone(item._id)}
@@ -13759,7 +13748,8 @@ export function KdpFactoryApp() {
                     </div>
                 </div>
             )}
-
+                </div>
+            )}
         </div>
         );
     };
@@ -14726,8 +14716,8 @@ export function KdpFactoryApp() {
             {/* Cover Factory Modal */}
             {showCoverModal && (
                 <div className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
-                    onClick={() => setShowCoverModal(false)} role="dialog" aria-modal="true">
-                    <div className="relative w-full max-w-5xl rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col"
+                    onClick={() => { setShowCoverModal(false); setCoverStep(1); setGeneratedCoverUrl(null); setGeneratedBackCoverUrl(null); setCoverTextLayers([]); setCoverMode("ai"); setColorizeSourceUrl(null); setSelectedCollageImages(new Set()); setCoverTitle(""); setCoverSubtitle(""); setCoverAuthor("Emilio Jimenez"); setCoverDescription(""); setSelectedCoverNicheId(null); setUploadBrowseSource(null); }} role="dialog" aria-modal="true">
+                    <div className="relative w-full max-w-5xl rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col h-[92dvh]"
                         onClick={e => e.stopPropagation()}>
                         <div className="absolute -top-24 -right-24 w-72 h-72 bg-fuchsia-500/8 blur-[80px] pointer-events-none" />
                         {/* Header */}
@@ -14739,7 +14729,7 @@ export function KdpFactoryApp() {
                                 <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Cover Factory</p>
                                 <p className="text-sm text-neutral-600">1600×2560px · Tall-format para Amazon KDP</p>
                             </div>
-                            <button onClick={() => setShowCoverModal(false)}
+                            <button onClick={() => { setShowCoverModal(false); setCoverStep(1); setGeneratedCoverUrl(null); setGeneratedBackCoverUrl(null); setCoverTextLayers([]); setCoverMode("ai"); setColorizeSourceUrl(null); setSelectedCollageImages(new Set()); setCoverTitle(""); setCoverSubtitle(""); setCoverAuthor("Emilio Jimenez"); setCoverDescription(""); setSelectedCoverNicheId(null); setUploadBrowseSource(null); }}
                                 className="w-9 h-9 rounded-xl bg-white/5 text-neutral-400 hover:bg-rose-500 hover:text-white transition-all border border-white/10 shrink-0 flex items-center justify-center">
                                 <X size={15} />
                             </button>
@@ -14747,7 +14737,7 @@ export function KdpFactoryApp() {
                         {/* Tabs */}
                         <div className="shrink-0 border-b border-white/6 px-5 flex gap-1 pt-3 pb-0">
                             {([["front", "Portada"], ["back", "Contraportada"]] as const).map(([id, label]) => (
-                                <button key={id} onClick={() => setCoverModalTab(id)}
+                                <button key={id} onClick={() => { setCoverModalTab(id); if (id !== coverModalTab) setCoverStep(1); }}
                                     className={`px-4 py-2 text-sm font-black uppercase tracking-widest rounded-t-xl transition-all border-b-2 ${coverModalTab === id ? "text-fuchsia-300 border-fuchsia-500/60 bg-fuchsia-500/[0.06]" : "text-neutral-600 border-transparent hover:text-neutral-400"}`}>
                                     {label}
                                     {id === "front" && generatedCoverUrl && <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-fuchsia-400 inline-block" />}
@@ -14755,19 +14745,46 @@ export function KdpFactoryApp() {
                                 </button>
                             ))}
                         </div>
+                        {/* Wizard step indicator */}
+                        {(
+                            <div className="shrink-0 border-b border-white/6 px-5 py-2.5 flex items-center gap-2">
+                                {([
+                                    [1, "Imagen"],
+                                    [2, "Texto"],
+                                    [3, "Guardar"],
+                                ] as const).map(([n, label]) => (
+                                    <React.Fragment key={n}>
+                                        <button
+                                            onClick={() => { if (n < coverStep) setCoverStep(n); }}
+                                            disabled={n > coverStep}
+                                            className={`flex items-center gap-1.5 transition-all ${n > coverStep ? "opacity-30 cursor-not-allowed" : n < coverStep ? "cursor-pointer opacity-70 hover:opacity-100" : ""}`}>
+                                            <span className={`w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center transition-all
+                                                ${coverStep === n ? "bg-fuchsia-500 text-white shadow-[0_0_8px_rgba(192,38,211,0.5)]" : n < coverStep ? "bg-fuchsia-500/30 text-fuchsia-300" : "bg-white/8 text-neutral-600"}`}>
+                                                {n < coverStep ? "✓" : n}
+                                            </span>
+                                            <span className={`text-[10px] font-black uppercase tracking-widest hidden sm:block ${coverStep === n ? "text-fuchsia-300" : n < coverStep ? "text-fuchsia-400/60" : "text-neutral-700"}`}>
+                                                {label}
+                                            </span>
+                                        </button>
+                                        {n < 3 && <div className="flex-1 h-px bg-white/8" />}
+                                    </React.Fragment>
+                                ))}
+                            </div>
+                        )}
                         {/* Body */}
-                        <div className="overflow-y-auto relative" style={{ maxHeight: "80dvh" }}>
-                          <div className="flex gap-0 min-h-0" style={{ minHeight: "60dvh" }}>
+                        <div className="flex-1 min-h-0 overflow-hidden">
+                          <div className="flex h-full">
                             {/* ── Left: controls ── */}
                             <div className="flex-1 p-5 space-y-4 overflow-y-auto border-r border-white/6" style={{ minWidth: 0 }}>
 
-                            {/* Mode selector (front only) */}
-                            {coverModalTab === "front" && (
+                            {/* Mode selector (step 1 front only) */}
+                            {coverModalTab === "front" && coverStep === 1 && (
                                 <div className="flex gap-1 p-1 bg-white/[0.04] rounded-xl border border-white/8">
                                     {([
                                         ["ai",       "✦ IA",        "Genera imagen con IA generativa"],
                                         ["collage",  "⊞ Collage",   "Compone imágenes reales del catálogo"],
                                         ["colorize", "🎨 Colorizar", "Colorea una imagen de líneas existente"],
+                                        ["upload",   "↑ Subir",     "Pega o arrastra tu propia imagen"],
                                     ] as const).map(([id, label, desc]) => (
                                         <button key={id} onClick={() => { setCoverMode(id); if (id !== "colorize") setColorizeSourceUrl(null); }} title={desc}
                                             className={`flex-1 h-8 rounded-lg text-[11px] font-black transition-all ${coverMode === id ? "bg-fuchsia-500/25 border border-fuchsia-500/35 text-fuchsia-300 shadow-[0_0_12px_rgba(192,38,211,0.2)]" : "text-neutral-500 hover:text-neutral-300"}`}>
@@ -14812,7 +14829,10 @@ export function KdpFactoryApp() {
                                 </div>);
                             })()}
 
-                            {/* ── Shared fields (always visible) ── */}
+                            {/* ── PASO 1: Origen de la imagen ── */}
+                            {coverStep === 1 && (<>
+
+                            {/* ── Shared fields ── */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="space-y-1">
                                     <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Título <span className="text-fuchsia-500">*</span></label>
@@ -14822,6 +14842,11 @@ export function KdpFactoryApp() {
                                 <div className="space-y-1">
                                     <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Subtítulo</label>
                                     <input type="text" value={coverSubtitle} onChange={e => setCoverSubtitle(e.target.value)} placeholder="Ej: 50 Relaxing Designs for Adults"
+                                        className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                                </div>
+                                <div className="space-y-1 sm:col-span-2">
+                                    <label className="text-sm font-black uppercase tracking-widest text-neutral-600">Autor</label>
+                                    <input type="text" value={coverAuthor} onChange={e => setCoverAuthor(e.target.value)} placeholder="Ej: Emilio Jimenez"
                                         className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
                                 </div>
                             </div>
@@ -14997,6 +15022,136 @@ export function KdpFactoryApp() {
                                 );
                             })()}
 
+                            {coverMode === "upload" && coverModalTab === "front" && (() => {
+                                const loadFile = (file: File) => {
+                                    const reader = new FileReader();
+                                    reader.onload = () => {
+                                        fetch(reader.result as string).then(r => r.blob()).then(blob => {
+                                            pendingCoverBlobRef.current = blob;
+                                            setGeneratedCoverUrl(URL.createObjectURL(blob));
+                                            setCoverStep(2);
+                                        });
+                                    };
+                                    reader.readAsDataURL(file);
+                                };
+                                const loadUrl = (url: string) => {
+                                    setGeneratedCoverUrl(url);
+                                    pendingCoverBlobRef.current = null;
+                                    setCoverStep(2);
+                                };
+                                // Images available per source
+                                const browseNicheId = uploadBrowseNicheId || niches.filter(n => n.status !== "archived")[0]?._id || "";
+                                const nicheImgs = iaCatalogs
+                                    .filter(c => c.status === "completed" && (browseNicheId ? c.nicheIds?.includes(browseNicheId) : true))
+                                    .flatMap(c => c.images.map((img: any) => img.url as string));
+                                return (
+                                    <div className="space-y-3">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-fuchsia-400/60">Imagen de portada</p>
+                                        {/* Drop zone */}
+                                        <div
+                                            className="relative flex items-center gap-3 rounded-2xl border-2 border-dashed border-white/15 bg-white/[0.02] hover:border-fuchsia-500/40 hover:bg-fuchsia-500/[0.02] transition-all cursor-pointer px-4 py-3"
+                                            onClick={() => {
+                                                const inp = document.createElement("input");
+                                                inp.type = "file"; inp.accept = "image/*";
+                                                inp.onchange = () => { const f = inp.files?.[0]; if (f) loadFile(f); };
+                                                inp.click();
+                                            }}
+                                            onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add("border-fuchsia-500/60"); }}
+                                            onDragLeave={e => e.currentTarget.classList.remove("border-fuchsia-500/60")}
+                                            onDrop={e => {
+                                                e.preventDefault();
+                                                e.currentTarget.classList.remove("border-fuchsia-500/60");
+                                                const f = e.dataTransfer.files?.[0];
+                                                if (f?.type.startsWith("image/")) loadFile(f);
+                                            }}
+                                            onPaste={e => {
+                                                const f = Array.from(e.clipboardData.items).find(i => i.type.startsWith("image/"))?.getAsFile();
+                                                if (f) loadFile(f);
+                                            }}
+                                            tabIndex={0}
+                                        >
+                                            <Upload size={18} className="text-fuchsia-400/50 shrink-0" />
+                                            <div>
+                                                <p className="text-sm font-black text-neutral-400">Arrastra, pega (Ctrl+V) o haz clic</p>
+                                                <p className="text-[10px] text-neutral-700">JPG · PNG · WEBP</p>
+                                            </div>
+                                            {generatedCoverUrl && <Check size={14} className="text-emerald-400 ml-auto shrink-0" />}
+                                        </div>
+
+                                        {/* Source browser */}
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-1">
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-neutral-700 mr-1">O desde:</span>
+                                                {([
+                                                    ["vault",  "Vault",  vaultImages.length],
+                                                    ["cloud",  "Nube",   cloudinaryImages.length],
+                                                    ["niches", "Nichos", nicheImgs.length],
+                                                ] as const).map(([src, label, count]) => count > 0 && (
+                                                    <button key={src}
+                                                        onClick={() => setUploadBrowseSource(uploadBrowseSource === src ? null : src)}
+                                                        className={`h-6 px-2.5 rounded-lg text-[10px] font-black transition-all border ${uploadBrowseSource === src ? "bg-fuchsia-500/15 border-fuchsia-500/30 text-fuchsia-300" : "bg-white/[0.03] border-white/8 text-neutral-500 hover:text-neutral-300 hover:border-white/15"}`}>
+                                                        {label} <span className="opacity-50">({count})</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            {/* Vault grid */}
+                                            {uploadBrowseSource === "vault" && vaultImages.length > 0 && (
+                                                <div className="grid grid-cols-5 gap-1 max-h-40 overflow-y-auto">
+                                                    {vaultImages.map((v, i) => (
+                                                        <button key={i} onClick={() => loadUrl(v.url)}
+                                                            className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${generatedCoverUrl === v.url ? "border-fuchsia-500 shadow-[0_0_8px_rgba(192,38,211,0.4)]" : "border-transparent hover:border-white/25"}`}>
+                                                            <img src={v.url} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                            {generatedCoverUrl === v.url && <div className="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-fuchsia-500 flex items-center justify-center"><Check size={6} className="text-white" /></div>}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {/* Cloud (Cloudinary) grid */}
+                                            {uploadBrowseSource === "cloud" && cloudinaryImages.length > 0 && (
+                                                <div className="grid grid-cols-5 gap-1 max-h-40 overflow-y-auto">
+                                                    {cloudinaryImages.map((c, i) => (
+                                                        <button key={i} onClick={() => loadUrl(c.url)}
+                                                            className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${generatedCoverUrl === c.url ? "border-fuchsia-500 shadow-[0_0_8px_rgba(192,38,211,0.4)]" : "border-transparent hover:border-white/25"}`}>
+                                                            <img src={c.url} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                            {generatedCoverUrl === c.url && <div className="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-fuchsia-500 flex items-center justify-center"><Check size={6} className="text-white" /></div>}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {/* Niches browser */}
+                                            {uploadBrowseSource === "niches" && (
+                                                <div className="space-y-2">
+                                                    <select
+                                                        value={browseNicheId}
+                                                        onChange={e => setUploadBrowseNicheId(e.target.value)}
+                                                        className="w-full h-8 px-2 bg-white/[0.04] border border-white/10 rounded-xl text-[11px] text-white focus:outline-none focus:border-fuchsia-500/40 transition-all">
+                                                        {niches.filter(n => n.status !== "archived").map(n => (
+                                                            <option key={n._id} value={n._id}>{n.nickname?.trim() || n.name}</option>
+                                                        ))}
+                                                    </select>
+                                                    {nicheImgs.length > 0 ? (
+                                                        <div className="grid grid-cols-5 gap-1 max-h-40 overflow-y-auto">
+                                                            {nicheImgs.map((url, i) => (
+                                                                <button key={i} onClick={() => loadUrl(url)}
+                                                                    className={`relative aspect-square rounded-lg overflow-hidden border-2 transition-all ${generatedCoverUrl === url ? "border-fuchsia-500 shadow-[0_0_8px_rgba(192,38,211,0.4)]" : "border-transparent hover:border-white/25"}`}>
+                                                                    <img src={url} alt="" className="w-full h-full object-cover" crossOrigin="anonymous" />
+                                                                    {generatedCoverUrl === url && <div className="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-fuchsia-500 flex items-center justify-center"><Check size={6} className="text-white" /></div>}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-[10px] text-neutral-700 text-center py-3">Sin imágenes completadas en este nicho</p>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             {/* ── Back cover extra fields ── */}
                             {coverModalTab === "back" && (
                                 <div className="space-y-3">
@@ -15101,10 +15256,31 @@ export function KdpFactoryApp() {
                                             className="w-full h-11 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-[0.98]">
                                             {isBuildingCollage ? <><Loader2 size={14} className="animate-spin" /> Componiendo collage…</> : <><Library size={14} /> Crear Collage</>}
                                         </button>
-                                    ) : (
+                                    ) : coverMode === "colorize" ? (
                                         <button onClick={() => void colorizeCover()} disabled={isColorizing || !colorizeSourceUrl}
                                             className="w-full h-11 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-40 shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-[0.98]">
                                             {isColorizing ? <><Loader2 size={14} className="animate-spin" /> Colorizando…</> : <><Sparkles size={14} /> Colorizar con Kontext</>}
+                                        </button>
+                                    ) : (
+                                        <button onClick={() => {
+                                            const inp = document.createElement("input");
+                                            inp.type = "file"; inp.accept = "image/*";
+                                            inp.onchange = () => {
+                                                const f = inp.files?.[0];
+                                                if (!f) return;
+                                                const reader = new FileReader();
+                                                reader.onload = () => {
+                                                    fetch(reader.result as string).then(r => r.blob()).then(blob => {
+                                                        pendingCoverBlobRef.current = blob;
+                                                        setGeneratedCoverUrl(URL.createObjectURL(blob));
+                                                    });
+                                                };
+                                                reader.readAsDataURL(f);
+                                            };
+                                            inp.click();
+                                        }}
+                                            className="w-full h-11 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-[0_4px_20px_rgba(192,38,211,0.3)] active:scale-[0.98]">
+                                            <Upload size={14} /> Cambiar imagen
                                         </button>
                                     )
                                 ) : (
@@ -15192,7 +15368,34 @@ export function KdpFactoryApp() {
                                 );
                             })()}
 
-                            {/* ── Text overlay panel ── */}
+                            </>)} {/* end paso 1 */}
+
+                            {/* ── PASO 2: Añade el texto ── */}
+                            {coverStep === 2 && (<>
+
+                            {/* Título / Subtítulo / Autor — siempre visible en paso 2 */}
+                            <div className="space-y-1">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-fuchsia-400/70 flex items-center gap-1.5"><Type size={9} /> Texto del libro</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Título <span className="text-fuchsia-500">*</span></label>
+                                        <input type="text" value={coverTitle} onChange={e => setCoverTitle(e.target.value)} placeholder="Ej: Mandala Zen Coloring Book"
+                                            className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Subtítulo</label>
+                                        <input type="text" value={coverSubtitle} onChange={e => setCoverSubtitle(e.target.value)} placeholder="Ej: 50 Relaxing Designs"
+                                            className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                                    </div>
+                                    <div className="space-y-1 sm:col-span-2">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Autor</label>
+                                        <input type="text" value={coverAuthor} onChange={e => setCoverAuthor(e.target.value)} placeholder="Ej: Emilio Jimenez"
+                                            className="w-full h-9 px-3 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-fuchsia-500/40" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Front: estilos predefinidos + capas */}
                             {coverModalTab === "front" && (() => {
                                 const t = coverTitle || "Título del libro";
                                 const s = coverSubtitle || "Subtitle";
@@ -15325,10 +15528,66 @@ export function KdpFactoryApp() {
                                 );
                             })()}
 
+                            {/* Back: descripción para la contraportada + regenerar */}
+                            {coverModalTab === "back" && (
+                                <div className="space-y-3">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Descripción / Blurb</label>
+                                        <textarea value={coverDescription} onChange={e => setCoverDescription(e.target.value)}
+                                            placeholder="Texto descriptivo que aparecerá en la contraportada…"
+                                            rows={4}
+                                            className="w-full px-3 py-2 bg-white/[0.04] border border-white/10 rounded-xl text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-violet-500/40 resize-none leading-relaxed" />
+                                    </div>
+                                    <button onClick={() => void generateBackCover()} disabled={isBuildingBackCover || !coverTitle.trim()}
+                                        className="w-full h-10 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white text-sm font-black flex items-center justify-center gap-2 transition-all disabled:opacity-40">
+                                        {isBuildingBackCover ? <><Loader2 size={13} className="animate-spin" /> Regenerando…</> : <><RefreshCw size={13} /> Regenerar contraportada</>}
+                                    </button>
+                                </div>
+                            )}
+
+                            </>)} {/* end paso 2 */}
+
+                            {/* ── PASO 3: Confirmar y guardar ── */}
+                            {coverStep === 3 && (
+                                <div className="space-y-4 py-2">
+                                    <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-emerald-500/[0.06] border border-emerald-500/15">
+                                        <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                                            <Check size={13} className="text-emerald-400" />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-black text-emerald-400">Imagen y texto listos</p>
+                                            <p className="text-[10px] text-neutral-600 mt-0.5">Elige el nicho destino y guarda desde el panel</p>
+                                        </div>
+                                    </div>
+                                    {(coverTitle || coverAuthor) && (
+                                        <div className="space-y-1.5 border border-white/8 rounded-2xl p-3 bg-white/[0.02]">
+                                            {coverTitle && <p className="text-sm font-black text-white">{coverTitle}</p>}
+                                            {coverSubtitle && <p className="text-[11px] text-neutral-500">{coverSubtitle}</p>}
+                                            {coverAuthor && <p className="text-[11px] text-fuchsia-400/70">{coverAuthor}</p>}
+                                        </div>
+                                    )}
+                                    {coverTextLayers.filter(l => l.visible !== false).length > 0 && (
+                                        <p className="text-[10px] text-neutral-600">{coverTextLayers.filter(l => l.visible !== false).length} capa{coverTextLayers.filter(l => l.visible !== false).length !== 1 ? "s" : ""} de texto · se incrustan al guardar</p>
+                                    )}
+                                    {/* Niche selector for saving */}
+                                    {niches.filter(n => n.status !== "archived").length > 0 && (
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Nicho destino</label>
+                                            <NicheSelect
+                                                niches={niches.filter(n => n.status !== "archived")}
+                                                selectedId={selectedCoverNicheId}
+                                                placeholder="— Sin nicho —"
+                                                onChange={(n) => setSelectedCoverNicheId(n?._id ?? null)}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             </div>{/* end left column */}
 
                             {/* ── Right: live preview ── */}
-                            <div className="w-80 shrink-0 p-5 flex flex-col items-center gap-4 sticky top-0">
+                            <div className="w-80 shrink-0 p-5 flex flex-col items-center gap-4 overflow-y-auto">
                                 {(() => {
                                     const url = coverModalTab === "front" ? generatedCoverUrl : generatedBackCoverUrl;
                                     const isBuilding = coverModalTab === "front" ? (isBuildingCover || isBuildingCollage) : isBuildingBackCover;
@@ -15397,6 +15656,13 @@ export function KdpFactoryApp() {
                                         </div>
                                         {url && (
                                             <div className="flex flex-col gap-1.5 w-full">
+                                                {/* Guardar en nicho */}
+                                                {selectedCoverNicheId && (
+                                                    <button onClick={() => void saveCoverToNiche(coverModalTab)} disabled={isSavingCover}
+                                                        className="w-full h-11 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm font-black flex items-center justify-center gap-2 transition-all shadow-[0_4px_20px_rgba(16,185,129,0.3)] active:scale-[0.98] disabled:opacity-50">
+                                                        {isSavingCover ? <><Loader2 size={13} className="animate-spin" /> Guardando…</> : <><Check size={13} /> Guardar en nicho</>}
+                                                    </button>
+                                                )}
                                                 <button onClick={() => void (coverModalTab === "front" ? downloadCoverWithLayers(dlName) : downloadFile(url, dlName))}
                                                     className={`w-full h-9 rounded-xl bg-fuchsia-500/20 border border-fuchsia-500/35 text-fuchsia-300 text-sm font-black flex items-center justify-center gap-1.5 hover:bg-fuchsia-500/30 transition-all`}>
                                                     <Download size={12} /> Descargar
@@ -15411,38 +15677,34 @@ export function KdpFactoryApp() {
                                                 )}
                                                 {/* Regen + Delete */}
                                                 <div className="flex gap-2 pt-1">
-                                                    <button onClick={() => coverModalTab === "front"
-                                                        ? (coverMode === "ai" ? void generateCover() : coverMode === "collage" ? void buildCollage() : void colorizeCover())
-                                                        : void generateBackCover()}
-                                                        disabled={isBuildingCover || isBuildingCollage || isBuildingBackCover || isColorizing}
-                                                        className="flex-1 h-9 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-black text-neutral-500 hover:text-white hover:bg-white/8 hover:border-white/20 transition-all disabled:opacity-40 flex items-center justify-center gap-1.5">
-                                                        <RefreshCw size={12} /> Regenerar
-                                                    </button>
-                                                    <button onClick={async () => {
-                                                        const label = coverModalTab === "front" ? "portada" : "contraportada";
-                                                        if (!window.confirm(`¿Eliminar la ${label}? Esta acción no se puede deshacer.`)) return;
-                                                        if (coverModalTab === "front") {
-                                                            setGeneratedCoverUrl(null);
-                                                            pendingCoverBlobRef.current = null;
-                                                            if (selectedCoverNicheId) {
-                                                                await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
-                                                                    method: "PATCH", headers: { "Content-Type": "application/json" },
-                                                                    body: JSON.stringify({ coverUrl: "", coverCandidates: [] }),
-                                                                }).catch(() => {});
-                                                                setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, coverUrl: undefined, coverCandidates: [], pipelineHasCover: false } : n));
-                                                            }
+                                                    <button onClick={() => {
+                                                        if (coverModalTab === "front" && coverMode === "upload") {
+                                                            const inp = document.createElement("input");
+                                                            inp.type = "file"; inp.accept = "image/*";
+                                                            inp.onchange = () => {
+                                                                const f = inp.files?.[0];
+                                                                if (!f) return;
+                                                                const reader = new FileReader();
+                                                                reader.onload = () => {
+                                                                    fetch(reader.result as string).then(r => r.blob()).then(blob => {
+                                                                        pendingCoverBlobRef.current = blob;
+                                                                        setGeneratedCoverUrl(URL.createObjectURL(blob));
+                                                                    });
+                                                                };
+                                                                reader.readAsDataURL(f);
+                                                            };
+                                                            inp.click();
+                                                        } else if (coverModalTab === "front") {
+                                                            coverMode === "ai" ? void generateCover() : coverMode === "collage" ? void buildCollage() : void colorizeCover();
                                                         } else {
-                                                            setGeneratedBackCoverUrl(null);
-                                                            pendingBackCoverBlobRef.current = null;
-                                                            if (selectedCoverNicheId) {
-                                                                await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
-                                                                    method: "PATCH", headers: { "Content-Type": "application/json" },
-                                                                    body: JSON.stringify({ backCoverUrl: "" }),
-                                                                }).catch(() => {});
-                                                                setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, backCoverUrl: undefined } : n));
-                                                            }
+                                                            void generateBackCover();
                                                         }
                                                     }}
+                                                        disabled={isBuildingCover || isBuildingCollage || isBuildingBackCover || isColorizing}
+                                                        className="flex-1 h-9 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-black text-neutral-500 hover:text-white hover:bg-white/8 hover:border-white/20 transition-all disabled:opacity-40 flex items-center justify-center gap-1.5">
+                                                        {coverMode === "upload" && coverModalTab === "front" ? <><Upload size={12} /> Cambiar</> : <><RefreshCw size={12} /> Regenerar</>}
+                                                    </button>
+                                                    <button onClick={() => setConfirmDeleteCoverMain(coverModalTab)}
                                                         className="h-9 w-9 rounded-xl bg-rose-500/[0.06] border border-rose-500/15 text-rose-500/60 hover:bg-rose-500/15 hover:text-rose-400 hover:border-rose-500/30 transition-all flex items-center justify-center shrink-0">
                                                         <Trash2 size={12} />
                                                     </button>
@@ -15526,26 +15788,7 @@ export function KdpFactoryApp() {
                                                             )}
                                                             {/* Delete candidate */}
                                                             <button
-                                                                onClick={async () => {
-                                                                    if (!window.confirm("¿Eliminar esta variante de portada?")) return;
-                                                                    if (!selectedCoverNicheId) return;
-                                                                    const niche = niches.find(n => n._id === selectedCoverNicheId);
-                                                                    const newCandidates = (niche?.coverCandidates ?? []).filter(u => u !== candUrl);
-                                                                    const newMain = isMain ? (newCandidates[newCandidates.length - 1] ?? "") : (niche?.coverUrl ?? "");
-                                                                    await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
-                                                                        method: "PATCH", headers: { "Content-Type": "application/json" },
-                                                                        body: JSON.stringify({
-                                                                            coverCandidates: newCandidates,
-                                                                            ...(coverModalTab === "front" && isMain ? { coverUrl: newMain, pipelineHasCover: !!newMain } : {}),
-                                                                        }),
-                                                                    }).catch(() => {});
-                                                                    setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? {
-                                                                        ...n,
-                                                                        coverCandidates: newCandidates,
-                                                                        ...(coverModalTab === "front" && isMain ? { coverUrl: newMain || undefined, pipelineHasCover: !!newMain } : {}),
-                                                                    } : n));
-                                                                    if (coverModalTab === "front" && isMain) setGeneratedCoverUrl(newMain || null);
-                                                                }}
+                                                                onClick={() => setConfirmDeleteCoverVariant({ candUrl, isMain })}
                                                                 className="absolute top-0.5 left-0.5 w-4 h-4 rounded bg-rose-500/80 text-white hidden group-hover:flex items-center justify-center transition-all"
                                                                 title="Eliminar variante"
                                                             >
@@ -15562,6 +15805,45 @@ export function KdpFactoryApp() {
                           </div>{/* end flex row */}
 
                         </div>{/* end overflow-y-auto body */}
+
+                        {/* ── Wizard navigation footer ── */}
+                        {(
+                            <div className="shrink-0 border-t border-white/6 px-5 py-3.5 flex items-center justify-between gap-3">
+                                <button
+                                    onClick={() => setCoverStep(s => Math.max(1, s - 1) as 1 | 2 | 3)}
+                                    disabled={coverStep === 1}
+                                    className="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-black text-neutral-500 hover:text-white hover:bg-white/8 hover:border-white/20 transition-all disabled:opacity-25 disabled:pointer-events-none">
+                                    ← Atrás
+                                </button>
+                                <div className="flex items-center gap-1">
+                                    {([1, 2, 3] as const).map(n => (
+                                        <div key={n} className={`h-1.5 rounded-full transition-all ${coverStep === n ? "w-5 bg-fuchsia-500" : n < coverStep ? "w-2 bg-fuchsia-500/40" : "w-2 bg-white/10"}`} />
+                                    ))}
+                                </div>
+                                {coverStep < 3 ? (
+                                    <button
+                                        onClick={() => setCoverStep(s => Math.min(3, s + 1) as 1 | 2 | 3)}
+                                        disabled={coverStep === 1 && !(coverModalTab === "front" ? generatedCoverUrl : generatedBackCoverUrl)}
+                                        className="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm font-black transition-all disabled:opacity-30 disabled:pointer-events-none shadow-[0_2px_12px_rgba(192,38,211,0.3)]">
+                                        {coverStep === 1 ? ((coverModalTab === "front" ? generatedCoverUrl : generatedBackCoverUrl) ? "Añadir texto →" : "Genera primero") : "Vista previa →"}
+                                    </button>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => { setCoverStep(1); setGeneratedCoverUrl(null); setGeneratedBackCoverUrl(null); setCoverTextLayers([]); setCoverMode("ai"); setColorizeSourceUrl(null); setSelectedCollageImages(new Set()); setCoverTitle(""); setCoverSubtitle(""); setCoverAuthor("Emilio Jimenez"); setCoverDescription(""); setSelectedCoverNicheId(null); setUploadBrowseSource(null); }}
+                                            className="flex items-center gap-1.5 h-9 px-3 rounded-xl bg-white/[0.04] border border-white/10 text-[11px] font-black text-neutral-500 hover:text-fuchsia-300 hover:border-fuchsia-500/30 transition-all">
+                                            ✦ Nueva portada
+                                        </button>
+                                        <button
+                                            onClick={() => void saveCoverToNiche(coverModalTab)}
+                                            disabled={isSavingCover || !selectedCoverNicheId || !(coverModalTab === "front" ? generatedCoverUrl : generatedBackCoverUrl)}
+                                            className="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm font-black transition-all disabled:opacity-30 disabled:pointer-events-none shadow-[0_2px_12px_rgba(16,185,129,0.3)]">
+                                            {isSavingCover ? <><Loader2 size={12} className="animate-spin" /> Guardando…</> : <><Check size={12} /> Guardar y cerrar</>}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -16938,6 +17220,75 @@ export function KdpFactoryApp() {
                 confirmLabel="Eliminar"
                 variant="danger"
                 icon={<ImageIcon size={24} className="text-red-400" />}
+            />
+
+            <ConfirmModal
+                open={!!confirmDeleteCoverMain}
+                onClose={() => setConfirmDeleteCoverMain(null)}
+                onConfirm={async () => {
+                    const tab = confirmDeleteCoverMain;
+                    setConfirmDeleteCoverMain(null);
+                    if (!tab) return;
+                    if (tab === "front") {
+                        setGeneratedCoverUrl(null);
+                        pendingCoverBlobRef.current = null;
+                        if (selectedCoverNicheId) {
+                            await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
+                                method: "PATCH", headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ coverUrl: "", coverCandidates: [] }),
+                            }).catch(() => {});
+                            setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, coverUrl: undefined, coverCandidates: [], pipelineHasCover: false } : n));
+                        }
+                    } else {
+                        setGeneratedBackCoverUrl(null);
+                        pendingBackCoverBlobRef.current = null;
+                        if (selectedCoverNicheId) {
+                            await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
+                                method: "PATCH", headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ backCoverUrl: "" }),
+                            }).catch(() => {});
+                            setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, backCoverUrl: undefined } : n));
+                        }
+                    }
+                }}
+                title={`¿Eliminar la ${confirmDeleteCoverMain === "front" ? "portada" : "contraportada"}?`}
+                description="Esta acción no se puede deshacer."
+                confirmLabel="Eliminar"
+                variant="danger"
+                icon={<Trash2 size={24} className="text-red-400" />}
+                zIndex={9200}
+            />
+
+            <ConfirmModal
+                open={!!confirmDeleteCoverVariant}
+                onClose={() => setConfirmDeleteCoverVariant(null)}
+                onConfirm={async () => {
+                    const info = confirmDeleteCoverVariant;
+                    setConfirmDeleteCoverVariant(null);
+                    if (!info || !selectedCoverNicheId) return;
+                    const niche = niches.find(n => n._id === selectedCoverNicheId);
+                    const newCandidates = (niche?.coverCandidates ?? []).filter(u => u !== info.candUrl);
+                    const newMain = info.isMain ? (newCandidates[newCandidates.length - 1] ?? "") : (niche?.coverUrl ?? "");
+                    await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
+                        method: "PATCH", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            coverCandidates: newCandidates,
+                            ...(coverModalTab === "front" && info.isMain ? { coverUrl: newMain, pipelineHasCover: !!newMain } : {}),
+                        }),
+                    }).catch(() => {});
+                    setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? {
+                        ...n,
+                        coverCandidates: newCandidates,
+                        ...(coverModalTab === "front" && info.isMain ? { coverUrl: newMain || undefined, pipelineHasCover: !!newMain } : {}),
+                    } : n));
+                    if (coverModalTab === "front" && info.isMain) setGeneratedCoverUrl(newMain || null);
+                }}
+                title="¿Eliminar esta variante?"
+                description="Se eliminará esta variante de portada. Esta acción no se puede deshacer."
+                confirmLabel="Eliminar"
+                variant="danger"
+                icon={<Trash2 size={24} className="text-red-400" />}
+                zIndex={9200}
             />
 
             {/* Save Prompt Dialog */}
