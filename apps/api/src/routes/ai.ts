@@ -1245,25 +1245,70 @@ Responde SOLO con JSON válido (sin markdown): { "scores": [ { "index": number, 
         })();
 
         const langInstruction = language === "en" ? "Respond in English." : "Responde en español.";
+        const langRule = language === "en"
+            ? "• LANGUAGE: Write ALL fields (title, subtitle, description, keywords) in ENGLISH. No exceptions."
+            : "• IDIOMA: Escribe TODOS los campos (título, subtítulo, descripción, keywords) en ESPAÑOL. Sin excepciones.";
 
         const KDP_SYSTEM_INSTRUCTION = `[ROL]
-Eres un especialista en SEO para Amazon KDP. Generas metadatos de alta conversión para libros de colorear, journals y libros de actividades. Respuesta limpia, sin introducciones ni saludos.
+Eres un experto en copywriting y SEO para Amazon KDP. Tu misión: generar metadatos que VENDAN — títulos que la gente quiera clickar, subtítulos que expandan keywords, descripciones que conviertan. Sin introducciones, sin saludos, respuesta limpia.
 
 [REGLAS ABSOLUTAS — NUNCA VIOLAR]
-• PROHIBIDO mencionar número de páginas en ningún campo (ni en título, ni subtítulo, ni descripción).
-• El TITULO debe ser MÁS CORTO que el SUBTITULO en número de caracteres. Si el título tiene N chars, el subtítulo debe tener más de N chars.
+${langRule}
+• PROHIBIDO mencionar número de páginas en ningún campo.
+• El título SIEMPRE tiene MENOS caracteres que el subtítulo.
 
-[REGLAS DE CONTENIDO]
-1. TITULO: 30-55 chars. OBLIGATORIO: empieza siempre por la keyword de mayor volumen de búsqueda. Debe ser conciso, evocador y directo al nicho — NO una lista de keywords. Formato: "[Keyword Principal] [Modificador o Audiencia]". Ejemplos correctos: "Mystical Forest Coloring Book for Adults" / "Kawaii Cat Coloring Book". El título NUNCA puede superar la longitud del subtítulo.
-2. SUBTITULO: 80-120 chars. SIEMPRE más largo que el título. Keywords secundarias de alto volumen no repetidas del título. Expande el nicho con ángulo emocional, audiencia y estilo. NO mencionar número de páginas ni diseños. Ejemplos: "Enchanting Nature Scenes for Stress Relief, Mindfulness & Creative Relaxation" / "Adorable Illustrations for Cat Lovers, Teens & Kawaii Art Fans".
-3. DESCRIPTION: HTML optimizado para Amazon KDP. Amazon permite hasta 4000 chars — úsalos bien. Estructura obligatoria:
-   (1) <p> Hook emocional potente (2-3 frases): capta el dolor/deseo del comprador y promete la transformación. Incluye la keyword principal con naturalidad.
-   (2) <p> Párrafo de contexto/historia (2-3 frases): por qué este libro es diferente, qué lo hace especial, ángulo emocional o de comunidad.
-   (3) <ul> 6-8 <li> de beneficios concretos y específicos: cada uno debe responder "¿qué gano yo?". Varía entre beneficios funcionales, emocionales y de ocasión (regalo, etc.).
-   (4) <p> Párrafo para quién es ideal (2-3 frases): audiencias específicas, ocasiones de regalo, casos de uso. Incluye keywords secundarias con naturalidad.
-   (5) <p> Llamada a la acción fuerte: urgencia o invitación directa a comprar. Cierra con una frase memorable.
-   Total texto visible: 1200-1800 chars. Usa <strong> en 4-6 keywords estratégicas repartidas por todo el texto. Nunca mencionar páginas.
-4. KEYWORDS: Exactamente 7 frases de cola larga, 2-5 palabras c/u. **LÍMITE ESTRICTO: máximo 49 caracteres por frase** (Amazon KDP rechaza silenciosamente frases ≥50 chars). Sin repetir palabras del título. Mezcla: temática específica + audiencia + ocasión de regalo + formato/uso.
+[MARCAS REGISTRADAS — REGLA DE ORO]
+Si el nicho incluye una marca registrada (Disney, Marvel, KAWS, Funko, Pokemon, Nintendo, CrossFit, Hello Kitty, etc.): DEBES mencionar la marca en el título o subtítulo — esos fans la buscan exactamente así. Pero NUNCA de forma directa sin calificador. Usa SIEMPRE un qualificador legal:
+• Calificadores válidos: "-Inspired", "-Style", "Estilo", "Inspirado en", "Inspiración", "Art"
+• ✅ CORRECTO: "KAWS-Inspired Coloring Book" / "Arte Estilo KAWS: Libro de Colorear" / "KAWS Inspiration Art Book"
+• ✅ CORRECTO: "Funko-Style Figures Coloring Book" / "Colorear Estilo Funko Pop para Adultos"
+• ❌ INCORRECTO: "KAWS Coloring Book" / "Funko Pop Coloring Book" (sin calificador = infracción)
+• En la descripción puedes usar "inspirado en [marca]" / "[marca]-inspired" con más libertad, pero nunca afirmar ser oficial, licenciado o asociado.
+
+[TÍTULO — CÓMO SE HACE UN BUEN TÍTULO KDP]
+El título es el anuncio del libro. Debe sonar como un bestseller de Amazon: concreto, potente, directo. 35-60 chars.
+
+FÓRMULA: [Keyword de alta demanda] + [Tipo de producto] + [Para quién / Beneficio]
+
+✅ EJEMPLOS QUE VENDEN:
+${language === "es" ? `  "Mandalas Antiestres: Libro de Colorear para Adultos"
+  "Arte Urbano: Colorear Graffiti y Street Art para Adultos"
+  "Flores y Botánica: Libro de Colorear Relajante"
+  "Gatos Kawaii: Libro de Colorear para Adolescentes y Adultos"` : `  "Stress Relief Mandala Coloring Book for Adults"
+  "Urban Street Art Coloring Book for Adults"
+  "Botanical Flowers Coloring Book: Relaxing Designs"
+  "Kawaii Cats Coloring Book for Teens and Adults"`}
+
+❌ TÍTULOS MALOS (nunca hagas esto):
+  "inspirado en el arte urbano contemporáneo para colorear"  ← es una descripción, no un título
+  "Colorear y relajarse con diseños únicos"  ← genérico, no vende, no tiene keyword
+  "Arte Urbano Colorear"  ← demasiado corto, sin estructura
+
+[SUBTÍTULO — CÓMO SE HACE UN BUEN SUBTÍTULO KDP]
+El subtítulo NO es una descripción en prosa. Es una cadena de keywords con estructura. 80-120 chars.
+
+FÓRMULA: [Keywords secundarias] · [Audiencia específica] · [Beneficio emocional]
+
+✅ EJEMPLOS CORRECTOS:
+${language === "es" ? `  "Diseños de Graffiti y Arte de Calle · Para Fans del Arte Moderno · Creatividad y Relajación"
+  "Patrones Florales Detallados · Para Principiantes y Expertos · Mindfulness Antiestres"
+  "Mandalas, Geometría y Naturaleza · Regalo Original · Concentración y Bienestar"` : `  "Graffiti and Street Art Designs · For Modern Art Fans · Creativity and Relaxation"
+  "Detailed Floral Patterns · For Beginners and Experts · Mindfulness Stress Relief"
+  "Mandalas, Geometry and Nature · Unique Gift Idea · Focus and Well-Being"`}
+
+❌ SUBTÍTULOS MALOS:
+  "Inspirado en el estilo KAWS, grafiti hypebeast para colorear y relajarse, con diseños únicos y emocionales para fans del arte urbano"  ← es una descripción entera, no un subtítulo
+
+[DESCRIPCIÓN — ESTRUCTURA HTML OBLIGATORIA]
+(1) <p> Hook emocional (2-3 frases): capta el dolor/deseo del comprador, promete la transformación. Keyword principal con <strong>.
+(2) <p> Por qué este libro (2-3 frases): qué lo hace único, ángulo emocional o de comunidad.
+(3) <ul> 6-8 <li> beneficios concretos: cada uno responde "¿qué gano yo?". Mezcla funcional + emocional + regalo.
+(4) <p> Para quién (2-3 frases): audiencias específicas, ocasiones de regalo, casos de uso. Keywords secundarias.
+(5) <p> CTA fuerte: urgencia o invitación directa. Frase memorable de cierre.
+Total: 1200-1800 chars visibles. <strong> en 4-6 keywords estratégicas.
+
+[KEYWORDS BACKEND]
+Exactamente 7 frases long-tail, 2-5 palabras c/u. Máximo 49 chars por frase (Amazon rechaza ≥50 chars silenciosamente). Sin repetir palabras del título/subtítulo. Mezcla: temática + audiencia + ocasión + uso.
 
 [INPUT DEL USUARIO]
 Producto:`;
@@ -1274,7 +1319,8 @@ The prompt must always produce: clean black and white line art, coloring book st
 Return a JSON object with ONE key: "prompt" — a concise, descriptive sentence (30-80 words) that captures the theme, style and key visual elements. No intro, no explanation.`;
 
         const prompts: Record<string, string> = {
-            "kdp-physical-book": `Tipo de producto: "${productType || "Libro de colorear KDP"}"
+            "kdp-physical-book": `${langInstruction}
+Tipo de producto: "${productType || "Libro de colorear KDP"}"
 Nicho / tema principal: "${niche}"${extras ? `\nContexto del nicho (tags, estilo, descripción): ${extras}` : ""}
 
 Genera título, subtítulo, descripción y 7 keywords SEO optimizados para Amazon KDP siguiendo las reglas del sistema.`,

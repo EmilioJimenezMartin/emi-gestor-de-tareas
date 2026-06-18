@@ -306,8 +306,9 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             const { id } = request.params as { id: string };
             const body = request.body as {
                 title?: string; subtitle?: string; description?: string; keywords?: string[];
-                generate?: boolean;
+                generate?: boolean; language?: "en" | "es";
             };
+            const listingLang = body.language ?? "es";
 
             let listingData: { title: string; subtitle: string; description: string; keywords: string[]; etsyTags?: string[]; categories?: string[]; seoNotes?: string; platform?: "kdp" | "etsy" | "both" };
 
@@ -353,34 +354,58 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                     }
                 } catch { /* non-blocking */ }
 
+                const targetAudienceLabel: Record<string, string> = {
+                    children: "Niños (4-10 años)",
+                    teens:    "Adolescentes (11-17 años)",
+                    adults:   "Adultos",
+                    all:      "Público general",
+                };
+                // generatedPrompt = raw visual scene description (best source for what the book actually looks like)
+                const visualContext = (niche as any).generatedPrompt?.trim() ?? "";
+
                 const sharedContext = [
                     `Nicho: ${(niche as any).name}`,
                     `Tipo de producto: ${pt}`,
-                    ((niche as any).tags as string[]).length > 0 ? `Tags: ${((niche as any).tags as string[]).join(", ")}` : "",
+                    ((niche as any).tags as string[])?.length > 0 ? `Tags: ${((niche as any).tags as string[]).join(", ")}` : "",
                     (niche as any).styleCategory && (niche as any).styleCategory !== "generic" ? `Estilo visual: ${(niche as any).styleCategory}` : "",
+                    (niche as any).targetAudience ? `Público objetivo: ${targetAudienceLabel[(niche as any).targetAudience] ?? (niche as any).targetAudience}` : "",
                     (niche as any).description ? `Descripción del nicho: ${(niche as any).description}` : "",
+                    visualContext ? `Descripción visual del contenido: ${visualContext}` : "",
+                    (niche as any).notes?.trim() ? `Notas del autor: ${(niche as any).notes.trim()}` : "",
                     marketScan?.us?.resultCount ? `Mercado US: ${marketScan.us.resultCount} resultados, mediana ${marketScan.us.medianReviews ?? "?"} reviews` : "",
                     radarMarketContext,
                 ].filter(Boolean).join("\n");
 
-                // ── KDP Prompt (A9/A10 algorithm — keyword-first, backend slots) ─────────
-                const KDP_SYSTEM = `Eres especialista en SEO para Amazon KDP. Tu trabajo: metadatos que ranqueen en Amazon (algoritmo A9/A10).
-PRINCIPIOS KDP:
-- El título es el campo de mayor peso de indexación. Keyword principal (mayor volumen de búsqueda real) va PRIMERA.
-- Las 7 casillas de keywords backend son para long-tail que NO aparece en título/subtítulo. Repetir desperdicia el slot.
-- Amazon penaliza keyword stuffing visible en título (baja conversión → baja rank). El título debe leerse natural.
-- El comprador en Amazon busca CONTENIDO: "adult coloring book stress relief", "mandala coloring pages 50 designs".
+                const listingLangRule = listingLang === "en"
+                    ? "LANGUAGE: Write ALL fields (title, subtitle, description, keywords, tags) in ENGLISH. No exceptions."
+                    : "IDIOMA: Escribe TODOS los campos (título, subtítulo, descripción, keywords, tags) en ESPAÑOL. Sin excepciones.";
+                const trademarkRule = listingLang === "en"
+                    ? "TRADEMARK SAFETY: If the niche involves a registered brand (Disney, Marvel, KAWS, Funko, Pokemon, Nintendo, CrossFit, etc.), you MUST still mention the brand in title/subtitle — fans search for it exactly. But ALWAYS add a legal qualifier: '[Brand]-Inspired', '[Brand]-Style', '[Brand] Inspiration'. NEVER use the brand name alone without a qualifier."
+                    : "MARCAS REGISTRADAS: Si el nicho incluye una marca registrada (Disney, Marvel, KAWS, Funko, Pokemon, Nintendo, CrossFit, etc.), DEBES mencionarla en el título o subtítulo — esos fans la buscan así. Usa SIEMPRE un calificador legal: '[Marca]-Inspired', 'Estilo [Marca]', 'Inspiración [Marca]', 'Arte [Marca]'. NUNCA la marca sola sin calificador.";
 
-REGLAS DURAS:
-- title: 50-80 chars. Formato "[Keyword volumen alto] Coloring Book: [Beneficio] for [Audiencia]"
-- subtitle: 60-90 chars. Nº páginas únicas, nivel detalle, audiencia específica. Sin repetir palabras del título.
-- description: HTML para KDP. (1) <p> hook con <strong> en 2-3 keywords, (2) <ul><li> 4-5 beneficios concretos, (3) <p> CTA. 450-650 chars.
-- keywords: EXACTAMENTE 7 frases long-tail, máx 50 chars c/u. PROHIBIDO: best/new/free/top/premium/book/amazon/kindle + cualquier palabra del título/subtítulo.
-- categories: 3 rutas completas y ESPECÍFICAS (ej: "Crafts, Hobbies & Home > Coloring Books for Adults").
+                // ── KDP Prompt (A9/A10 algorithm — keyword-first, backend slots) ─────────
+                const KDP_SYSTEM = `Eres experto en copywriting y SEO para Amazon KDP. Genera metadatos que VENDAN: títulos que la gente quiera clickar, subtítulos con keywords reales, descripciones que conviertan.
+${listingLangRule}
+${trademarkRule}
+
+TÍTULO (35-60 chars): Debe sonar como un bestseller de Amazon — concreto, potente, directo. Fórmula: [Keyword alta demanda] + [Tipo de producto] + [Para quién / Beneficio]. Si hay marca registrada, usa el GÉNERO/ESTILO en su lugar (ej: "Arte Urbano Moderno" en lugar de "KAWS").
+✅ Buenos: "Mandalas Antiestres: Libro de Colorear para Adultos" / "Arte Urbano: Colorear Street Art para Adultos"
+❌ Malos: "inspirado en arte urbano para colorear" / "colorear y relajarse con diseños únicos"
+
+SUBTÍTULO (80-120 chars): Cadena de keywords secundarias — NO es una descripción en prosa. Fórmula: [Keywords secundarias] · [Audiencia] · [Beneficio emocional].
+✅ Buenos: "Diseños de Graffiti y Arte de Calle · Para Fans del Arte Moderno · Creatividad y Relajación"
+❌ Malos: "Inspirado en el estilo KAWS, con diseños únicos y emocionales para fans del arte urbano" (es descripción, no subtítulo)
+
+DESCRIPCIÓN: HTML para KDP. (1) <p> hook emocional con <strong> en 2-3 keywords, (2) <p> qué hace único este libro, (3) <ul><li> 5-6 beneficios concretos, (4) <p> para quién + ocasiones regalo, (5) <p> CTA. 800-1200 chars visibles.
+KEYWORDS: EXACTAMENTE 7 frases long-tail, máx 49 chars c/u. PROHIBIDO: best/new/free/top/premium/book/amazon/kindle + palabras del título/subtítulo.
+CATEGORIES: 3 rutas completas y específicas (ej: "Crafts, Hobbies & Home > Coloring Books for Adults").
 Responde SOLO con JSON: { "title": string, "subtitle": string, "description": string, "keywords": string[7], "categories": string[3] }`;
 
                 // ── Etsy Prompt (emotion-first, occasion/mood, lifestyle) ────────────────
                 const ETSY_SYSTEM = `Eres especialista en SEO para Etsy. Tu trabajo: metadatos que conviertan en Etsy donde el comprador busca EXPERIENCIAS y REGALOS.
+${listingLangRule}
+${trademarkRule}
+
 PRINCIPIOS ETSY:
 - El título debe despertar EMOCIÓN primero. El comprador busca "gift for mom who loves coloring", no "mandala coloring book".
 - Las 13 etiquetas (tags) son por FRASE (2-3 palabras). El matching de Etsy es por frase completa, no por palabra suelta.

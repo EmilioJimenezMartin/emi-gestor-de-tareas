@@ -876,7 +876,7 @@ export function KdpFactoryApp() {
     const [contentNiche, setContentNiche] = useState("");
     const [contentProductType, setContentProductType] = useState("Coloring Book");
     const [contentExtras, setContentExtras] = useState("");
-    const [contentLanguage, setContentLanguage] = useState<"es" | "en">("en");
+    const [contentLanguage, setContentLanguage] = useState<"es" | "en">("es");
     const [contentPlatform, setContentPlatform] = useState<"kdp" | "etsy" | "both">("both");
     const [contentType, setContentType] = useState<"kdp-physical-book" | "full-listing" | "titles" | "description" | "keywords" | "back-cover" | "series">("kdp-physical-book");
     const [contentResult, setContentResult] = useState<any | null>(null);
@@ -4296,6 +4296,8 @@ export function KdpFactoryApp() {
                     selectedNiche.tags.length > 0 ? `tags: ${selectedNiche.tags.join(", ")}` : "",
                     selectedNiche.styleCategory ? `estilo: ${selectedNiche.styleCategory}` : "",
                     selectedNiche.description ? `descripción: ${selectedNiche.description}` : "",
+                    (selectedNiche as any).generatedPrompt ? `descripción visual del contenido: ${(selectedNiche as any).generatedPrompt}` : "",
+                    (selectedNiche as any).notes?.trim() ? `notas del autor: ${(selectedNiche as any).notes.trim()}` : "",
                     selectedNiche.demand !== "unknown" ? `demanda: ${selectedNiche.demand}` : "",
                 ].filter(Boolean).join(" · ") : "",
                 cloneExtrasListing ?? "",
@@ -4414,6 +4416,8 @@ export function KdpFactoryApp() {
                         niche.tags.length > 0 ? `tags: ${niche.tags.join(", ")}` : "",
                         niche.styleCategory ? `estilo: ${niche.styleCategory}` : "",
                         niche.description ? `descripción: ${niche.description}` : "",
+                        (niche as any).generatedPrompt ? `descripción visual del contenido: ${(niche as any).generatedPrompt}` : "",
+                        (niche as any).notes?.trim() ? `notas del autor: ${(niche as any).notes.trim()}` : "",
                         cloneExtras ?? "",
                     ].filter(Boolean).join(" · ") || undefined,
                     language: "es",
