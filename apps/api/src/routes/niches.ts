@@ -306,7 +306,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
             const { id } = request.params as { id: string };
             const body = request.body as {
                 title?: string; subtitle?: string; description?: string; keywords?: string[];
-                generate?: boolean; language?: "en" | "es";
+                generate?: boolean; language?: "en" | "es"; seoAnnotation?: string;
             };
             const listingLang = body.language ?? "es";
 
@@ -364,6 +364,7 @@ export async function registerNicheRoutes(app: FastifyInstance) {
                 const visualContext = (niche as any).generatedPrompt?.trim() ?? "";
 
                 const sharedContext = [
+                    body.seoAnnotation?.trim() ? `⚠ INSTRUCCIÓN MANUAL DEL AUTOR (PRIORIDAD MÁXIMA — aplica esto en todos los campos generados): ${body.seoAnnotation.trim()}` : "",
                     `Nicho: ${(niche as any).name}`,
                     `Tipo de producto: ${pt}`,
                     ((niche as any).tags as string[])?.length > 0 ? `Tags: ${((niche as any).tags as string[]).join(", ")}` : "",

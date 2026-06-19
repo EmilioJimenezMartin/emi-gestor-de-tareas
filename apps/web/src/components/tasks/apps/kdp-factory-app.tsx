@@ -904,6 +904,7 @@ export function KdpFactoryApp() {
     const [nicheDetailId, setNicheDetailId] = useState<string | null>(null);
     const [nicheDetailTab, setNicheDetailTab] = useState<"images" | "catalogs" | "seo" | "book" | "preview">("images");
     const [previewSpreadIdx, setPreviewSpreadIdx] = useState(0);
+    const [seoAnnotation, setSeoAnnotation] = useState("");
     const [expandedPublicacionNiches, setExpandedPublicacionNiches] = useState<Set<string>>(new Set());
     const [discoveryPromptEditing, setDiscoveryPromptEditing] = useState(false);
     const [discoveryPromptDraft, setDiscoveryPromptDraft] = useState("");
@@ -2873,18 +2874,45 @@ export function KdpFactoryApp() {
         letterSpacing: number; opacity: number;
         visible: boolean;
     };
-    const COVER_FONTS = [
-        { label: "Sans (default)", value: "sans-serif" },
-        { label: "Serif", value: "serif" },
-        { label: "Playfair Display", value: "'Playfair Display', serif" },
-        { label: "Oswald", value: "'Oswald', sans-serif" },
-        { label: "Bebas Neue", value: "'Bebas Neue', cursive" },
-        { label: "Cinzel", value: "'Cinzel', serif" },
-        { label: "Dancing Script", value: "'Dancing Script', cursive" },
-        { label: "Raleway", value: "'Raleway', sans-serif" },
-        { label: "Merriweather", value: "'Merriweather', serif" },
-        { label: "Lobster", value: "'Lobster', cursive" },
-        { label: "Monospace", value: "monospace" },
+    const COVER_FONTS: { label: string; value: string; group: string }[] = [
+        { label: "Sans (default)", value: "sans-serif",               group: "General" },
+        { label: "Serif",          value: "serif",                    group: "General" },
+        { label: "Monospace",      value: "monospace",                group: "General" },
+        // Elegante / Literaria
+        { label: "Playfair Display",       value: "'Playfair Display', serif",        group: "Elegante" },
+        { label: "Merriweather",           value: "'Merriweather', serif",             group: "Elegante" },
+        { label: "Cinzel",                 value: "'Cinzel', serif",                   group: "Elegante" },
+        { label: "Cinzel Decorative",      value: "'Cinzel Decorative', serif",        group: "Elegante" },
+        { label: "EB Garamond",            value: "'EB Garamond', serif",              group: "Elegante" },
+        { label: "Cormorant Garamond",     value: "'Cormorant Garamond', serif",       group: "Elegante" },
+        { label: "IM Fell English",        value: "'IM Fell English', serif",          group: "Elegante" },
+        // Moderna / Display
+        { label: "Oswald",         value: "'Oswald', sans-serif",     group: "Moderna" },
+        { label: "Bebas Neue",     value: "'Bebas Neue', cursive",    group: "Moderna" },
+        { label: "Raleway",        value: "'Raleway', sans-serif",    group: "Moderna" },
+        { label: "Anton",          value: "'Anton', sans-serif",      group: "Moderna" },
+        { label: "Teko",           value: "'Teko', sans-serif",       group: "Moderna" },
+        // Manuscrita / Decorativa
+        { label: "Dancing Script", value: "'Dancing Script', cursive", group: "Manuscrita" },
+        { label: "Lobster",        value: "'Lobster', cursive",        group: "Manuscrita" },
+        { label: "Permanent Marker", value: "'Permanent Marker', cursive", group: "Manuscrita" },
+        { label: "Pacifico",       value: "'Pacifico', cursive",      group: "Manuscrita" },
+        // Anime / Manga
+        { label: "Bangers",        value: "'Bangers', cursive",       group: "Anime / Manga" },
+        { label: "Boogaloo",       value: "'Boogaloo', cursive",      group: "Anime / Manga" },
+        { label: "Black Ops One",  value: "'Black Ops One', cursive", group: "Anime / Manga" },
+        // Fantasía / Medieval
+        { label: "Uncial Antiqua", value: "'Uncial Antiqua', cursive", group: "Fantasía" },
+        { label: "Almendra",       value: "'Almendra', serif",         group: "Fantasía" },
+        { label: "MedievalSharp",  value: "'MedievalSharp', cursive",  group: "Fantasía" },
+        // Sci-Fi / Futurista
+        { label: "Orbitron",       value: "'Orbitron', sans-serif",   group: "Sci-Fi" },
+        { label: "Exo 2",          value: "'Exo 2', sans-serif",      group: "Sci-Fi" },
+        { label: "Audiowide",      value: "'Audiowide', sans-serif",  group: "Sci-Fi" },
+        { label: "Rajdhani",       value: "'Rajdhani', sans-serif",   group: "Sci-Fi" },
+        { label: "Share Tech Mono", value: "'Share Tech Mono', monospace", group: "Sci-Fi" },
+        // Horror / Thriller
+        { label: "Creepster",      value: "'Creepster', cursive",     group: "Horror / Thriller" },
     ];
     const defaultLayer = (overrides: Partial<TextLayer> & Pick<TextLayer, "id" | "text">): TextLayer => ({
         x: 50, y: 80, fontSize: 24, color: "#ffffff", fontFamily: "sans-serif",
@@ -3694,7 +3722,7 @@ export function KdpFactoryApp() {
         const link = document.createElement("link");
         link.id = id;
         link.rel = "stylesheet";
-        link.href = "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Oswald:wght@400;700&family=Bebas+Neue&family=Cinzel:wght@400;700&family=Dancing+Script:wght@400;700&family=Raleway:wght@300;400;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Lobster&display=swap";
+        link.href = "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Oswald:wght@400;700&family=Bebas+Neue&family=Cinzel:wght@400;700&family=Cinzel+Decorative:wght@400;700&family=Dancing+Script:wght@400;700&family=Raleway:wght@300;400;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Lobster&family=EB+Garamond:ital,wght@0,400;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,400;0,700;1,400&family=IM+Fell+English:ital@0;1&family=Anton&family=Teko:wght@400;600;700&family=Permanent+Marker&family=Pacifico&family=Bangers&family=Boogaloo&family=Black+Ops+One&family=Uncial+Antiqua&family=Almendra:wght@400;700&family=Orbitron:wght@400;700&family=Exo+2:wght@400;700&family=Audiowide&family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&family=Creepster&display=swap";
         document.head.appendChild(link);
     }, [showCoverEditor]);
     useEffect(() => {
@@ -3722,7 +3750,7 @@ export function KdpFactoryApp() {
 
     // Fetch catalogs on mount (socket connects when entering creation tab)
     useEffect(() => { void fetchCatalogs(); void fetchApRuns(); void fetchPipelineData(); void fetchRejectedImages(); void fetchAutoCloneQueue(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-    useEffect(() => { setPreviewSpreadIdx(0); }, [nicheDetailId]); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { setPreviewSpreadIdx(0); setSeoAnnotation(""); }, [nicheDetailId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Sync calendar events from MongoDB on mount (backend may have them from another session)
     useEffect(() => {
@@ -4718,12 +4746,12 @@ export function KdpFactoryApp() {
             }
         } catch { }
     };
-    const launchPipelineSeo = async (nicheId: string) => {
+    const launchPipelineSeo = async (nicheId: string, annotation?: string) => {
         setPipelineSeoLoading(prev => ({ ...prev, [nicheId]: true }));
         try {
             const seoRes = await fetch(`${API_BASE_URL}/niches/${nicheId}/listings`, {
                 method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ generate: true }),
+                body: JSON.stringify({ generate: true, ...(annotation?.trim() ? { seoAnnotation: annotation.trim() } : {}) }),
             });
             if (!seoRes.ok) throw new Error((await seoRes.json()).error ?? "Error generando SEO");
             // Only advance phase if it's still in libro — don't downgrade if already seo/cover
@@ -16243,8 +16271,17 @@ export function KdpFactoryApp() {
                                             <select value={sel.fontFamily || "sans-serif"} onChange={e => upd(sel.id, { fontFamily: e.target.value })}
                                                 className="w-full h-9 bg-white/[0.04] border border-white/10 rounded-xl px-3 text-sm text-white outline-none focus:border-fuchsia-500/40 appearance-none"
                                                 style={{ fontFamily: sel.fontFamily || "sans-serif" }}>
-                                                {EDITOR_FONTS.map(f => (
-                                                    <option key={f.value} value={f.value} style={{ fontFamily: f.value, background: "#111" }}>{f.label}</option>
+                                                {Object.entries(
+                                                    EDITOR_FONTS.reduce((acc, f) => {
+                                                        (acc[f.group] ??= []).push(f);
+                                                        return acc;
+                                                    }, {} as Record<string, typeof EDITOR_FONTS>)
+                                                ).map(([grp, fonts]) => (
+                                                    <optgroup key={grp} label={grp}>
+                                                        {fonts.map(f => (
+                                                            <option key={f.value} value={f.value} style={{ fontFamily: f.value, background: "#111" }}>{f.label}</option>
+                                                        ))}
+                                                    </optgroup>
                                                 ))}
                                             </select>
                                         </div>
@@ -19041,12 +19078,29 @@ export function KdpFactoryApp() {
                                 )}
                                 {nicheDetailTab === "seo" && (
                                     <div className="space-y-3">
+                                        {/* Anotaciones — siempre visible en el tab SEO */}
+                                        <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3 space-y-1.5">
+                                            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5">
+                                                <Pencil size={9} />
+                                                Anotaciones para la IA
+                                            </label>
+                                            <textarea
+                                                value={seoAnnotation}
+                                                onChange={e => setSeoAnnotation(e.target.value)}
+                                                rows={2}
+                                                placeholder="Ej: enfócate en regalos navideños, evita la palabra 'mindfulness', incluye el término 'colouring book'…"
+                                                className="w-full bg-white/[0.03] border border-white/8 rounded-lg px-3 py-2 text-xs text-neutral-300 placeholder-neutral-700 focus:outline-none focus:border-amber-500/30 resize-none leading-relaxed"
+                                            />
+                                            {seoAnnotation.trim() && (
+                                                <p className="text-[9px] text-amber-400/70">Se aplicará en la próxima generación</p>
+                                            )}
+                                        </div>
                                         {(detailNiche.listings?.length ?? 0) === 0 ? (
-                                            <div className="flex flex-col items-center justify-center py-16 gap-4">
+                                            <div className="flex flex-col items-center justify-center py-10 gap-4">
                                                 <FileText size={32} strokeWidth={1} className="text-neutral-600 opacity-30" />
                                                 <p className="text-sm text-neutral-600 opacity-30">Sin listings SEO todavía</p>
                                                 <button
-                                                    onClick={() => void launchPipelineSeo(detailNiche._id)}
+                                                    onClick={() => void launchPipelineSeo(detailNiche._id, seoAnnotation)}
                                                     disabled={!!pipelineSeoLoading[detailNiche._id]}
                                                     className="flex items-center gap-2 h-10 px-6 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 text-sm font-black hover:bg-amber-500/25 transition-all disabled:opacity-50"
                                                 >
@@ -19058,7 +19112,7 @@ export function KdpFactoryApp() {
                                             <>
                                             <div className="flex justify-end">
                                                 <button
-                                                    onClick={() => void launchPipelineSeo(detailNiche._id)}
+                                                    onClick={() => void launchPipelineSeo(detailNiche._id, seoAnnotation)}
                                                     disabled={!!pipelineSeoLoading[detailNiche._id]}
                                                     className="flex items-center gap-1.5 h-8 px-4 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 text-[11px] font-black hover:bg-amber-500/20 transition-all disabled:opacity-50"
                                                 >
@@ -19599,7 +19653,7 @@ export function KdpFactoryApp() {
 
             {/* Confirm Delete Cloudinary Image Dialog */}
             {confirmDeleteCloudinaryId && (
-                <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
+                <div className="fixed inset-0 z-[9100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
                     <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
                         <div className="space-y-2 text-center">
                             <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto"><Cloud size={24} className="text-red-400" /></div>
