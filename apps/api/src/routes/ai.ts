@@ -2172,9 +2172,21 @@ Return ONLY a JSON object:
             reply.header("Cache-Control", "no-store");
             return reply.send(buf);
         } catch (e: any) {
-            // Fallback: if kontext unavailable, try Gemini image-generation with reference
-            app.log.warn(`[ai/colorize] kontext failed (${e?.message?.slice(0, 80)})`);
-            return reply.status(502).send({ error: `Colorize failed: ${e?.message ?? "Unknown error"}` });
+            app.log.warn(`[ai/colorize] kontext failed (${e?.message?.slice(0, 80)}), trying flux fallback`);
+            try {
+                const fluxUrl = `https://gen.pollinations.ai/image/${encodeURIComponent(fullPrompt)}?model=flux&image=${encodeURIComponent(imageUrl)}&seed=${seed}&nologo=true`;
+                const res2 = await pollinationsFetch(fluxUrl, { signal: AbortSignal.timeout(90_000) });
+                if (!res2.ok) {
+                    const errText = await res2.text().catch(() => "");
+                    return reply.status(502).send({ error: `Flux fallback error ${res2.status}: ${errText.slice(0, 200)}` });
+                }
+                const buf2 = Buffer.from(await res2.arrayBuffer());
+                reply.header("Content-Type", "image/jpeg");
+                reply.header("Cache-Control", "no-store");
+                return reply.send(buf2);
+            } catch (e2: any) {
+                return reply.status(502).send({ error: `Colorize failed: ${e2?.message ?? "Unknown error"}` });
+            }
         }
     });
 

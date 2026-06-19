@@ -544,6 +544,7 @@ export function KdpFactoryApp() {
     const [confirmDeleteCloudinaryId, setConfirmDeleteCloudinaryId] = useState<string | null>(null);
     const [confirmDeleteCoverMain, setConfirmDeleteCoverMain] = useState<"front" | "back" | null>(null);
     const [confirmDeleteCoverVariant, setConfirmDeleteCoverVariant] = useState<{ candUrl: string; isMain: boolean } | null>(null);
+    const [confirmDeleteCandGallery, setConfirmDeleteCandGallery] = useState<{ nicheId: string; candUrl: string } | null>(null);
     const [savedPrompts, setSavedPrompts] = useState<SavedPromptFE[]>([]);
     const [isLoadingSavedPrompts, setIsLoadingSavedPrompts] = useState(false);
     const [showSavePromptDialog, setShowSavePromptDialog] = useState(false);
@@ -2829,7 +2830,7 @@ export function KdpFactoryApp() {
     const [showCoverModal, setShowCoverModal] = useState(false);
     const [coverModalTab, setCoverModalTab] = useState<"front" | "back">("front");
     const [coverMode, setCoverMode] = useState<"ai" | "collage" | "colorize" | "upload">("ai");
-    const [coverStep, setCoverStep] = useState<1 | 2 | 3>(1);
+    const [coverStep, setCoverStep] = useState<1 | 2>(1);
     const [isSavingCover, setIsSavingCover] = useState(false);
     const [uploadBrowseSource, setUploadBrowseSource] = useState<"vault" | "cloud" | "niches" | null>(null);
     const [uploadBrowseNicheId, setUploadBrowseNicheId] = useState<string>("");
@@ -11127,7 +11128,7 @@ export function KdpFactoryApp() {
                 pendingCoverBlobRef.current = null;
                 setCoverTextLayers([]);
                 toast.success("Portada guardada");
-                if (coverStep === 3) { setShowCoverModal(false); setCoverStep(1); setGeneratedCoverUrl(null); setGeneratedBackCoverUrl(null); setCoverTitle(""); setCoverSubtitle(""); setCoverAuthor("Emilio Jimenez"); setCoverDescription(""); setSelectedCoverNicheId(null); setCoverMode("ai"); setColorizeSourceUrl(null); setSelectedCollageImages(new Set()); setUploadBrowseSource(null); }
+                if (coverStep === 2) { setShowCoverModal(false); setCoverStep(1); setGeneratedCoverUrl(null); setGeneratedBackCoverUrl(null); setCoverTitle(""); setCoverSubtitle(""); setCoverAuthor("Emilio Jimenez"); setCoverDescription(""); setSelectedCoverNicheId(null); setCoverMode("ai"); setColorizeSourceUrl(null); setSelectedCollageImages(new Set()); setUploadBrowseSource(null); }
             } else {
                 await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
                     method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -11137,7 +11138,7 @@ export function KdpFactoryApp() {
                 setGeneratedBackCoverUrl(cloudUrl);
                 pendingBackCoverBlobRef.current = null;
                 toast.success("Contraportada guardada");
-                if (coverStep === 3) { setShowCoverModal(false); setCoverStep(1); setGeneratedCoverUrl(null); setGeneratedBackCoverUrl(null); setCoverTitle(""); setCoverSubtitle(""); setCoverAuthor("Emilio Jimenez"); setCoverDescription(""); setSelectedCoverNicheId(null); setCoverMode("ai"); setColorizeSourceUrl(null); setSelectedCollageImages(new Set()); setUploadBrowseSource(null); }
+                if (coverStep === 2) { setShowCoverModal(false); setCoverStep(1); setGeneratedCoverUrl(null); setGeneratedBackCoverUrl(null); setCoverTitle(""); setCoverSubtitle(""); setCoverAuthor("Emilio Jimenez"); setCoverDescription(""); setSelectedCoverNicheId(null); setCoverMode("ai"); setColorizeSourceUrl(null); setSelectedCollageImages(new Set()); setUploadBrowseSource(null); }
             }
         } catch { toast.error("Error al guardar"); }
         finally { setIsSavingCover(false); }
@@ -11512,6 +11513,86 @@ export function KdpFactoryApp() {
                                             </div>
                                         )}
                                     </div>
+                                    {/* Candidates strip */}
+                                    {(n.coverCandidates?.length ?? 0) > 0 && (() => {
+                                        const candidates = n.coverCandidates ?? [];
+                                        const coverMap = NICHE_STYLE_TO_COVER[n.styleCategory] ?? NICHE_STYLE_TO_COVER.generic;
+                                        const openWithUrl = (url: string) => {
+                                            setSelectedCoverNicheId(n._id);
+                                            setGeneratedCoverUrl(url);
+                                            setGeneratedBackCoverUrl(n.backCoverUrl ?? null);
+                                            setCoverTitle(n.nickname?.trim() || n.name);
+                                            setCoverSubtitle(n.productType === "coloring-book" ? "Coloring Book for Adults" : "");
+                                            setCoverStyle(coverMap.style);
+                                            setCoverColorTheme(coverMap.colorTheme);
+                                            setCoverModelId(NICHE_STYLE_MODEL[n.styleCategory] ?? "pollinations-flux");
+                                            if (n.description) setCoverDescription(n.description);
+                                            setShowCoverModal(true);
+                                            setCoverStep(2);
+                                        };
+                                        const setAsMain = async (url: string) => {
+                                            await fetch(`${API_BASE_URL}/niches/${n._id}`, {
+                                                method: "PATCH", headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ coverUrl: url, pipelineHasCover: true }),
+                                            }).catch(() => {});
+                                            setNiches(prev => prev.map(x => x._id === n._id ? { ...x, coverUrl: url, pipelineHasCover: true } : x));
+                                            toast.success("Portada principal actualizada");
+                                        };
+                                        return (
+                                        <div className="px-1 pb-1">
+                                            <div className="flex gap-1 overflow-x-auto no-scrollbar">
+                                                {candidates.map((url, idx) => {
+                                                    const isMain = url === n.coverUrl;
+                                                    return (
+                                                    <div key={idx} className="group/cand relative shrink-0 rounded-lg overflow-hidden bg-white/[0.02] border border-white/6 hover:border-fuchsia-500/30 transition-all cursor-pointer"
+                                                        style={{ width: 44, aspectRatio: "1600/2560" }}
+                                                        onClick={() => setLightboxUrl({ url, filename: `portada-${slug}-${idx + 1}.jpg` })}>
+                                                        <img src={url} alt="" className="w-full h-full object-cover" />
+                                                        {isMain && (
+                                                            <div className="absolute top-0.5 left-0.5 w-3.5 h-3.5 rounded bg-fuchsia-500/90 flex items-center justify-center">
+                                                                <Star size={7} className="text-white fill-white" />
+                                                            </div>
+                                                        )}
+                                                        <div className="absolute inset-0 bg-black/70 opacity-0 group-hover/cand:opacity-100 transition-opacity flex flex-col items-center justify-center gap-0.5">
+                                                            {!isMain && (
+                                                                <button onClick={e => { e.stopPropagation(); void setAsMain(url); }}
+                                                                    className="w-6 h-6 rounded bg-fuchsia-500/80 hover:bg-fuchsia-500 text-white flex items-center justify-center transition-all"
+                                                                    title="Usar como principal">
+                                                                    <Star size={9} />
+                                                                </button>
+                                                            )}
+                                                            <button onClick={e => { e.stopPropagation(); openWithUrl(url); }}
+                                                                className="w-6 h-6 rounded bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition-all"
+                                                                title="Editar">
+                                                                <Pencil size={9} />
+                                                            </button>
+                                                            <button onClick={e => { e.stopPropagation(); void downloadFile(url, `portada-${slug}-${idx + 1}.jpg`); }}
+                                                                className="w-6 h-6 rounded bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition-all"
+                                                                title="Descargar">
+                                                                <Download size={9} />
+                                                            </button>
+                                                            <button onClick={e => { e.stopPropagation(); setConfirmDeleteCandGallery({ nicheId: n._id, candUrl: url }); }}
+                                                                className="w-6 h-6 rounded bg-rose-500/60 hover:bg-rose-500/80 text-white flex items-center justify-center transition-all"
+                                                                title="Eliminar">
+                                                                <Trash2 size={9} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    );
+                                                })}
+                                                {/* Nueva portada */}
+                                                <button
+                                                    onClick={() => { setSelectedCoverNicheId(n._id); setGeneratedCoverUrl(null); setGeneratedBackCoverUrl(n.backCoverUrl ?? null); setCoverTitle(n.nickname?.trim() || n.name); setCoverSubtitle(n.productType === "coloring-book" ? "Coloring Book for Adults" : ""); setCoverStyle(coverMap.style); setCoverColorTheme(coverMap.colorTheme); setCoverModelId(NICHE_STYLE_MODEL[n.styleCategory] ?? "pollinations-flux"); if (n.description) setCoverDescription(n.description); setCoverStep(1); setShowCoverModal(true); }}
+                                                    className="shrink-0 rounded-lg border border-dashed border-white/15 hover:border-fuchsia-500/40 hover:bg-fuchsia-500/5 text-white/30 hover:text-fuchsia-400 flex items-center justify-center transition-all"
+                                                    style={{ width: 44, aspectRatio: "1600/2560" }}
+                                                    title="Nueva portada">
+                                                    <Plus size={12} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                        );
+                                    })()}
+
                                     {/* Footer */}
                                     <div className="px-2 py-1.5 flex items-center justify-between gap-1">
                                         <p className="text-xs font-black text-white truncate flex-1">{n.nickname?.trim() || n.name}</p>
@@ -14751,7 +14832,6 @@ export function KdpFactoryApp() {
                                 {([
                                     [1, "Imagen"],
                                     [2, "Texto"],
-                                    [3, "Guardar"],
                                 ] as const).map(([n, label]) => (
                                     <React.Fragment key={n}>
                                         <button
@@ -14775,7 +14855,7 @@ export function KdpFactoryApp() {
                         <div className="flex-1 min-h-0 overflow-hidden">
                           <div className="flex h-full overflow-hidden">
                             {/* ── Left: controls ── */}
-                            <div className="flex-1 min-h-0 p-5 space-y-4 overflow-y-auto border-r border-white/6" style={{ minWidth: 0 }}>
+                            <div className={`${coverStep !== 1 ? "w-[260px] shrink-0" : "flex-1"} min-h-0 p-5 space-y-4 overflow-y-auto border-r border-white/6`} style={{ minWidth: 0 }}>
 
                             {/* Mode selector (step 1 front only) */}
                             {coverModalTab === "front" && coverStep === 1 && (
@@ -15547,47 +15627,11 @@ export function KdpFactoryApp() {
 
                             </>)} {/* end paso 2 */}
 
-                            {/* ── PASO 3: Confirmar y guardar ── */}
-                            {coverStep === 3 && (
-                                <div className="space-y-4 py-2">
-                                    <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-emerald-500/[0.06] border border-emerald-500/15">
-                                        <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
-                                            <Check size={13} className="text-emerald-400" />
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-black text-emerald-400">Imagen y texto listos</p>
-                                            <p className="text-[10px] text-neutral-600 mt-0.5">Elige el nicho destino y guarda desde el panel</p>
-                                        </div>
-                                    </div>
-                                    {(coverTitle || coverAuthor) && (
-                                        <div className="space-y-1.5 border border-white/8 rounded-2xl p-3 bg-white/[0.02]">
-                                            {coverTitle && <p className="text-sm font-black text-white">{coverTitle}</p>}
-                                            {coverSubtitle && <p className="text-[11px] text-neutral-500">{coverSubtitle}</p>}
-                                            {coverAuthor && <p className="text-[11px] text-fuchsia-400/70">{coverAuthor}</p>}
-                                        </div>
-                                    )}
-                                    {coverTextLayers.filter(l => l.visible !== false).length > 0 && (
-                                        <p className="text-[10px] text-neutral-600">{coverTextLayers.filter(l => l.visible !== false).length} capa{coverTextLayers.filter(l => l.visible !== false).length !== 1 ? "s" : ""} de texto · se incrustan al guardar</p>
-                                    )}
-                                    {/* Niche selector for saving */}
-                                    {niches.filter(n => n.status !== "archived").length > 0 && (
-                                        <div className="space-y-1.5">
-                                            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Nicho destino</label>
-                                            <NicheSelect
-                                                niches={niches.filter(n => n.status !== "archived")}
-                                                selectedId={selectedCoverNicheId}
-                                                placeholder="— Sin nicho —"
-                                                onChange={(n) => setSelectedCoverNicheId(n?._id ?? null)}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            )}
 
                             </div>{/* end left column */}
 
                             {/* ── Right: live preview ── */}
-                            <div className="w-80 shrink-0 min-h-0 p-5 flex flex-col items-center gap-4 overflow-y-auto">
+                            <div className={`${coverStep !== 1 ? "flex-1" : "w-80 shrink-0"} min-h-0 ${coverStep !== 1 ? "p-4 flex flex-col items-center gap-2 overflow-hidden" : "p-5 flex flex-col items-center gap-4 overflow-y-auto"}`}>
                                 {(() => {
                                     const url = coverModalTab === "front" ? generatedCoverUrl : generatedBackCoverUrl;
                                     const isBuilding = coverModalTab === "front" ? (isBuildingCover || isBuildingCollage) : isBuildingBackCover;
@@ -15597,14 +15641,17 @@ export function KdpFactoryApp() {
                                         : `contraportada-${(coverTitle || "cover").toLowerCase().replace(/\s+/g, "-")}.jpg`;
                                     return (<>
                                         <div ref={previewContainerRef}
-                                            className={`w-full rounded-2xl overflow-hidden border border-white/10 shadow-[0_0_40px_rgba(192,38,211,0.1)] relative bg-white/[0.02] select-none`}
-                                            style={{ aspectRatio: "1600/2560" }}
+                                            className="rounded-2xl overflow-hidden border border-white/10 shadow-[0_0_40px_rgba(192,38,211,0.1)] relative bg-white/[0.02] select-none mx-auto"
+                                            style={coverStep === 2
+                                                ? { aspectRatio: "1600/2560", maxHeight: "calc(92dvh - 280px)", width: "auto", maxWidth: "100%" }
+                                                : { aspectRatio: "1600/2560", width: "100%" }}
                                             onMouseMove={e => {
-                                                if (!draggingLayerRef.current || !previewContainerRef.current) return;
+                                                const drag = draggingLayerRef.current;
+                                                if (!drag || !previewContainerRef.current) return;
                                                 const rect = previewContainerRef.current.getBoundingClientRect();
-                                                const dx = ((e.clientX - draggingLayerRef.current.startX) / rect.width) * 100;
-                                                const dy = ((e.clientY - draggingLayerRef.current.startY) / rect.height) * 100;
-                                                setCoverTextLayers(prev => prev.map(l => l.id === draggingLayerRef.current!.id ? { ...l, x: Math.max(0, Math.min(100, draggingLayerRef.current!.origX + dx)), y: Math.max(0, Math.min(100, draggingLayerRef.current!.origY + dy)) } : l));
+                                                const dx = ((e.clientX - drag.startX) / rect.width) * 100;
+                                                const dy = ((e.clientY - drag.startY) / rect.height) * 100;
+                                                setCoverTextLayers(prev => prev.map(l => l.id === drag.id ? { ...l, x: Math.max(0, Math.min(100, drag.origX + dx)), y: Math.max(0, Math.min(100, drag.origY + dy)) } : l));
                                             }}
                                             onMouseUp={() => { draggingLayerRef.current = null; }}
                                             onMouseLeave={() => { draggingLayerRef.current = null; }}>
@@ -15654,7 +15701,7 @@ export function KdpFactoryApp() {
                                                 </div>
                                             ))}
                                         </div>
-                                        {url && (
+                                        {url && coverStep !== 2 && (
                                             <div className="flex flex-col gap-1.5 w-full">
                                                 {/* Guardar en nicho */}
                                                 {selectedCoverNicheId && (
@@ -15720,87 +15767,6 @@ export function KdpFactoryApp() {
                                     </div>
                                 )}
 
-                                {/* ── Candidates gallery ── */}
-                                {(() => {
-                                    const niche = niches.find(n => n._id === selectedCoverNicheId);
-                                    const candidates = coverModalTab === "front"
-                                        ? (niche?.coverCandidates ?? [])
-                                        : (niche?.backCoverUrl ? [niche.backCoverUrl] : []);
-                                    if (candidates.length === 0) return null;
-                                    const mainUrl = coverModalTab === "front" ? niche?.coverUrl : niche?.backCoverUrl;
-                                    return (
-                                        <div className="w-full space-y-1.5 border-t border-white/6 pt-3">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">{candidates.length} guardada{candidates.length !== 1 ? "s" : ""}</p>
-                                                {coverModalTab === "front" && candidates.length > 1 && niche && (
-                                                    <button onClick={() => void scoreCoverCandidates(niche)} disabled={scoringCovers}
-                                                        title="El LLM-visión evalúa las candidatas como miniatura de 100px (lo que ve el 90% de compradores) y elige la de mayor CTR potencial"
-                                                        className="flex items-center gap-1 h-6 px-2 rounded-lg bg-gradient-to-r from-fuchsia-500/20 to-purple-500/10 border border-fuchsia-500/30 text-[9px] font-black text-fuchsia-300 hover:from-fuchsia-500/30 transition-all disabled:opacity-50">
-                                                        {scoringCovers ? <Loader2 size={9} className="animate-spin" /> : <Sparkles size={9} />} Elegir mejor (IA)
-                                                    </button>
-                                                )}
-                                            </div>
-                                            {coverScoreReasoning && coverModalTab === "front" && (
-                                                <p className="text-[9px] text-fuchsia-300/70 italic leading-snug border-l-2 border-fuchsia-500/30 pl-2">{coverScoreReasoning}</p>
-                                            )}
-                                            <div className="grid grid-cols-3 gap-1.5">
-                                                {candidates.map((candUrl, idx) => {
-                                                    const isMain = candUrl === mainUrl;
-                                                    const sc = coverScores[candUrl];
-                                                    return (
-                                                        <div key={idx} className="relative group">
-                                                            <button
-                                                                onClick={() => {
-                                                                    if (coverModalTab === "front") setGeneratedCoverUrl(candUrl);
-                                                                    else setGeneratedBackCoverUrl(candUrl);
-                                                                }}
-                                                                className={`w-full rounded-lg overflow-hidden border-2 transition-all ${isMain ? "border-fuchsia-500/60" : "border-white/10 hover:border-fuchsia-500/30"}`}
-                                                                style={{ aspectRatio: "1600/2560" }}
-                                                                title={sc ? `${sc.score}/100 · ✓ ${sc.thumbnailStrength} · ✕ ${sc.weakness}` : "Usar como portada principal"}
-                                                            >
-                                                                <img src={candUrl} alt="" className="w-full h-full object-cover" />
-                                                                {isMain && <div className="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-fuchsia-500 flex items-center justify-center"><Check size={6} className="text-white" /></div>}
-                                                                {sc && (
-                                                                    <div className={`absolute bottom-0.5 left-0.5 h-4 px-1 rounded text-[8px] font-black flex items-center ${sc.score >= 75 ? "bg-emerald-500/80 text-white" : sc.score >= 50 ? "bg-amber-500/80 text-black" : "bg-rose-500/80 text-white"}`}>
-                                                                        {sc.score}
-                                                                    </div>
-                                                                )}
-                                                            </button>
-                                                            {/* Set as main */}
-                                                            {!isMain && (
-                                                                <button
-                                                                    onClick={async () => {
-                                                                        if (!selectedCoverNicheId) return;
-                                                                        const field = coverModalTab === "front" ? "coverUrl" : "backCoverUrl";
-                                                                        await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
-                                                                            method: "PATCH", headers: { "Content-Type": "application/json" },
-                                                                            body: JSON.stringify({ [field]: candUrl, pipelineHasCover: true }),
-                                                                        }).catch(() => {});
-                                                                        setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, [field]: candUrl, pipelineHasCover: true } : n));
-                                                                        if (coverModalTab === "front") setGeneratedCoverUrl(candUrl);
-                                                                        else setGeneratedBackCoverUrl(candUrl);
-                                                                    }}
-                                                                    className="absolute bottom-0.5 left-0.5 right-0.5 h-5 rounded bg-fuchsia-500/80 text-white text-[8px] font-black hidden group-hover:flex items-center justify-center gap-0.5 transition-all"
-                                                                    title="Establecer como principal"
-                                                                >
-                                                                    <Check size={7} /> Principal
-                                                                </button>
-                                                            )}
-                                                            {/* Delete candidate */}
-                                                            <button
-                                                                onClick={() => setConfirmDeleteCoverVariant({ candUrl, isMain })}
-                                                                className="absolute top-0.5 left-0.5 w-4 h-4 rounded bg-rose-500/80 text-white hidden group-hover:flex items-center justify-center transition-all"
-                                                                title="Eliminar variante"
-                                                            >
-                                                                <X size={7} />
-                                                            </button>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    );
-                                })()}
                             </div>{/* end right preview */}
                           </div>{/* end flex row */}
 
@@ -15810,22 +15776,22 @@ export function KdpFactoryApp() {
                         {(
                             <div className="shrink-0 border-t border-white/6 px-5 py-3.5 flex items-center justify-between gap-3">
                                 <button
-                                    onClick={() => setCoverStep(s => Math.max(1, s - 1) as 1 | 2 | 3)}
+                                    onClick={() => setCoverStep(s => Math.max(1, s - 1) as 1 | 2)}
                                     disabled={coverStep === 1}
                                     className="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-white/[0.04] border border-white/10 text-sm font-black text-neutral-500 hover:text-white hover:bg-white/8 hover:border-white/20 transition-all disabled:opacity-25 disabled:pointer-events-none">
                                     ← Atrás
                                 </button>
                                 <div className="flex items-center gap-1">
-                                    {([1, 2, 3] as const).map(n => (
+                                    {([1, 2] as const).map(n => (
                                         <div key={n} className={`h-1.5 rounded-full transition-all ${coverStep === n ? "w-5 bg-fuchsia-500" : n < coverStep ? "w-2 bg-fuchsia-500/40" : "w-2 bg-white/10"}`} />
                                     ))}
                                 </div>
-                                {coverStep < 3 ? (
+                                {coverStep === 1 ? (
                                     <button
-                                        onClick={() => setCoverStep(s => Math.min(3, s + 1) as 1 | 2 | 3)}
-                                        disabled={coverStep === 1 && !(coverModalTab === "front" ? generatedCoverUrl : generatedBackCoverUrl)}
+                                        onClick={() => setCoverStep(2)}
+                                        disabled={!(coverModalTab === "front" ? generatedCoverUrl : generatedBackCoverUrl)}
                                         className="flex items-center gap-1.5 h-9 px-4 rounded-xl bg-fuchsia-600 hover:bg-fuchsia-500 text-white text-sm font-black transition-all disabled:opacity-30 disabled:pointer-events-none shadow-[0_2px_12px_rgba(192,38,211,0.3)]">
-                                        {coverStep === 1 ? ((coverModalTab === "front" ? generatedCoverUrl : generatedBackCoverUrl) ? "Añadir texto →" : "Genera primero") : "Vista previa →"}
+                                        {(coverModalTab === "front" ? generatedCoverUrl : generatedBackCoverUrl) ? "Añadir texto →" : "Genera primero"}
                                     </button>
                                 ) : (
                                     <div className="flex items-center gap-2">
@@ -17292,6 +17258,36 @@ export function KdpFactoryApp() {
                 zIndex={9200}
             />
 
+            <ConfirmModal
+                open={!!confirmDeleteCandGallery}
+                onClose={() => setConfirmDeleteCandGallery(null)}
+                onConfirm={async () => {
+                    const info = confirmDeleteCandGallery;
+                    setConfirmDeleteCandGallery(null);
+                    if (!info) return;
+                    const niche = niches.find(n => n._id === info.nicheId);
+                    const newCandidates = (niche?.coverCandidates ?? []).filter(u => u !== info.candUrl);
+                    const isMain = niche?.coverUrl === info.candUrl;
+                    const newMain = isMain ? (newCandidates[newCandidates.length - 1] ?? "") : (niche?.coverUrl ?? "");
+                    await fetch(`${API_BASE_URL}/niches/${info.nicheId}`, {
+                        method: "PATCH", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ coverCandidates: newCandidates, ...(isMain ? { coverUrl: newMain, pipelineHasCover: !!newMain } : {}) }),
+                    }).catch(() => {});
+                    setNiches(prev => prev.map(n => n._id === info.nicheId ? {
+                        ...n,
+                        coverCandidates: newCandidates,
+                        ...(isMain ? { coverUrl: newMain || undefined, pipelineHasCover: !!newMain } : {}),
+                    } : n));
+                    toast.success("Variante eliminada");
+                }}
+                title="¿Eliminar esta variante?"
+                description="Se eliminará esta variante de portada. Esta acción no se puede deshacer."
+                confirmLabel="Eliminar"
+                variant="danger"
+                icon={<Trash2 size={24} className="text-red-400" />}
+                zIndex={9200}
+            />
+
             {/* Save Prompt Dialog */}
             {showSavePromptDialog && (
                 <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true" onClick={() => setShowSavePromptDialog(false)}>
@@ -17601,9 +17597,9 @@ export function KdpFactoryApp() {
             )}
 
             {/* Lightbox */}
-            {lightboxUrl && (
+            {lightboxUrl && createPortal(
                 <div
-                    className="fixed inset-0 z-[500] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"
+                    className="fixed inset-0 z-[1200] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"
                     onClick={() => setLightboxUrl(null)}
                 >
                     <div className="relative max-w-4xl max-h-full" onClick={e => e.stopPropagation()}>
@@ -17643,7 +17639,8 @@ export function KdpFactoryApp() {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* Explosión multi-catálogo */}
