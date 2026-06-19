@@ -14714,8 +14714,8 @@ export function KdpFactoryApp() {
             })()}
 
             {/* Cover Factory Modal */}
-            {showCoverModal && (
-                <div className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
+            {showCoverModal && createPortal(
+                <div className="fixed inset-0 z-[1100] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
                     onClick={() => { setShowCoverModal(false); setCoverStep(1); setGeneratedCoverUrl(null); setGeneratedBackCoverUrl(null); setCoverTextLayers([]); setCoverMode("ai"); setColorizeSourceUrl(null); setSelectedCollageImages(new Set()); setCoverTitle(""); setCoverSubtitle(""); setCoverAuthor("Emilio Jimenez"); setCoverDescription(""); setSelectedCoverNicheId(null); setUploadBrowseSource(null); }} role="dialog" aria-modal="true">
                     <div className="relative w-full max-w-5xl rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col h-[92dvh]"
                         onClick={e => e.stopPropagation()}>
@@ -14773,9 +14773,9 @@ export function KdpFactoryApp() {
                         )}
                         {/* Body */}
                         <div className="flex-1 min-h-0 overflow-hidden">
-                          <div className="flex h-full">
+                          <div className="flex h-full overflow-hidden">
                             {/* ── Left: controls ── */}
-                            <div className="flex-1 p-5 space-y-4 overflow-y-auto border-r border-white/6" style={{ minWidth: 0 }}>
+                            <div className="flex-1 min-h-0 p-5 space-y-4 overflow-y-auto border-r border-white/6" style={{ minWidth: 0 }}>
 
                             {/* Mode selector (step 1 front only) */}
                             {coverModalTab === "front" && coverStep === 1 && (
@@ -15587,7 +15587,7 @@ export function KdpFactoryApp() {
                             </div>{/* end left column */}
 
                             {/* ── Right: live preview ── */}
-                            <div className="w-80 shrink-0 p-5 flex flex-col items-center gap-4 overflow-y-auto">
+                            <div className="w-80 shrink-0 min-h-0 p-5 flex flex-col items-center gap-4 overflow-y-auto">
                                 {(() => {
                                     const url = coverModalTab === "front" ? generatedCoverUrl : generatedBackCoverUrl;
                                     const isBuilding = coverModalTab === "front" ? (isBuildingCover || isBuildingCollage) : isBuildingBackCover;
@@ -15845,7 +15845,8 @@ export function KdpFactoryApp() {
                             </div>
                         )}
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* ════════════════════════════════════════════════
