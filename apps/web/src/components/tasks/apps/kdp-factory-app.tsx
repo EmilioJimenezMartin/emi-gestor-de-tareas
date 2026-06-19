@@ -901,7 +901,8 @@ export function KdpFactoryApp() {
     const [isForkingNiche, setIsForkingNiche] = useState(false);
     // Niche detail modal
     const [nicheDetailId, setNicheDetailId] = useState<string | null>(null);
-    const [nicheDetailTab, setNicheDetailTab] = useState<"images" | "catalogs" | "seo" | "book">("images");
+    const [nicheDetailTab, setNicheDetailTab] = useState<"images" | "catalogs" | "seo" | "book" | "preview">("images");
+    const [previewSpreadIdx, setPreviewSpreadIdx] = useState(0);
     const [expandedPublicacionNiches, setExpandedPublicacionNiches] = useState<Set<string>>(new Set());
     const [discoveryPromptEditing, setDiscoveryPromptEditing] = useState(false);
     const [discoveryPromptDraft, setDiscoveryPromptDraft] = useState("");
@@ -2789,7 +2790,7 @@ export function KdpFactoryApp() {
     const [coverStyle, setCoverStyle] = useState("vibrant illustration, fantasy");
     const [coverColorTheme, setCoverColorTheme] = useState("deep blue and gold");
     const [coverModelId, setCoverModelId] = useState("pollinations-flux");
-    const [coverImgDims, setCoverImgDims] = useState("1024x1024");
+    const [coverImgDims, setCoverImgDims] = useState("832x1248");
     const [isBuildingCover, setIsBuildingCover] = useState(false);
     const [generatedCoverUrl, setGeneratedCoverUrl] = useState<string | null>(null);
     // Cover A/B: puntuación de candidatas como miniatura (LLM-visión)
@@ -3720,6 +3721,7 @@ export function KdpFactoryApp() {
 
     // Fetch catalogs on mount (socket connects when entering creation tab)
     useEffect(() => { void fetchCatalogs(); void fetchApRuns(); void fetchPipelineData(); void fetchRejectedImages(); void fetchAutoCloneQueue(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { setPreviewSpreadIdx(0); }, [nicheDetailId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Sync calendar events from MongoDB on mount (backend may have them from another session)
     useEffect(() => {
@@ -4910,6 +4912,8 @@ export function KdpFactoryApp() {
                 lastError,
                 coverUrl: n.coverUrl,
                 backCoverUrl: n.backCoverUrl,
+                pipelineHasCover: n.pipelineHasCover ?? false,
+                lifecycleStage: n.lifecycleStage,
             };
         });
 
@@ -5222,6 +5226,29 @@ export function KdpFactoryApp() {
                                                                     {pipelineSeoLoading[n.id] ? <Loader2 size={7} className="animate-spin" /> : <Sparkles size={7} />} SEO
                                                                 </button>
                                                             )}
+                                                            {n.phase === "cover" && n.pipelineHasCover && (
+                                                                <button onClick={() => {
+                                                                    fetch(`${API_BASE_URL}/niches/${n.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "published", lifecycleStage: "pre-published" }) }).catch(() => {});
+                                                                    setNiches(prev => prev.map(x => x._id === n.id ? { ...x, phase: "published", lifecycleStage: "pre-published" } : x));
+                                                                    toast.success("🚀 Publicado");
+                                                                }}
+                                                                    className="flex items-center gap-0.5 h-5 px-2 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[9px] font-black hover:bg-emerald-500/25 transition-all">
+                                                                    <Rocket size={7} /> Publicar
+                                                                </button>
+                                                            )}
+                                                            {n.phase === "published" && (() => {
+                                                                const SUB = [
+                                                                    { id: "pre-published" as const, label: "Pre", color: "bg-amber-500/15 border-amber-500/25 text-amber-400 hover:bg-amber-500/25" },
+                                                                    { id: "published" as const,     label: "Live", color: "bg-emerald-500/15 border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/25" },
+                                                                    { id: "end-of-life" as const,   label: "Fin",  color: "bg-neutral-500/15 border-neutral-500/25 text-neutral-400 hover:bg-neutral-500/25" },
+                                                                ];
+                                                                return SUB.map(s => (
+                                                                    <button key={s.id} onClick={() => void updateNicheLifecycle(n.id, { lifecycleStage: s.id })}
+                                                                        className={`flex items-center h-5 px-2 rounded border text-[9px] font-black transition-all ${n.lifecycleStage === s.id ? s.color : "bg-transparent border-white/8 text-neutral-700 hover:text-neutral-400"}`}>
+                                                                        {s.label}
+                                                                    </button>
+                                                                ));
+                                                            })()}
                                                             {(isStuck || !!n.lastError) && (
                                                                 <button onClick={() => void retryStuckNiche(n.id)} disabled={pipelineRetryLoading[n.id]}
                                                                     className="flex items-center gap-0.5 h-5 px-2 rounded bg-rose-500/15 border border-rose-500/25 text-rose-400 text-[9px] font-black hover:bg-rose-500/25 transition-all disabled:opacity-50">
@@ -11079,13 +11106,30 @@ export function KdpFactoryApp() {
         new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = () => {
+                // Always output at KDP portrait dimensions (1600×2560)
+                const OUT_W = 1600, OUT_H = 2560;
+                const TARGET_RATIO = OUT_W / OUT_H; // 0.625
+                const srcW = img.naturalWidth || OUT_W;
+                const srcH = img.naturalHeight || OUT_H;
+                const srcRatio = srcW / srcH;
+                // Crop source to portrait aspect ratio, same as CSS object-cover in the preview
+                let cropX = 0, cropY = 0, cropW = srcW, cropH = srcH;
+                if (srcRatio > TARGET_RATIO) {
+                    // Source wider than portrait → crop sides (same as object-cover)
+                    cropW = Math.round(srcH * TARGET_RATIO);
+                    cropX = Math.round((srcW - cropW) / 2);
+                } else if (srcRatio < TARGET_RATIO) {
+                    // Source taller than portrait → crop top/bottom
+                    cropH = Math.round(srcW / TARGET_RATIO);
+                    cropY = Math.round((srcH - cropH) / 2);
+                }
                 const canvas = document.createElement("canvas");
-                canvas.width = img.naturalWidth || 1600;
-                canvas.height = img.naturalHeight || 2560;
+                canvas.width = OUT_W;
+                canvas.height = OUT_H;
                 const ctx = canvas.getContext("2d")!;
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, OUT_W, OUT_H);
                 const visible = layers.filter(l => l.visible !== false);
-                for (const layer of visible) drawTextLayerOnCanvas(ctx, layer, canvas.width, canvas.height, previewWidth);
+                for (const layer of visible) drawTextLayerOnCanvas(ctx, layer, OUT_W, OUT_H, previewWidth);
                 canvas.toBlob(b => b ? resolve(b) : reject(new Error("toBlob failed")), "image/jpeg", 0.92);
             };
             img.onerror = reject;
@@ -12762,16 +12806,42 @@ export function KdpFactoryApp() {
                                                                     </button>
                                                                 )}
                                                                 {col.id === "cover" && (
-                                                                    <button onClick={e => { e.stopPropagation(); changeTab("studio"); }}
-                                                                        className="text-[9px] font-black uppercase tracking-widest text-fuchsia-400 hover:text-fuchsia-300 transition-colors flex items-center gap-1">
-                                                                        <ImageIcon size={9} /> Cover
-                                                                    </button>
+                                                                    <div className="flex items-center gap-1">
+                                                                        <button onClick={e => { e.stopPropagation(); changeTab("studio"); }}
+                                                                            className="text-[9px] font-black uppercase tracking-widest text-fuchsia-400 hover:text-fuchsia-300 transition-colors flex items-center gap-1">
+                                                                            <ImageIcon size={9} /> Cover
+                                                                        </button>
+                                                                        {(niche.pipelineHasCover || !!niche.coverUrl) && (
+                                                                            <button onClick={e => {
+                                                                                e.stopPropagation();
+                                                                                fetch(`${API_BASE_URL}/niches/${niche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "published", lifecycleStage: "pre-published" }) }).catch(() => {});
+                                                                                setNiches(prev => prev.map(x => x._id === niche._id ? { ...x, phase: "published", lifecycleStage: "pre-published" } : x));
+                                                                                toast.success("🚀 Publicado");
+                                                                            }}
+                                                                                className="text-[9px] font-black uppercase tracking-widest text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1">
+                                                                                <Rocket size={9} /> Publicar
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
                                                                 )}
-                                                                {col.id === "published" && (
-                                                                    <span className="text-[9px] font-black uppercase tracking-widest text-emerald-500 flex items-center gap-1">
-                                                                        <CheckCircle2 size={9} /> Live
-                                                                    </span>
-                                                                )}
+                                                                {col.id === "published" && (() => {
+                                                                    const SUB = [
+                                                                        { id: "pre-published" as const, label: "Pre", dot: "bg-amber-400" },
+                                                                        { id: "published" as const,     label: "Live", dot: "bg-emerald-400" },
+                                                                        { id: "end-of-life" as const,   label: "Fin",  dot: "bg-neutral-500" },
+                                                                    ];
+                                                                    return (
+                                                                        <div className="flex items-center gap-1">
+                                                                            {SUB.map(s => (
+                                                                                <button key={s.id} onClick={e => { e.stopPropagation(); void updateNicheLifecycle(niche._id, { lifecycleStage: s.id }); }}
+                                                                                    className={`flex items-center gap-0.5 text-[9px] font-black transition-colors ${niche.lifecycleStage === s.id ? "text-white" : "text-neutral-700 hover:text-neutral-400"}`}>
+                                                                                    <span className={`w-1.5 h-1.5 rounded-full ${niche.lifecycleStage === s.id ? s.dot : "bg-neutral-800"}`} />
+                                                                                    {s.label}
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    );
+                                                                })()}
                                                                 {/* Prev / Next arrows */}
                                                                 <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">
                                                                     <button onClick={e => { e.stopPropagation(); void movePhase(niche._id, -1); }}
@@ -12864,10 +12934,22 @@ export function KdpFactoryApp() {
                                     const phaseHoverBorder: Record<string, string> = { niche: "hover:border-sky-500/25", catalog: "hover:border-blue-500/25", libro: "hover:border-indigo-500/25", seo: "hover:border-violet-500/25", cover: "hover:border-fuchsia-500/25", published: "hover:border-emerald-500/25" };
                                     const phaseHoverShadow: Record<string, string> = { niche: "hover:shadow-[0_0_30px_rgba(14,165,233,0.08)]", catalog: "hover:shadow-[0_0_30px_rgba(59,130,246,0.08)]", libro: "hover:shadow-[0_0_30px_rgba(99,102,241,0.08)]", seo: "hover:shadow-[0_0_30px_rgba(139,92,246,0.08)]", cover: "hover:shadow-[0_0_30px_rgba(217,70,239,0.08)]", published: "hover:shadow-[0_0_30px_rgba(16,185,129,0.08)]" };
                                     const phaseBlob: Record<string, string> = { niche: "bg-sky-500/8", catalog: "bg-blue-500/8", libro: "bg-indigo-500/8", seo: "bg-violet-500/8", cover: "bg-fuchsia-500/8", published: "bg-emerald-500/8" };
+                                    // Published sub-state visual overrides
+                                    const ls = niche.lifecycleStage;
+                                    const pubGrad = ls === "end-of-life" ? "from-neutral-500 via-neutral-400 to-neutral-500" : ls === "published" ? "from-emerald-400 via-teal-300 to-cyan-400" : "from-amber-500 via-yellow-400 to-amber-400";
+                                    const pubHoverBorder = ls === "end-of-life" ? "hover:border-neutral-500/20" : ls === "published" ? "hover:border-emerald-400/50" : "hover:border-amber-500/40";
+                                    const pubHoverShadow = ls === "end-of-life" ? "" : ls === "published" ? "hover:shadow-[0_0_40px_rgba(16,185,129,0.22)]" : "hover:shadow-[0_0_30px_rgba(245,158,11,0.18)]";
+                                    const pubBlob = ls === "end-of-life" ? "bg-neutral-500/6" : ls === "published" ? "bg-emerald-500/15" : "bg-amber-500/12";
+                                    const activeGrad = cardPhase === "published" ? pubGrad : (phaseGradient[cardPhase] ?? phaseGradient["niche"]);
+                                    const activeHoverBorder = cardPhase === "published" ? pubHoverBorder : (phaseHoverBorder[cardPhase] ?? "hover:border-sky-500/25");
+                                    const activeHoverShadow = cardPhase === "published" ? pubHoverShadow : (phaseHoverShadow[cardPhase] ?? "");
+                                    const activeBlob = cardPhase === "published" ? pubBlob : (phaseBlob[cardPhase] ?? "bg-sky-500/8");
+                                    // Extra ring for Activo state
+                                    const isActivo = cardPhase === "published" && ls === "published";
                                     const firstCatThumb = linkedCats.find(c => c.images.length > 0)?.images[0]?.url;
                                                     const coverThumb = niche.coverUrl || niche.sampleImageUrl || firstCatThumb;
                                     return (
-                                        <div key={niche._id} className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-white/[0.01] ${phaseHoverBorder[cardPhase] ?? "hover:border-sky-500/25"} ${phaseHoverShadow[cardPhase] ?? ""} hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden`}>
+                                        <div key={niche._id} className={`group relative rounded-2xl border bg-gradient-to-b from-white/[0.04] to-white/[0.01] ${isActivo ? "border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.10)]" : "border-white/[0.08]"} ${activeHoverBorder} ${activeHoverShadow} hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden`}>
                                             {coverThumb && (
                                                 <div className="absolute inset-0 pointer-events-none">
                                                     <img src={coverThumb} alt=""
@@ -12877,8 +12959,8 @@ export function KdpFactoryApp() {
                                                     <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/55 to-black/85" />
                                                 </div>
                                             )}
-                                            <div className={`absolute -right-4 -top-4 w-16 h-16 ${phaseBlob[cardPhase] ?? "bg-sky-500/8"} blur-2xl rounded-full transition-all duration-500 group-hover:scale-[2] group-hover:opacity-100 opacity-60`} />
-                                            <div className={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${phaseGradient[cardPhase] ?? phaseGradient["niche"]} opacity-40 group-hover:opacity-100 transition-all duration-300`} />
+                                            <div className={`absolute -right-4 -top-4 w-16 h-16 ${activeBlob} blur-2xl rounded-full transition-all duration-500 group-hover:scale-[2] group-hover:opacity-100 opacity-60`} />
+                                            <div className={`absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b ${activeGrad} opacity-40 group-hover:opacity-100 transition-all duration-300`} />
                                             <div className="p-4 pl-5 sm:p-5 sm:pl-6 space-y-4 relative">
 
                                                 {/* ─ Card header ─ */}
@@ -13189,9 +13271,48 @@ export function KdpFactoryApp() {
                                                     );
                                                 })()}
 
+                                                {/* ─ Published sub-state selector ─ */}
+                                                {niche.phase === "published" && (() => {
+                                                    const SUB: { id: NicheFE["lifecycleStage"]; label: string; active: string; dot: string }[] = [
+                                                        { id: "pre-published", label: "Pre-publicado", active: "border-amber-500/50 bg-gradient-to-r from-amber-500/15 to-yellow-500/10 text-amber-300", dot: "bg-amber-400" },
+                                                        { id: "published",     label: "Activo",        active: "border-emerald-500/50 bg-gradient-to-r from-emerald-500/20 to-teal-500/10 text-emerald-300", dot: "bg-emerald-400" },
+                                                        { id: "end-of-life",   label: "Finalizado",    active: "border-neutral-500/40 bg-neutral-500/10 text-neutral-400", dot: "bg-neutral-500" },
+                                                    ];
+                                                    return (
+                                                        <div className="space-y-1.5">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-600">Estado</p>
+                                                            <div className="flex gap-1.5">
+                                                                {SUB.map(s => {
+                                                                    const isOn = niche.lifecycleStage === s.id;
+                                                                    return (
+                                                                        <button key={s.id} onClick={() => {
+                                                                            void updateNicheLifecycle(niche._id, { lifecycleStage: s.id ?? null });
+                                                                        }}
+                                                                            className={`flex-1 flex items-center justify-center gap-1.5 h-8 rounded-xl border text-[10px] font-black uppercase tracking-wide transition-all ${isOn ? s.active : "border-white/8 bg-transparent text-neutral-700 hover:text-neutral-400 hover:border-white/15"}`}>
+                                                                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOn ? s.dot : "bg-neutral-700"}`} />
+                                                                            {s.label}
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
+
                                                 {/* ─ Pipeline action ─ */}
                                                 {(niche.phase ?? "niche") !== "published" && (
                                                     <div className="space-y-1.5">
+                                                        {/* Publicar CTA — visible when cover is ready */}
+                                                        {niche.pipelineHasCover && (niche.phase === "cover" || niche.phase === "seo" || niche.phase === "pdf") && (
+                                                            <button onClick={() => {
+                                                                fetch(`${API_BASE_URL}/niches/${niche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "published", lifecycleStage: "pre-published" }) }).catch(() => {});
+                                                                setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, phase: "published", lifecycleStage: "pre-published" } : n));
+                                                                toast.success("🚀 Marcado como publicado");
+                                                            }}
+                                                                className="w-full flex items-center justify-center gap-2 h-10 rounded-xl bg-gradient-to-r from-emerald-600/20 to-teal-600/15 border border-emerald-500/30 text-sm font-black text-emerald-300 hover:from-emerald-600/35 hover:to-teal-600/25 hover:border-emerald-500/50 shadow-[0_0_16px_rgba(16,185,129,0.08)] hover:shadow-[0_0_24px_rgba(16,185,129,0.18)] transition-all">
+                                                                <Rocket size={13} /> Publicar
+                                                            </button>
+                                                        )}
                                                         <div className="flex gap-1.5">
                                                             <button
                                                                 onClick={() => void launchPipelineStep(niche, pipelineConfig)}
@@ -18704,6 +18825,7 @@ export function KdpFactoryApp() {
                     { id: "catalogs" as const, label: "Catálogos", icon: <Grid3x3 size={11} />, count: linkedCats.length },
                     { id: "book" as const, label: "Libro KDP", icon: <Library size={11} />, count: pipelineDraft ? 1 : 0 },
                     { id: "seo" as const, label: "SEO / Listing", icon: <FileText size={11} />, count: detailNiche.listings?.length ?? 0 },
+                    { id: "preview" as const, label: "Preview", icon: <BookOpen size={11} />, count: 0 },
                 ];
                 return createPortal(
                     <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto" onClick={e => { if (e.target === e.currentTarget) setNicheDetailId(null); }}>
@@ -19283,6 +19405,157 @@ export function KdpFactoryApp() {
                                         )}
                                     </div>
                                 )}
+
+                                {nicheDetailTab === "preview" && (() => {
+                                    type SpreadSlot =
+                                        | { kind: "cover"; url: string }
+                                        | { kind: "backCover"; url: string }
+                                        | { kind: "owner" }
+                                        | { kind: "bookImage"; url: string; label: string }
+                                        | { kind: "titleText"; content: string }
+                                        | { kind: "blank" };
+
+                                    const spreads: [SpreadSlot, SpreadSlot][] = [];
+
+                                    if (detailNiche.coverUrl) {
+                                        spreads.push([
+                                            detailNiche.backCoverUrl ? { kind: "backCover", url: detailNiche.backCoverUrl } : { kind: "blank" },
+                                            { kind: "cover", url: detailNiche.coverUrl },
+                                        ]);
+                                    }
+
+                                    if (pipelineDraft) {
+                                        for (const page of pipelineDraft.pages) {
+                                            if (page.type === "owner") {
+                                                spreads.push([{ kind: "blank" }, { kind: "owner" }]);
+                                            } else if (page.type === "image" && page.image?.url) {
+                                                spreads.push([{ kind: "blank" }, { kind: "bookImage", url: page.image.url, label: page.image.label ?? "" }]);
+                                            } else if ((page.type === "text" || page.type === "both") && page.text.content?.trim()) {
+                                                spreads.push([{ kind: "blank" }, { kind: "titleText", content: page.text.content }]);
+                                            }
+                                        }
+                                    }
+
+                                    if (spreads.length === 0) {
+                                        return (
+                                            <div className="flex flex-col items-center gap-4 py-16 text-neutral-600">
+                                                <BookOpen size={32} strokeWidth={1} className="opacity-40" />
+                                                <p className="text-sm font-black uppercase tracking-widest opacity-60">Sin contenido para previsualizar</p>
+                                                <p className="text-xs text-neutral-700 text-center max-w-xs">Genera una portada y crea el libro en la pestaña Libro KDP para ver el simulador</p>
+                                            </div>
+                                        );
+                                    }
+
+                                    const clampedIdx = Math.min(previewSpreadIdx, spreads.length - 1);
+                                    const [leftSlot, rightSlot] = spreads[clampedIdx];
+
+                                    const PageWrapper = ({ children, side }: { children: React.ReactNode; side: "left" | "right" }) => (
+                                        <div className={`relative flex-1 max-w-[220px] bg-neutral-100 shadow-[2px_4px_24px_rgba(0,0,0,0.5)] overflow-hidden ${side === "left" ? "rounded-l-sm" : "rounded-r-sm"}`} style={{ aspectRatio: "1/1.414" }}>
+                                            {children}
+                                        </div>
+                                    );
+
+                                    const renderSlot = (slot: SpreadSlot, side: "left" | "right") => {
+                                        if (slot.kind === "blank") {
+                                            return (
+                                                <PageWrapper side={side}>
+                                                    <div className="w-full h-full bg-neutral-100">
+                                                        <div className="absolute inset-x-6 inset-y-8 flex flex-col gap-3 opacity-10">
+                                                            {Array.from({ length: 14 }).map((_, i) => <div key={i} className="h-px bg-neutral-400 rounded-full" />)}
+                                                        </div>
+                                                    </div>
+                                                </PageWrapper>
+                                            );
+                                        }
+                                        if (slot.kind === "cover" || slot.kind === "backCover") {
+                                            return (
+                                                <PageWrapper side={side}>
+                                                    <img src={slot.url} alt={slot.kind === "cover" ? "Portada" : "Contraportada"} className="w-full h-full object-cover" />
+                                                </PageWrapper>
+                                            );
+                                        }
+                                        if (slot.kind === "owner") {
+                                            return (
+                                                <PageWrapper side={side}>
+                                                    <div className="w-full h-full bg-neutral-50 flex flex-col items-center justify-center px-6 gap-4">
+                                                        <div className="w-12 h-12 rounded-full border-2 border-neutral-300 flex items-center justify-center text-neutral-400 text-lg">☺</div>
+                                                        <p className="text-center font-bold text-neutral-700 text-xs leading-snug">Este libro pertenece a:</p>
+                                                        <div className="w-full border-b border-neutral-300" />
+                                                        <div className="w-full space-y-2">
+                                                            {Array.from({ length: 3 }).map((_, i) => <div key={i} className="w-full border-b border-neutral-200" />)}
+                                                        </div>
+                                                    </div>
+                                                </PageWrapper>
+                                            );
+                                        }
+                                        if (slot.kind === "titleText") {
+                                            return (
+                                                <PageWrapper side={side}>
+                                                    <div className="w-full h-full bg-neutral-50 flex flex-col items-center justify-center px-6 gap-3">
+                                                        <p className="text-center font-black text-neutral-800 text-sm leading-snug">{slot.content}</p>
+                                                        <p className="text-center text-neutral-400 text-[10px]">Emilio Jimenez</p>
+                                                    </div>
+                                                </PageWrapper>
+                                            );
+                                        }
+                                        if (slot.kind === "bookImage") {
+                                            return (
+                                                <PageWrapper side={side}>
+                                                    <div className="w-full h-full bg-white p-2 flex items-center justify-center">
+                                                        <img src={slot.url} alt={slot.label} className="max-w-full max-h-full object-contain" />
+                                                    </div>
+                                                </PageWrapper>
+                                            );
+                                        }
+                                        return <PageWrapper side={side}><div className="w-full h-full bg-neutral-100" /></PageWrapper>;
+                                    };
+
+                                    return (
+                                        <div className="space-y-6">
+                                            {/* Book spread */}
+                                            <div className="flex items-center justify-center">
+                                                <div className="flex items-stretch gap-0 drop-shadow-2xl">
+                                                    {renderSlot(leftSlot, "left")}
+                                                    {/* Spine */}
+                                                    <div className="w-1.5 bg-gradient-to-b from-neutral-700 via-neutral-500 to-neutral-700 shrink-0 self-stretch" />
+                                                    {renderSlot(rightSlot, "right")}
+                                                </div>
+                                            </div>
+
+                                            {/* Spread label */}
+                                            <p className="text-center text-[10px] font-black uppercase tracking-widest text-neutral-600">
+                                                {clampedIdx === 0 && detailNiche.coverUrl ? "Portada" :
+                                                    leftSlot.kind === "blank" && rightSlot.kind === "owner" ? "Página del propietario" :
+                                                    leftSlot.kind === "blank" && rightSlot.kind === "titleText" ? "Portadilla" :
+                                                    leftSlot.kind === "blank" && rightSlot.kind === "bookImage" ? `Imagen ${spreads.slice(1).filter(([, r]) => r.kind === "bookImage").findIndex(([, r]) => r === rightSlot) + 1}` :
+                                                    `Página ${clampedIdx + 1}`}
+                                            </p>
+
+                                            {/* Navigation */}
+                                            <div className="flex items-center justify-center gap-6">
+                                                <button
+                                                    disabled={clampedIdx === 0}
+                                                    onClick={() => setPreviewSpreadIdx(i => Math.max(0, i - 1))}
+                                                    className="w-9 h-9 rounded-full border border-white/10 bg-white/[0.04] text-neutral-400 hover:text-white hover:border-white/20 hover:bg-white/10 transition-all disabled:opacity-20 disabled:cursor-not-allowed text-lg flex items-center justify-center">
+                                                    ‹
+                                                </button>
+                                                <div className="flex items-center gap-1.5">
+                                                    {spreads.map((_, i) => (
+                                                        <button key={i} onClick={() => setPreviewSpreadIdx(i)}
+                                                            className={`rounded-full transition-all ${i === clampedIdx ? "w-5 h-2 bg-violet-400" : "w-2 h-2 bg-white/20 hover:bg-white/40"}`} />
+                                                    ))}
+                                                </div>
+                                                <button
+                                                    disabled={clampedIdx >= spreads.length - 1}
+                                                    onClick={() => setPreviewSpreadIdx(i => Math.min(spreads.length - 1, i + 1))}
+                                                    className="w-9 h-9 rounded-full border border-white/10 bg-white/[0.04] text-neutral-400 hover:text-white hover:border-white/20 hover:bg-white/10 transition-all disabled:opacity-20 disabled:cursor-not-allowed text-lg flex items-center justify-center">
+                                                    ›
+                                                </button>
+                                            </div>
+                                            <p className="text-center text-xs text-neutral-700">{clampedIdx + 1} / {spreads.length}</p>
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         </div>
                     </div>,
