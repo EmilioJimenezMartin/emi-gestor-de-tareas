@@ -756,6 +756,7 @@ export function KdpFactoryApp() {
     const [loadedNicheForPrompt, setLoadedNicheForPrompt] = useState<NicheFE | null>(null);
     const [catalogNichePickerId, setCatalogNichePickerId] = useState<string | null>(null);
     const [kdpTemplateNicheFilter, setKdpTemplateNicheFilter] = useState<string | null>(null);
+    const [kdpTemplateNicheSearch, setKdpTemplateNicheSearch] = useState("");
     const [kdpTemplateOpen, setKdpTemplateOpen] = useState(false);
     const [kdpTemplateTitle, setKdpTemplateTitle] = useState("Mi Libro de Colorear");
     const [kdpTemplateVaultSel, setKdpTemplateVaultSel] = useState<Set<number>>(new Set());
@@ -2925,7 +2926,7 @@ export function KdpFactoryApp() {
         for (const n of niches) {
             const phase = (() => {
                 if (n.phase === "published") return "published";
-                if (n.pipelineHasCover) return "cover";
+                if (n.pipelineHasCover || !!n.coverUrl || n.phase === "cover") return "cover";
                 if (n.pipelineHasListings) return "seo";
                 if (n.pipelineHasPdf) return "libro";
                 if (n.pipelineHasCatalogs) return "catalog";
@@ -12673,7 +12674,20 @@ export function KdpFactoryApp() {
                                                     // coverUrl → sampleImageUrl → first catalog image
                                                     const coverImg = niche.coverUrl || niche.sampleImageUrl || firstCatImg;
                                                     return (
-                                                        <div key={niche._id}
+                                                        <div key={niche._id} className="relative">
+                                                        {/* Publicar — sibling of card, never triggers card onClick */}
+                                                        {col.id === "cover" && (
+                                                            <button
+                                                                className="absolute top-2 right-2 z-10 h-6 px-2.5 rounded-lg bg-emerald-500/25 border border-emerald-500/50 text-[9px] font-black text-emerald-300 hover:bg-emerald-500/40 active:bg-emerald-500/60 transition-all flex items-center gap-1 backdrop-blur-sm"
+                                                                onClick={() => {
+                                                                    fetch(`${API_BASE_URL}/niches/${niche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "published", lifecycleStage: "pre-published" }) }).catch(() => {});
+                                                                    setNiches(prev => prev.map(x => x._id === niche._id ? { ...x, phase: "published", lifecycleStage: "pre-published" } : x));
+                                                                    toast.success("🚀 Publicado");
+                                                                }}>
+                                                                <Rocket size={8} /> Publicar
+                                                            </button>
+                                                        )}
+                                                        <div
                                                             className="group relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-300 hover:scale-[1.015] hover:shadow-[0_8px_32px_var(--col-glow)]"
                                                             style={{ "--col-glow": col.glow, boxShadow: `0 1px 0 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(255,255,255,0.06)` } as React.CSSProperties}
                                                             onClick={() => { setNicheDetailId(niche._id); setNicheDetailTab("images"); }}>
@@ -12805,25 +12819,6 @@ export function KdpFactoryApp() {
                                                                         <BookOpen size={9} /> PDF
                                                                     </button>
                                                                 )}
-                                                                {col.id === "cover" && (
-                                                                    <div className="flex items-center gap-1">
-                                                                        <button onClick={e => { e.stopPropagation(); changeTab("studio"); }}
-                                                                            className="text-[9px] font-black uppercase tracking-widest text-fuchsia-400 hover:text-fuchsia-300 transition-colors flex items-center gap-1">
-                                                                            <ImageIcon size={9} /> Cover
-                                                                        </button>
-                                                                        {(niche.pipelineHasCover || !!niche.coverUrl) && (
-                                                                            <button onClick={e => {
-                                                                                e.stopPropagation();
-                                                                                fetch(`${API_BASE_URL}/niches/${niche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phase: "published", lifecycleStage: "pre-published" }) }).catch(() => {});
-                                                                                setNiches(prev => prev.map(x => x._id === niche._id ? { ...x, phase: "published", lifecycleStage: "pre-published" } : x));
-                                                                                toast.success("🚀 Publicado");
-                                                                            }}
-                                                                                className="text-[9px] font-black uppercase tracking-widest text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1">
-                                                                                <Rocket size={9} /> Publicar
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-                                                                )}
                                                                 {col.id === "published" && (() => {
                                                                     const SUB = [
                                                                         { id: "pre-published" as const, label: "Pre", dot: "bg-amber-400" },
@@ -12842,14 +12837,8 @@ export function KdpFactoryApp() {
                                                                         </div>
                                                                     );
                                                                 })()}
-                                                                {/* Prev / Next arrows */}
-                                                                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">
-                                                                    <button onClick={e => { e.stopPropagation(); void movePhase(niche._id, -1); }}
-                                                                        className="w-5 h-5 rounded-md bg-white/8 hover:bg-white/20 flex items-center justify-center text-neutral-400 hover:text-white transition-all text-[11px] leading-none" title="Retroceder">‹</button>
-                                                                    <button onClick={e => { e.stopPropagation(); void movePhase(niche._id, 1); }}
-                                                                        className="w-5 h-5 rounded-md bg-white/8 hover:bg-white/20 flex items-center justify-center text-neutral-400 hover:text-white transition-all text-[11px] leading-none" title="Avanzar">›</button>
-                                                                </div>
                                                             </div>
+                                                        </div>
                                                         </div>
                                                     );
                                                 })}
@@ -17148,11 +17137,21 @@ export function KdpFactoryApp() {
                                         </div>
                                     ) : (
                                         /* ── Spread (double page) view ── */
+                                        /* Virtual blank "dorso de portada" before page 1, then normal 2-by-2 pairing */
                                         <div className="flex-1 overflow-y-auto px-3 py-5 space-y-8">
-                                            {Array.from({ length: Math.ceil(bookPages.length / 2) }).map((_, spreadIdx) => {
-                                                const left = bookPages[spreadIdx * 2];
-                                                const right = bookPages[spreadIdx * 2 + 1];
-                                                const renderSpreadPage = (page: BookPage | undefined, absIdx: number) => {
+                                            {Array.from({ length: Math.ceil((bookPages.length + 1) / 2) }).map((_, spreadIdx) => {
+                                                // spreadIdx 0: left=dorso(null), right=pages[0]
+                                                // spreadIdx n>0: left=pages[2n-1], right=pages[2n]
+                                                const left = spreadIdx === 0 ? null : bookPages[spreadIdx * 2 - 1];
+                                                const right = bookPages[spreadIdx * 2];
+                                                const leftNum = spreadIdx === 0 ? null : spreadIdx * 2;
+                                                const rightNum = spreadIdx * 2 + 1;
+                                                const renderSpreadPage = (page: BookPage | undefined | null, absIdx: number | null, isLeftDorso?: boolean) => {
+                                                    if (isLeftDorso) return (
+                                                        <div className="flex-1 bg-white rounded-l-sm flex items-center justify-center" style={{ aspectRatio: `${previewW}/${previewH}` }}>
+                                                            <span className="text-[9px] font-mono text-neutral-300 uppercase tracking-widest">dorso portada</span>
+                                                        </div>
+                                                    );
                                                     if (!page) return (
                                                         <div className="flex-1 bg-white/[0.03] rounded-lg border border-dashed border-white/8 flex items-center justify-center" style={{ aspectRatio: `${previewW}/${previewH}` }}>
                                                             <span className="text-sm text-neutral-700">—</span>
@@ -17170,8 +17169,8 @@ export function KdpFactoryApp() {
                                                                             e.stopPropagation();
                                                                             const url = page.image!.url;
                                                                             const name = url.startsWith("blob:")
-                                                                                ? `pagina-${absIdx + 1}`
-                                                                                : (url.split("/").pop()?.split("?")[0] ?? `pagina-${absIdx + 1}`);
+                                                                                ? `pagina-${absIdx! + 1}`
+                                                                                : (url.split("/").pop()?.split("?")[0] ?? `pagina-${absIdx! + 1}`);
                                                                             downloadPng(url, name);
                                                                         }}
                                                                         className="absolute bottom-1 right-1 w-6 h-6 rounded-lg bg-black/70 border border-white/20 text-white opacity-0 group-hover:opacity-100 transition-all hover:bg-white/20 flex items-center justify-center"
@@ -17181,20 +17180,19 @@ export function KdpFactoryApp() {
                                                                     </button>
                                                                 )}
                                                             </div>
-                                                            <p className="text-sm font-mono text-neutral-700 text-center mt-1.5">{absIdx + 1}</p>
+                                                            {absIdx !== null && <p className="text-sm font-mono text-neutral-700 text-center mt-1.5">{absIdx + 1}</p>}
                                                         </div>
                                                     );
                                                 };
                                                 return (
                                                     <div key={spreadIdx} className="w-full max-w-sm mx-auto">
                                                         <p className="text-sm font-medium text-neutral-700 text-center mb-2 tracking-widest uppercase">
-                                                            {spreadIdx * 2 + 1}{right ? ` · ${spreadIdx * 2 + 2}` : ""}
+                                                            {spreadIdx === 0 ? `dorso · ${rightNum}` : `${leftNum} · ${right ? rightNum : leftNum}`}
                                                         </p>
                                                         <div className="flex rounded-sm overflow-hidden shadow-[0_8px_48px_rgba(0,0,0,0.7)]">
-                                                            <div className="flex-1">{renderSpreadPage(left, spreadIdx * 2)}</div>
-                                                            {/* Spine */}
+                                                            <div className="flex-1">{renderSpreadPage(left, leftNum, spreadIdx === 0)}</div>
                                                             <div className="w-[2px] bg-gradient-to-b from-black/60 via-black/20 to-black/60 shrink-0" />
-                                                            <div className="flex-1">{renderSpreadPage(right, spreadIdx * 2 + 1)}</div>
+                                                            <div className="flex-1">{renderSpreadPage(right, right ? spreadIdx * 2 : null)}</div>
                                                         </div>
                                                     </div>
                                                 );
@@ -18077,65 +18075,88 @@ export function KdpFactoryApp() {
                             )}
 
                             {/* ── Añadir nicho entero de golpe ── */}
-                            {niches.length > 0 && iaCatalogs.some(c => c.images.length > 0 && (c.nicheIds?.length ?? 0) > 0) && (
-                                <div className="space-y-2.5">
-                                    <div className="flex items-center gap-2">
-                                        <div className="h-px flex-1 bg-white/8" />
-                                        <p className="text-sm font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5">
-                                            <Target size={10} className="text-sky-400" /> Añadir nicho entero
-                                        </p>
-                                        <div className="h-px flex-1 bg-white/8" />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {niches.filter(n => iaCatalogs.some(c => c.images.length > 0 && (c.nicheIds ?? []).includes(n._id))).map(n => {
-                                            const nicheCats = iaCatalogs.filter(c => c.images.length > 0 && (c.nicheIds ?? []).includes(n._id));
-                                            const nicheImgs = nicheCats.reduce((s, c) => s + c.images.length, 0);
-                                            const allSel = nicheCats.every(c => kdpTemplateCatalogSel.has(c._id));
-                                            const someSel = nicheCats.some(c => kdpTemplateCatalogSel.has(c._id));
-                                            return (
-                                                <button key={n._id}
-                                                    onClick={() => {
-                                                        setKdpTemplateCatalogSel(prev => {
-                                                            const next = new Set(prev);
-                                                            if (allSel) nicheCats.forEach(c => next.delete(c._id));
-                                                            else nicheCats.forEach(c => next.add(c._id));
-                                                            return next;
-                                                        });
-                                                    }}
-                                                    className={`flex items-center gap-2.5 p-3 rounded-2xl border-2 transition-all text-left ${allSel ? "border-violet-500/60 bg-sky-500/10" : someSel ? "border-sky-500/30 bg-sky-500/5" : "border-white/8 bg-white/[0.02] hover:border-white/15"}`}>
-                                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all ${allSel ? "bg-sky-500" : "bg-white/5"}`}>
-                                                        {allSel ? <Check size={14} className="text-white" strokeWidth={3} /> : <Target size={14} className="text-neutral-500" />}
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className={`text-sm font-black truncate ${allSel ? "text-sky-300" : "text-neutral-300"}`}>{nd(n)}</p>
-                                                        <p className="text-sm text-neutral-600">{nicheCats.length} cat. · {nicheImgs} imgs completadas</p>
-                                                    </div>
+                            {niches.length > 0 && iaCatalogs.some(c => c.images.length > 0 && (c.nicheIds?.length ?? 0) > 0) && (() => {
+                                const eligibleNiches = niches.filter(n => iaCatalogs.some(c => c.images.length > 0 && (c.nicheIds ?? []).includes(n._id)));
+                                const filteredNiches = kdpTemplateNicheSearch.trim()
+                                    ? eligibleNiches.filter(n => nd(n).toLowerCase().includes(kdpTemplateNicheSearch.toLowerCase()))
+                                    : eligibleNiches;
+                                return (
+                                    <div className="space-y-2.5">
+                                        <div className="flex items-center gap-2">
+                                            <div className="h-px flex-1 bg-white/8" />
+                                            <p className="text-sm font-black uppercase tracking-widest text-neutral-500 flex items-center gap-1.5">
+                                                <Target size={10} className="text-sky-400" /> Añadir nicho entero
+                                            </p>
+                                            <div className="h-px flex-1 bg-white/8" />
+                                        </div>
+                                        {/* Search input */}
+                                        <div className="relative">
+                                            <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600 pointer-events-none" />
+                                            <input
+                                                value={kdpTemplateNicheSearch}
+                                                onChange={e => setKdpTemplateNicheSearch(e.target.value)}
+                                                placeholder={`Buscar entre ${eligibleNiches.length} nichos…`}
+                                                className="w-full h-9 bg-white/5 border border-white/10 rounded-xl pl-8 pr-3 text-sm text-white placeholder:text-neutral-700 focus:outline-none focus:border-sky-500/40 transition-all"
+                                            />
+                                            {kdpTemplateNicheSearch && (
+                                                <button onClick={() => setKdpTemplateNicheSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-white transition-colors">
+                                                    <X size={12} />
                                                 </button>
-                                            );
-                                        })}
+                                            )}
+                                        </div>
+                                        {/* Results list */}
+                                        <div className="max-h-52 overflow-y-auto space-y-1">
+                                            {filteredNiches.length === 0 && (
+                                                <p className="text-sm text-neutral-700 text-center py-4">Sin resultados</p>
+                                            )}
+                                            {filteredNiches.map(n => {
+                                                const nicheCats = iaCatalogs.filter(c => c.images.length > 0 && (c.nicheIds ?? []).includes(n._id));
+                                                const nicheImgs = nicheCats.reduce((s, c) => s + c.images.length, 0);
+                                                const allSel = nicheCats.every(c => kdpTemplateCatalogSel.has(c._id));
+                                                const someSel = nicheCats.some(c => kdpTemplateCatalogSel.has(c._id));
+                                                return (
+                                                    <button key={n._id}
+                                                        onClick={() => {
+                                                            setKdpTemplateCatalogSel(prev => {
+                                                                const next = new Set(prev);
+                                                                if (allSel) nicheCats.forEach(c => next.delete(c._id));
+                                                                else nicheCats.forEach(c => next.add(c._id));
+                                                                return next;
+                                                            });
+                                                        }}
+                                                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-all text-left ${allSel ? "border-violet-500/50 bg-sky-500/10" : someSel ? "border-sky-500/25 bg-sky-500/5" : "border-white/[0.06] bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04]"}`}>
+                                                        <div className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-all ${allSel ? "bg-sky-500 border-sky-500" : someSel ? "border-sky-500/50 bg-transparent" : "border-white/20 bg-transparent"}`}>
+                                                            {allSel && <Check size={10} className="text-white" strokeWidth={3} />}
+                                                            {someSel && !allSel && <div className="w-2 h-2 rounded-sm bg-sky-400" />}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className={`text-sm font-black truncate ${allSel ? "text-sky-300" : "text-neutral-300"}`}>{nd(n)}</p>
+                                                        </div>
+                                                        <span className="text-[10px] text-neutral-600 shrink-0">{nicheImgs} imgs</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                </div>
-                            )}
+                                );
+                            })()}
 
                             {/* Completed catalogs */}
                             {iaCatalogs.filter(c => c.images.length > 0).length > 0 && (
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between gap-2 flex-wrap">
                                         <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Catálogos con imágenes</p>
-                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                        <div className="flex items-center gap-2">
                                             {niches.length > 0 && (
-                                                <>
-                                                    <button onClick={() => setKdpTemplateNicheFilter(null)}
-                                                        className={`px-2 h-5 rounded-full border text-sm font-black uppercase transition-all ${!kdpTemplateNicheFilter ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "border-white/10 text-neutral-700 hover:text-neutral-400"}`}>
-                                                        Todos
-                                                    </button>
+                                                <select
+                                                    value={kdpTemplateNicheFilter ?? ""}
+                                                    onChange={e => setKdpTemplateNicheFilter(e.target.value || null)}
+                                                    className="h-7 rounded-xl bg-white/[0.06] border border-white/10 px-2 text-sm font-black text-neutral-300 outline-none [color-scheme:dark] cursor-pointer hover:bg-white/10 transition-all max-w-[180px]">
+                                                    <option value="">Todos los nichos</option>
                                                     {niches.map(n => (
-                                                        <button key={n._id} onClick={() => setKdpTemplateNicheFilter(kdpTemplateNicheFilter === n._id ? null : n._id)}
-                                                            className={`px-2 h-5 rounded-full border text-sm font-bold transition-all truncate max-w-[100px] ${kdpTemplateNicheFilter === n._id ? "bg-sky-500/20 border-sky-500/40 text-sky-300" : "border-white/10 text-neutral-700 hover:text-neutral-400"}`}>
-                                                            {nd(n)}
-                                                        </button>
+                                                        <option key={n._id} value={n._id}>{nd(n)}</option>
                                                     ))}
-                                                </>
+                                                </select>
                                             )}
                                             <button
                                                 onClick={() => {
@@ -18143,7 +18164,7 @@ export function KdpFactoryApp() {
                                                     const allSel = completed.every(c => kdpTemplateCatalogSel.has(c._id));
                                                     setKdpTemplateCatalogSel(allSel ? new Set() : new Set(completed.map(c => c._id)));
                                                 }}
-                                                className="text-sm font-black uppercase tracking-widest text-sky-400 hover:text-sky-300 transition-colors"
+                                                className="text-sm font-black uppercase tracking-widest text-sky-400 hover:text-sky-300 transition-colors whitespace-nowrap"
                                             >
                                                 Sel. todo
                                             </button>
@@ -19449,65 +19470,73 @@ export function KdpFactoryApp() {
                                     const clampedIdx = Math.min(previewSpreadIdx, spreads.length - 1);
                                     const [leftSlot, rightSlot] = spreads[clampedIdx];
 
-                                    const PageWrapper = ({ children, side }: { children: React.ReactNode; side: "left" | "right" }) => (
-                                        <div className={`relative flex-1 max-w-[220px] bg-neutral-100 shadow-[2px_4px_24px_rgba(0,0,0,0.5)] overflow-hidden ${side === "left" ? "rounded-l-sm" : "rounded-r-sm"}`} style={{ aspectRatio: "1/1.414" }}>
-                                            {children}
-                                        </div>
-                                    );
+                                    const pageWrapCls = (side: "left" | "right") =>
+                                        `relative w-[170px] shrink-0 shadow-[2px_4px_24px_rgba(0,0,0,0.5)] overflow-hidden ${side === "left" ? "rounded-l-sm" : "rounded-r-sm"}`;
+                                    const PAGE_RATIO = "2/3";
 
                                     const renderSlot = (slot: SpreadSlot, side: "left" | "right") => {
                                         if (slot.kind === "blank") {
                                             return (
-                                                <PageWrapper side={side}>
-                                                    <div className="w-full h-full bg-neutral-100">
-                                                        <div className="absolute inset-x-6 inset-y-8 flex flex-col gap-3 opacity-10">
-                                                            {Array.from({ length: 14 }).map((_, i) => <div key={i} className="h-px bg-neutral-400 rounded-full" />)}
-                                                        </div>
+                                                <div className={pageWrapCls(side)} style={{ aspectRatio: PAGE_RATIO }}>
+                                                    <div className="absolute inset-0 bg-neutral-50 flex items-center justify-center">
+                                                        <span className="text-neutral-300 text-[8px] font-mono uppercase tracking-wider">dorso</span>
                                                     </div>
-                                                </PageWrapper>
+                                                </div>
                                             );
                                         }
                                         if (slot.kind === "cover" || slot.kind === "backCover") {
                                             return (
-                                                <PageWrapper side={side}>
-                                                    <img src={slot.url} alt={slot.kind === "cover" ? "Portada" : "Contraportada"} className="w-full h-full object-cover" />
-                                                </PageWrapper>
+                                                <div className={pageWrapCls(side)} style={{ aspectRatio: PAGE_RATIO }}>
+                                                    <img src={slot.url} alt={slot.kind === "cover" ? "Portada" : "Contraportada"} className="absolute inset-0 w-full h-full object-cover" />
+                                                </div>
                                             );
                                         }
                                         if (slot.kind === "owner") {
                                             return (
-                                                <PageWrapper side={side}>
-                                                    <div className="w-full h-full bg-neutral-50 flex flex-col items-center justify-center px-6 gap-4">
-                                                        <div className="w-12 h-12 rounded-full border-2 border-neutral-300 flex items-center justify-center text-neutral-400 text-lg">☺</div>
-                                                        <p className="text-center font-bold text-neutral-700 text-xs leading-snug">Este libro pertenece a:</p>
-                                                        <div className="w-full border-b border-neutral-300" />
-                                                        <div className="w-full space-y-2">
-                                                            {Array.from({ length: 3 }).map((_, i) => <div key={i} className="w-full border-b border-neutral-200" />)}
+                                                <div className={pageWrapCls(side)} style={{ aspectRatio: PAGE_RATIO }}>
+                                                    <div className="absolute inset-0 bg-white flex flex-col items-center justify-between px-[8%] py-[6%]">
+                                                        <div className="w-full flex-1 flex flex-col items-center justify-center gap-[4%]">
+                                                            <p className="text-[8px] font-semibold text-neutral-500 text-center leading-tight">Este libro pertenece a:</p>
+                                                            <p className="text-[7px] text-neutral-400 text-center leading-tight">This book belongs to:</p>
+                                                            <div className="w-4/5 border-b border-dashed border-neutral-300 mt-1" />
+                                                        </div>
+                                                        <div className="w-full flex flex-col items-center gap-1">
+                                                            <p className="text-[5px] text-neutral-400 text-center">Prueba tus colores aquí · Test your colors here</p>
+                                                            <div className="flex gap-[2px] border border-neutral-200 p-[2px] rounded-[1px]">
+                                                                {Array.from({ length: 6 }).map((_, i) => (
+                                                                    <div key={i} className="w-[8px] h-[8px] border border-neutral-200 rounded-[1px] bg-white" />
+                                                                ))}
+                                                            </div>
+                                                            <p className="text-[4px] text-neutral-300 text-center mt-0.5">© {new Date().getFullYear()} Emilio Jiménez. Todos los derechos reservados.</p>
                                                         </div>
                                                     </div>
-                                                </PageWrapper>
+                                                </div>
                                             );
                                         }
                                         if (slot.kind === "titleText") {
                                             return (
-                                                <PageWrapper side={side}>
-                                                    <div className="w-full h-full bg-neutral-50 flex flex-col items-center justify-center px-6 gap-3">
-                                                        <p className="text-center font-black text-neutral-800 text-sm leading-snug">{slot.content}</p>
-                                                        <p className="text-center text-neutral-400 text-[10px]">Emilio Jimenez</p>
+                                                <div className={pageWrapCls(side)} style={{ aspectRatio: PAGE_RATIO }}>
+                                                    <div className="absolute inset-0 bg-white flex flex-col items-center justify-center px-[10%] gap-2">
+                                                        <p className="text-center font-black text-neutral-800 text-[9px] leading-snug">{slot.content}</p>
+                                                        <p className="text-center text-neutral-400 text-[6px] mt-1">Emilio Jimenez</p>
                                                     </div>
-                                                </PageWrapper>
+                                                </div>
                                             );
                                         }
                                         if (slot.kind === "bookImage") {
                                             return (
-                                                <PageWrapper side={side}>
-                                                    <div className="w-full h-full bg-white p-2 flex items-center justify-center">
+                                                <div className={pageWrapCls(side)} style={{ aspectRatio: PAGE_RATIO }}>
+                                                    <div className="absolute inset-0 bg-white p-[4%] flex items-center justify-center">
                                                         <img src={slot.url} alt={slot.label} className="max-w-full max-h-full object-contain" />
                                                     </div>
-                                                </PageWrapper>
+                                                </div>
                                             );
                                         }
-                                        return <PageWrapper side={side}><div className="w-full h-full bg-neutral-100" /></PageWrapper>;
+                                        return (
+                                            <div className={pageWrapCls(side)} style={{ aspectRatio: PAGE_RATIO }}>
+                                                <div className="absolute inset-0 bg-neutral-100" />
+                                            </div>
+                                        );
                                     };
 
                                     return (
@@ -19532,27 +19561,29 @@ export function KdpFactoryApp() {
                                             </p>
 
                                             {/* Navigation */}
-                                            <div className="flex items-center justify-center gap-6">
+                                            <div className="flex items-center gap-3">
                                                 <button
                                                     disabled={clampedIdx === 0}
                                                     onClick={() => setPreviewSpreadIdx(i => Math.max(0, i - 1))}
-                                                    className="w-9 h-9 rounded-full border border-white/10 bg-white/[0.04] text-neutral-400 hover:text-white hover:border-white/20 hover:bg-white/10 transition-all disabled:opacity-20 disabled:cursor-not-allowed text-lg flex items-center justify-center">
+                                                    className="w-9 h-9 shrink-0 rounded-full border border-white/10 bg-white/[0.04] text-neutral-400 hover:text-white hover:border-white/20 hover:bg-white/10 transition-all disabled:opacity-20 disabled:cursor-not-allowed text-lg flex items-center justify-center">
                                                     ‹
                                                 </button>
-                                                <div className="flex items-center gap-1.5">
-                                                    {spreads.map((_, i) => (
-                                                        <button key={i} onClick={() => setPreviewSpreadIdx(i)}
-                                                            className={`rounded-full transition-all ${i === clampedIdx ? "w-5 h-2 bg-violet-400" : "w-2 h-2 bg-white/20 hover:bg-white/40"}`} />
-                                                    ))}
+                                                <div className="flex-1 flex flex-col gap-1.5 items-center">
+                                                    <div className="w-full h-1 bg-white/[0.08] rounded-full overflow-hidden">
+                                                        <div
+                                                            className="h-full bg-violet-400 rounded-full transition-all duration-300"
+                                                            style={{ width: `${((clampedIdx + 1) / spreads.length) * 100}%` }}
+                                                        />
+                                                    </div>
+                                                    <span className="text-[10px] text-neutral-600 tabular-nums">{clampedIdx + 1} / {spreads.length}</span>
                                                 </div>
                                                 <button
                                                     disabled={clampedIdx >= spreads.length - 1}
                                                     onClick={() => setPreviewSpreadIdx(i => Math.min(spreads.length - 1, i + 1))}
-                                                    className="w-9 h-9 rounded-full border border-white/10 bg-white/[0.04] text-neutral-400 hover:text-white hover:border-white/20 hover:bg-white/10 transition-all disabled:opacity-20 disabled:cursor-not-allowed text-lg flex items-center justify-center">
+                                                    className="w-9 h-9 shrink-0 rounded-full border border-white/10 bg-white/[0.04] text-neutral-400 hover:text-white hover:border-white/20 hover:bg-white/10 transition-all disabled:opacity-20 disabled:cursor-not-allowed text-lg flex items-center justify-center">
                                                     ›
                                                 </button>
                                             </div>
-                                            <p className="text-center text-xs text-neutral-700">{clampedIdx + 1} / {spreads.length}</p>
                                         </div>
                                     );
                                 })()}
