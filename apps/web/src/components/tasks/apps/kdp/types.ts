@@ -77,6 +77,7 @@ export interface NicheFE {
     backCoverUrl?: string;
     bookPdfUrl?: string;
     coverCandidates?: string[];
+    coverCandidatesData?: Record<string, { rawUrl: string; layers: unknown[] }>;
     phaseChangedAt?: string;
     pipelineHasCatalogs?: boolean;
     pipelineHasPdf?: boolean;

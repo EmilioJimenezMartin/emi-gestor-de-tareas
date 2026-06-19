@@ -3007,7 +3007,8 @@ export function KdpFactoryApp() {
         try {
             const res = await fetch(url);
             const imgBlob = await res.blob();
-            const finalBlob = await compositeTextOnBlob(imgBlob, activeLayers);
+            const pw = previewContainerRef.current?.getBoundingClientRect().width ?? 256;
+            const finalBlob = await compositeTextOnBlob(imgBlob, activeLayers, pw);
             const blobUrl = URL.createObjectURL(finalBlob);
             const a = document.createElement("a");
             a.href = blobUrl; a.download = filename;
@@ -11021,11 +11022,13 @@ export function KdpFactoryApp() {
     };
 
     // ── Canvas text-layer compositor (word-wrap aware) ──────────────────────
-    const drawTextLayerOnCanvas = (ctx: CanvasRenderingContext2D, layer: TextLayer, cw: number, ch: number) => {
+    // previewWidth: measured width of the preview container in px (used to match visual scale)
+    const drawTextLayerOnCanvas = (ctx: CanvasRenderingContext2D, layer: TextLayer, cw: number, ch: number, previewWidth = 256) => {
         if (layer.visible === false) return;
         const px = (layer.x / 100) * cw;
         const py = (layer.y / 100) * ch;
-        const fs = Math.round((layer.fontSize / 40) * (cw / 1600) * 100);
+        // Scale font the same way the CSS preview does: fontSize * 0.4 px at previewWidth → scale up to cw
+        const fs = Math.round(layer.fontSize * 0.4 * (cw / previewWidth));
         const raw = layer.uppercase ? layer.text.toUpperCase() : layer.text;
         const fontFamily = layer.fontFamily || "sans-serif";
         const maxW = cw * 0.85;
@@ -11033,7 +11036,8 @@ export function KdpFactoryApp() {
         ctx.save();
         ctx.globalAlpha = (layer.opacity ?? 100) / 100;
         ctx.font = `${layer.italic ? "italic " : ""}${layer.bold ? "bold " : ""}${fs}px ${fontFamily}`;
-        if ((layer.letterSpacing ?? 0) !== 0) (ctx as any).letterSpacing = `${layer.letterSpacing}px`;
+        const scaledLS = (layer.letterSpacing ?? 0) * 0.4 * (cw / previewWidth);
+        if (scaledLS !== 0) (ctx as any).letterSpacing = `${scaledLS}px`;
         ctx.fillStyle = layer.color;
         ctx.textAlign = layer.align as CanvasTextAlign;
         ctx.textBaseline = "middle";
@@ -11071,7 +11075,7 @@ export function KdpFactoryApp() {
         ctx.restore();
     };
 
-    const compositeTextOnBlob = (sourceBlob: Blob, layers: TextLayer[]): Promise<Blob> =>
+    const compositeTextOnBlob = (sourceBlob: Blob, layers: TextLayer[], previewWidth = 256): Promise<Blob> =>
         new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = () => {
@@ -11081,7 +11085,7 @@ export function KdpFactoryApp() {
                 const ctx = canvas.getContext("2d")!;
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 const visible = layers.filter(l => l.visible !== false);
-                for (const layer of visible) drawTextLayerOnCanvas(ctx, layer, canvas.width, canvas.height);
+                for (const layer of visible) drawTextLayerOnCanvas(ctx, layer, canvas.width, canvas.height, previewWidth);
                 canvas.toBlob(b => b ? resolve(b) : reject(new Error("toBlob failed")), "image/jpeg", 0.92);
             };
             img.onerror = reject;
@@ -11102,9 +11106,11 @@ export function KdpFactoryApp() {
         }
 
         try {
+            const rawUrlSnapshot = type === "front" ? generatedCoverUrl : generatedBackCoverUrl;
             const activeLayers = type === "front" ? coverTextLayers.filter(l => l.visible !== false) : [];
+            const previewW = previewContainerRef.current?.getBoundingClientRect().width ?? 256;
             const finalBlob = activeLayers.length > 0
-                ? await compositeTextOnBlob(baseBlob, activeLayers)
+                ? await compositeTextOnBlob(baseBlob, activeLayers, previewW)
                 : baseBlob;
 
             const dataUrl = await new Promise<string>((res, rej) => {
@@ -11122,13 +11128,18 @@ export function KdpFactoryApp() {
             if (!cloudUrl) { toast.error("URL no recibida"); return; }
 
             if (type === "front") {
-                const existing = niches.find(n => n._id === selectedCoverNicheId)?.coverCandidates ?? [];
+                const niche = niches.find(n => n._id === selectedCoverNicheId);
+                const existing = niche?.coverCandidates ?? [];
                 const candidates = [...existing.filter(u => u !== cloudUrl), cloudUrl];
+                const existingData = niche?.coverCandidatesData ?? {};
+                const newData = rawUrlSnapshot
+                    ? { ...existingData, [cloudUrl]: { rawUrl: rawUrlSnapshot, layers: coverTextLayers } }
+                    : existingData;
                 await fetch(`${API_BASE_URL}/niches/${selectedCoverNicheId}`, {
                     method: "PATCH", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ coverUrl: cloudUrl, coverCandidates: candidates, pipelineHasCover: true }),
+                    body: JSON.stringify({ coverUrl: cloudUrl, coverCandidates: candidates, coverCandidatesData: newData, pipelineHasCover: true }),
                 });
-                setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, coverUrl: cloudUrl, coverCandidates: candidates, pipelineHasCover: true } : n));
+                setNiches(prev => prev.map(n => n._id === selectedCoverNicheId ? { ...n, coverUrl: cloudUrl, coverCandidates: candidates, coverCandidatesData: newData, pipelineHasCover: true } : n));
                 setGeneratedCoverUrl(cloudUrl);
                 pendingCoverBlobRef.current = null;
                 setCoverTextLayers([]);
@@ -11510,9 +11521,16 @@ export function KdpFactoryApp() {
                                 const slug = (n.nickname?.trim() || n.name).toLowerCase().replace(/\s+/g, "-");
                                 const openEdit = () => {
                                     setSelectedCoverNicheId(n._id);
-                                    setGeneratedCoverUrl(n.coverUrl ?? null);
-                                    setGeneratedBackCoverUrl(n.backCoverUrl ?? null);
                                     const coverMap = NICHE_STYLE_TO_COVER[n.styleCategory] ?? NICHE_STYLE_TO_COVER.generic;
+                                    const savedData = n.coverUrl ? n.coverCandidatesData?.[n.coverUrl] : undefined;
+                                    if (savedData) {
+                                        setGeneratedCoverUrl(savedData.rawUrl);
+                                        setCoverTextLayers(savedData.layers as typeof coverTextLayers);
+                                    } else {
+                                        setGeneratedCoverUrl(n.coverUrl ?? null);
+                                        setCoverTextLayers([]);
+                                    }
+                                    setGeneratedBackCoverUrl(n.backCoverUrl ?? null);
                                     setCoverTitle(n.nickname?.trim() || n.name);
                                     setCoverSubtitle(n.productType === "coloring-book" ? "Coloring Book for Adults" : "");
                                     setCoverStyle(coverMap.style);
@@ -11520,6 +11538,7 @@ export function KdpFactoryApp() {
                                     setCoverModelId(NICHE_STYLE_MODEL[n.styleCategory] ?? "pollinations-flux");
                                     if (n.description) setCoverDescription(n.description);
                                     setShowCoverModal(true);
+                                    setCoverStep(2);
                                 };
                                 return (
                                 <div key={n._id} className="group rounded-2xl border border-white/8 bg-white/[0.02] overflow-hidden hover:border-fuchsia-500/20 transition-all flex flex-col">
@@ -11579,7 +11598,14 @@ export function KdpFactoryApp() {
                                         const coverMap = NICHE_STYLE_TO_COVER[n.styleCategory] ?? NICHE_STYLE_TO_COVER.generic;
                                         const openWithUrl = (url: string) => {
                                             setSelectedCoverNicheId(n._id);
-                                            setGeneratedCoverUrl(url);
+                                            const savedData = n.coverCandidatesData?.[url];
+                                            if (savedData) {
+                                                setGeneratedCoverUrl(savedData.rawUrl);
+                                                setCoverTextLayers(savedData.layers as typeof coverTextLayers);
+                                            } else {
+                                                setGeneratedCoverUrl(url);
+                                                setCoverTextLayers([]);
+                                            }
                                             setGeneratedBackCoverUrl(n.backCoverUrl ?? null);
                                             setCoverTitle(n.nickname?.trim() || n.name);
                                             setCoverSubtitle(n.productType === "coloring-book" ? "Coloring Book for Adults" : "");
