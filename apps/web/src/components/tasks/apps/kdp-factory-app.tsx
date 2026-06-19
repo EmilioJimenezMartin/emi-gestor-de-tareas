@@ -94,6 +94,8 @@ import {
     GitBranch,
     RotateCcw,
     Bot,
+    ArrowDownNarrowWide,
+    ArrowUpNarrowWide,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -2831,6 +2833,9 @@ export function KdpFactoryApp() {
     const [coverModalTab, setCoverModalTab] = useState<"front" | "back">("front");
     const [coverMode, setCoverMode] = useState<"ai" | "collage" | "colorize" | "upload">("ai");
     const [coverStep, setCoverStep] = useState<1 | 2>(1);
+    const [coverFactorySearch, setCoverFactorySearch] = useState("");
+    const [coverFactorySort, setCoverFactorySort] = useState<"newest" | "oldest">("newest");
+    const [coverFactoryNicheId, setCoverFactoryNicheId] = useState<string>("all");
     const [isSavingCover, setIsSavingCover] = useState(false);
     const [uploadBrowseSource, setUploadBrowseSource] = useState<"vault" | "cloud" | "niches" | null>(null);
     const [uploadBrowseNicheId, setUploadBrowseNicheId] = useState<string>("");
@@ -11415,19 +11420,34 @@ export function KdpFactoryApp() {
     };
 
     const renderCoverFactory = () => {
-        const nichesWithCovers = niches.filter(n => n.coverUrl || (n.coverCandidates?.length ?? 0) > 0 || n.backCoverUrl);
+        const allWithCovers = niches.filter(n => n.coverUrl || (n.coverCandidates?.length ?? 0) > 0 || n.backCoverUrl);
+
+        const q = coverFactorySearch.trim().toLowerCase();
+        const nichesWithCovers = allWithCovers
+            .filter(n => {
+                if (q && !(n.nickname ?? n.name).toLowerCase().includes(q)) return false;
+                if (coverFactoryNicheId !== "all" && n._id !== coverFactoryNicheId) return false;
+                return true;
+            })
+            .sort((a, b) => {
+                const da = new Date(a.updatedAt ?? a.createdAt).getTime();
+                const db = new Date(b.updatedAt ?? b.createdAt).getTime();
+                return coverFactorySort === "newest" ? db - da : da - db;
+            });
+
         return (
         <div className="mt-8 pt-8 border-t border-white/[0.06]">
             <div className="rounded-3xl border border-white/8 bg-white/[0.025] backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.4)] overflow-hidden">
                 <div className="h-px w-full bg-gradient-to-r from-fuchsia-500/60 via-violet-400/20 to-transparent" />
                 <div className="p-6 space-y-4">
+                    {/* Header */}
                     <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl bg-fuchsia-500/15 flex items-center justify-center">
                             <ImageIcon size={16} className="text-fuchsia-400" />
                         </div>
                         <div className="flex-1">
                             <h2 className="text-lg font-black text-white">Cover Factory</h2>
-                            <p className="text-sm text-neutral-600">{nichesWithCovers.length > 0 ? `${nichesWithCovers.length} nicho${nichesWithCovers.length !== 1 ? "s" : ""} con portada` : "Portadas KDP por nicho"}</p>
+                            <p className="text-sm text-neutral-600">{allWithCovers.length > 0 ? `${nichesWithCovers.length} de ${allWithCovers.length} portada${allWithCovers.length !== 1 ? "s" : ""}` : "Portadas KDP por nicho"}</p>
                         </div>
                         <button
                             onClick={() => { setSelectedCoverNicheId(null); setGeneratedCoverUrl(null); setGeneratedBackCoverUrl(null); setShowCoverModal(true); }}
@@ -11437,12 +11457,52 @@ export function KdpFactoryApp() {
                         </button>
                     </div>
 
-                    {nichesWithCovers.length === 0 ? (
+                    {/* Search + filters + sort */}
+                    {allWithCovers.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                        {/* Search + niche selector + sort row */}
+                        <div className="flex gap-2">
+                            <div className="relative flex-1">
+                                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600 pointer-events-none" />
+                                <input
+                                    value={coverFactorySearch}
+                                    onChange={e => setCoverFactorySearch(e.target.value)}
+                                    placeholder="Buscar por nombre…"
+                                    className="w-full h-8 pl-8 pr-3 rounded-xl bg-white/[0.04] border border-white/8 text-xs text-white placeholder-neutral-700 focus:outline-none focus:border-fuchsia-500/40 transition-colors"
+                                />
+                            </div>
+                            <select
+                                value={coverFactoryNicheId}
+                                onChange={e => setCoverFactoryNicheId(e.target.value)}
+                                className="h-8 px-2 rounded-xl bg-white/[0.04] border border-white/8 hover:border-white/15 text-xs text-neutral-400 focus:outline-none focus:border-fuchsia-500/40 transition-colors shrink-0 max-w-[140px] cursor-pointer"
+                            >
+                                <option value="all">Todos los nichos</option>
+                                {allWithCovers.map(n => (
+                                    <option key={n._id} value={n._id}>{n.nickname?.trim() || n.name}</option>
+                                ))}
+                            </select>
+                            <button
+                                onClick={() => setCoverFactorySort(s => s === "newest" ? "oldest" : "newest")}
+                                className="h-8 px-3 rounded-xl bg-white/[0.04] border border-white/8 hover:border-white/15 text-xs text-neutral-400 hover:text-white flex items-center gap-1.5 transition-colors shrink-0"
+                                title={coverFactorySort === "newest" ? "Más reciente primero" : "Más antiguo primero"}
+                            >
+                                {coverFactorySort === "newest" ? <ArrowDownNarrowWide size={12} /> : <ArrowUpNarrowWide size={12} />}
+                                <span className="hidden sm:inline">{coverFactorySort === "newest" ? "Reciente" : "Antiguo"}</span>
+                            </button>
+                        </div>
+                    </div>
+                    )}
+
+                    {allWithCovers.length === 0 ? (
                         <div className="flex items-center gap-3 py-6 justify-center text-center">
                             <div className="space-y-1">
                                 <p className="text-sm font-black uppercase tracking-widest text-neutral-700">Sin portadas</p>
                                 <p className="text-xs text-neutral-700">Pulsa "Nueva" para generar tu primera portada</p>
                             </div>
+                        </div>
+                    ) : nichesWithCovers.length === 0 ? (
+                        <div className="py-6 text-center">
+                            <p className="text-sm text-neutral-600">Sin resultados para esta búsqueda</p>
                         </div>
                     ) : (
                         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -11629,7 +11689,6 @@ export function KdpFactoryApp() {
         </div>
         );
     };
-
 
         const renderCloneEngine = () => {
             const normalize = (s: string) => s.trim().toLowerCase().replace(/\/ref=.*/i, "").replace(/\/$/, "");
