@@ -96,6 +96,8 @@ import {
     Bot,
     ArrowDownNarrowWide,
     ArrowUpNarrowWide,
+    Undo2,
+    Redo2,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -529,6 +531,9 @@ export function KdpFactoryApp() {
     const [bookPages, setBookPages] = useState<BookPage[]>([]);
     const [directPdfCatalogId, setDirectPdfCatalogId] = useState<string | null>(null);
     const [directNichePdfId, setDirectNichePdfId] = useState<string | null>(null);
+    const [nichePdfDialog, setNichePdfDialog] = useState<{ niche: NicheFE; linkedCats: typeof iaCatalogs } | null>(null);
+    const [nichePdfOptOwner, setNichePdfOptOwner] = useState(true);
+    const [nichePdfOptShuffle, setNichePdfOptShuffle] = useState(true);
     const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
     const [bookEditorTab, setBookEditorTab] = useState<"editor" | "preview" | "images">("editor");
     const [showAddPageMenu, setShowAddPageMenu] = useState(false);
@@ -541,6 +546,7 @@ export function KdpFactoryApp() {
     const [bookPreviewMode, setBookPreviewMode] = useState<"single" | "spread">("single");
     const [previewContext, setPreviewContext] = useState<{ urls: string[]; index: number; catalogCtx?: { id: string; images: CatalogImageFE[] }; vaultCtx?: true; cloudinaryCtx?: true } | null>(null);
     const [confirmClearBook, setConfirmClearBook] = useState(false);
+    const [pdfFullPagePreviewId, setPdfFullPagePreviewId] = useState<string | null>(null);
     const [confirmDeleteCoverNicheId, setConfirmDeleteCoverNicheId] = useState<string | null>(null);
     const [confirmDeleteVaultIndex, setConfirmDeleteVaultIndex] = useState<number | null>(null);
     const [confirmDeleteCloudinaryId, setConfirmDeleteCloudinaryId] = useState<string | null>(null);
@@ -579,11 +585,12 @@ export function KdpFactoryApp() {
     const [nicheFormPrompt, setNicheFormPrompt] = useState("");
     const [isSavingNiche, setIsSavingNiche] = useState(false);
     const [nicheDeleteId, setNicheDeleteId] = useState<string | null>(null);
-    const [lightboxUrl, setLightboxUrl] = useState<{ url: string; catalogId?: string; publicId?: string; filename?: string } | null>(null);
+    const [lightboxUrl, setLightboxUrl] = useState<{ url: string; catalogId?: string; publicId?: string; filename?: string; urls?: string[]; meta?: { catalogId?: string; publicId?: string }[]; index?: number } | null>(null);
     const [explodeNicheId, setExplodeNicheId] = useState<string | null>(null);
     const [nichePage, setNichePage] = useState(0);
     const [nicheViewMode, setNicheViewMode] = useState<"list" | "kanban" | "table">("kanban");
     const [kanbanProductFilter, setKanbanProductFilter] = useState<"all" | "coloring-book" | "printable-poster" | "seamless-pattern">("all");
+    const [kanbanStyleFilter, setKanbanStyleFilter] = useState<string>("all");
     const [studioSubTab, setStudioSubTab] = useState<"niches" | "intelligence" | "calendar">(() => {
         const saved = typeof window !== "undefined" ? localStorage.getItem("kdp-studio-subtab") : null;
         return (saved === "niches" || saved === "intelligence" || saved === "calendar") ? saved as "niches" | "intelligence" | "calendar" : "niches";
@@ -1648,6 +1655,7 @@ export function KdpFactoryApp() {
     // Usado por la vista lista, el kanban y el contador de "sin resultados".
     const nicheMatchesFilters = (n: NicheFE): boolean => {
         if (kanbanProductFilter !== "all" && (n.productType ?? "coloring-book") !== kanbanProductFilter) return false;
+        if (kanbanStyleFilter !== "all" && (n.styleCategory ?? "generic") !== kanbanStyleFilter) return false;
         const q = nicheSearch.trim().toLowerCase();
         if (q) {
             const hay = [n.name, n.nickname, n.description, ...(n.tags ?? [])]
@@ -2921,11 +2929,19 @@ export function KdpFactoryApp() {
         ...overrides,
     });
     const [coverTextLayers, setCoverTextLayers] = useState<TextLayer[]>([]);
+    const [coverLayerTemplates, setCoverLayerTemplates] = useState<{ name: string; layers: TextLayer[] }[]>(() => {
+        try { return JSON.parse(typeof window !== "undefined" ? (localStorage.getItem("kdp-cover-layer-templates") ?? "[]") : "[]"); } catch { return []; }
+    });
     const [showCoverEditor, setShowCoverEditor] = useState(false);
     const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
     const draggingLayerRef = useRef<{ id: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
     const previewContainerRef = useRef<HTMLDivElement | null>(null);
     const editorPreviewRef = useRef<HTMLDivElement | null>(null);
+    const coverLayersHistoryRef = useRef<string[]>([]);
+    const coverLayersHistoryIdxRef = useRef(-1);
+    const coverLayersPushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const coverIsUndoRedoRef = useRef(false);
+    const [coverHistoryTick, setCoverHistoryTick] = useState(0);
     // Colorize mode
     const [colorizeSourceUrl, setColorizeSourceUrl] = useState<string | null>(null);
     const [colorizePrompt, setColorizePrompt] = useState("vibrant full color illustration, rich saturated colors, highly detailed");
@@ -3132,16 +3148,18 @@ export function KdpFactoryApp() {
                 return exists ? prev.map(d => d.id === draftId ? savedDraft : d) : [...prev, savedDraft];
             });
 
-            // If this draft is linked to a niche, advance to "libro" phase
+            // If this draft is linked to a niche, mark pipelineHasPdf and advance phase if needed
             if (linkedNicheId) {
                 const niche = niches.find(n => n._id === linkedNicheId);
-                if (niche && (niche.phase === "catalog" || niche.phase === "niche")) {
+                if (niche) {
+                    const belowLibro = ["niche", "catalog"].includes(niche.phase ?? "niche");
+                    const patch: Partial<NicheFE> = { pipelineHasPdf: true, ...(belowLibro ? { phase: "libro" as const } : {}) };
                     await fetch(`${API_BASE_URL}/niches/${linkedNicheId}`, {
                         method: "PATCH",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ phase: "libro", pipelineHasPdf: true }),
+                        body: JSON.stringify(patch),
                     }).catch(() => {});
-                    setNiches(prev => prev.map(n => n._id === linkedNicheId ? { ...n, phase: "libro", pipelineHasPdf: true } : n));
+                    setNiches(prev => prev.map(n => n._id === linkedNicheId ? { ...n, ...patch } : n));
                 }
             }
 
@@ -3251,22 +3269,32 @@ export function KdpFactoryApp() {
         }
     };
 
-    const downloadNichePdfDirect = async (niche: NicheFE, linkedCats: typeof iaCatalogs) => {
+    const downloadNichePdfDirect = async (niche: NicheFE, linkedCats: typeof iaCatalogs, opts: { owner: boolean; shuffle: boolean }) => {
         const catImages = linkedCats.flatMap(c => c.images);
         const persistentCloudImgs = cloudinaryImages.filter(img => img.nicheId === niche._id);
-        const allImages = [
-            ...catImages,
-            ...persistentCloudImgs.map(img => ({ url: img.url, publicId: img.publicId, width: img.width, height: img.height, bytes: img.bytes, createdAt: img.createdAt ?? "" })),
+        let allImages: { url: string; label?: string }[] = [
+            ...catImages.map(img => ({ url: img.url, label: img.publicId.split("/").pop() ?? "" })),
+            ...persistentCloudImgs.map(img => ({ url: img.url, label: img.publicId.split("/").pop() ?? "" })),
         ];
         if (!allImages.length) { toast.error("Este nicho no tiene imágenes aún"); return; }
+        if (opts.shuffle) {
+            for (let i = allImages.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [allImages[i], allImages[j]] = [allImages[j], allImages[i]];
+            }
+        }
+        setNichePdfDialog(null);
         setDirectNichePdfId(niche._id);
         try {
-            const pages: BookPage[] = [];
-            allImages.forEach((img, i) => {
-                pages.push({ id: `np-${i}-${Date.now()}`, type: "image" as const, image: { url: img.url, scale: 1, label: `${niche.name} #${i + 1}` }, text: defaultTextStyle() });
-                if (i === 0) pages.push({ id: `np-blank-${Date.now()}`, type: "text" as const, text: defaultTextStyle() });
-            });
-            const bytes = await buildBookPdf(undefined, false, pages, true);
+            const pages: BookPage[] = allImages.map((img, i) => ({
+                id: `np-${i}-${Date.now() + i}`,
+                type: "image" as const,
+                image: { url: img.url, scale: 1, label: img.label ?? `${niche.name} #${i + 1}` },
+                text: defaultTextStyle(),
+            }));
+            // buildBookPdf adds owner page when includeOwnerPage state is true;
+            // temporarily force it via forceNoOwnerPage = !opts.owner
+            const bytes = await buildBookPdf(undefined, false, pages, !opts.owner);
             if (!bytes) throw new Error("No se pudo generar el PDF");
             const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
             const blobUrl = URL.createObjectURL(blob);
@@ -3274,7 +3302,15 @@ export function KdpFactoryApp() {
             a.href = blobUrl;
             a.download = `${niche.name || "nicho-kdp"}.pdf`;
             a.click();
-            toast.success(`PDF generado · ${allImages.length} imágenes`);
+            toast.success(`PDF generado · ${allImages.length} imágenes${opts.shuffle ? " · orden aleatorio" : ""}${opts.owner ? " · copyright" : ""}`);
+            // Mark niche as having a PDF and advance phase if needed
+            const nicheForPdf = niches.find(n => n._id === niche._id);
+            if (nicheForPdf) {
+                const belowLibro = ["niche", "catalog"].includes(nicheForPdf.phase ?? "niche");
+                const pdfPatch: Partial<NicheFE> = { pipelineHasPdf: true, ...(belowLibro ? { phase: "libro" as const } : {}) };
+                void fetch(`${API_BASE_URL}/niches/${niche._id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pdfPatch) }).catch(() => {});
+                setNiches(prev => prev.map(n => n._id === niche._id ? { ...n, ...pdfPatch } : n));
+            }
         } catch (e: any) {
             toast.error(e.message ?? "Error generando PDF");
         } finally {
@@ -3725,6 +3761,54 @@ export function KdpFactoryApp() {
         link.href = "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Oswald:wght@400;700&family=Bebas+Neue&family=Cinzel:wght@400;700&family=Cinzel+Decorative:wght@400;700&family=Dancing+Script:wght@400;700&family=Raleway:wght@300;400;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Lobster&family=EB+Garamond:ital,wght@0,400;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,400;0,700;1,400&family=IM+Fell+English:ital@0;1&family=Anton&family=Teko:wght@400;600;700&family=Permanent+Marker&family=Pacifico&family=Bangers&family=Boogaloo&family=Black+Ops+One&family=Uncial+Antiqua&family=Almendra:wght@400;700&family=Orbitron:wght@400;700&family=Exo+2:wght@400;700&family=Audiowide&family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&family=Creepster&display=swap";
         document.head.appendChild(link);
     }, [showCoverEditor]);
+
+    // Cover editor undo/redo — debounced history push
+    useEffect(() => {
+        if (!showCoverEditor && coverLayersHistoryRef.current.length === 0) return;
+        if (coverIsUndoRedoRef.current) { coverIsUndoRedoRef.current = false; return; }
+        if (coverLayersPushTimerRef.current) clearTimeout(coverLayersPushTimerRef.current);
+        coverLayersPushTimerRef.current = setTimeout(() => {
+            const serialized = JSON.stringify(coverTextLayers);
+            const history = coverLayersHistoryRef.current;
+            if (history[coverLayersHistoryIdxRef.current] === serialized) return;
+            history.splice(coverLayersHistoryIdxRef.current + 1);
+            history.push(serialized);
+            if (history.length > 50) history.shift();
+            coverLayersHistoryIdxRef.current = history.length - 1;
+            setCoverHistoryTick(t => t + 1);
+        }, 400);
+    }, [coverTextLayers, showCoverEditor]);
+
+    // Cover editor undo/redo — keyboard
+    useEffect(() => {
+        if (!showCoverEditor) return;
+        const handler = (e: KeyboardEvent) => {
+            if (!(e.ctrlKey || e.metaKey)) return;
+            const target = e.target as HTMLElement;
+            if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+            if (e.key === "z" && !e.shiftKey) {
+                e.preventDefault();
+                const idx = coverLayersHistoryIdxRef.current;
+                if (idx <= 0) return;
+                coverLayersHistoryIdxRef.current = idx - 1;
+                coverIsUndoRedoRef.current = true;
+                setCoverTextLayers(JSON.parse(coverLayersHistoryRef.current[coverLayersHistoryIdxRef.current]));
+                setCoverHistoryTick(t => t + 1);
+            } else if (e.key === "y" || (e.key === "z" && e.shiftKey)) {
+                e.preventDefault();
+                const history = coverLayersHistoryRef.current;
+                const idx = coverLayersHistoryIdxRef.current;
+                if (idx >= history.length - 1) return;
+                coverLayersHistoryIdxRef.current = idx + 1;
+                coverIsUndoRedoRef.current = true;
+                setCoverTextLayers(JSON.parse(history[coverLayersHistoryIdxRef.current]));
+                setCoverHistoryTick(t => t + 1);
+            }
+        };
+        document.addEventListener("keydown", handler);
+        return () => document.removeEventListener("keydown", handler);
+    }, [showCoverEditor]);
+
     useEffect(() => {
         if (activeTab !== "creation") return;
         const handleGlobalPaste = (e: ClipboardEvent) => {
@@ -12486,6 +12570,30 @@ export function KdpFactoryApp() {
                                     </button>
                                 ))}
                             </div>
+                            <select
+                                value={kanbanStyleFilter}
+                                onChange={e => setKanbanStyleFilter(e.target.value)}
+                                className={`h-9 shrink-0 rounded-xl border px-2.5 text-[10px] font-black uppercase tracking-widest outline-none [color-scheme:dark] cursor-pointer transition-all
+                                    ${kanbanStyleFilter !== "all"
+                                        ? "bg-violet-500/15 border-violet-500/40 text-violet-300"
+                                        : "bg-white/[0.03] border-white/8 text-neutral-500 hover:text-neutral-300 hover:bg-white/[0.06]"}`}
+                            >
+                                <option value="all">Estilo: todos</option>
+                                <option value="generic">Generic</option>
+                                <option value="anime">Anime</option>
+                                <option value="illustration">Illustration</option>
+                                <option value="children">Children</option>
+                                <option value="realistic">Realistic</option>
+                                <option value="watercolor">Watercolor</option>
+                                <option value="abstract">Abstract</option>
+                                <option value="wall-art">Wall Art</option>
+                                <option value="botanical">Botanical</option>
+                                <option value="affirmation">Affirmation</option>
+                                <option value="geometric">Geometric</option>
+                                <option value="celestial">Celestial</option>
+                                <option value="retro">Retro</option>
+                                <option value="funko">Funko</option>
+                            </select>
                             {/* View mode switcher */}
                             <div className="flex p-0.5 bg-white/[0.03] border border-white/8 rounded-xl gap-0.5 shrink-0">
                                 <button onClick={() => setNicheViewMode("list")} title="Vista lista"
@@ -12591,8 +12699,8 @@ export function KdpFactoryApp() {
                                     className="w-14 h-8 bg-white/[0.03] border border-white/8 rounded-xl px-2 text-xs text-white focus:outline-none focus:border-sky-500/30 transition-all text-center" />
                             </div>
                             {/* Clear */}
-                            {(nicheSearch.trim() || nicheQuickFilter !== "all" || kanbanProductFilter !== "all" || nicheFilterAudience !== "all" || nicheFilterMinImgs !== "" || nicheFilterMaxImgs !== "" || nicheFilterMinCats !== "" || nicheFilterMaxCats !== "") && (
-                                <button onClick={() => { setNicheSearch(""); setNicheQuickFilter("all"); setKanbanProductFilter("all"); setNicheFilterAudience("all"); setNicheFilterMinImgs(""); setNicheFilterMaxImgs(""); setNicheFilterMinCats(""); setNicheFilterMaxCats(""); }}
+                            {(nicheSearch.trim() || nicheQuickFilter !== "all" || kanbanProductFilter !== "all" || kanbanStyleFilter !== "all" || nicheFilterAudience !== "all" || nicheFilterMinImgs !== "" || nicheFilterMaxImgs !== "" || nicheFilterMinCats !== "" || nicheFilterMaxCats !== "") && (
+                                <button onClick={() => { setNicheSearch(""); setNicheQuickFilter("all"); setKanbanProductFilter("all"); setKanbanStyleFilter("all"); setNicheFilterAudience("all"); setNicheFilterMinImgs(""); setNicheFilterMaxImgs(""); setNicheFilterMinCats(""); setNicheFilterMaxCats(""); }}
                                     className="h-8 px-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest text-rose-400/70 hover:text-rose-300 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all ml-auto">
                                     ✕ Limpiar ({niches.filter(nicheMatchesFilters).length})
                                 </button>
@@ -12964,7 +13072,15 @@ export function KdpFactoryApp() {
                                     // Extra ring for Activo state
                                     const isActivo = cardPhase === "published" && ls === "published";
                                     const firstCatThumb = linkedCats.find(c => c.images.length > 0)?.images[0]?.url;
-                                                    const coverThumb = niche.coverUrl || niche.sampleImageUrl || firstCatThumb;
+                                    const coverThumb = niche.coverUrl || niche.sampleImageUrl || firstCatThumb;
+                                    // Build ordered carousel: cover/sample first, then all catalog images, then cloudinary
+                                    const nicheCarouselUrls = [
+                                        niche.coverUrl,
+                                        niche.sampleImageUrl !== niche.coverUrl ? niche.sampleImageUrl : undefined,
+                                        ...linkedCats.flatMap(c => c.images.map(i => i.url)),
+                                        ...cloudinaryImages.filter(ci => ci.nicheId === niche._id).map(ci => ci.url),
+                                    ].filter((u): u is string => Boolean(u))
+                                        .filter((u, i, arr) => arr.indexOf(u) === i);
                                     return (
                                         <div key={niche._id} className={`group relative rounded-2xl border bg-gradient-to-b from-white/[0.04] to-white/[0.01] ${isActivo ? "border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.10)]" : "border-white/[0.08]"} ${activeHoverBorder} ${activeHoverShadow} hover:from-white/[0.06] hover:to-white/[0.02] transition-all overflow-hidden`}>
                                             {coverThumb && (
@@ -12985,9 +13101,9 @@ export function KdpFactoryApp() {
                                                     {/* Thumbnail — cover > sample > first catalog image */}
                                                     {coverThumb && (
                                                         <button
-                                                            onClick={() => setLightboxUrl({ url: coverThumb })}
+                                                            onClick={() => { const idx = nicheCarouselUrls.indexOf(coverThumb!); setLightboxUrl({ url: coverThumb!, urls: nicheCarouselUrls, index: idx >= 0 ? idx : 0 }); }}
                                                             className="shrink-0 w-14 h-14 rounded-xl overflow-hidden border border-white/20 bg-white/5 relative group/thumb hover:border-white/40 transition-all"
-                                                            title="Ampliar imagen"
+                                                            title={nicheCarouselUrls.length > 1 ? `Ampliar · ${nicheCarouselUrls.length} imágenes` : "Ampliar imagen"}
                                                         >
                                                             <img
                                                                 src={coverThumb}
@@ -12999,9 +13115,9 @@ export function KdpFactoryApp() {
                                                             <div className="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/30 transition-all flex items-center justify-center">
                                                                 <ZoomIn size={14} className="text-white opacity-0 group-hover/thumb:opacity-100 transition-opacity drop-shadow" />
                                                             </div>
-                                                            {!niche.coverUrl && !niche.sampleImageUrl && (
-                                                                <div className="absolute bottom-0 right-0 w-4 h-4 bg-black/60 rounded-tl-lg flex items-center justify-center">
-                                                                    <span className="text-[7px] text-neutral-400">🖼</span>
+                                                            {nicheCarouselUrls.length > 1 && (
+                                                                <div className="absolute bottom-0 right-0 px-1 py-0.5 bg-black/70 rounded-tl-lg flex items-center justify-center">
+                                                                    <span className="text-[7px] font-black text-neutral-300">{nicheCarouselUrls.length}</span>
                                                                 </div>
                                                             )}
                                                         </button>
@@ -13581,7 +13697,7 @@ export function KdpFactoryApp() {
                                                     </span>
                                                     <div className="flex items-center gap-1.5">
                                                         {linkedImgs > 0 && (
-                                                            <button onClick={() => void downloadNichePdfDirect(niche, linkedCats)}
+                                                            <button onClick={() => setNichePdfDialog({ niche, linkedCats })}
                                                                 disabled={directNichePdfId === niche._id}
                                                                 title={`PDF directo · ${linkedImgs} imágenes`}
                                                                 className="flex items-center gap-1 px-2.5 h-7 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sm font-black text-sky-400 hover:bg-sky-500/20 transition-all disabled:opacity-40">
@@ -15760,6 +15876,47 @@ export function KdpFactoryApp() {
                                             </div>
                                         </div>
 
+                                        {/* Mis plantillas */}
+                                        {coverLayerTemplates.length > 0 && (
+                                            <div className="space-y-1.5">
+                                                <p className="text-[9px] font-black uppercase tracking-widest text-neutral-700">Mis plantillas</p>
+                                                <div className="space-y-1 max-h-28 overflow-y-auto">
+                                                    {coverLayerTemplates.map((tpl, ti) => (
+                                                        <div key={ti} className="flex items-center gap-1.5 px-2 py-1.5 rounded-xl bg-white/[0.03] border border-white/8 hover:border-fuchsia-500/20 transition-all group">
+                                                            <button
+                                                                onClick={() => setCoverTextLayers(tpl.layers.map(l => ({ ...l, id: mkId() })))}
+                                                                className="flex-1 text-left text-[10px] font-black text-neutral-400 group-hover:text-fuchsia-300 truncate transition-colors">
+                                                                {tpl.name}
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    const next = coverLayerTemplates.filter((_, i) => i !== ti);
+                                                                    setCoverLayerTemplates(next);
+                                                                    try { localStorage.setItem("kdp-cover-layer-templates", JSON.stringify(next)); } catch {}
+                                                                }}
+                                                                className="text-neutral-700 hover:text-rose-400 transition-colors shrink-0">
+                                                                <X size={9} />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {coverTextLayers.length > 0 && (
+                                            <button
+                                                onClick={() => {
+                                                    const name = prompt("Nombre de la plantilla:");
+                                                    if (!name?.trim()) return;
+                                                    const next = [...coverLayerTemplates, { name: name.trim(), layers: coverTextLayers }];
+                                                    setCoverLayerTemplates(next);
+                                                    try { localStorage.setItem("kdp-cover-layer-templates", JSON.stringify(next)); } catch {}
+                                                    toast.success("Plantilla guardada");
+                                                }}
+                                                className="w-full h-7 rounded-xl bg-fuchsia-500/8 border border-fuchsia-500/20 text-[9px] font-black text-fuchsia-400/70 hover:text-fuchsia-300 hover:bg-fuchsia-500/15 transition-all flex items-center justify-center gap-1">
+                                                <Save size={9} /> Guardar capas como plantilla
+                                            </button>
+                                        )}
+
                                         {/* Add individual layers */}
                                         <div className="flex gap-1">
                                             {([
@@ -16130,6 +16287,34 @@ export function KdpFactoryApp() {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => {
+                                        const idx = coverLayersHistoryIdxRef.current;
+                                        if (idx <= 0) return;
+                                        coverLayersHistoryIdxRef.current = idx - 1;
+                                        coverIsUndoRedoRef.current = true;
+                                        setCoverTextLayers(JSON.parse(coverLayersHistoryRef.current[coverLayersHistoryIdxRef.current]));
+                                    }}
+                                    disabled={coverHistoryTick >= 0 && coverLayersHistoryIdxRef.current <= 0}
+                                    className="h-8 w-8 rounded-xl border border-white/8 text-neutral-600 hover:text-white hover:border-white/20 transition-all flex items-center justify-center disabled:opacity-25"
+                                    title="Deshacer (Ctrl+Z)">
+                                    <Undo2 size={13} />
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const history = coverLayersHistoryRef.current;
+                                        const idx = coverLayersHistoryIdxRef.current;
+                                        if (idx >= history.length - 1) return;
+                                        coverLayersHistoryIdxRef.current = idx + 1;
+                                        coverIsUndoRedoRef.current = true;
+                                        setCoverTextLayers(JSON.parse(history[coverLayersHistoryIdxRef.current]));
+                                        setCoverHistoryTick(t => t + 1);
+                                    }}
+                                    disabled={coverHistoryTick >= 0 && coverLayersHistoryIdxRef.current >= coverLayersHistoryRef.current.length - 1}
+                                    className="h-8 w-8 rounded-xl border border-white/8 text-neutral-600 hover:text-white hover:border-white/20 transition-all flex items-center justify-center disabled:opacity-25"
+                                    title="Rehacer (Ctrl+Y)">
+                                    <Redo2 size={13} />
+                                </button>
                                 <button onClick={() => setCoverTextLayers([])}
                                     className="h-8 px-3 rounded-xl border border-white/8 text-[11px] font-black text-neutral-600 hover:text-rose-400 hover:border-rose-500/30 transition-all">
                                     Limpiar capas
@@ -16423,7 +16608,7 @@ export function KdpFactoryApp() {
                     role="dialog"
                     aria-modal="true"
                 >
-                    <div className="relative w-full max-w-4xl h-[100dvh] sm:h-[90vh] rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                    <div className="relative w-full max-w-4xl h-[100dvh] sm:h-[calc(100dvh-2rem)] rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
 
                         {/* Header */}
                         <div className="shrink-0 border-b border-white/8">
@@ -16628,6 +16813,12 @@ export function KdpFactoryApp() {
                                                         className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-neutral-400 hover:text-white disabled:opacity-20 flex items-center justify-center transition-all">
                                                         <ChevronRight size={15} />
                                                     </button>
+                                                    {selectedPage.image?.url && (
+                                                        <button onClick={() => setPdfFullPagePreviewId(selectedPage.id)}
+                                                            className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-white flex items-center justify-center transition-all" title="Ver página completa">
+                                                            <Maximize2 size={14} />
+                                                        </button>
+                                                    )}
                                                     {selectedPage.type !== "owner" && (
                                                         <button onClick={() => duplicatePage(selectedPage.id)}
                                                             className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-neutral-500 hover:text-white flex items-center justify-center transition-all" title="Duplicar página">
@@ -17842,9 +18033,43 @@ export function KdpFactoryApp() {
                 <div
                     className="fixed inset-0 z-[1200] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"
                     onClick={() => setLightboxUrl(null)}
+                    onKeyDown={e => {
+                        if (e.key === "ArrowLeft" && lightboxUrl.urls && (lightboxUrl.index ?? 0) > 0) {
+                            const ni = (lightboxUrl.index ?? 0) - 1; const m = lightboxUrl.meta?.[ni];
+                            setLightboxUrl({ ...lightboxUrl, url: lightboxUrl.urls[ni], index: ni, catalogId: m?.catalogId, publicId: m?.publicId });
+                        } else if (e.key === "ArrowRight" && lightboxUrl.urls && (lightboxUrl.index ?? 0) < lightboxUrl.urls.length - 1) {
+                            const ni = (lightboxUrl.index ?? 0) + 1; const m = lightboxUrl.meta?.[ni];
+                            setLightboxUrl({ ...lightboxUrl, url: lightboxUrl.urls[ni], index: ni, catalogId: m?.catalogId, publicId: m?.publicId });
+                        } else if (e.key === "Escape") {
+                            setLightboxUrl(null);
+                        }
+                    }}
+                    tabIndex={-1}
+                    ref={el => el?.focus()}
                 >
+                    {/* Left arrow */}
+                    {lightboxUrl.urls && (lightboxUrl.index ?? 0) > 0 && (
+                        <button
+                            onClick={e => { e.stopPropagation(); const ni = (lightboxUrl.index ?? 0) - 1; const m = lightboxUrl.meta?.[ni]; setLightboxUrl({ ...lightboxUrl, url: lightboxUrl.urls![ni], index: ni, catalogId: m?.catalogId, publicId: m?.publicId }); }}
+                            style={{ position: "fixed", left: 16, top: "50%", transform: "translateY(-50%)", zIndex: 1201 }}
+                            className="w-12 h-12 rounded-full bg-white/10 border border-white/25 text-white hover:bg-white/25 hover:scale-110 transition-all flex items-center justify-center shadow-2xl backdrop-blur-sm cursor-pointer"
+                        >
+                            <ChevronLeft size={22} />
+                        </button>
+                    )}
+                    {/* Right arrow */}
+                    {lightboxUrl.urls && (lightboxUrl.index ?? 0) < lightboxUrl.urls.length - 1 && (
+                        <button
+                            onClick={e => { e.stopPropagation(); const ni = (lightboxUrl.index ?? 0) + 1; const m = lightboxUrl.meta?.[ni]; setLightboxUrl({ ...lightboxUrl, url: lightboxUrl.urls![ni], index: ni, catalogId: m?.catalogId, publicId: m?.publicId }); }}
+                            style={{ position: "fixed", right: 16, top: "50%", transform: "translateY(-50%)", zIndex: 1201 }}
+                            className="w-12 h-12 rounded-full bg-white/10 border border-white/25 text-white hover:bg-white/25 hover:scale-110 transition-all flex items-center justify-center shadow-2xl backdrop-blur-sm cursor-pointer"
+                        >
+                            <ChevronRight size={22} />
+                        </button>
+                    )}
                     <div className="relative max-w-4xl max-h-full" onClick={e => e.stopPropagation()}>
                         <img
+                            key={lightboxUrl.url}
                             src={lightboxUrl.url}
                             alt="Portada ampliada"
                             className="max-w-full max-h-[90vh] rounded-2xl shadow-2xl object-contain border border-white/10"
@@ -17879,6 +18104,11 @@ export function KdpFactoryApp() {
                                 <X size={14} />
                             </button>
                         </div>
+                        {lightboxUrl.urls && lightboxUrl.urls.length > 1 && (
+                            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/70 border border-white/10 text-[11px] font-black text-neutral-300 tabular-nums pointer-events-none">
+                                {(lightboxUrl.index ?? 0) + 1} / {lightboxUrl.urls.length}
+                            </div>
+                        )}
                     </div>
                 </div>,
                 document.body
@@ -19018,7 +19248,7 @@ export function KdpFactoryApp() {
                                                             {/* Action buttons — slide in on hover */}
                                                             <div className="absolute top-2 right-2 flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 -translate-y-1 group-hover:translate-y-0">
                                                                 <button
-                                                                    onClick={e => { e.stopPropagation(); setLightboxUrl({ url: img.url, catalogId: img.catalogId, publicId: img.publicId }); }}
+                                                                    onClick={e => { e.stopPropagation(); setLightboxUrl({ url: img.url, catalogId: img.catalogId, publicId: img.publicId, urls: allImgs.map(i => i.url), meta: allImgs.map(i => ({ catalogId: i.catalogId, publicId: i.publicId })), index: idx }); }}
                                                                     className="p-1.5 rounded-xl bg-black/70 backdrop-blur-md border border-white/15 text-white hover:bg-white/20 hover:border-white/30 hover:scale-110 transition-all"
                                                                     title="Ampliar"
                                                                 >
@@ -19043,7 +19273,7 @@ export function KdpFactoryApp() {
 
                                                             {/* Click capture for lightbox */}
                                                             <button
-                                                                onClick={() => setLightboxUrl({ url: img.url, catalogId: img.catalogId, publicId: img.publicId })}
+                                                                onClick={() => setLightboxUrl({ url: img.url, catalogId: img.catalogId, publicId: img.publicId, urls: allImgs.map(i => i.url), meta: allImgs.map(i => ({ catalogId: i.catalogId, publicId: i.publicId })), index: idx })}
                                                                 className="absolute inset-0"
                                                                 aria-label="Ver imagen"
                                                             />
@@ -19431,7 +19661,7 @@ export function KdpFactoryApp() {
                                                     <p className="text-sm font-black uppercase tracking-widest text-neutral-600 text-center">Sin borrador de libro</p>
                                                     <div className="flex flex-col gap-2 w-full max-w-xs">
                                                         {(() => {
-                                                            const catImgs = linkedCats.filter(c => c.status === "completed").flatMap(c => c.images.map(img => ({ url: img.url, publicId: img.publicId })));
+                                                            const catImgs = linkedCats.flatMap(c => c.images.map(img => ({ url: img.url, publicId: img.publicId })));
                                                             const cloudImgsSrc = linkedCloudImgs.map(img => ({ url: img.url, publicId: img.publicId }));
                                                             const nicheImgs = [...catImgs, ...cloudImgsSrc];
                                                             if (nicheImgs.length === 0) return null;
@@ -19648,8 +19878,86 @@ export function KdpFactoryApp() {
                 );
             })()}
 
+            {/* ── PDF full-page preview lightbox ── */}
+            {pdfFullPagePreviewId && (() => {
+                const pg = bookPages.find(p => p.id === pdfFullPagePreviewId);
+                if (!pg?.image?.url) { setPdfFullPagePreviewId(null); return null; }
+                return createPortal(
+                    <div className="fixed inset-0 z-[9200] bg-black/92 backdrop-blur-sm flex items-center justify-center p-6 cursor-zoom-out"
+                        onClick={() => setPdfFullPagePreviewId(null)}>
+                        <div className="relative flex flex-col items-center gap-3" onClick={e => e.stopPropagation()}>
+                            <div className="rounded-2xl overflow-hidden shadow-[0_32px_80px_rgba(0,0,0,0.8)] border border-white/10"
+                                style={{ aspectRatio: "8.5/11", maxHeight: "85vh", maxWidth: "calc(85vh * 8.5 / 11)" }}>
+                                <img src={pg.image.url} alt="" className="w-full h-full object-contain bg-white" />
+                            </div>
+                            {pg.image.label && <p className="text-sm text-neutral-500">{pg.image.label}</p>}
+                            <button onClick={() => setPdfFullPagePreviewId(null)}
+                                className="absolute top-3 right-3 w-9 h-9 rounded-xl bg-black/70 border border-white/10 text-neutral-400 hover:text-white flex items-center justify-center transition-all">
+                                <X size={15} />
+                            </button>
+                        </div>
+                    </div>,
+                    document.body
+                );
+            })()}
+
             {/* ── Daily Focus AI Chat ── */}
             <FocusChat systemContext={focusChatContext} apiBase={API_BASE_URL} />
+
+            {/* ── PDF Directo — Opciones ── */}
+            {nichePdfDialog && (() => {
+                const { niche: dlNiche, linkedCats: dlCats } = nichePdfDialog;
+                const catImgCount = dlCats.flatMap(c => c.images).length;
+                const cloudImgCount = cloudinaryImages.filter(img => img.nicheId === dlNiche._id).length;
+                const totalImgs = catImgCount + cloudImgCount;
+                return (
+                    <div className="fixed inset-0 z-[9050] bg-black/75 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
+                        <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0f0f0f] p-8 space-y-6 shadow-2xl">
+                            <div className="space-y-2 text-center">
+                                <div className="w-14 h-14 rounded-2xl bg-sky-500/10 flex items-center justify-center mx-auto"><Download size={22} className="text-sky-400" /></div>
+                                <p className="text-sm font-black text-white">Generar PDF</p>
+                                <p className="text-xs text-neutral-500">{dlNiche.name}</p>
+                                <p className="text-[10px] text-neutral-600">{totalImgs} imagen{totalImgs !== 1 ? "es" : ""} · {catImgCount} catálogo{catImgCount !== 1 ? "s" : ""} + {cloudImgCount} Cloudinary</p>
+                            </div>
+                            <div className="space-y-3">
+                                <label className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/[0.03] border border-white/8 cursor-pointer hover:border-white/15 transition-all">
+                                    <input
+                                        type="checkbox"
+                                        checked={nichePdfOptOwner}
+                                        onChange={e => setNichePdfOptOwner(e.target.checked)}
+                                        className="w-4 h-4 rounded accent-sky-500"
+                                    />
+                                    <div>
+                                        <p className="text-xs font-black text-white">Página de copyright</p>
+                                        <p className="text-[10px] text-neutral-600">Añade la página de derechos de autor al final</p>
+                                    </div>
+                                </label>
+                                <label className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/[0.03] border border-white/8 cursor-pointer hover:border-white/15 transition-all">
+                                    <input
+                                        type="checkbox"
+                                        checked={nichePdfOptShuffle}
+                                        onChange={e => setNichePdfOptShuffle(e.target.checked)}
+                                        className="w-4 h-4 rounded accent-sky-500"
+                                    />
+                                    <div>
+                                        <p className="text-xs font-black text-white">Orden aleatorio</p>
+                                        <p className="text-[10px] text-neutral-600">Mezcla las imágenes al generar</p>
+                                    </div>
+                                </label>
+                            </div>
+                            <div className="flex gap-3">
+                                <button onClick={() => setNichePdfDialog(null)} className="flex-1 h-11 rounded-2xl bg-white/5 border border-white/10 text-sm font-black text-white hover:bg-white/10 transition-all">Cancelar</button>
+                                <button
+                                    onClick={() => void downloadNichePdfDirect(dlNiche, dlCats, { owner: nichePdfOptOwner, shuffle: nichePdfOptShuffle })}
+                                    className="flex-1 h-11 rounded-2xl bg-sky-500 text-white text-sm font-black hover:bg-sky-400 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <Download size={13} /> Generar PDF
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* Confirm Delete Cloudinary Image Dialog */}
             {confirmDeleteCloudinaryId && (
