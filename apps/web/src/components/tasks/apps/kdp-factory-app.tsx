@@ -408,6 +408,34 @@ import { CohortsPanel } from "./kdp/CohortsPanel";
 import { PipelineRuleRow } from "./kdp/PipelineRuleRow";
 import LuluPanel from "./kdp/LuluPanel";
 
+/** Modal a pantalla completa con comportamiento consistente en todos los editores grandes. */
+function FullModal({ open, onClose, zIndex = 110, maxWidth = "max-w-4xl", children }: {
+    open: boolean;
+    onClose: () => void;
+    zIndex?: number;
+    maxWidth?: string;
+    children: React.ReactNode;
+}) {
+    if (!open) return null;
+    return createPortal(
+        <div
+            className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-end sm:items-start justify-center sm:pt-4"
+            style={{ zIndex }}
+            onClick={onClose}
+            role="dialog"
+            aria-modal="true"
+        >
+            <div
+                className={`relative w-full ${maxWidth} h-[100dvh] sm:h-[calc(100dvh-2rem)] rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col`}
+                onClick={e => e.stopPropagation()}
+            >
+                {children}
+            </div>
+        </div>,
+        document.body
+    );
+}
+
 export function KdpFactoryApp() {
     const [activeTab, setActiveTab] = useState<TabID>(() => {
         if (typeof window === "undefined") return "insights";
@@ -3286,15 +3314,26 @@ export function KdpFactoryApp() {
         setNichePdfDialog(null);
         setDirectNichePdfId(niche._id);
         try {
-            const pages: BookPage[] = allImages.map((img, i) => ({
-                id: `np-${i}-${Date.now() + i}`,
+            const ts = Date.now();
+            const imgPages: BookPage[] = allImages.map((img, i) => ({
+                id: `np-${i}-${ts + i}`,
                 type: "image" as const,
                 image: { url: img.url, scale: 1, label: img.label ?? `${niche.name} #${i + 1}` },
                 text: defaultTextStyle(),
             }));
-            // buildBookPdf adds owner page when includeOwnerPage state is true;
-            // temporarily force it via forceNoOwnerPage = !opts.owner
-            const bytes = await buildBookPdf(undefined, false, pages, !opts.owner);
+            // Build owner + blank explicitly so the structure is guaranteed regardless of editor state
+            const pages: BookPage[] = [
+                ...(opts.owner ? [
+                    { id: `np-owner-${ts}`, type: "owner" as const, text: defaultTextStyle() },
+                    { id: `np-blank-${ts}`, type: "text" as const, text: defaultTextStyle() },
+                ] : []),
+                ...imgPages,
+            ];
+            console.log("[PDF directo] páginas:", pages.map(p => p.type), "total:", pages.length);
+            // Pass onBytes callback so buildBookPdf does NOT auto-download (avoids double download)
+            let pdfBytes: Uint8Array | null = null;
+            await buildBookPdf(bytes => { pdfBytes = bytes; }, false, pages, true);
+            const bytes = pdfBytes;
             if (!bytes) throw new Error("No se pudo generar el PDF");
             const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
             const blobUrl = URL.createObjectURL(blob);
@@ -3494,6 +3533,7 @@ export function KdpFactoryApp() {
             if (includeOwnerPage && !forceNoOwnerPage && !pages.some(p => p.type === "owner")) {
                 const ownerPage = pdf.addPage([pageWidth, pageHeight]);
                 drawOwnerPageContent(ownerPage, embeddedFont);
+                pdf.addPage([pageWidth, pageHeight]); // blank back of owner page
             }
 
             for (const bookPage of pages) {
@@ -4120,6 +4160,7 @@ export function KdpFactoryApp() {
             const ts = Date.now();
             const pages: BookPage[] = [];
             pages.push({ id: `pipe-owner-${ts}`, type: "owner", text: defaultTextStyle() });
+            pages.push({ id: `pipe-ownerback-${ts}`, type: "text", text: defaultTextStyle() });
             const titleStyle = defaultTextStyle();
             titleStyle.content = nicheName || "Mi Libro de Colorear";
             titleStyle.fontSize = 24; titleStyle.bold = true;
@@ -15134,11 +15175,7 @@ export function KdpFactoryApp() {
             })()}
 
             {/* Cover Factory Modal */}
-            {showCoverModal && createPortal(
-                <div className="fixed inset-0 z-[1100] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
-                    onClick={() => { setShowCoverModal(false); setCoverStep(1); setGeneratedCoverUrl(null); setGeneratedBackCoverUrl(null); setCoverTextLayers([]); setCoverMode("ai"); setColorizeSourceUrl(null); setSelectedCollageImages(new Set()); setCoverTitle(""); setCoverSubtitle(""); setCoverAuthor("Emilio Jimenez"); setCoverDescription(""); setSelectedCoverNicheId(null); setUploadBrowseSource(null); }} role="dialog" aria-modal="true">
-                    <div className="relative w-full max-w-5xl rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col h-[92dvh]"
-                        onClick={e => e.stopPropagation()}>
+            <FullModal open={showCoverModal} onClose={() => { setShowCoverModal(false); setCoverStep(1); setGeneratedCoverUrl(null); setGeneratedBackCoverUrl(null); setCoverTextLayers([]); setCoverMode("ai"); setColorizeSourceUrl(null); setSelectedCollageImages(new Set()); setCoverTitle(""); setCoverSubtitle(""); setCoverAuthor("Emilio Jimenez"); setCoverDescription(""); setSelectedCoverNicheId(null); setUploadBrowseSource(null); }} zIndex={1100} maxWidth="max-w-5xl">
                         <div className="absolute -top-24 -right-24 w-72 h-72 bg-fuchsia-500/8 blur-[80px] pointer-events-none" />
                         {/* Header */}
                         <div className="shrink-0 border-b border-white/8 px-5 py-4 flex items-center gap-3 relative">
@@ -16190,10 +16227,7 @@ export function KdpFactoryApp() {
                                 )}
                             </div>
                         )}
-                    </div>
-                </div>,
-                document.body
-            )}
+            </FullModal>
 
             {/* ════════════════════════════════════════════════
                 Professional Cover Editor (full-screen)
@@ -16601,14 +16635,7 @@ export function KdpFactoryApp() {
             })(), document.body)}
 
             {/* Book Editor Modal */}
-            {bookEditorOpen && (
-                <div
-                    className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
-                    onClick={() => setBookEditorOpen(false)}
-                    role="dialog"
-                    aria-modal="true"
-                >
-                    <div className="relative w-full max-w-4xl h-[100dvh] sm:h-[calc(100dvh-2rem)] rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <FullModal open={bookEditorOpen} onClose={() => setBookEditorOpen(false)} zIndex={110} maxWidth="max-w-4xl">
 
                         {/* Header */}
                         <div className="shrink-0 border-b border-white/8">
@@ -17431,9 +17458,7 @@ export function KdpFactoryApp() {
                             );
                         })()}
 
-                    </div>
-                </div>
-            )}
+            </FullModal>
 
             {/* ── Integration modal ── */}
             {showIntegrationModal && (() => {
@@ -18596,16 +18621,7 @@ export function KdpFactoryApp() {
                 });
                 const allSel = filtered.length > 0 && filtered.every(img => zipSelection.has(img.url));
                 return (
-                    <div
-                        className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
-                        onClick={() => setZipFactoryOpen(false)}
-                        role="dialog"
-                        aria-modal="true"
-                    >
-                        <div
-                            className="relative w-full max-w-4xl h-[100dvh] sm:h-[90vh] rounded-t-3xl sm:rounded-3xl border border-white/10 bg-[#0a0a0a] overflow-hidden flex flex-col"
-                            onClick={e => e.stopPropagation()}
-                        >
+                    <FullModal open zIndex={110} maxWidth="max-w-4xl" onClose={() => setZipFactoryOpen(false)}>
                             {/* Header */}
                             <div className="shrink-0 border-b border-white/8">
                                 <div className="px-3 sm:px-4 pt-3 sm:pt-4 pb-3 flex items-center gap-2">
@@ -18747,8 +18763,7 @@ export function KdpFactoryApp() {
                                     </div>
                                 )}
                             </div>
-                        </div>
-                    </div>
+                        </FullModal>
                 );
             })()}
 
@@ -19672,6 +19687,7 @@ export function KdpFactoryApp() {
                                                                         const shuffled = [...nicheImgs].sort(() => Math.random() - 0.5);
                                                                         const pages: BookPage[] = [];
                                                                         pages.push({ id: `pipe-owner-${ts}`, type: "owner", text: defaultTextStyle() });
+                                                                        pages.push({ id: `pipe-ownerback-${ts}`, type: "text", text: defaultTextStyle() });
                                                                         const titleStyle = defaultTextStyle();
                                                                         titleStyle.content = detailNiche.name || "Mi Libro de Colorear";
                                                                         titleStyle.fontSize = 24; titleStyle.bold = true; titleStyle.verticalAlign = "middle"; titleStyle.align = "center";
